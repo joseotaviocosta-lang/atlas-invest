@@ -1,4 +1,4 @@
-# ADR-004: Livro-Razão Contábil (Ledger) como Fonte Única da Verdade
+# ADR-004: Transaction Ledger como Source of Truth
 
 ## Status
 
@@ -6,21 +6,32 @@ Accepted
 
 ## Context
 
-Em sistemas de controle patrimonial convencionais, muitas vezes o saldo da conta ou a quantidade em custódia de um ativo é armazenado como uma coluna mutável que sofre operações destrutivas (`UPDATE balance = balance + X`). Em caso de falha de concorrência, reprocessamento de notas de corretagem ou necessidade de auditoria fiscal histórica, torna-se impossível determinar o estado exato da carteira em datas anteriores ou auditar discrepâncias.
+Em sistemas de controle patrimonial convencionais, muitas vezes o saldo da conta ou a quantidade em custódia de um ativo é armazenado como uma coluna mutável que sofre operações destrutivas (`UPDATE balance = balance + X`). Em caso de falha de concorrência, reprocessamento de notas de corretagem ou necessidade de auditoria histórica, torna-se impossível determinar o estado exato da carteira em datas anteriores ou auditar discrepâncias.
+
+Por outro lado, impor formalmente contabilidade bancária por partidas dobradas (débitos e créditos estritos com plano de contas completo) agregaria sobrecarga e atrito desnecessários para a modelagem de eventos de investimentos brasileiros (splits, bonificações, proventos, subscrições e transferências).
 
 ## Decision
 
-Adotar o modelo de **Ledger Imutável baseado no princípio das partidas dobradas (Double-Entry Bookkeeping)** como a fonte única da verdade para todas as posições patrimoniais e saldos futuros:
+Adotar o **Transaction Ledger (Livro de Transações Imutável e Append-Only)** como a **Fonte Única da Verdade (Source of Truth)** para o Project Atlas:
 
-- Nenhuma transação pode alterar saldos diretamente sem o registro de eventos contábeis imutáveis correspondentes (débito e crédito balanceados).
-- Posições patrimoniais atuais ou em datas passadas são derivadas da soma dos lançamentos do ledger ou mantidas em snapshots materiais calculados a partir dele.
-- Estornos ou correções são expressos como novas transações compensatórias, mantendo a trilha de auditoria completa.
+- O histórico canônico da plataforma é formado exclusivamente por operações e eventos financeiros imutáveis.
+- Todo o estado patrimonial da carteira — incluindo Posições em custódia (`Position`), preço médio (`average cost`), custo total (`total cost`), ganho de capital realizado (`realized gain`) e fotos patrimoniais (`portfolio snapshots`) — é **estritamente derivado e recalculável** a partir do histórico de transações.
+- O fluxo arquitetural canônico é:
+  ```text
+  Transactions / Events (Ledger)
+            ↓
+     Portfolio Engine
+            ↓
+      Derived State
+  ```
+- O Atlas **NÃO** adota contabilidade formal de partidas dobradas.
+- Estornos, correções ou cancelamentos devem ser expressos por eventos compensatórios ou mecanismos controlados de auditoria do ledger, preservando a imutabilidade do registro original.
 
 ## Consequences
 
 - **Positivas:**
-  - Rastreabilidade e auditabilidade contábil e fiscal completa (essencial para IRPF e informes de rendimentos).
-  - Imutabilidade histórica: qualquer posição em qualquer data do passado pode ser recalculada de forma determinística.
-  - Prevenção contra criação ou destruição inadvertida de saldo/patrimônio.
+  - Auditabilidade e rastreabilidade total: qualquer posição ou preço médio em qualquer data passada pode ser reconstruído deterministicamente a partir dos eventos.
+  - Modelo conceitual alinhado às operações reais de mercado de capitais (B3, custódias e corretoras).
+  - Prevenção contra inconsistências de dados e estados corrompidos por escritas parciais ou concorrentes.
 - **Negativas:**
-  - Maior volume de registros no banco de dados e necessidade de estratégias eficientes de indexação e snapshots periódicos em fases futuras.
+  - Exige que o cálculo de posições e preço médio seja processado pelo `Portfolio Engine` através da reconstituição dos eventos, demandando estratégias de snapshots materiais e caching em fases futuras.

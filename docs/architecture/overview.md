@@ -51,3 +51,19 @@ A hierarquia de dependências é estritamente unidirecional:
 3. `packages/domain` é totalmente agnóstico de frameworks e bibliotecas visuais ou ORMs.
 4. Motores de cálculo financeiro nunca possuem dependências diretas de bibliotecas de interface gráfica.
 5. Os dados são persistidos através do adaptador de infraestrutura em `packages/database`.
+
+## 3. Transaction Ledger como Fonte da Verdade
+
+O Project Atlas adota o **Transaction Ledger (Livro de Transações Imutável)** como a fonte única da verdade:
+
+```text
+Transactions / Events
+        ↓
+Portfolio Engine
+        ↓
+Derived State (Position, average cost, realized gain, snapshots)
+```
+
+Toda posição patrimonial, preço médio ou métrica de rentabilidade é derivada determinística a partir do histórico de eventos, garantindo auditabilidade contábil e fiscal completa.
+
+Para maiores detalhes sobre entidades, primitivas financeiras e eventos, consulte o documento [Modelo de Domínio](file:///c:/Projetos/atlas-invest/docs/architecture/domain-model.md).

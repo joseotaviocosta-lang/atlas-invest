@@ -7,11 +7,26 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 ## 1. Princípios de Negócio e Cálculos Financeiros
 
 1. **PROIBIDO usar float para valores financeiros e monetários:**
-   - Todo cálculo envolvendo moeda, cotação, preço médio, saldo, imposto ou rentabilidade deve utilizar tipos de precisão decimal arbitrária (ex.: `Decimal.js` ou inteiros em centavos/fracionários exatos).
-   - Tipos primitivos `number` de ponto flutuante do JavaScript nunca devem ser utilizados para somas monetárias ou balanços.
-2. **FONTE DA VERDADE NO LEDGER (Partidas Dobradas):**
-   - Nenhuma posição patrimonial deve ser calculada a partir de mutação destrutiva. O histórico imutável de transações (livro-razão contábil) é a única fonte da verdade.
-3. **ISOLAMENTO FISCAL:**
+   - Todo cálculo envolvendo moeda, cotação, preço médio, saldo, imposto ou rentabilidade deve utilizar tipos de precisão decimal arbitrária (`Money`, `Quantity`, `Percentage` encapsulando `decimal.js`).
+   - Tipos primitivos `number` de ponto flutuante do JavaScript **NUNCA** devem ser utilizados para somas monetárias, multiplicações de quantidade por preço ou balanços.
+   - **PROIBIDO** o uso de `parseFloat()`, `Number()` ou unário `+` para conversão de valores em regras financeiras.
+2. **ENCAPSULAMENTO DE DECIMAL.JS:**
+   - A biblioteca `decimal.js` é um detalhe de implementação restrito a `@atlas/domain`.
+   - Classes internas como `Decimal` **NUNCA** devem vazar para a API pública ou interfaces externas.
+3. **SERIALIZAÇÃO FINANCEIRA POR STRINGS DECIMAIS:**
+   - Valores monetários (`Money`), quantidades (`Quantity`), percentuais (`Percentage`) e datas (`LocalDate`) devem sempre serializar para JSON como strings decimais explícitas (ex.: `"1234.56"`, `"2026-09-15"`).
+4. **TRANSACTION LEDGER COMO SOURCE OF TRUTH:**
+   - O histórico imutável de transações e eventos financeiros é a única fonte da verdade.
+   - Posições patrimoniais (`Position`), preço médio (`average cost`), custo total (`total cost`) e ganho de capital realizado (`realized gain`) são estados **estritamente derivados e recalculáveis** via `Portfolio Engine`.
+   - O Atlas **NÃO** adota contabilidade formal de partidas dobradas.
+5. **TRANSAÇÃO É EVENTO IMUTÁVEL:**
+   - Transações no ledger são imutáveis (`Object.freeze`), sem setters mutáveis. Retificações ocorrem por novos eventos compensatórios.
+6. **SEPARAÇÃO DE DATAS ECONÔMICAS E TIMESTAMPS TÉCNICOS:**
+   - `tradeDate` e `settlementDate` são datas econômicas representadas por `LocalDate` (`YYYY-MM-DD`), imunes a fusos horários.
+   - `createdAt` e `updatedAt` são timestamps técnicos de auditoria do sistema.
+7. **TICKER NUNCA É IDENTIDADE:**
+   - Ativos financeiros são identificados por seu `AssetId`, nunca pelo ticker. O mesmo ticker pode existir em exchanges diferentes (ex.: B3 vs. NYSE).
+8. **ISOLAMENTO FISCAL:**
    - Não implementar lógica de cálculo tributário (DARF, isenção de R$ 20k em ações, alíquotas de FII, compensação de prejuízo) na interface do usuário (UI).
    - Todas as regras fiscais pertencem exclusivamente ao `@atlas/tax-engine`.
 
