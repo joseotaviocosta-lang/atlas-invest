@@ -1,0 +1,120 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @unique @db.VarChar(255)
+  name      String   @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  portfolios Portfolio[]
+
+  @@map("users")
+}
+
+model Institution {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(255)
+  type      String   @db.VarChar(50)
+  country   String   @db.VarChar(2)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  accounts Account[]
+
+  @@map("institutions")
+}
+
+model Portfolio {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  name         String   @db.VarChar(255)
+  baseCurrency String   @map("base_currency") @db.VarChar(3)
+  type         String   @db.VarChar(50)
+  status       String   @db.VarChar(50)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts     Account[]
+  transactions Transaction[]
+
+  @@index([userId])
+  @@map("portfolios")
+}
+
+model Account {
+  id            String   @id @default(uuid()) @db.Uuid
+  portfolioId   String   @map("portfolio_id") @db.Uuid
+  institutionId String   @map("institution_id") @db.Uuid
+  name          String   @db.VarChar(255)
+  currency      String   @db.VarChar(3)
+  status        String   @db.VarChar(50)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  portfolio   Portfolio     @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  institution Institution   @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  transactions Transaction[]
+
+  @@unique([id, portfolioId])
+  @@index([portfolioId])
+  @@index([institutionId])
+  @@map("accounts")
+}
+
+model Asset {
+  id        String   @id @default(uuid()) @db.Uuid
+  ticker    String   @db.VarChar(50)
+  name      String   @db.VarChar(255)
+  type      String   @db.VarChar(50)
+  currency  String   @db.VarChar(3)
+  exchange  String   @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  transactions Transaction[]
+
+  @@unique([ticker, exchange])
+  @@index([ticker])
+  @@map("assets")
+}
+
+model Transaction {
+  id             String    @id @default(uuid()) @db.Uuid
+  portfolioId    String    @map("portfolio_id") @db.Uuid
+  accountId      String    @map("account_id") @db.Uuid
+  assetId        String?   @map("asset_id") @db.Uuid
+  type           String    @db.VarChar(50)
+  tradeDate      DateTime  @map("trade_date") @db.Date
+  settlementDate DateTime? @map("settlement_date") @db.Date
+  quantity       Decimal?  @db.Decimal(38, 18)
+  unitPrice      Decimal?  @map("unit_price") @db.Decimal(38, 18)
+  amount         Decimal?  @db.Decimal(38, 18)
+  currency       String    @db.VarChar(3)
+  fees           Decimal?  @db.Decimal(38, 18)
+  taxes          Decimal?  @db.Decimal(38, 18)
+  factor         Decimal?  @db.Decimal(38, 18)
+  provider       String?   @db.VarChar(100)
+  externalId     String?   @map("external_id") @db.VarChar(255)
+  notes          String?   @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  account   Account   @relation(fields: [accountId, portfolioId], references: [id, portfolioId], onDelete: Restrict)
+  asset     Asset?    @relation(fields: [assetId], references: [id], onDelete: Restrict)
+
+  @@unique([portfolioId, provider, externalId], name: "portfolio_provider_external_id_unique")
+  @@index([portfolioId, tradeDate, createdAt, id])
+  @@index([portfolioId, accountId])
+  @@index([assetId])
+  @@map("transactions")
+}

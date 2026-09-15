@@ -5,9 +5,20 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
+    "generate": "prisma generate",
+    "migrate": "prisma migrate deploy",
+    "migrate:dev": "prisma migrate dev",
+    "seed": "tsx prisma/seed.ts",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@atlas/domain": "workspace:*",
+    "@atlas/logger": "workspace:*",
+    "@prisma/client": "^6.19.3"
+  },
   "devDependencies": {
-    "@atlas/config": "workspace:*"
+    "@atlas/config": "workspace:*",
+    "prisma": "^6.19.3",
+    "tsx": "^4.19.3"
   }
 }
