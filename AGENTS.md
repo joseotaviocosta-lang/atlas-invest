@@ -69,11 +69,24 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 
 ---
 
-## 4. Banco de Dados e Migrations
+## 4. Banco de Dados e Persistência
 
 1. **SCHEMA E MIGRATIONS:**
-   - Nenhuma alteração de schema de banco de dados deve ser realizada diretamente ou sem migration correspondente rastreada no Git.
-   - Migrations devem ser idempotentes e seguras para zero-downtime deployment quando aplicável.
+   - Nenhuma alteração de schema de banco de dados deve ser realizada diretamente ou sem migration correspondente rastreada no Git (`prisma/migrations`).
+   - Migrations devem ser idempotentes e seguras para deployment contínuo.
+2. **ISOLAMENTO DOMÍNIO-PERSISTÊNCIA:**
+   - `@atlas/database` depende de `@atlas/domain`. O domínio **NUNCA** depende da persistência.
+   - Tipos internos do Prisma (`@prisma/client`, `Prisma.Decimal`, modelos anêmicos) **NUNCA** devem ser exportados publicamente por `@atlas/database` ou consumidos pelo domínio.
+3. **REGRA DE OURO DA CONVERSÃO DECIMAL:**
+   - Colunas financeiras utilizam `NUMERIC(38,18)`. A conversão de/para `Money` e `Quantity` é realizada exclusivamente através de strings decimais canônicas (`decimal.toString()`).
+   - **PROIBIDO** converter `Prisma.Decimal` para ponto flutuante (`toNumber()`, `parseFloat()`).
+4. **TRANSACTION LEDGER APPEND-ONLY:**
+   - A tabela `Transaction` e o repositório `TransactionRepository` operam exclusivamente em regime append-only (`create`, `createMany`).
+   - É **proibido** expor métodos de update ou delete para transações do ledger.
+5. **DATAS ECONÔMICAS CIVIS:**
+   - `tradeDate` e `settlementDate` são armazenadas como `@db.Date` e convertidas utilizando componentes UTC (`getUTCFullYear()`, `getUTCMonth() + 1`, `getUTCDate()`), imunes a fuso horário.
+6. **PROTEÇÃO CROSS-PORTFOLIO:**
+   - Garantida na camada de banco de dados pela chave estrangeira composta `(account_id, portfolio_id) REFERENCES accounts(id, portfolio_id)`.
 
 ---
 

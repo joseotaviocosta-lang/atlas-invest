@@ -10,6 +10,26 @@ jobs:
   validate:
     name: Validate Foundation
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: atlas
+          POSTGRES_PASSWORD: atlas
+          POSTGRES_DB: atlas_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: "postgresql://atlas:atlas@localhost:5432/atlas_test?schema=public"
+      DATABASE_TEST_URL: "postgresql://atlas:atlas@localhost:5432/atlas_test?schema=public"
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,17 +48,29 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma Client
+        run: pnpm db:generate
+
+      - name: Deploy Migrations
+        run: pnpm db:migrate
+
       - name: Lint
         run: pnpm lint
 
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Test Foundation
+      - name: Test Database Integration
+        run: pnpm test:database
+
+      - name: Test Domain Models
+        run: pnpm test:domain
+
+      - name: Test Foundation Rules
         run: pnpm test:foundation
 
-      - name: Run Tests
+      - name: Run All Tests
         run: pnpm test
 
-      - name: Build
+      - name: Build Applications
         run: pnpm build

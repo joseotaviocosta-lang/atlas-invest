@@ -2,8 +2,8 @@
 
 Plataforma completa de gestão de investimentos para investidores brasileiros.
 
-> **Status Atual: Fase 0A — Repository Foundation**  
-> Esta fase implementa a base técnica, arquitetura de monorepo, tooling compartilhado e shells dos aplicativos sem lógica financeira ativa.
+> **Status Atual: Fase 0C — Database Foundation**  
+> Esta fase implementa a camada de persistência relacional com PostgreSQL 16 e Prisma ORM, repositórios com ledger append-only e ordenação determinística, proteção cross-portfolio, idempotência e fidelidade decimal estrita.
 
 ---
 
@@ -20,8 +20,8 @@ atlas-invest/
 ├── packages/
 │   ├── ai-engine/           # Contratos futuros de IA contextual
 │   ├── config/              # tsconfigs e configurações compartilhadas
-│   ├── database/            # Camada de banco de dados (PostgreSQL/Prisma - Fase 0C)
-│   ├── domain/              # Modelos e regras de domínio agnósticas de framework
+│   ├── database/            # Camada de persistência (PostgreSQL 16 / Prisma ORM)
+│   ├── domain/              # Modelos, primitivas e transações do domínio financeiro
 │   ├── logger/              # Logger estruturado com proteção contra vazamento de dados sensíveis
 │   ├── market-data/         # Adaptadores futuros de cotações e mercado (B3)
 │   ├── news-data/           # Ingestão futura de notícias financeiras
@@ -32,11 +32,13 @@ atlas-invest/
 │   ├── ui/                  # Design tokens e contratos de interface
 │   └── validation/          # Schemas e validação compartilhada
 ├── docs/
-│   ├── architecture/        # Visão arquitetural e diagramas
-│   ├── decisions/           # Arquitetura Decision Records (ADRs)
+│   ├── architecture/        # Visão arquitetural, modelos de domínio e banco
+│   ├── decisions/           # Arquitetura Decision Records (ADRs 001-014)
 │   ├── product/             # Escopo e roadmap de produto
 │   └── security/            # Políticas e diretrizes de segurança
 ├── tests/
+│   ├── database/            # Testes de integração de banco de dados (test:database)
+│   ├── domain/              # Testes unitários do modelo de domínio (test:domain)
 │   └── foundation/          # Testes de integridade da fundação (test:foundation)
 └── .github/
     └── workflows/           # Pipeline de CI (GitHub Actions)
@@ -48,22 +50,41 @@ atlas-invest/
 
 - **Node.js**: `v20` ou `v22+` (recomendado LTS)
 - **pnpm**: `v10+` ou `v12+` instalado globalmente (`npm install -g pnpm`)
+- **Docker** e **Docker Compose** (ou PostgreSQL 16+ instalado localmente)
 - **Git**
 
 ---
 
-## 3. Instalação
+## 3. Instalação e Configuração do Banco de Dados
 
-Clone o repositório e instale todas as dependências na raiz do projeto:
+1. Clone o repositório e instale as dependências:
 
 ```bash
 pnpm install
 ```
 
-Configure o arquivo de variáveis de ambiente:
+2. Configure as variáveis de ambiente:
 
 ```bash
 cp .env.example .env
+```
+
+3. Suba o serviço PostgreSQL via Docker Compose:
+
+```bash
+docker compose up -d postgres
+```
+
+4. Execute as migrações do banco de dados:
+
+```bash
+pnpm db:migrate
+```
+
+5. Opcional: Popule o banco com o seed de desenvolvimento inicial:
+
+```bash
+pnpm db:seed
 ```
 
 ---
@@ -130,13 +151,19 @@ pnpm format:check
 pnpm format
 ```
 
-### Testes Unitários
+### Testes Automatizados
 
 ```bash
-# Executar todos os testes do monorepo
+# Executar todos os testes do monorepo (engines, domain, database e fundação)
 pnpm test
 
-# Executar especificamente a suite de validação da fundação
+# Executar a suite de testes de domínio (primitivas, entidades e invariantes)
+pnpm test:domain
+
+# Executar a suite de integração de banco de dados (PostgreSQL/Prisma)
+pnpm test:database
+
+# Executar a suite de validação da fundação arquitetural
 pnpm test:foundation
 ```
 
@@ -158,5 +185,7 @@ pnpm clean
 
 - [Regras de Desenvolvimento para Agentes de IA](file:///c:/Projetos/atlas-invest/AGENTS.md)
 - [Visão Arquitetural](file:///c:/Projetos/atlas-invest/docs/architecture/overview.md)
+- [Modelo de Domínio Financeiro](file:///c:/Projetos/atlas-invest/docs/architecture/domain-model.md)
+- [Arquitetura do Banco de Dados](file:///c:/Projetos/atlas-invest/docs/architecture/database.md)
 - [Diretrizes de Segurança](file:///c:/Projetos/atlas-invest/docs/security/README.md)
 - [Registros de Decisões Arquiteturais (ADRs)](file:///c:/Projetos/atlas-invest/docs/decisions/)
