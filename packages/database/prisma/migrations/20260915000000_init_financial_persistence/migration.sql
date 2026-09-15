@@ -72,6 +72,7 @@ CREATE TABLE "transactions" (
     "type" VARCHAR(50) NOT NULL,
     "trade_date" DATE NOT NULL,
     "settlement_date" DATE,
+    "source" VARCHAR(50) NOT NULL DEFAULT 'MANUAL',
     "quantity" DECIMAL(38,18),
     "unit_price" DECIMAL(38,18),
     "amount" DECIMAL(38,18),

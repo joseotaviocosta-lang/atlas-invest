@@ -95,6 +95,7 @@ model Transaction {
   type           String    @db.VarChar(50)
   tradeDate      DateTime  @map("trade_date") @db.Date
   settlementDate DateTime? @map("settlement_date") @db.Date
+  source         String    @default("MANUAL") @db.VarChar(50)
   quantity       Decimal?  @db.Decimal(38, 18)
   unitPrice      Decimal?  @map("unit_price") @db.Decimal(38, 18)
   amount         Decimal?  @db.Decimal(38, 18)
