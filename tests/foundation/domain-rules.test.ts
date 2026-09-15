@@ -45,4 +45,11 @@ describe('Foundation: Domain & Architecture Dependency Rules', () => {
     expect(Object.keys(dependencies)).not.toContain('react');
     expect(Object.keys(dependencies)).not.toContain('@atlas/ui');
   });
+
+  it('database package must depend on domain, but domain must never depend on database or ORMs', () => {
+    const domainDeps = (domainPkg as { dependencies?: Record<string, string> }).dependencies ?? {};
+    expect(Object.keys(domainDeps)).not.toContain('@atlas/database');
+    expect(Object.keys(domainDeps)).not.toContain('@prisma/client');
+    expect(Object.keys(domainDeps)).not.toContain('prisma');
+  });
 });

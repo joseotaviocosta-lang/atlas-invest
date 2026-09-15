@@ -92,14 +92,15 @@ export class TransactionRepository implements ITransactionRepository {
 
   private handlePrismaError(error: unknown, transaction: Transaction): void {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      const metaStr = JSON.stringify(error.meta ?? {});
+      const details = `${metaStr} ${error.message}`;
+
       // P2002: Unique constraint failed
       if (error.code === 'P2002') {
-        const target = (error.meta?.target as string[] | string) ?? '';
-        const targetStr = Array.isArray(target) ? target.join(',') : String(target);
         if (
-          targetStr.includes('provider') ||
-          targetStr.includes('external_id') ||
-          targetStr.includes('portfolio_provider_external_id_unique')
+          details.includes('provider') ||
+          details.includes('external_id') ||
+          details.includes('portfolio_provider_external_id_unique')
         ) {
           throw new DuplicateExternalTransactionError(
             transaction.portfolioId,
@@ -111,11 +112,10 @@ export class TransactionRepository implements ITransactionRepository {
 
       // P2003: Foreign key constraint failed
       if (error.code === 'P2003') {
-        const fieldName = String(error.meta?.field_name ?? '');
         if (
-          fieldName.includes('account_id') ||
-          fieldName.includes('portfolio_id') ||
-          fieldName.includes('transactions_account_id_portfolio_id_fkey')
+          details.includes('account_id') ||
+          details.includes('portfolio_id') ||
+          details.includes('transactions_account_id_portfolio_id_fkey')
         ) {
           throw new CrossPortfolioIntegrityError(
             `Account '${transaction.accountId}' does not belong to portfolio '${transaction.portfolioId}' or does not exist.`,
