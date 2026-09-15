@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@atlas/domain": "workspace:*"
+    "@atlas/domain": "workspace:*",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
     "@atlas/config": "workspace:*"

@@ -1,23 +1,22 @@
 export const DOMAIN_VERSION = '0.1.0';
 
-/**
- * Result pattern for robust domain operations without throwing unhandled exceptions.
- */
-export type Result<T, E = Error> = { success: true; data: T } | { success: false; error: E };
+// Errors
+export * from './errors/domain-error';
 
-export function ok<T>(data: T): Result<T, never> {
-  return { success: true, data };
-}
+// Primitives
+export * from './primitives/currency';
+export * from './primitives/money';
+export * from './primitives/quantity';
+export * from './primitives/percentage';
+export * from './primitives/local-date';
+export * from './primitives/domain-id';
 
-export function fail<E>(error: E): Result<never, E> {
-  return { success: false, error };
-}
+// Entities
+export * from './entities/asset';
+export * from './entities/institution';
+export * from './entities/account';
+export * from './entities/portfolio';
 
-/**
- * Base entity contract for domain models.
- */
-export interface BaseEntity {
-  id: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
+// Ledger & Transactions
+export * from './ledger/types';
+export * from './ledger/transaction';
