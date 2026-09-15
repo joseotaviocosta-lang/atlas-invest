@@ -1,22 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { ok, fail } from '../../packages/domain/src/index';
+import { Money, DomainError } from '../../packages/domain/src/index';
 import domainPkg from '../../packages/domain/package.json';
 import taxPkg from '../../packages/tax-engine/package.json';
 import portfolioPkg from '../../packages/portfolio-engine/package.json';
 
 describe('Foundation: Domain & Architecture Dependency Rules', () => {
-  it('should verify Result pattern works for success and failure', () => {
-    const successResult = ok({ value: 100 });
-    expect(successResult.success).toBe(true);
-    if (successResult.success) {
-      expect(successResult.data.value).toBe(100);
-    }
+  it('should verify domain primitives and typed DomainError hierarchy', () => {
+    const money = Money.from('100.00', 'BRL');
+    expect(money.amount).toBe('100');
+    expect(money.currency).toBe('BRL');
 
-    const failResult = fail(new Error('Operation failed'));
-    expect(failResult.success).toBe(false);
-    if (!failResult.success) {
-      expect(failResult.error.message).toBe('Operation failed');
-    }
+    const error = new DomainError('Test error', 'DOMAIN.TEST');
+    expect(error.code).toBe('DOMAIN.TEST');
+    expect(error.message).toBe('Test error');
   });
 
   it('domain package must be framework-agnostic (no React, Expo, Next, Nest, or ORM)', () => {
