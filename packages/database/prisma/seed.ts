@@ -13,6 +13,8 @@ async function main() {
       id: 'a0000000-0000-4000-8000-000000000001',
       email: 'investor@project-atlas.io',
       name: 'Atlas Investor',
+      passwordHash:
+        '$argon2id$v=19$m=65536,t=3,p=4$seedhashdummy$abcdefghijklmnopqrstuvwxyz0123456789',
     },
   });
   console.info(`User seeded: ${user.id} (${user.email})`);

@@ -6,6 +6,9 @@ import {
   AccountRepository,
   AssetRepository,
   TransactionRepository,
+  UserRepository,
+  SessionRepository,
+  PasswordResetTokenRepository,
 } from '@atlas/database';
 import {
   PRISMA_CLIENT,
@@ -14,6 +17,9 @@ import {
   ACCOUNT_REPOSITORY,
   ASSET_REPOSITORY,
   TRANSACTION_REPOSITORY,
+  USER_REPOSITORY,
+  SESSION_REPOSITORY,
+  PASSWORD_RESET_TOKEN_REPOSITORY,
 } from './tokens';
 
 type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
@@ -50,6 +56,21 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
       useFactory: (prisma: AtlasPrismaClient) => new TransactionRepository(prisma),
       inject: [PRISMA_CLIENT],
     },
+    {
+      provide: USER_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new UserRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
+    {
+      provide: SESSION_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new SessionRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
+    {
+      provide: PASSWORD_RESET_TOKEN_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new PasswordResetTokenRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
   ],
   exports: [
     PRISMA_CLIENT,
@@ -58,6 +79,9 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     ACCOUNT_REPOSITORY,
     ASSET_REPOSITORY,
     TRANSACTION_REPOSITORY,
+    USER_REPOSITORY,
+    SESSION_REPOSITORY,
+    PASSWORD_RESET_TOKEN_REPOSITORY,
   ],
 })
 export class DatabaseModule {}

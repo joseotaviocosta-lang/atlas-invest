@@ -30,6 +30,7 @@ export interface IInstitutionRepository {
 
 export interface IPortfolioRepository {
   findById(id: string): Promise<Portfolio | null>;
+  findByIdAndUserId(id: string, userId: string): Promise<Portfolio | null>;
   findByUserId(userId: string): Promise<Portfolio[]>;
   create(portfolio: Portfolio): Promise<Portfolio>;
   update(portfolio: Portfolio): Promise<Portfolio>;
@@ -56,4 +57,93 @@ export interface ITransactionRepository {
     provider: string,
     externalId: string,
   ): Promise<Transaction | null>;
+}
+
+export interface UserRecord {
+  id: string;
+  email: string;
+  name: string;
+  passwordHash: string;
+  locale: string;
+  timezone: string;
+  baseCurrency: string;
+  emailVerifiedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateUserData {
+  id?: string;
+  email: string;
+  name: string;
+  passwordHash: string;
+  locale?: string;
+  timezone?: string;
+  baseCurrency?: string;
+}
+
+export interface IUserRepository {
+  create(data: CreateUserData): Promise<UserRecord>;
+  findById(id: string): Promise<UserRecord | null>;
+  findByEmail(email: string): Promise<UserRecord | null>;
+  updatePassword(userId: string, passwordHash: string): Promise<void>;
+}
+
+export interface SessionRecord {
+  id: string;
+  userId: string;
+  refreshTokenHash: string;
+  previousRefreshTokenHash: string | null;
+  createdAt: Date;
+  lastUsedAt: Date;
+  expiresAt: Date;
+  revokedAt: Date | null;
+  userAgent: string | null;
+  ipHash: string | null;
+  deviceName: string | null;
+}
+
+export interface CreateSessionData {
+  userId: string;
+  refreshTokenHash: string;
+  expiresAt: Date;
+  userAgent?: string;
+  ipHash?: string;
+  deviceName?: string;
+}
+
+export interface ISessionRepository {
+  create(data: CreateSessionData): Promise<SessionRecord>;
+  findById(id: string): Promise<SessionRecord | null>;
+  findByRefreshTokenHash(refreshTokenHash: string): Promise<SessionRecord | null>;
+  findByPreviousRefreshTokenHash(previousRefreshTokenHash: string): Promise<SessionRecord | null>;
+  rotateRefreshToken(
+    sessionId: string,
+    newRefreshTokenHash: string,
+    newExpiresAt: Date,
+  ): Promise<SessionRecord>;
+  revoke(sessionId: string): Promise<void>;
+  revokeAllForUser(userId: string): Promise<void>;
+  touchLastUsed(sessionId: string): Promise<void>;
+}
+
+export interface PasswordResetTokenRecord {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+  usedAt: Date | null;
+  createdAt: Date;
+}
+
+export interface CreatePasswordResetTokenData {
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+}
+
+export interface IPasswordResetTokenRepository {
+  create(data: CreatePasswordResetTokenData): Promise<PasswordResetTokenRecord>;
+  findByTokenHash(tokenHash: string): Promise<PasswordResetTokenRecord | null>;
+  markAsUsed(id: string): Promise<void>;
 }

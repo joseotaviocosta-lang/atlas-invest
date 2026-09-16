@@ -12,6 +12,11 @@ export class PortfolioRepository implements IPortfolioRepository {
     return raw ? PortfolioMapper.toDomain(raw) : null;
   }
 
+  async findByIdAndUserId(id: string, userId: string): Promise<Portfolio | null> {
+    const raw = await this.prisma.portfolio.findFirst({ where: { id, userId } });
+    return raw ? PortfolioMapper.toDomain(raw) : null;
+  }
+
   async findByUserId(userId: string): Promise<Portfolio[]> {
     const items = await this.prisma.portfolio.findMany({
       where: { userId },
