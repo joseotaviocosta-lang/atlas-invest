@@ -38,6 +38,9 @@ export class PortfolioScenarioBuilder {
     assetId?: AssetId | string;
     quantity: string | number;
     unitPrice?: string | number;
+    currency?: string;
+    fees?: string | number;
+    taxes?: string | number;
     tradeDate: string | LocalDate;
     accountId?: AccountId | string;
     createdAt?: Date;
@@ -50,7 +53,9 @@ export class PortfolioScenarioBuilder {
       assetId: String(props.assetId ?? ASSET_PETR4),
       quantity: props.quantity.toString(),
       unitPrice: (props.unitPrice ?? '10.00').toString(),
-      currency: 'BRL',
+      currency: props.currency ?? 'BRL',
+      fees: props.fees !== undefined ? props.fees.toString() : undefined,
+      taxes: props.taxes !== undefined ? props.taxes.toString() : undefined,
       tradeDate: props.tradeDate,
       createdAt: props.createdAt,
     });
@@ -62,6 +67,9 @@ export class PortfolioScenarioBuilder {
     assetId?: AssetId | string;
     quantity: string | number;
     unitPrice?: string | number;
+    currency?: string;
+    fees?: string | number;
+    taxes?: string | number;
     tradeDate: string | LocalDate;
     accountId?: AccountId | string;
     createdAt?: Date;
@@ -74,7 +82,9 @@ export class PortfolioScenarioBuilder {
       assetId: String(props.assetId ?? ASSET_PETR4),
       quantity: props.quantity.toString(),
       unitPrice: (props.unitPrice ?? '10.00').toString(),
-      currency: 'BRL',
+      currency: props.currency ?? 'BRL',
+      fees: props.fees !== undefined ? props.fees.toString() : undefined,
+      taxes: props.taxes !== undefined ? props.taxes.toString() : undefined,
       tradeDate: props.tradeDate,
       createdAt: props.createdAt,
     });

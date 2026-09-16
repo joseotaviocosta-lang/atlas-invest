@@ -109,14 +109,20 @@ describe('Portfolio Engine Integration: Repository Replay', () => {
     expect(result.deferredEvents).toHaveLength(1);
     expect(result.deferredEvents[0].type).toBe('DIVIDEND');
 
-    // Verify derived positions
+    // Verify derived positions with cost basis
     const petr4Position = result.state.assets.get(assetPetr4Id);
     expect(petr4Position).toBeDefined();
     expect(petr4Position?.quantity.equals(Quantity.from('150'))).toBe(true);
+    expect(petr4Position?.totalCost?.amount).toBe('4875');
+    expect(petr4Position?.averageCost?.amount).toBe('32.5');
+    expect(petr4Position?.costBasisStatus).toBe('KNOWN');
 
     const vale3Position = result.state.assets.get(assetVale3Id);
     expect(vale3Position).toBeDefined();
     expect(vale3Position?.quantity.equals(Quantity.from('100'))).toBe(true);
+    expect(vale3Position?.totalCost?.amount).toBe('6800');
+    expect(vale3Position?.averageCost?.amount).toBe('68');
+    expect(vale3Position?.costBasisStatus).toBe('KNOWN');
   });
 
   it('should replay historical state with asOfDate from repository-fetched records', async () => {
@@ -163,5 +169,8 @@ describe('Portfolio Engine Integration: Repository Replay', () => {
     expect(result.appliedTransactions).toHaveLength(2);
     const petr4Position = result.state.assets.get(assetPetr4Id);
     expect(petr4Position?.quantity.equals(Quantity.from('200'))).toBe(true);
+    expect(petr4Position?.totalCost?.amount).toBe('6200');
+    expect(petr4Position?.averageCost?.amount).toBe('31');
+    expect(petr4Position?.costBasisStatus).toBe('KNOWN');
   });
 });
