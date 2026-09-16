@@ -2,8 +2,12 @@
 
 Plataforma completa de gestão de investimentos para investidores brasileiros.
 
-> **Status Atual: Fase 0H — Product Shell**  
-> Esta fase transforma o Project Atlas em uma experiência de produto completa e visualmente coerente, estabelecendo as 5 áreas canônicas de navegação (`Hoje`, `Carteira`, `Mercado`, `Fiscal`, `IA`) e `Perfil`, o Design System consolidado no pacote `@atlas/ui` (tokens semânticos, contratos de componentes, formatadores de precisão), fluxo de onboarding em 3 passos com criação real de primeira carteira e bypass automático para investidores com carteiras ativas, componentes reutilizáveis acessíveis com WAI-ARIA, política de honestidade visual estrita (zero gráficos sintéticos ou dados fictícios; placeholders canônicos `—`), e suíte de testes E2E em navegador real com Playwright cobrindo Desktop, Tablet e Mobile.
+# Project Atlas
+
+Plataforma completa de gestão de investimentos para investidores brasileiros.
+
+> **Status Atual: Fase 0J — Foundation Hardening & Release Readiness (Concluída)**  
+> Esta fase estabelece o congelamento de estabilidade, endurecimento de segurança e auditoria rigorosa da fundação (Fases 0A a 0J). Consolida: autoridade CAS em banco de dados (`SELECT ... FOR UPDATE`), detecção de reuso em qualquer nó do histórico da família de tokens, proteção contra adulteração de dicas de sessão no Edge (`atlas_logged_in`), isolamento de camadas com barreira estrita entre formatação e cálculo (`formatting ≠ calculation`), design system padronizado com formatadores BigInt de alta precisão sem ponto flutuante IEEE 754, migrações e seed determinísticos validados do zero, auditoria de dependências com zero vulnerabilidades críticas, e suites automatizadas de segurança e arquitetura. O projeto está 100% preparado para o início do desenvolvimento do **Portfolio Engine**.
 
 ---
 
@@ -33,13 +37,20 @@ atlas-invest/
 │   └── validation/          # Schemas e validação compartilhada
 ├── docs/
 │   ├── architecture/        # Visão arquitetural, modelos de domínio e banco
-│   ├── decisions/           # Arquitetura Decision Records (ADRs 001-014)
+│   ├── decisions/           # Arquitetura Decision Records (ADRs 001-035)
+│   ├── development/         # Guias de teste e desenvolvimento local
+│   ├── foundation/          # Relatórios de status e prontidão da fundação
 │   ├── product/             # Escopo e roadmap de produto
 │   └── security/            # Políticas e diretrizes de segurança
 ├── tests/
+│   ├── architecture/        # Testes de fronteiras arquiteturais (test:architecture)
+│   ├── auth/                # Testes de segurança e autenticação (test:auth)
 │   ├── database/            # Testes de integração de banco de dados (test:database)
 │   ├── domain/              # Testes unitários do modelo de domínio (test:domain)
-│   └── foundation/          # Testes de integridade da fundação (test:foundation)
+│   ├── foundation/          # Testes de integridade da fundação (test:foundation)
+│   ├── mobile/              # Testes da aplicação mobile (test:mobile)
+│   ├── ui/                  # Testes de tokens e formatadores (test:ui)
+│   └── web/                 # Testes unitários e E2E web (test:web, test:web:e2e)
 └── .github/
     └── workflows/           # Pipeline de CI (GitHub Actions)
 ```
@@ -122,70 +133,62 @@ pnpm dev:mobile
 
 Abra o leitor QR code no Expo Go (Android/iOS) ou pressione `a` para emulador Android ou `i` para simulador iOS.
 
-### 4.4. Executar Todos os Serviços Simultaneamente
-
-```bash
-pnpm dev:all
-```
-
 ---
 
 ## 5. Qualidade, Testes e Build
 
-### Linting
+### Linting e Tipagem Estrita
 
 ```bash
 pnpm lint
-```
-
-### Typecheck (TypeScript Strict)
-
-```bash
 pnpm typecheck
 ```
 
 ### Formatação de Código (Prettier)
 
 ```bash
-# Verificar formatação
 pnpm format:check
-
-# Corrigir formatação
 pnpm format
 ```
 
 ### Testes Automatizados
 
 ```bash
-# Executar todos os testes do monorepo (engines, domain, database, api e fundação)
+# Executar todos os testes unitários e de integração
 pnpm test
 
-# Executar a suite de testes de domínio (primitivas, entidades e invariantes)
+# Domínio puro (regras financeiras, invariantes e Value Objects)
 pnpm test:domain
 
-# Executar a suite de integração de banco de dados (PostgreSQL/Prisma)
+# Banco de dados e persistência (PostgreSQL + Prisma)
 pnpm test:database
 
-# Executar a suite de autenticação e segurança (Argon2id, JWT, rotação, sessões e ownership)
-pnpm test:auth
-
-# Executar a suite de integração da API HTTP (NestJS/Supertest)
+# API REST NestJS (controllers, handlers, DTOs)
 pnpm test:api
 
-# Executar a suite de testes móveis (armazenamento seguro, auth store, single-flight refresh e navegação)
+# Autenticação e Segurança (sessões, CAS lock, tokens, reuso, rate limit)
+pnpm test:auth
+
+# Aplicação Mobile (stores, navegação, secure storage)
 pnpm test:mobile
 
-# Executar a suite de testes web (cookies seguros, auth store, single-flight refresh, CSRF e carteiras)
+# Aplicação Web (stores, cookies, CSRF, client API)
 pnpm test:web
 
-# Executar a suite de tokens e contratos do design system
+# Design System e Contratos Visuais (formatters BigInt, tokens)
 pnpm test:ui
 
-# Executar a suite de testes end-to-end (Playwright em navegador real: Desktop, Tablet, Mobile)
+# Suite Consolidada de Segurança
+pnpm test:security
+
+# Suite de Fronteiras Arquiteturais e Isolamento de Camadas
+pnpm test:architecture
+
+# Suite de Testes End-to-End (Playwright em navegador real: Desktop, Tablet, Mobile)
 pnpm test:web:e2e
 
-# Executar a suite de validação da fundação arquitetural
-pnpm test:foundation
+# Gate Completo de Validação da Fundação (Release Readiness)
+pnpm validate:foundation
 ```
 
 ### Compilação / Build de Produção
@@ -194,24 +197,20 @@ pnpm test:foundation
 pnpm build
 ```
 
-### Limpeza de Artefatos
-
-```bash
-pnpm clean
-```
-
 ---
 
 ## 6. Documentação Adicional
 
 - [Regras de Desenvolvimento para Agentes de IA](file:///c:/Projetos/atlas-invest/AGENTS.md)
-- [Especificação Técnica do Product Shell](file:///c:/Projetos/atlas-invest/docs/product/product-shell.md)
-- [Documentação do Design System](file:///c:/Projetos/atlas-invest/docs/design-system/README.md)
+- [Status da Fundação e Escopo Diferido](file:///c:/Projetos/atlas-invest/docs/foundation/status.md)
+- [Guia de Testes e Qualidade](file:///c:/Projetos/atlas-invest/docs/development/testing.md)
 - [Visão Arquitetural](file:///c:/Projetos/atlas-invest/docs/architecture/overview.md)
 - [Modelo de Domínio Financeiro](file:///c:/Projetos/atlas-invest/docs/architecture/domain-model.md)
 - [Arquitetura do Banco de Dados](file:///c:/Projetos/atlas-invest/docs/architecture/database.md)
 - [Arquitetura da API HTTP](file:///c:/Projetos/atlas-invest/docs/architecture/api.md)
 - [Arquitetura de Autenticação & Segurança](file:///c:/Projetos/atlas-invest/docs/architecture/authentication.md)
 - [Arquitetura Mobile](file:///c:/Projetos/atlas-invest/docs/architecture/mobile.md)
+- [Especificação Técnica do Product Shell](file:///c:/Projetos/atlas-invest/docs/product/product-shell.md)
+- [Documentação do Design System](file:///c:/Projetos/atlas-invest/docs/design-system/README.md)
 - [Diretrizes de Segurança](file:///c:/Projetos/atlas-invest/docs/security/README.md)
 - [Registros de Decisões Arquiteturais (ADRs 001-035)](file:///c:/Projetos/atlas-invest/docs/decisions/)
