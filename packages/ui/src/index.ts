@@ -1,31 +1,47 @@
-export const UI_VERSION = '0.1.0';
+export const UI_VERSION = '0.2.0';
+
+export * from './tokens/colors';
+export * from './tokens/typography';
+export * from './tokens/spacing';
+export * from './tokens/radius';
+export * from './tokens/shadows';
+export * from './tokens/breakpoints';
+export * from './navigation';
+export * from './formatters';
+export * from './contracts';
+
+import { colors } from './tokens/colors';
+import { spacing } from './tokens/spacing';
+import { borderRadius } from './tokens/radius';
 
 /**
- * Shared color design tokens for Atlas dark/light theme.
+ * Backward-compatible themeTokens mapping for existing components.
  */
 export const themeTokens = {
   colors: {
-    primary: '#0A84FF',
-    background: '#0B0E14',
-    surface: '#151A23',
-    border: '#232936',
-    text: '#F3F4F6',
-    textMuted: '#9CA3AF',
-    success: '#10B981',
-    danger: '#EF4444',
-    warning: '#F59E0B',
+    primary: colors.accent,
+    background: colors.background,
+    surface: colors.surface,
+    surfaceElevated: colors.surfaceElevated,
+    border: colors.border,
+    text: colors.textPrimary,
+    textMuted: colors.textSecondary,
+    success: colors.positive,
+    danger: colors.negative,
+    warning: colors.warning,
+    info: colors.info,
   },
   spacing: {
-    xs: 4,
-    sm: 8,
-    md: 16,
-    lg: 24,
-    xl: 32,
+    xs: spacing.xs,
+    sm: spacing.sm,
+    md: spacing.base,
+    lg: spacing.xl,
+    xl: spacing.xxl,
   },
   borderRadius: {
-    sm: 4,
-    md: 8,
-    lg: 12,
-    full: 9999,
+    sm: borderRadius.sm,
+    md: borderRadius.md,
+    lg: borderRadius.lg,
+    full: borderRadius.full,
   },
 } as const;
