@@ -29,6 +29,9 @@ jobs:
     env:
       DATABASE_URL: "postgresql://atlas:atlas@localhost:5432/atlas_test?schema=public"
       DATABASE_TEST_URL: "postgresql://atlas:atlas@localhost:5432/atlas_test?schema=public"
+      JWT_ACCESS_SECRET: "ci-test-jwt-access-secret-32-chars-long"
+      REFRESH_TOKEN_PEPPER: "ci-test-refresh-pepper-32-chars-long"
+      PASSWORD_RESET_PEPPER: "ci-test-reset-pepper-32-chars-long"
 
     steps:
       - name: Checkout code
@@ -54,6 +57,9 @@ jobs:
       - name: Deploy Migrations
         run: pnpm db:migrate
 
+      - name: Check Code Formatting
+        run: pnpm format:check
+
       - name: Lint
         run: pnpm lint
 
@@ -62,6 +68,9 @@ jobs:
 
       - name: Test Database Integration
         run: pnpm test:database
+
+      - name: Test Authentication & Security
+        run: pnpm test:auth
 
       - name: Test API Integration
         run: pnpm test:api

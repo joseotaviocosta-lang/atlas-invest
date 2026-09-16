@@ -134,3 +134,33 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - `/ready`: Readiness probe (conectividade com banco de dados via `SELECT 1`). Retorna 503 se o banco estiver inacessível.
 9. **EXECUÇÃO DE TESTES:**
    - Testes de integração da API executados com `pnpm test:api` contra banco de dados PostgreSQL real (`atlas_test`).
+
+---
+
+## 7. Autenticação, Segurança e Isolamento de Usuários (Fase 0E)
+
+1. **AUTENTICAÇÃO POR SENHA COM ARGON2ID:**
+   - Senhas de usuários devem ser hashadas invariavelmente com Argon2id. Senhas em texto puro **NUNCA** devem ser persistidas ou logadas.
+   - Requisito mínimo de tamanho de senha: 10 caracteres (`PasswordSchema`).
+   - O e-mail deve ser sempre normalizado com `.trim().toLowerCase()`.
+   - Proteção obrigatória contra timing attacks via verificação fictícia em tempo constante (`verifyDummy()`) quando o e-mail não existe.
+   - A resposta para credenciais inválidas deve ser idêntica (401 `AUTH.INVALID_CREDENTIALS`), sem revelar se o e-mail existe.
+2. **ESTRATÉGIA DE TOKENS E ROTAÇÃO:**
+   - Access Tokens: JWTs assinados com HMAC-SHA256, TTL estrito de 15 minutos (900s), contendo apenas `sub` (userId) e `sid` (sessionId).
+   - Refresh Tokens: Strings opacas aleatórias de 48 bytes geradas via `crypto.randomBytes(48)`, armazenadas exclusivamente sob hash HMAC-SHA256 com pimenta de servidor (`REFRESH_TOKEN_PEPPER`).
+   - Rotação mandatória a cada `POST /api/v1/auth/refresh`. Se um token já rotacionado (`previousRefreshTokenHash`) for apresentado, a sessão inteira é revogada imediatamente por suspeita de furto/reuso.
+3. **SESSÃO PERSISTIDA E REVOGAÇÃO ATIVA:**
+   - Toda sessão ativa é registrada na tabela `sessions`.
+   - O guard global `JwtAuthGuard` valida o JWT e confirma que a sessão não foi revogada (`revokedAt === null`) e não expirou (`expiresAt > now()`).
+   - Logout e redefinição de senha invalidam imediatamente a(s) sessão(ões) no banco.
+4. **REDEFINIÇÃO DE SENHA E ANTI-ENUMERAÇÃO:**
+   - `POST /api/v1/auth/forgot-password` SEMPRE responde com `{ "accepted": true }`, independentemente de o e-mail existir na base.
+   - Tokens de recuperação são de uso único (15 minutos) e armazenados como hash HMAC-SHA256.
+   - A conclusão de `POST /api/v1/auth/reset-password` revoga compulsoriamente todas as sessões ativas do usuário.
+5. **ISOLAMENTO DE RECURSOS E REMOÇÃO DE `userId` DOS PAYLOADS:**
+   - O `userId` de qualquer operação é obtido unicamente do principal autenticado via `@CurrentPrincipal()`.
+   - Payloads como `POST /api/v1/portfolios` **NÃO** devem aceitar `userId` do cliente; campos extras devem ser rejeitados com 400 pelo Zod.
+   - O endpoint `GET /api/v1/portfolios` lista apenas as carteiras do usuário autenticado.
+   - **INVARIANTE DE ISOLAMENTO ANTI-ENUMERAÇÃO:** Tentativas de acesso, inserção ou manipulação de recursos pertencentes a outro investidor devem invariavelmente retornar **`404 Not Found`**, e **NUNCA** `403 Forbidden`.
+6. **SUÍTE DE TESTES DE SEGURANÇA:**
+   - Testes de autenticação e segurança executados com `pnpm test:auth`.

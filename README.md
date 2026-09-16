@@ -2,8 +2,8 @@
 
 Plataforma completa de gestão de investimentos para investidores brasileiros.
 
-> **Status Atual: Fase 0C — Database Foundation**  
-> Esta fase implementa a camada de persistência relacional com PostgreSQL 16 e Prisma ORM, repositórios com ledger append-only e ordenação determinística, proteção cross-portfolio, idempotência e fidelidade decimal estrita.
+> **Status Atual: Fase 0E — Authentication & Security Foundation**  
+> Esta fase implementa a infraestrutura de autenticação segura baseada em senhas com Argon2id, emissão e rotação compulsória de tokens (JWT 15m e Refresh Tokens opacos sob HMAC-SHA256), gerenciamento e revogação de sessões em PostgreSQL/Prisma, recuperação de senha com proteção anti-enumeração e isolamento estrito de recursos financeiros por usuário.
 
 ---
 
@@ -166,6 +166,9 @@ pnpm test:domain
 # Executar a suite de integração de banco de dados (PostgreSQL/Prisma)
 pnpm test:database
 
+# Executar a suite de autenticação e segurança (Argon2id, JWT, rotação, sessões e ownership)
+pnpm test:auth
+
 # Executar a suite de integração da API HTTP (NestJS/Supertest)
 pnpm test:api
 
@@ -194,5 +197,6 @@ pnpm clean
 - [Modelo de Domínio Financeiro](file:///c:/Projetos/atlas-invest/docs/architecture/domain-model.md)
 - [Arquitetura do Banco de Dados](file:///c:/Projetos/atlas-invest/docs/architecture/database.md)
 - [Arquitetura da API HTTP](file:///c:/Projetos/atlas-invest/docs/architecture/api.md)
+- [Arquitetura de Autenticação & Segurança](file:///c:/Projetos/atlas-invest/docs/architecture/authentication.md)
 - [Diretrizes de Segurança](file:///c:/Projetos/atlas-invest/docs/security/README.md)
-- [Registros de Decisões Arquiteturais (ADRs)](file:///c:/Projetos/atlas-invest/docs/decisions/)
+- [Registros de Decisões Arquiteturais (ADRs 001-023)](file:///c:/Projetos/atlas-invest/docs/decisions/)
