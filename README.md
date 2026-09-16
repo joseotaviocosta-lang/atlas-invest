@@ -2,8 +2,8 @@
 
 Plataforma completa de gestão de investimentos para investidores brasileiros.
 
-> **Status Atual: Fase 0F — Mobile Foundation**  
-> Esta fase transforma o `apps/mobile` em uma aplicação funcional sobre Expo SDK 52 e Expo Router v4, integrada à API NestJS com autenticação completa (login, cadastro, recuperação de senha), sessão segura (refresh token em `expo-secure-store`, access token em memória), interceptor single-flight para renovação de tokens com 401, gerenciamento de estado de servidor com TanStack Query e expurgo cross-user, navegação em abas inferiores (`Hoje`, `Carteira`, `Mercado`, `Fiscal`, `IA`) e gestão estrutural de carteiras.
+> **Status Atual: Fase 0G — Web Foundation**  
+> Esta fase transforma o `apps/web` em uma aplicação web moderna e funcional sobre Next.js 15 (App Router) e React 19, com segurança de nível financeiro via padrão Backend-for-Frontend (BFF) com cookies `HttpOnly` seguros para o refresh token rotativo, `accessToken` em memória volátil, zero armazenamento de tokens no JavaScript do navegador (`localStorage`, `sessionStorage`, `IndexedDB`), sentinela de rotas no Edge Middleware, casca visual responsiva (Desktop Sidebar e Mobile Bottom Nav), gerenciamento de dados estruturais de carteiras com TanStack Query v5 e purga compulsória de cache cross-user.
 
 ---
 
@@ -174,6 +174,9 @@ pnpm test:api
 
 # Executar a suite de testes móveis (armazenamento seguro, auth store, single-flight refresh e carteiras)
 pnpm test:mobile
+
+# Executar a suite de testes web (cookies seguros, auth store, single-flight refresh, CSRF e carteiras)
+pnpm test:web
 
 # Executar a suite de validação da fundação arquitetural
 pnpm test:foundation

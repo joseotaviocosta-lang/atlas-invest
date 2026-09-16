@@ -193,3 +193,35 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - O cliente móvel nunca calcula preço médio, rentabilidade ou DARF; apenas renderiza dados estruturais fornecidos pela API.
 6. **SUÍTE DE TESTES MÓVEIS:**
    - Testes unitários e de integração mobile executados com `pnpm test:mobile`.
+
+---
+
+## 9. Arquitetura e Regras da Aplicação Web (Fase 0G)
+
+1. **ESTRUTURA DE ROTAS E NEXT.JS 15 APP ROUTER:**
+   - `apps/web` utiliza **Next.js 15** com App Router sob `src/app/`.
+   - Rotas públicas de autenticação sob `src/app/(auth)/` (`login`, `register`, `forgot-password`, `reset-password`).
+   - Rotas autenticadas sob `src/app/(app)/` (`today`, `portfolio`, `market`, `tax`, `ai`, `profile`).
+   - A casca visual responsiva (`AppLayout`) provê Sidebar e Header para Desktop e Bottom Navigation Bar para dispositivos móveis.
+2. **PADRÃO BACKEND-FOR-FRONTEND (BFF) E COOKIES SEGUROS:**
+   - Autenticação web intermediada por Route Handlers em `src/app/api/auth/*`.
+   - O `refreshToken` rotativo é gravado exclusivamente em cookie seguro `HttpOnly`, `SameSite=Lax`, `Path=/`, e `Secure` (em produção).
+   - **PROIBIÇÃO RIGOROSA:** O JavaScript do navegador **NUNCA** deve ter acesso, armazenar ou ler o `refreshToken` em `localStorage`, `sessionStorage`, `IndexedDB` ou stores persistidos no cliente.
+   - O `accessToken` reside **estritamente na memória volátil** do cliente (Zustand store e variável em módulo).
+3. **EDGE MIDDLEWARE DE ROTEAMENTO:**
+   - `src/middleware.ts` intercepta todas as requisições, inspecionando cookies de sessão (`atlas_refresh` / `atlas_logged_in`).
+   - Redireciona usuários não-autenticados de rotas privadas para `/login?redirect=...`.
+   - Redireciona usuários autenticados de rotas públicas de auth para `/today`.
+4. **CLIENTE HTTP E INTERCEPTOR SINGLE-FLIGHT NO BROWSER:**
+   - Todas as requisições passam por `ApiClient` (`apps/web/src/api/client.ts`), injetando `x-atlas-client: web`.
+   - Ao receber 401, o interceptor serializa as chamadas via mutex, chama `/api/auth/refresh` (que usa o cookie HttpOnly), atualiza o access token em memória e reexecuta as requisições pendentes.
+   - Em caso de falha no refresh, a sessão é limpa, os cookies purgados e o usuário redirecionado ao login.
+5. **ISOLAMENTO DE CACHE CROSS-USER:**
+   - Cache de queries gerenciado por `@tanstack/react-query`.
+   - Ao realizar logout voluntário ou automático por revogação, o cache do navegador é compulsoriamente limpo com `queryClient.clear()`.
+6. **SUSPENSE BOUNDARIES E PRÉ-RENDERIZAÇÃO:**
+   - Componentes clientes que consumam `useSearchParams()` devem obrigatoriamente estar envelopados em `<Suspense fallback={...}>` para garantir build estático sem falhas.
+7. **ESTADOS VISUAIS E CONECTIVIDADE:**
+   - Toda listagem de dados deve implementar os 5 estados visuais: Loading (`Skeleton`), Vazio (`EmptyState`), Erro com retentativa (`ErrorState`), Sucesso (`Card`) e Desconectado (`OfflineBanner`).
+8. **SUÍTE DE TESTES WEB:**
+   - Testes unitários e de integração web executados com `pnpm test:web`.
