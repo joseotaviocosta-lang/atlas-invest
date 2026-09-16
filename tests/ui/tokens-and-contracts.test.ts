@@ -116,6 +116,33 @@ describe('Design System: Safe Financial Formatters', () => {
       expect(formatCurrency('5.5')).toBe('R$ 5,50');
     });
 
+    it('should correctly format precision edge cases without NaN or Infinity', () => {
+      // 0, 0.1, 0.01, 123456789.123456789, 0.00000001, -10.1234, 1234.567891
+      expect(formatCurrency('0')).toBe('R$ 0,00');
+      expect(formatCurrency(0)).toBe('R$ 0,00');
+      expect(formatCurrency('0.1')).toBe('R$ 0,10');
+      expect(formatCurrency('0.01')).toBe('R$ 0,01');
+      expect(formatCurrency('123456789.123456789')).toBe('R$ 123.456.789,12');
+      expect(formatCurrency('0.00000001')).toBe('R$ 0,00');
+      expect(formatCurrency('0.00000001', { decimalPlaces: 8 })).toBe('R$ 0,00000001');
+      expect(formatCurrency('-10.1234')).toBe('-R$ 10,12');
+      expect(formatCurrency('1234.567891')).toBe('R$ 1.234,57'); // Visual half-up rounding without source mutation
+
+      const outputs = [
+        formatCurrency('0'),
+        formatCurrency('0.1'),
+        formatCurrency('0.01'),
+        formatCurrency('123456789.123456789'),
+        formatCurrency('0.00000001'),
+        formatCurrency('-10.1234'),
+        formatCurrency('1234.567891'),
+      ];
+      outputs.forEach((out) => {
+        expect(out).not.toContain('NaN');
+        expect(out).not.toContain('Infinity');
+      });
+    });
+
     it('should format negative values with leading minus sign', () => {
       expect(formatCurrency('-450.25')).toBe('-R$ 450,25');
     });
@@ -132,6 +159,28 @@ describe('Design System: Safe Financial Formatters', () => {
     it('should format percentages with comma as decimal separator', () => {
       expect(formatPercentage('12.34')).toBe('12,34%');
       expect(formatPercentage('-3.50')).toBe('-3,50%');
+    });
+
+    it('should correctly format percentage precision edge cases without NaN or Infinity', () => {
+      expect(formatPercentage('0')).toBe('0,00%');
+      expect(formatPercentage('0.1')).toBe('0,10%');
+      expect(formatPercentage('0.01')).toBe('0,01%');
+      expect(formatPercentage('123456789.123456789')).toBe('123.456.789,12%');
+      expect(formatPercentage('0.00000001')).toBe('0,00%');
+      expect(formatPercentage('-10.1234')).toBe('-10,12%');
+
+      const outputs = [
+        formatPercentage('0'),
+        formatPercentage('0.1'),
+        formatPercentage('0.01'),
+        formatPercentage('123456789.123456789'),
+        formatPercentage('0.00000001'),
+        formatPercentage('-10.1234'),
+      ];
+      outputs.forEach((out) => {
+        expect(out).not.toContain('NaN');
+        expect(out).not.toContain('Infinity');
+      });
     });
 
     it('should support showSign option for positive numbers', () => {
