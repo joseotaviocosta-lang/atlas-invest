@@ -7,8 +7,17 @@ import {
   getLoggedInCookieOptions,
   getClearedCookieOptions,
 } from '@/lib/auth-cookie';
+import { validateOrigin } from '@/lib/origin-validator';
 
 export async function POST(req: NextRequest) {
+  const originValidation = validateOrigin(req);
+  if (!originValidation.isValid && originValidation.error) {
+    return NextResponse.json(
+      { code: originValidation.error.code, message: originValidation.error.message },
+      { status: originValidation.error.status },
+    );
+  }
+
   try {
     const refreshToken = req.cookies.get(REFRESH_COOKIE_NAME)?.value;
 

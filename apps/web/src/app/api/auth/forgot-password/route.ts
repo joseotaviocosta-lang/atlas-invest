@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { API_BASE_URL } from '@/lib/config';
+import { validateOrigin } from '@/lib/origin-validator';
 
 export async function POST(req: NextRequest) {
+  const originValidation = validateOrigin(req);
+  if (!originValidation.isValid && originValidation.error) {
+    return NextResponse.json(
+      { code: originValidation.error.code, message: originValidation.error.message },
+      { status: originValidation.error.status },
+    );
+  }
+
   try {
     const body = await req.json();
 
