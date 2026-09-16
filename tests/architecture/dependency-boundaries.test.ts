@@ -78,6 +78,31 @@ describe('Architecture Gate: Layer Dependency Boundaries & Package Isolation', (
     }
   });
 
+  it('@atlas/portfolio-engine must have zero dependencies on @atlas/database, prisma, @prisma/client, apps, or UI frameworks', () => {
+    const pkgData = readPackageJson('packages/portfolio-engine');
+    const allDeps = {
+      ...(pkgData.dependencies || {}),
+      ...(pkgData.devDependencies || {}),
+    };
+
+    const forbidden = [
+      '@atlas/database',
+      '@atlas/api',
+      '@atlas/web',
+      '@atlas/mobile',
+      '@atlas/ui',
+      '@prisma/client',
+      'prisma',
+      'react',
+      'react-native',
+      'next',
+    ];
+
+    for (const dep of forbidden) {
+      expect(allDeps).not.toHaveProperty(dep);
+    }
+  });
+
   it('Formatting must be decoupled from calculation: UI package must not be imported in Domain or Calculation Engines', () => {
     const nonUiPackages = [
       'packages/domain',
