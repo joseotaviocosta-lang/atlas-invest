@@ -9,6 +9,7 @@ import {
   ACCOUNT_STATUSES,
   PORTFOLIO_STATUSES,
   ASSET_STATUSES,
+  LocalDate,
 } from '@atlas/domain';
 
 export const VALIDATION_VERSION = '0.1.0';
@@ -19,9 +20,22 @@ export const CurrencySchema = z.enum(SUPPORTED_CURRENCIES, {
   errorMap: () => ({ message: `Supported currencies: ${SUPPORTED_CURRENCIES.join(', ')}` }),
 });
 
-export const LocalDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
-  message: 'Must be a valid ISO date string in YYYY-MM-DD format',
-});
+export const LocalDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'Must be a valid ISO date string in YYYY-MM-DD format',
+  })
+  .refine(
+    (val) => {
+      try {
+        LocalDate.from(val);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: 'Invalid calendar date' },
+  );
 
 export const DecimalStringSchema = z
   .string()
