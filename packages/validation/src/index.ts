@@ -92,9 +92,56 @@ export const AccountInputSchema = z.object({
 });
 export type AccountInput = z.infer<typeof AccountInputSchema>;
 
+export const EmailSchema = z
+  .string()
+  .transform((val) => val.trim().toLowerCase())
+  .pipe(z.string().email({ message: 'Invalid email format' }));
+
+export const PasswordSchema = z
+  .string()
+  .min(10, { message: 'Password must be at least 10 characters long' });
+
+export const RegisterInputSchema = z.object({
+  email: EmailSchema,
+  password: PasswordSchema,
+  name: z.string().min(1, 'Name cannot be empty'),
+});
+export type RegisterInput = z.infer<typeof RegisterInputSchema>;
+
+export const LoginInputSchema = z.object({
+  email: EmailSchema,
+  password: z.string().min(1, 'Password cannot be empty'),
+});
+export type LoginInput = z.infer<typeof LoginInputSchema>;
+
+export const RefreshTokenInputSchema = z.object({
+  refreshToken: z.string().min(1, 'Refresh token cannot be empty'),
+});
+export type RefreshTokenInput = z.infer<typeof RefreshTokenInputSchema>;
+
+export const ForgotPasswordInputSchema = z.object({
+  email: EmailSchema,
+});
+export type ForgotPasswordInput = z.infer<typeof ForgotPasswordInputSchema>;
+
+export const ResetPasswordInputSchema = z.object({
+  token: z.string().min(1, 'Reset token cannot be empty'),
+  newPassword: PasswordSchema,
+});
+export type ResetPasswordInput = z.infer<typeof ResetPasswordInputSchema>;
+
+export const CreatePortfolioInputSchema = z
+  .object({
+    name: z.string().min(1, 'Name cannot be empty'),
+    baseCurrency: CurrencySchema,
+    type: PortfolioTypeSchema.optional(),
+  })
+  .strict();
+export type CreatePortfolioInput = z.infer<typeof CreatePortfolioInputSchema>;
+
 export const PortfolioInputSchema = z.object({
   id: UUIDSchema.optional(),
-  userId: UUIDSchema,
+  userId: UUIDSchema.optional(),
   name: z.string().min(1, 'Name cannot be empty'),
   baseCurrency: CurrencySchema,
   type: PortfolioTypeSchema.optional(),
