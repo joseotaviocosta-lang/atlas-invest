@@ -5,7 +5,6 @@ import {
   IPortfolioRepository,
   EntityNotFoundError,
   TransactionLedgerFilter,
-  PaginationOptions,
 } from '@atlas/database';
 import { TRANSACTION_REPOSITORY, PORTFOLIO_REPOSITORY } from '../../database/tokens';
 
@@ -20,6 +19,14 @@ export interface ListTransactionsQuery {
   limit?: number;
 }
 
+export interface PaginatedTransactionsResult {
+  items: Transaction[];
+  limit: number;
+  cursor?: string;
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
 @Injectable()
 export class ListTransactionsUseCase {
   constructor(
@@ -29,7 +36,7 @@ export class ListTransactionsUseCase {
     private readonly portfolioRepository: IPortfolioRepository,
   ) {}
 
-  async execute(query: ListTransactionsQuery): Promise<Transaction[]> {
+  async execute(query: ListTransactionsQuery): Promise<PaginatedTransactionsResult> {
     const portfolio = await this.portfolioRepository.findById(query.portfolioId);
     if (!portfolio) {
       throw new EntityNotFoundError('Portfolio', query.portfolioId);
@@ -43,11 +50,29 @@ export class ListTransactionsUseCase {
       endDate: query.endDate ? LocalDate.from(query.endDate) : undefined,
     };
 
-    const pagination: PaginationOptions = {
-      cursor: query.cursor,
-      limit: query.limit,
-    };
+    const limit = query.limit ?? 50;
+    // Request limit + 1 to check if there are subsequent items
+    const rawItems = await this.transactionRepository.findByPortfolioId(
+      query.portfolioId,
+      filter,
+      {
+        cursor: query.cursor,
+        skip: query.cursor ? 1 : 0,
+        limit: limit + 1,
+      },
+    );
 
-    return this.transactionRepository.findByPortfolioId(query.portfolioId, filter, pagination);
+    const hasMore = rawItems.length > limit;
+    const items = hasMore ? rawItems.slice(0, limit) : rawItems;
+    const lastItem = items[items.length - 1];
+    const nextCursor = hasMore && lastItem ? lastItem.id : null;
+
+    return {
+      items,
+      limit,
+      cursor: query.cursor,
+      nextCursor,
+      hasMore,
+    };
   }
 }
