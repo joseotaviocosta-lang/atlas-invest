@@ -2,16 +2,24 @@ import {
   Transaction,
   Quantity,
   Money,
+  Percentage,
   Currency,
   PortfolioId,
   TradeTransaction,
   TransferTransaction,
 } from '@atlas/domain';
-import { DeferredPortfolioEvent, CostBasisStatus } from './types';
+import {
+  DeferredPortfolioEvent,
+  CostBasisStatus,
+  RealizedDisposal,
+  RealizedResultStatus,
+} from './types';
 import {
   NegativePositionError,
   CurrencyMismatchError,
   InvalidBuyCostError,
+  InvalidSellPriceError,
+  InvalidSellingCostError,
   UnsupportedTransactionStateError,
 } from './errors';
 
@@ -36,6 +44,7 @@ export class ReplayContext {
   readonly accounts = new Map<string, Map<string, InternalPositionState>>();
   readonly appliedTransactions: Transaction[] = [];
   readonly deferredEvents: DeferredPortfolioEvent[] = [];
+  readonly realizedDisposals: RealizedDisposal[] = [];
 
   constructor(portfolioId: PortfolioId) {
     this.portfolioId = portfolioId;
@@ -48,6 +57,10 @@ export class ReplayContext {
       this.accounts.set(accountId, assetMap);
     }
     return assetMap;
+  }
+
+  recordRealizedDisposal(disposal: RealizedDisposal): void {
+    this.realizedDisposals.push(disposal);
   }
 }
 
@@ -67,6 +80,30 @@ const buyHandler: TransactionHandler<TradeTransaction> = {
         tx.unitPrice.amount,
         'BUY transaction requires unitPrice > 0',
       );
+    }
+    if (tx.fees) {
+      if (tx.fees.currency !== tx.currency) {
+        throw new CurrencyMismatchError(tx.currency, tx.fees.currency);
+      }
+      if (tx.fees.isNegative()) {
+        throw new InvalidBuyCostError(
+          String(tx.id),
+          tx.fees.amount,
+          'BUY transaction fees cannot be negative',
+        );
+      }
+    }
+    if (tx.taxes) {
+      if (tx.taxes.currency !== tx.currency) {
+        throw new CurrencyMismatchError(tx.currency, tx.taxes.currency);
+      }
+      if (tx.taxes.isNegative()) {
+        throw new InvalidBuyCostError(
+          String(tx.id),
+          tx.taxes.amount,
+          'BUY transaction taxes cannot be negative',
+        );
+      }
     }
 
     const accountAssets = ctx.getOrCreateAccountAssets(String(tx.accountId));
@@ -125,7 +162,7 @@ const sellHandler: TransactionHandler<TradeTransaction> = {
     const currentPos = accountAssets.get(assetKey);
     const currentQty = currentPos?.quantity ?? Quantity.zero();
 
-    // 1. Check long-only invariant
+    // 1. Check long-only invariant (Section 24)
     if (tx.quantity.compare(currentQty) > 0) {
       const resultingQty = currentQty.subtract(tx.quantity);
       throw new NegativePositionError({
@@ -138,33 +175,98 @@ const sellHandler: TransactionHandler<TradeTransaction> = {
       });
     }
 
-    // 2. Multi-currency safety
+    // 2. Validate unitPrice > 0 (Section 74)
+    if (!tx.unitPrice.isPositive()) {
+      throw new InvalidSellPriceError(
+        String(tx.id),
+        tx.unitPrice.amount,
+        'SELL transaction requires unitPrice > 0',
+      );
+    }
+
+    // 3. Multi-currency safety (Section 29, 30)
     if (currentPos && currentPos.currency !== tx.currency) {
       throw new CurrencyMismatchError(currentPos.currency, tx.currency);
     }
 
-    // 3. Update quantity and cost basis
+    // 4. Validate and accumulate selling costs (Section 7, 75, 76)
+    let sellingCosts = Money.zero(tx.currency);
+    if (tx.fees) {
+      if (tx.fees.currency !== tx.currency) {
+        throw new CurrencyMismatchError(tx.currency, tx.fees.currency);
+      }
+      if (tx.fees.isNegative()) {
+        throw new InvalidSellingCostError(String(tx.id), 'fees', tx.fees.amount);
+      }
+      sellingCosts = sellingCosts.add(tx.fees);
+    }
+    if (tx.taxes) {
+      if (tx.taxes.currency !== tx.currency) {
+        throw new CurrencyMismatchError(tx.currency, tx.taxes.currency);
+      }
+      if (tx.taxes.isNegative()) {
+        throw new InvalidSellingCostError(String(tx.id), 'taxes', tx.taxes.amount);
+      }
+      sellingCosts = sellingCosts.add(tx.taxes);
+    }
+
+    // 5. Compute gross and net proceeds (Section 3)
+    const grossProceeds = tx.unitPrice.multiply(tx.quantity);
+    const netProceeds = grossProceeds.subtract(sellingCosts);
+
+    // 6. Compute cost basis removed, realized gain/loss, and return percentage before modifying quantity (Section 78)
+    const isIncomplete = !currentPos || currentPos.costBasisStatus === 'INCOMPLETE';
+    let costBasisRemoved: Money | undefined;
+    let realizedGainLoss: Money | undefined;
+    let realizedReturnPercentage: Percentage | undefined;
+    const disposalStatus: RealizedResultStatus = isIncomplete ? 'INCOMPLETE' : 'KNOWN';
+
+    if (!isIncomplete && currentPos.averageCost && currentPos.totalCost) {
+      const currentAvg = currentPos.averageCost;
+      costBasisRemoved = currentAvg.multiply(tx.quantity);
+      realizedGainLoss = netProceeds.subtract(costBasisRemoved);
+
+      if (costBasisRemoved.isPositive()) {
+        const ratio = Quantity.from(realizedGainLoss.amount)
+          .divide(Quantity.from(costBasisRemoved.amount))
+          .multiply('100');
+        realizedReturnPercentage = Percentage.from(ratio.value);
+      }
+    }
+
+    // 7. Record RealizedDisposal event (Section 11, 84)
+    const disposal: RealizedDisposal = Object.freeze({
+      transactionId: tx.id,
+      portfolioId: ctx.portfolioId,
+      accountId: tx.accountId,
+      assetId: tx.assetId,
+      tradeDate: tx.tradeDate,
+      quantity: tx.quantity,
+      unitPrice: tx.unitPrice,
+      grossProceeds,
+      sellingCosts,
+      netProceeds,
+      costBasisRemoved,
+      realizedGainLoss,
+      realizedReturnPercentage,
+      currency: tx.currency,
+      status: disposalStatus,
+    });
+    ctx.recordRealizedDisposal(disposal);
+
+    // 8. Update quantity and cost basis
     const newQty = currentQty.subtract(tx.quantity);
     if (newQty.isZero()) {
       // Full SELL (Section 26 & ADR-039): omit liquidated positions from active state, cost resets to zero
       accountAssets.delete(assetKey);
     } else {
-      // Partial SELL: remove cost basis proportionally using current average cost (ADR-041)
-      if (
-        currentPos &&
-        currentPos.costBasisStatus === 'KNOWN' &&
-        currentPos.averageCost &&
-        currentPos.totalCost
-      ) {
-        const currentAvg = currentPos.averageCost;
-        const costRemoved = currentAvg.multiply(tx.quantity);
-        const newTotalCost = currentPos.totalCost.subtract(costRemoved);
-
-        // Pre-sale averageCost remains unchanged; sale price does NOT alter averageCost
+      // Partial SELL: remaining unit averageCost is unchanged (ADR-041)
+      if (!isIncomplete && currentPos.averageCost && currentPos.totalCost && costBasisRemoved) {
+        const newTotalCost = currentPos.totalCost.subtract(costBasisRemoved);
         accountAssets.set(assetKey, {
           quantity: newQty,
           totalCost: newTotalCost,
-          averageCost: currentAvg,
+          averageCost: currentPos.averageCost,
           currency: currentPos.currency,
           costBasisStatus: 'KNOWN',
         });

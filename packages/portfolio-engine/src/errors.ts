@@ -133,6 +133,46 @@ export class InvalidBuyCostError extends PortfolioReplayError {
 }
 
 /**
+ * Thrown when a SELL transaction contains an invalid execution price (e.g. unitPrice <= 0).
+ */
+export class InvalidSellPriceError extends PortfolioReplayError {
+  readonly transactionId: string;
+  readonly unitPrice: string;
+
+  constructor(
+    transactionId: string,
+    unitPrice: string,
+    reason = 'unitPrice must be greater than zero',
+  ) {
+    super(
+      `Invalid SELL transaction price for '${transactionId}': ${reason} (received '${unitPrice}')`,
+      'PORTFOLIO_ENGINE.INVALID_SELL_PRICE',
+    );
+    this.transactionId = transactionId;
+    this.unitPrice = unitPrice;
+  }
+}
+
+/**
+ * Thrown when explicit selling costs (fees or taxes) contain negative values.
+ */
+export class InvalidSellingCostError extends PortfolioReplayError {
+  readonly transactionId: string;
+  readonly field: string;
+  readonly amount: string;
+
+  constructor(transactionId: string, field: string, amount: string) {
+    super(
+      `Invalid selling cost '${field}' for transaction '${transactionId}': cost cannot be negative (received '${amount}')`,
+      'PORTFOLIO_ENGINE.INVALID_SELLING_COST',
+    );
+    this.transactionId = transactionId;
+    this.field = field;
+    this.amount = amount;
+  }
+}
+
+/**
  * Thrown when a calculation requires a known cost basis but the position cost basis is incomplete.
  */
 export class IncompleteCostBasisError extends PortfolioReplayError {

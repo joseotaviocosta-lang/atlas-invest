@@ -6,6 +6,7 @@ import {
   LocalDate,
   Money,
   Quantity,
+  Percentage,
   Transaction,
   TransactionType,
   Currency,
@@ -18,6 +19,50 @@ import {
  * Unknown cost basis is NEVER represented as zero (ADR-043).
  */
 export type CostBasisStatus = 'KNOWN' | 'INCOMPLETE';
+
+/**
+ * Status of an economic realized disposal result.
+ * - 'KNOWN': Cost basis is known, gain/loss and return percentage are fully computed.
+ * - 'INCOMPLETE': Pre-sale cost basis was incomplete, gain/loss cannot be fabricated.
+ */
+export type RealizedResultStatus = 'KNOWN' | 'INCOMPLETE';
+
+/**
+ * Economic disposal record produced by a SELL transaction.
+ * Represents economic disposal results, NOT a tax event (ADR-044, ADR-047).
+ */
+export interface RealizedDisposal {
+  readonly transactionId: TransactionId;
+  readonly portfolioId: PortfolioId;
+  readonly accountId: AccountId;
+  readonly assetId: AssetId;
+  readonly tradeDate: LocalDate;
+  readonly quantity: Quantity;
+  readonly unitPrice: Money;
+  readonly grossProceeds: Money;
+  readonly sellingCosts: Money;
+  readonly netProceeds: Money;
+  readonly costBasisRemoved?: Money;
+  readonly realizedGainLoss?: Money;
+  readonly realizedReturnPercentage?: Percentage;
+  readonly currency: Currency;
+  readonly status: RealizedResultStatus;
+}
+
+/**
+ * Summary of aggregated realized disposal results for a specific currency (ADR-045).
+ */
+export interface RealizedSummary {
+  readonly currency: Currency;
+  readonly status: RealizedResultStatus;
+  readonly grossProceeds: Money;
+  readonly sellingCosts: Money;
+  readonly netProceeds: Money;
+  readonly costBasisRemoved?: Money;
+  readonly realizedGainLoss?: Money;
+  readonly realizedReturnPercentage?: Percentage;
+  readonly disposalCount: number;
+}
 
 /**
  * Derived state for a specific asset within an account or aggregated in a portfolio.
@@ -38,6 +83,8 @@ export interface AssetState {
 export interface AccountState {
   readonly accountId: AccountId;
   readonly assets: ReadonlyMap<string, AssetState>;
+  readonly realizedDisposals: readonly RealizedDisposal[];
+  readonly realizedSummary: ReadonlyMap<Currency, RealizedSummary>;
 }
 
 /**
@@ -48,6 +95,8 @@ export interface PortfolioState {
   readonly asOfDate?: LocalDate;
   readonly accounts: ReadonlyMap<string, AccountState>;
   readonly assets: ReadonlyMap<string, AssetState>;
+  readonly realizedDisposals: readonly RealizedDisposal[];
+  readonly realizedSummary: ReadonlyMap<Currency, RealizedSummary>;
   readonly processedTransactionCount: number;
   readonly appliedTransactionCount: number;
   readonly deferredTransactionCount: number;
