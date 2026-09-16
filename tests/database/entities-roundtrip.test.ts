@@ -76,6 +76,8 @@ describe('Database Integration: Entities Round-Trip', () => {
         id: '99999999-9999-4999-8999-999999999999',
         email: 'portfolio-owner@atlas.dev',
         name: 'Portfolio Owner',
+        passwordHash:
+          '$argon2id$v=19$m=65536,t=3,p=4$dummyhash$abcdefghijklmnopqrstuvwxyz0123456789',
       },
     });
 
@@ -131,6 +133,8 @@ describe('Database Integration: Entities Round-Trip', () => {
         id: '88888888-8888-4888-8888-888888888888',
         email: 'simulation-owner@atlas.dev',
         name: 'Simulation User',
+        passwordHash:
+          '$argon2id$v=19$m=65536,t=3,p=4$dummyhash$abcdefghijklmnopqrstuvwxyz0123456789',
       },
     });
 
@@ -152,5 +156,52 @@ describe('Database Integration: Entities Round-Trip', () => {
 
     const userPortfolios = await portfolioRepo.findByUserId(user.id);
     expect(userPortfolios.some((p) => p.id === saved.id && p.type === 'SIMULATION')).toBe(true);
+  });
+
+  it('should round-trip Session and PasswordResetToken persistence', async () => {
+    const user = await prisma.user.create({
+      data: {
+        id: '77777777-7777-4777-8777-777777777777',
+        email: 'session-user@atlas.dev',
+        name: 'Session User',
+        passwordHash:
+          '$argon2id$v=19$m=65536,t=3,p=4$dummyhash$abcdefghijklmnopqrstuvwxyz0123456789',
+      },
+    });
+
+    // 1. Session roundtrip
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const session = await prisma.session.create({
+      data: {
+        userId: user.id,
+        refreshTokenHash: 'hash-abc-123',
+        expiresAt,
+        userAgent: 'Mozilla/5.0 Vitest',
+        deviceName: 'TestDevice',
+      },
+    });
+
+    expect(session.userId).toBe(user.id);
+    expect(session.refreshTokenHash).toBe('hash-abc-123');
+    expect(session.revokedAt).toBeNull();
+
+    // 2. Password reset token roundtrip
+    const resetExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    const resetToken = await prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: 'reset-hash-xyz-456',
+        expiresAt: resetExpiresAt,
+      },
+    });
+
+    expect(resetToken.userId).toBe(user.id);
+    expect(resetToken.tokenHash).toBe('reset-hash-xyz-456');
+    expect(resetToken.usedAt).toBeNull();
+
+    const loadedReset = await prisma.passwordResetToken.findUnique({
+      where: { tokenHash: 'reset-hash-xyz-456' },
+    });
+    expect(loadedReset?.id).toBe(resetToken.id);
   });
 });

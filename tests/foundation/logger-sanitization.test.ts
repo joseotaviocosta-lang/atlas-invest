@@ -7,6 +7,11 @@ describe('Foundation: Logger Sanitization & Sensitive Data Rules', () => {
       user: 'investor_123',
       password: 'my-secret-password',
       token: 'jwt.token.here',
+      accessToken: 'jwt.access.token',
+      refreshToken: 'opaque-refresh-token',
+      passwordHash: '$argon2id$v=19$...',
+      tokenHash: 'hmac-sha256-hash',
+      newPassword: 'new-plain-password',
       patrimonio: 150000.5,
       saldo: 2300.0,
       safeMetric: 42,
@@ -17,6 +22,11 @@ describe('Foundation: Logger Sanitization & Sensitive Data Rules', () => {
     expect(sanitized?.user).toBe('investor_123');
     expect(sanitized?.password).toBe('[REDACTED]');
     expect(sanitized?.token).toBe('[REDACTED]');
+    expect(sanitized?.accessToken).toBe('[REDACTED]');
+    expect(sanitized?.refreshToken).toBe('[REDACTED]');
+    expect(sanitized?.passwordHash).toBe('[REDACTED]');
+    expect(sanitized?.tokenHash).toBe('[REDACTED]');
+    expect(sanitized?.newPassword).toBe('[REDACTED]');
     expect(sanitized?.patrimonio).toBe('[REDACTED]');
     expect(sanitized?.saldo).toBe('[REDACTED]');
     expect(sanitized?.safeMetric).toBe(42);

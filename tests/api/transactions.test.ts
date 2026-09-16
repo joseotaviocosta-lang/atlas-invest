@@ -7,6 +7,7 @@ import {
   cleanDatabase,
   seedBaseFixtures,
   getTestPrismaClient,
+  createAuthenticatedUserSession,
 } from './setup';
 
 describe('API Integration: Append-Only Transaction Ledger', () => {
@@ -14,6 +15,7 @@ describe('API Integration: Append-Only Transaction Ledger', () => {
   let portfolioId: string;
   let accountId: string;
   let assetId: string;
+  let authToken: string;
   const prisma = getTestPrismaClient();
 
   beforeAll(async () => {
@@ -29,6 +31,9 @@ describe('API Integration: Append-Only Transaction Ledger', () => {
     const fixtures = await seedBaseFixtures();
     portfolioId = fixtures.portfolioId;
     accountId = fixtures.accountId;
+
+    const session = await createAuthenticatedUserSession(fixtures.userId);
+    authToken = session.token;
 
     const asset = await prisma.asset.create({
       data: {
@@ -50,6 +55,7 @@ describe('API Integration: Append-Only Transaction Ledger', () => {
 
       const res = await request(app.getHttpServer())
         .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+        .set('Authorization', `Bearer ${authToken}`)
         .send({
           accountId,
           assetId,
@@ -74,6 +80,7 @@ describe('API Integration: Append-Only Transaction Ledger', () => {
     it('should reject transactions with numeric float inputs (must be decimal string)', async () => {
       const res = await request(app.getHttpServer())
         .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+        .set('Authorization', `Bearer ${authToken}`)
         .send({
           accountId,
           assetId,
@@ -93,6 +100,7 @@ describe('API Integration: Append-Only Transaction Ledger', () => {
     it('should reject invalid calendar dates such as 2026-02-30', async () => {
       const res = await request(app.getHttpServer())
         .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+        .set('Authorization', `Bearer ${authToken}`)
         .send({
           accountId,
           assetId,
@@ -134,6 +142,7 @@ describe('API Integration: Append-Only Transaction Ledger', () => {
       // Attempt to post transaction to portfolioId using otherAccount.id
       const res = await request(app.getHttpServer())
         .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+        .set('Authorization', `Bearer ${authToken}`)
         .send({
           accountId: otherAccount.id,
           assetId,
@@ -164,11 +173,13 @@ describe('API Integration: Append-Only Transaction Ledger', () => {
 
       const firstRes = await request(app.getHttpServer())
         .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+        .set('Authorization', `Bearer ${authToken}`)
         .send(payload);
       expect(firstRes.status).toBe(201);
 
       const duplicateRes = await request(app.getHttpServer())
         .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+        .set('Authorization', `Bearer ${authToken}`)
         .send(payload);
 
       expect(duplicateRes.status).toBe(409);
@@ -179,6 +190,7 @@ describe('API Integration: Append-Only Transaction Ledger', () => {
     it('should enforce append-only ledger: PUT, PATCH, and DELETE are strictly disallowed', async () => {
       const createRes = await request(app.getHttpServer())
         .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+        .set('Authorization', `Bearer ${authToken}`)
         .send({
           accountId,
           assetId,
@@ -190,13 +202,19 @@ describe('API Integration: Append-Only Transaction Ledger', () => {
         });
       const txId = createRes.body.data.id;
 
-      const putRes = await request(app.getHttpServer()).put(`/api/v1/transactions/${txId}`);
+      const putRes = await request(app.getHttpServer())
+        .put(`/api/v1/transactions/${txId}`)
+        .set('Authorization', `Bearer ${authToken}`);
       expect(putRes.status).toBe(404);
 
-      const patchRes = await request(app.getHttpServer()).patch(`/api/v1/transactions/${txId}`);
+      const patchRes = await request(app.getHttpServer())
+        .patch(`/api/v1/transactions/${txId}`)
+        .set('Authorization', `Bearer ${authToken}`);
       expect(patchRes.status).toBe(404);
 
-      const deleteRes = await request(app.getHttpServer()).delete(`/api/v1/transactions/${txId}`);
+      const deleteRes = await request(app.getHttpServer())
+        .delete(`/api/v1/transactions/${txId}`)
+        .set('Authorization', `Bearer ${authToken}`);
       expect(deleteRes.status).toBe(404);
     });
   });
@@ -206,6 +224,7 @@ describe('API Integration: Append-Only Transaction Ledger', () => {
       // Insert transactions chronologically out of order
       await request(app.getHttpServer())
         .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+        .set('Authorization', `Bearer ${authToken}`)
         .send({
           accountId,
           type: 'DEPOSIT',
@@ -216,6 +235,7 @@ describe('API Integration: Append-Only Transaction Ledger', () => {
 
       await request(app.getHttpServer())
         .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+        .set('Authorization', `Bearer ${authToken}`)
         .send({
           accountId,
           type: 'DEPOSIT',
@@ -226,6 +246,7 @@ describe('API Integration: Append-Only Transaction Ledger', () => {
 
       await request(app.getHttpServer())
         .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+        .set('Authorization', `Bearer ${authToken}`)
         .send({
           accountId,
           type: 'DEPOSIT',
@@ -234,9 +255,9 @@ describe('API Integration: Append-Only Transaction Ledger', () => {
           amount: '200.00',
         });
 
-      const res = await request(app.getHttpServer()).get(
-        `/api/v1/portfolios/${portfolioId}/transactions`,
-      );
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/portfolios/${portfolioId}/transactions`)
+        .set('Authorization', `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
       expect(res.body.data.length).toBe(3);
@@ -249,6 +270,7 @@ describe('API Integration: Append-Only Transaction Ledger', () => {
       for (let i = 1; i <= 5; i++) {
         await request(app.getHttpServer())
           .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+          .set('Authorization', `Bearer ${authToken}`)
           .send({
             accountId,
             type: 'DEPOSIT',
@@ -261,6 +283,7 @@ describe('API Integration: Append-Only Transaction Ledger', () => {
       // Page 1: limit 2
       const page1 = await request(app.getHttpServer())
         .get(`/api/v1/portfolios/${portfolioId}/transactions`)
+        .set('Authorization', `Bearer ${authToken}`)
         .query({ limit: 2 });
 
       expect(page1.status).toBe(200);
@@ -273,6 +296,7 @@ describe('API Integration: Append-Only Transaction Ledger', () => {
       // Page 2: limit 2, cursor from page 1
       const page2 = await request(app.getHttpServer())
         .get(`/api/v1/portfolios/${portfolioId}/transactions`)
+        .set('Authorization', `Bearer ${authToken}`)
         .query({ limit: 2, cursor: nextCursor });
 
       expect(page2.status).toBe(200);

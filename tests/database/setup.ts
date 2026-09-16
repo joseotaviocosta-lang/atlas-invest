@@ -24,7 +24,7 @@ export function getTestPrismaClient(): PrismaClient {
 export async function cleanDatabase(): Promise<void> {
   const prisma = getTestPrismaClient();
   await prisma.$executeRawUnsafe(`
-    TRUNCATE TABLE "transactions", "accounts", "portfolios", "assets", "institutions", "users" CASCADE;
+    TRUNCATE TABLE "password_reset_tokens", "sessions", "transactions", "accounts", "portfolios", "assets", "institutions", "users" CASCADE;
   `);
 }
 
@@ -48,6 +48,7 @@ export async function seedBaseFixtures(): Promise<{
       id: '11111111-1111-4111-8111-111111111111',
       email: 'test-user@atlas.dev',
       name: 'Test User',
+      passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$dummyhash$abcdefghijklmnopqrstuvwxyz0123456789',
     },
   });
 

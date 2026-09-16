@@ -1,10 +1,17 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import request from 'supertest';
 import { INestApplication } from '@nestjs/common';
-import { createTestApp, closeTestApp, cleanDatabase, getTestPrismaClient } from './setup';
+import {
+  createTestApp,
+  closeTestApp,
+  cleanDatabase,
+  getTestPrismaClient,
+  createAuthenticatedUserSession,
+} from './setup';
 
 describe('API Integration: Portfolios Resource', () => {
   let app: INestApplication;
+  let authToken: string;
   const prisma = getTestPrismaClient();
 
   const userId = '11111111-1111-4111-8111-111111111111';
@@ -24,17 +31,24 @@ describe('API Integration: Portfolios Resource', () => {
         id: userId,
         email: 'portfolio-tester@atlas.dev',
         name: 'Portfolio Tester',
+        passwordHash:
+          '$argon2id$v=19$m=65536,t=3,p=4$dummyhash$abcdefghijklmnopqrstuvwxyz0123456789',
       },
     });
+
+    const session = await createAuthenticatedUserSession(userId);
+    authToken = session.token;
   });
 
   it('POST /api/v1/portfolios should create a new portfolio', async () => {
-    const res = await request(app.getHttpServer()).post('/api/v1/portfolios').send({
-      userId,
-      name: 'Minha Carteira Principal',
-      baseCurrency: 'BRL',
-      type: 'PERSONAL',
-    });
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/portfolios')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        name: 'Minha Carteira Principal',
+        baseCurrency: 'BRL',
+        type: 'PERSONAL',
+      });
 
     expect(res.status).toBe(201);
     expect(res.body.data).toBeDefined();
@@ -46,19 +60,23 @@ describe('API Integration: Portfolios Resource', () => {
   });
 
   it('POST /api/v1/portfolios should persist and round-trip SIMULATION portfolio', async () => {
-    const res = await request(app.getHttpServer()).post('/api/v1/portfolios').send({
-      userId,
-      name: 'Carteira Simulada 2026',
-      baseCurrency: 'USD',
-      type: 'SIMULATION',
-    });
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/portfolios')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        name: 'Carteira Simulada 2026',
+        baseCurrency: 'USD',
+        type: 'SIMULATION',
+      });
 
     expect(res.status).toBe(201);
     expect(res.body.data.type).toBe('SIMULATION');
     expect(res.body.data.baseCurrency).toBe('USD');
 
     // Retrieve by ID
-    const getRes = await request(app.getHttpServer()).get(`/api/v1/portfolios/${res.body.data.id}`);
+    const getRes = await request(app.getHttpServer())
+      .get(`/api/v1/portfolios/${res.body.data.id}`)
+      .set('Authorization', `Bearer ${authToken}`);
 
     expect(getRes.status).toBe(200);
     expect(getRes.body.data.type).toBe('SIMULATION');
@@ -66,11 +84,13 @@ describe('API Integration: Portfolios Resource', () => {
   });
 
   it('POST /api/v1/portfolios should reject invalid payloads with 400 and validation error details', async () => {
-    const res = await request(app.getHttpServer()).post('/api/v1/portfolios').send({
-      userId: 'not-a-uuid',
-      name: '',
-      baseCurrency: 'INVALID_CURRENCY',
-    });
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/portfolios')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        name: '',
+        baseCurrency: 'INVALID_CURRENCY',
+      });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Bad Request');
@@ -80,36 +100,44 @@ describe('API Integration: Portfolios Resource', () => {
   });
 
   it('GET /api/v1/portfolios/:portfolioId should return 400 for invalid UUID format', async () => {
-    const res = await request(app.getHttpServer()).get('/api/v1/portfolios/not-valid-uuid');
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/portfolios/not-valid-uuid')
+      .set('Authorization', `Bearer ${authToken}`);
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('VALIDATION.INVALID_INPUT');
   });
 
   it('GET /api/v1/portfolios/:portfolioId should return 404 when portfolio does not exist', async () => {
-    const res = await request(app.getHttpServer()).get(
-      '/api/v1/portfolios/99999999-9999-4999-8999-999999999999',
-    );
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/portfolios/99999999-9999-4999-8999-999999999999')
+      .set('Authorization', `Bearer ${authToken}`);
 
     expect(res.status).toBe(404);
     expect(res.body.error).toBe('Not Found');
     expect(res.body.message).toContain('Portfolio with id');
   });
 
-  it('GET /api/v1/portfolios?userId=... should list user portfolios', async () => {
+  it('GET /api/v1/portfolios should list user portfolios', async () => {
     // Create two portfolios
-    await request(app.getHttpServer()).post('/api/v1/portfolios').send({
-      userId,
-      name: 'Carteira A',
-      baseCurrency: 'BRL',
-    });
-    await request(app.getHttpServer()).post('/api/v1/portfolios').send({
-      userId,
-      name: 'Carteira B',
-      baseCurrency: 'USD',
-    });
+    await request(app.getHttpServer())
+      .post('/api/v1/portfolios')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        name: 'Carteira A',
+        baseCurrency: 'BRL',
+      });
+    await request(app.getHttpServer())
+      .post('/api/v1/portfolios')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        name: 'Carteira B',
+        baseCurrency: 'USD',
+      });
 
-    const res = await request(app.getHttpServer()).get('/api/v1/portfolios').query({ userId });
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/portfolios')
+      .set('Authorization', `Bearer ${authToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.data.length).toBe(2);

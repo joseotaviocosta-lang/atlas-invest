@@ -31,6 +31,8 @@ describe('Database Integration: Cross-Portfolio Foreign Key Protection', () => {
         id: '12121212-1212-4212-8212-121212121212',
         email: 'multi-portfolio@atlas.dev',
         name: 'Multi Portfolio User',
+        passwordHash:
+          '$argon2id$v=19$m=65536,t=3,p=4$dummyhash$abcdefghijklmnopqrstuvwxyz0123456789',
       },
     });
 

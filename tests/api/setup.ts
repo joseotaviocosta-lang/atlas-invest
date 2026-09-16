@@ -39,3 +39,29 @@ export async function closeTestApp(): Promise<void> {
   }
   await disconnectTestDatabase();
 }
+
+export async function createAuthenticatedUserSession(
+  userId = '11111111-1111-4111-8111-111111111111',
+): Promise<{ token: string; sessionId: string }> {
+  const prisma = getTestPrismaClient();
+  const { TokenService } = await import('../../apps/api/src/auth/services/token.service');
+  const tokenService = new TokenService();
+
+  const rawRefresh = tokenService.generateRefreshToken();
+  const hash = tokenService.hashRefreshToken(rawRefresh);
+
+  const session = await prisma.session.create({
+    data: {
+      userId,
+      refreshTokenHash: hash,
+      expiresAt: tokenService.getRefreshTokenExpiresAt(),
+    },
+  });
+
+  const token = tokenService.generateAccessToken({
+    userId,
+    sessionId: session.id,
+  });
+
+  return { token, sessionId: session.id };
+}
