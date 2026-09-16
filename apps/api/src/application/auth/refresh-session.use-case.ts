@@ -43,7 +43,7 @@ export class RefreshSessionUseCase {
       });
     }
 
-    const refreshPromise = this.performRefresh(dto, presentedHash);
+    const refreshPromise = this.performRefresh(presentedHash);
     this.inFlightRefreshes.set(presentedHash, refreshPromise);
 
     try {
@@ -53,10 +53,7 @@ export class RefreshSessionUseCase {
     }
   }
 
-  private async performRefresh(
-    dto: RefreshSessionDto,
-    presentedHash: string,
-  ): Promise<RefreshSessionResponseDto> {
+  private async performRefresh(presentedHash: string): Promise<RefreshSessionResponseDto> {
     // 1. Detect token reuse from any previously rotated token in the session family
     const reusedSession =
       await this.sessionRepository.findByAnyPreviousRefreshTokenHash(presentedHash);
