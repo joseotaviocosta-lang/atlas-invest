@@ -12,7 +12,8 @@ export function StatCard({
   isPlaceholder = false,
 }: BaseStatCardProps) {
   const displayValue = isPlaceholder || !value ? '—' : value;
-  const displaySubValue = isPlaceholder && !subValue ? 'Disponível após primeiras operações' : subValue;
+  const displaySubValue =
+    isPlaceholder && !subValue ? 'Disponível após primeiras operações' : subValue;
 
   const getChangeColor = () => {
     if (isPlaceholder) return colors.textMuted;

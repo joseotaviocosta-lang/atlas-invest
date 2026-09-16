@@ -3,6 +3,14 @@ import { useAuthStore } from '@/stores/auth.store';
 import { CANONICAL_NAV_ITEMS, PROFILE_NAV_ITEM } from '@atlas/ui';
 import { apiClient } from '@/api/client';
 
+interface PortfolioItem {
+  id: string;
+  name: string;
+  baseCurrency?: string;
+  currency?: string;
+  type: string;
+}
+
 describe('Product Shell & Onboarding Foundation', () => {
   beforeEach(() => {
     useAuthStore.getState().setSession(
@@ -39,7 +47,7 @@ describe('Product Shell & Onboarding Foundation', () => {
       });
       global.fetch = mockFetch as unknown as typeof fetch;
 
-      const res = await apiClient.get<{ data: any[] }>('/api/v1/portfolios');
+      const res = await apiClient.get<{ data: PortfolioItem[] }>('/api/v1/portfolios');
       const shouldShowOnboarding = res.data.length === 0;
 
       expect(shouldShowOnboarding).toBe(true);
@@ -62,7 +70,7 @@ describe('Product Shell & Onboarding Foundation', () => {
       });
       global.fetch = mockFetch as unknown as typeof fetch;
 
-      const res = await apiClient.get<{ data: any[] }>('/api/v1/portfolios');
+      const res = await apiClient.get<{ data: PortfolioItem[] }>('/api/v1/portfolios');
       const shouldShowOnboarding = res.data.length === 0;
 
       expect(shouldShowOnboarding).toBe(false);
@@ -89,7 +97,7 @@ describe('Product Shell & Onboarding Foundation', () => {
       });
       global.fetch = mockFetch as unknown as typeof fetch;
 
-      const res = await apiClient.post<{ data: any }>('/api/v1/portfolios', payload);
+      const res = await apiClient.post<{ data: PortfolioItem }>('/api/v1/portfolios', payload);
       expect(res.data.id).toBe('port-first');
       expect(res.data.name).toBe('Minha Primeira Carteira');
     });

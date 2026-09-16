@@ -84,9 +84,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <div style={{ fontWeight: 700, fontSize: '1rem', color: colors.textPrimary }}>
               Project Atlas
             </div>
-            <div style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>
-              Investimentos
-            </div>
+            <div style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>Investimentos</div>
           </div>
         </div>
 

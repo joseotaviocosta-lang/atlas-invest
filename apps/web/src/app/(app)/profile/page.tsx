@@ -59,7 +59,10 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <SectionHeader title="Preferências Globais" description="Parâmetros de localização e formatação financeira" />
+        <SectionHeader
+          title="Preferências Globais"
+          description="Parâmetros de localização e formatação financeira"
+        />
 
         <div
           style={{
@@ -115,7 +118,14 @@ export default function ProfilePage() {
           description="Controles criptográficos e políticas de isolamento de dados"
         />
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.base}px`, marginTop: `${spacing.md}px` }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: `${spacing.base}px`,
+            marginTop: `${spacing.md}px`,
+          }}
+        >
           <div
             style={{
               display: 'flex',
@@ -132,7 +142,8 @@ export default function ProfilePage() {
                 BFF com Cookies HttpOnly
               </div>
               <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '2px' }}>
-                Refresh token rotativo mantido exclusivamente no servidor com SameSite=Lax e validação de Origin.
+                Refresh token rotativo mantido exclusivamente no servidor com SameSite=Lax e
+                validação de Origin.
               </div>
             </div>
             <Badge variant="positive">PROTEGIDO</Badge>
@@ -154,7 +165,8 @@ export default function ProfilePage() {
                 Isolamento Compulsório de Cache
               </div>
               <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '2px' }}>
-                Purga total do cache do TanStack Query na revogação da sessão para prevenir vazamento cross-user.
+                Purga total do cache do TanStack Query na revogação da sessão para prevenir
+                vazamento cross-user.
               </div>
             </div>
             <Badge variant="primary">ATIVO</Badge>

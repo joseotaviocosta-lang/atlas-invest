@@ -25,7 +25,7 @@ describe('Foundation: Packages Import & Version Contracts', () => {
     expect(NEWS_DATA_VERSION).toBe('0.1.0');
     expect(AI_ENGINE_VERSION).toBe('0.1.0');
     expect(VALIDATION_VERSION).toBe('0.1.0');
-    expect(UI_VERSION).toBe('0.1.0');
+    expect(UI_VERSION).toBe('0.2.0');
     expect(LOGGER_VERSION).toBe('0.1.0');
     expect(TESTING_VERSION).toBe('0.1.0');
   });

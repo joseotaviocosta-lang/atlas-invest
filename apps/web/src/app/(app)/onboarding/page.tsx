@@ -24,7 +24,9 @@ export default function OnboardingPage() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [portfolioName, setPortfolioName] = useState('Carteira Principal');
   const [portfolioType, setPortfolioType] = useState('PERSONAL');
-  const [selectedMethod, setSelectedMethod] = useState<'manual' | 'import_later' | 'explore'>('explore');
+  const [selectedMethod, setSelectedMethod] = useState<'manual' | 'import_later' | 'explore'>(
+    'explore',
+  );
   const [formError, setFormError] = useState<string | null>(null);
 
   // Check if existing portfolios exist
@@ -100,7 +102,8 @@ export default function OnboardingPage() {
               width: s === step ? '28px' : '10px',
               height: '10px',
               borderRadius: `${borderRadius.pill}px`,
-              backgroundColor: s === step ? colors.accent : s < step ? colors.positive : colors.surfaceElevated,
+              backgroundColor:
+                s === step ? colors.accent : s < step ? colors.positive : colors.surfaceElevated,
               transition: 'all 0.25s ease',
             }}
           />
@@ -153,7 +156,8 @@ export default function OnboardingPage() {
                   lineHeight: 1.5,
                 }}
               >
-                Sua plataforma consolidada de gestão patrimonial e inteligência financeira para o mercado brasileiro.
+                Sua plataforma consolidada de gestão patrimonial e inteligência financeira para o
+                mercado brasileiro.
               </p>
             </div>
 
@@ -173,7 +177,14 @@ export default function OnboardingPage() {
                   border: `1px solid ${colors.border}`,
                 }}
               >
-                <div style={{ fontWeight: 600, color: colors.textPrimary, fontSize: '0.875rem', marginBottom: '4px' }}>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    color: colors.textPrimary,
+                    fontSize: '0.875rem',
+                    marginBottom: '4px',
+                  }}
+                >
                   Controle
                 </div>
                 <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
@@ -189,11 +200,19 @@ export default function OnboardingPage() {
                   border: `1px solid ${colors.border}`,
                 }}
               >
-                <div style={{ fontWeight: 600, color: colors.textPrimary, fontSize: '0.875rem', marginBottom: '4px' }}>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    color: colors.textPrimary,
+                    fontSize: '0.875rem',
+                    marginBottom: '4px',
+                  }}
+                >
                   Análise
                 </div>
                 <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
-                  Rentabilidade real, alocação estratégica e acompanhamento transparente de proventos.
+                  Rentabilidade real, alocação estratégica e acompanhamento transparente de
+                  proventos.
                 </div>
               </div>
 
@@ -205,7 +224,14 @@ export default function OnboardingPage() {
                   border: `1px solid ${colors.border}`,
                 }}
               >
-                <div style={{ fontWeight: 600, color: colors.textPrimary, fontSize: '0.875rem', marginBottom: '4px' }}>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    color: colors.textPrimary,
+                    fontSize: '0.875rem',
+                    marginBottom: '4px',
+                  }}
+                >
                   Fiscal
                 </div>
                 <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
@@ -221,7 +247,14 @@ export default function OnboardingPage() {
                   border: `1px solid ${colors.border}`,
                 }}
               >
-                <div style={{ fontWeight: 600, color: colors.textPrimary, fontSize: '0.875rem', marginBottom: '4px' }}>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    color: colors.textPrimary,
+                    fontSize: '0.875rem',
+                    marginBottom: '4px',
+                  }}
+                >
                   Inteligência
                 </div>
                 <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
@@ -322,7 +355,9 @@ export default function OnboardingPage() {
                 ]}
               />
 
-              <div style={{ display: 'flex', gap: `${spacing.sm}px`, marginTop: `${spacing.lg}px` }}>
+              <div
+                style={{ display: 'flex', gap: `${spacing.sm}px`, marginTop: `${spacing.lg}px` }}
+              >
                 <Button
                   type="button"
                   variant="secondary"
@@ -358,7 +393,14 @@ export default function OnboardingPage() {
               </p>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.md}px`, marginBottom: `${spacing.xl}px` }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: `${spacing.md}px`,
+                marginBottom: `${spacing.xl}px`,
+              }}
+            >
               <div
                 role="button"
                 tabIndex={0}
@@ -369,7 +411,8 @@ export default function OnboardingPage() {
                 style={{
                   padding: `${spacing.base}px`,
                   borderRadius: `${borderRadius.md}px`,
-                  backgroundColor: selectedMethod === 'explore' ? colors.accentSubtle : colors.surfaceElevated,
+                  backgroundColor:
+                    selectedMethod === 'explore' ? colors.accentSubtle : colors.surfaceElevated,
                   border: `1px solid ${selectedMethod === 'explore' ? colors.accent : colors.border}`,
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
@@ -378,7 +421,9 @@ export default function OnboardingPage() {
                 <div style={{ fontWeight: 600, color: colors.textPrimary, fontSize: '0.875rem' }}>
                   Explorar plataforma com carteira vazia
                 </div>
-                <div style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginTop: '2px' }}>
+                <div
+                  style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginTop: '2px' }}
+                >
                   Conheça o painel diário, mercado, fiscal e IA antes de cadastrar operações.
                 </div>
               </div>
@@ -393,7 +438,8 @@ export default function OnboardingPage() {
                 style={{
                   padding: `${spacing.base}px`,
                   borderRadius: `${borderRadius.md}px`,
-                  backgroundColor: selectedMethod === 'manual' ? colors.accentSubtle : colors.surfaceElevated,
+                  backgroundColor:
+                    selectedMethod === 'manual' ? colors.accentSubtle : colors.surfaceElevated,
                   border: `1px solid ${selectedMethod === 'manual' ? colors.accent : colors.border}`,
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
@@ -402,7 +448,9 @@ export default function OnboardingPage() {
                 <div style={{ fontWeight: 600, color: colors.textPrimary, fontSize: '0.875rem' }}>
                   Adicionar operações manualmente
                 </div>
-                <div style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginTop: '2px' }}>
+                <div
+                  style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginTop: '2px' }}
+                >
                   Cadastre contas e lance suas compras, vendas e proventos na aba Carteira.
                 </div>
               </div>
@@ -417,7 +465,10 @@ export default function OnboardingPage() {
                 style={{
                   padding: `${spacing.base}px`,
                   borderRadius: `${borderRadius.md}px`,
-                  backgroundColor: selectedMethod === 'import_later' ? colors.accentSubtle : colors.surfaceElevated,
+                  backgroundColor:
+                    selectedMethod === 'import_later'
+                      ? colors.accentSubtle
+                      : colors.surfaceElevated,
                   border: `1px solid ${selectedMethod === 'import_later' ? colors.accent : colors.border}`,
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
@@ -426,7 +477,9 @@ export default function OnboardingPage() {
                 <div style={{ fontWeight: 600, color: colors.textPrimary, fontSize: '0.875rem' }}>
                   Importar notas de corretagem depois
                 </div>
-                <div style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginTop: '2px' }}>
+                <div
+                  style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginTop: '2px' }}
+                >
                   A integração via Open Finance e importação de notas B3 estará disponível em breve.
                 </div>
               </div>

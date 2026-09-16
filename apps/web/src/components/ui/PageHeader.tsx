@@ -58,7 +58,11 @@ export function PageHeader({ title, subtitle, breadcrumb, action }: PageHeaderPr
           </p>
         )}
       </div>
-      {action && <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px` }}>{action}</div>}
+      {action && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px` }}>
+          {action}
+        </div>
+      )}
     </div>
   );
 }

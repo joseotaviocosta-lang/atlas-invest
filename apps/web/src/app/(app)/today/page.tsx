@@ -54,7 +54,14 @@ export default function TodayPage() {
           }}
         >
           <div>
-            <div style={{ fontWeight: 600, color: colors.textPrimary, fontSize: '0.9375rem', marginBottom: '2px' }}>
+            <div
+              style={{
+                fontWeight: 600,
+                color: colors.textPrimary,
+                fontSize: '0.9375rem',
+                marginBottom: '2px',
+              }}
+            >
               Configure sua primeira carteira
             </div>
             <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
@@ -86,12 +93,7 @@ export default function TodayPage() {
             subValue="Disponível com Portfolio Engine"
             isPlaceholder
           />
-          <StatCard
-            label="Variação Hoje"
-            value="—"
-            subValue="Sem dados de cotação"
-            isPlaceholder
-          />
+          <StatCard label="Variação Hoje" value="—" subValue="Sem dados de cotação" isPlaceholder />
           <StatCard
             label="Resultado Acumulado"
             value="—"

@@ -114,7 +114,9 @@ export default function PortfolioPage() {
     });
   };
 
-  const getBadgeVariant = (portType: PortfolioType): 'primary' | 'positive' | 'warning' | 'default' => {
+  const getBadgeVariant = (
+    portType: PortfolioType,
+  ): 'primary' | 'positive' | 'warning' | 'default' => {
     switch (portType) {
       case 'PERSONAL':
         return 'primary';
@@ -208,10 +210,23 @@ export default function PortfolioPage() {
                     }}
                   >
                     <div>
-                      <span style={{ fontSize: '0.75rem', color: colors.textSecondary, textTransform: 'uppercase' }}>
+                      <span
+                        style={{
+                          fontSize: '0.75rem',
+                          color: colors.textSecondary,
+                          textTransform: 'uppercase',
+                        }}
+                      >
                         Carteira Ativa
                       </span>
-                      <h2 style={{ margin: '2px 0 0 0', fontSize: '1.25rem', fontWeight: 700, color: colors.textPrimary }}>
+                      <h2
+                        style={{
+                          margin: '2px 0 0 0',
+                          fontSize: '1.25rem',
+                          fontWeight: 700,
+                          color: colors.textPrimary,
+                        }}
+                      >
                         {activePortfolio.name}
                       </h2>
                     </div>
@@ -231,11 +246,21 @@ export default function PortfolioPage() {
                     }}
                   >
                     <span>
-                      Moeda base: <strong style={{ color: colors.textPrimary }}>{activePortfolio.baseCurrency}</strong>
+                      Moeda base:{' '}
+                      <strong style={{ color: colors.textPrimary }}>
+                        {activePortfolio.baseCurrency}
+                      </strong>
                     </span>
                     <span>
                       Status:{' '}
-                      <strong style={{ color: activePortfolio.status === 'ACTIVE' ? colors.positive : colors.textMuted }}>
+                      <strong
+                        style={{
+                          color:
+                            activePortfolio.status === 'ACTIVE'
+                              ? colors.positive
+                              : colors.textMuted,
+                        }}
+                      >
                         {activePortfolio.status === 'ACTIVE' ? 'Ativa' : 'Arquivada'}
                       </strong>
                     </span>

@@ -3,7 +3,15 @@ import type { NextRequest } from 'next/server';
 import { REFRESH_COOKIE_NAME, LOGGED_IN_COOKIE_NAME } from './lib/auth-cookie';
 
 // Routes that require authentication
-const PROTECTED_PREFIXES = ['/today', '/portfolio', '/market', '/tax', '/ai', '/profile', '/onboarding'];
+const PROTECTED_PREFIXES = [
+  '/today',
+  '/portfolio',
+  '/market',
+  '/tax',
+  '/ai',
+  '/profile',
+  '/onboarding',
+];
 
 // Routes for public authentication only
 const AUTH_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password'];

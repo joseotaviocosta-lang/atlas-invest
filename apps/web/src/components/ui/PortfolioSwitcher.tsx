@@ -63,7 +63,14 @@ export function PortfolioSwitcher({
           outline: 'none',
         }}
       >
-        <span style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span
+          style={{
+            maxWidth: '160px',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
           {selected?.name || 'Selecionar Carteira'}
         </span>
         <span style={{ fontSize: '0.6875rem', color: colors.textMuted }}>▼</span>
@@ -123,7 +130,13 @@ export function PortfolioSwitcher({
           })}
 
           {onCreatePortfolio && (
-            <div style={{ borderTop: `1px solid ${colors.border}`, marginTop: '4px', paddingTop: '4px' }}>
+            <div
+              style={{
+                borderTop: `1px solid ${colors.border}`,
+                marginTop: '4px',
+                paddingTop: '4px',
+              }}
+            >
               <button
                 type="button"
                 onClick={() => {

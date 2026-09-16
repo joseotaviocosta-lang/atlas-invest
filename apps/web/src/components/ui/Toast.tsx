@@ -20,14 +20,17 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  const showToast = useCallback((message: string, variant: StatusVariant = 'info', title?: string) => {
-    const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, message, variant, title }]);
+  const showToast = useCallback(
+    (message: string, variant: StatusVariant = 'info', title?: string) => {
+      const id = Math.random().toString(36).substring(2, 9);
+      setToasts((prev) => [...prev, { id, message, variant, title }]);
 
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
-  }, []);
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 4000);
+    },
+    [],
+  );
 
   const getBorderColor = (variant: StatusVariant) => {
     switch (variant) {
@@ -81,7 +84,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 {toast.title}
               </span>
             )}
-            <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>{toast.message}</span>
+            <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+              {toast.message}
+            </span>
           </div>
         ))}
       </div>

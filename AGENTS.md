@@ -253,4 +253,3 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 6. **ACESSIBILIDADE E TESTES E2E EM NAVEGADOR REAL:**
    - Componentes devem obedecer aos padrões WAI-ARIA, suportar navegação por teclado e possuir alvos de toque mínimos de 44x44px.
    - O fluxo completo de usuário (Registro -> Onboarding -> Navegação canônica -> Logout) é validado em navegador real via **Playwright** (`pnpm test:web:e2e`) nos viewports Desktop (1440x900), Tablet (768x1024) e Mobile (390x844).
-

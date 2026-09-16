@@ -1,10 +1,26 @@
 import { test, expect } from '@playwright/test';
 
+interface E2EUser {
+  id: string;
+  name: string;
+  email: string;
+  locale: string;
+  timezone: string;
+  baseCurrency: string;
+}
+
+interface E2EPortfolio {
+  id: string;
+  name: string;
+  currency: string;
+  type: string;
+}
+
 test.describe('Product Shell & Canonical End-to-End Suite', () => {
   test.beforeEach(async ({ context, page }) => {
     // Intercept backend auth & portfolio APIs for deterministic browser testing
-    let currentUser: any = null;
-    const portfolios: any[] = [];
+    let currentUser: E2EUser | null = null;
+    const portfolios: E2EPortfolio[] = [];
 
     await page.route('**/api/auth/register', async (route) => {
       const body = JSON.parse(route.request().postData() || '{}');

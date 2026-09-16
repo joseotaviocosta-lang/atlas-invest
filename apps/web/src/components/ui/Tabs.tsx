@@ -79,7 +79,11 @@ export function Tabs({ tabs, activeTab, onTabChange }: BaseTabsProps) {
               padding: '0.625rem 1rem',
               fontSize: '0.875rem',
               fontWeight: isActive ? 600 : 500,
-              color: tab.disabled ? colors.disabledText : isActive ? colors.accent : colors.textSecondary,
+              color: tab.disabled
+                ? colors.disabledText
+                : isActive
+                  ? colors.accent
+                  : colors.textSecondary,
               backgroundColor: 'transparent',
               border: 'none',
               borderBottom: isActive ? `2px solid ${colors.accent}` : '2px solid transparent',

@@ -5,7 +5,16 @@ import { themeTokens } from '@atlas/ui';
 
 export interface BadgeProps {
   children: React.ReactNode;
-  variant?: 'primary' | 'positive' | 'success' | 'warning' | 'negative' | 'danger' | 'neutral' | 'default' | 'info';
+  variant?:
+    | 'primary'
+    | 'positive'
+    | 'success'
+    | 'warning'
+    | 'negative'
+    | 'danger'
+    | 'neutral'
+    | 'default'
+    | 'info';
   style?: React.CSSProperties;
 }
 

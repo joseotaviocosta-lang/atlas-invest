@@ -10,7 +10,13 @@ export interface DividerProps {
 
 export function Divider({ orientation = 'horizontal', spacingLevel = 'md' }: DividerProps) {
   const marginPx =
-    spacingLevel === 'none' ? 0 : spacingLevel === 'sm' ? spacing.sm : spacingLevel === 'lg' ? spacing.xl : spacing.base;
+    spacingLevel === 'none'
+      ? 0
+      : spacingLevel === 'sm'
+        ? spacing.sm
+        : spacingLevel === 'lg'
+          ? spacing.xl
+          : spacing.base;
 
   if (orientation === 'vertical') {
     return (

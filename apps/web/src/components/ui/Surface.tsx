@@ -8,7 +8,13 @@ export interface SurfaceProps extends React.HTMLAttributes<HTMLDivElement> {
   bordered?: boolean;
 }
 
-export function Surface({ level = 'base', bordered = true, children, style, ...props }: SurfaceProps) {
+export function Surface({
+  level = 'base',
+  bordered = true,
+  children,
+  style,
+  ...props
+}: SurfaceProps) {
   const getBg = () => {
     switch (level) {
       case 'elevated':

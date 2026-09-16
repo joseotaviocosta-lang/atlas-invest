@@ -17,12 +17,16 @@ export default function AIPage() {
 
   const handleSelectPrompt = (prompt: string) => {
     setInputQuery(prompt);
-    setFeedbackNotice('O assistente de IA estará disponível com modelos locais e seguros na Fase de IA Contextual.');
+    setFeedbackNotice(
+      'O assistente de IA estará disponível com modelos locais e seguros na Fase de IA Contextual.',
+    );
   };
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    setFeedbackNotice('O assistente de IA estará disponível com modelos locais e seguros na Fase de IA Contextual.');
+    setFeedbackNotice(
+      'O assistente de IA estará disponível com modelos locais e seguros na Fase de IA Contextual.',
+    );
   };
 
   return (
@@ -43,7 +47,9 @@ export default function AIPage() {
         }}
       >
         {/* Chat History / Placeholder Message */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.base}px`, flex: 1 }}>
+        <div
+          style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.base}px`, flex: 1 }}
+        >
           <div
             style={{
               display: 'flex',
@@ -73,13 +79,20 @@ export default function AIPage() {
               ✨
             </div>
             <div>
-              <div style={{ fontWeight: 600, fontSize: '0.875rem', color: colors.textPrimary, marginBottom: '4px' }}>
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: '0.875rem',
+                  color: colors.textPrimary,
+                  marginBottom: '4px',
+                }}
+              >
                 Atlas Copilot
               </div>
               <div style={{ fontSize: '0.8125rem', color: colors.textSecondary, lineHeight: 1.5 }}>
-                Olá! Sou o assistente contextual do Project Atlas. Quando ativado, responderei perguntas sobre
-                suas posições, tributação, eventos de custódia e relatórios de mercado com precisão e
-                privacidade integral dos seus dados.
+                Olá! Sou o assistente contextual do Project Atlas. Quando ativado, responderei
+                perguntas sobre suas posições, tributação, eventos de custódia e relatórios de
+                mercado com precisão e privacidade integral dos seus dados.
               </div>
             </div>
           </div>
@@ -102,23 +115,36 @@ export default function AIPage() {
         </div>
 
         {/* Suggested Prompts & Input Area */}
-        <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: `${spacing.base}px`, marginTop: `${spacing.base}px` }}>
+        <div
+          style={{
+            borderTop: `1px solid ${colors.border}`,
+            paddingTop: `${spacing.base}px`,
+            marginTop: `${spacing.base}px`,
+          }}
+        >
           <div style={{ marginBottom: `${spacing.sm}px` }}>
-            <span style={{ fontSize: '0.75rem', color: colors.textMuted, fontWeight: 500, marginBottom: '6px', display: 'block' }}>
+            <span
+              style={{
+                fontSize: '0.75rem',
+                color: colors.textMuted,
+                fontWeight: 500,
+                marginBottom: '6px',
+                display: 'block',
+              }}
+            >
               Sugestões de perguntas:
             </span>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: `${spacing.xs}px` }}>
               {SUGGESTED_PROMPTS.map((prompt) => (
-                <Chip
-                  key={prompt}
-                  label={prompt}
-                  onClick={() => handleSelectPrompt(prompt)}
-                />
+                <Chip key={prompt} label={prompt} onClick={() => handleSelectPrompt(prompt)} />
               ))}
             </div>
           </div>
 
-          <form onSubmit={handleSend} style={{ display: 'flex', gap: `${spacing.sm}px`, alignItems: 'flex-end' }}>
+          <form
+            onSubmit={handleSend}
+            style={{ display: 'flex', gap: `${spacing.sm}px`, alignItems: 'flex-end' }}
+          >
             <div style={{ flex: 1 }}>
               <Input
                 placeholder="Pergunte sobre sua carteira, proventos ou tributação..."
@@ -131,7 +157,14 @@ export default function AIPage() {
               Enviar
             </Button>
           </form>
-          <div style={{ fontSize: '0.6875rem', color: colors.textMuted, marginTop: '6px', textAlign: 'center' }}>
+          <div
+            style={{
+              fontSize: '0.6875rem',
+              color: colors.textMuted,
+              marginTop: '6px',
+              textAlign: 'center',
+            }}
+          >
             A conexão com LLM seguro e Portfolio Engine será disponibilizada nas fases posteriores.
           </div>
         </div>
