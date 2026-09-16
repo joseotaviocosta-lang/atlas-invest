@@ -13,12 +13,12 @@ Na Fase 1C, faz-se necessário formalizar a apuração matemática dos resultado
 ## Decision
 
 1. **Fórmulas Canônicas de Alienação Econômica**:
-   - **Receita Bruta (Gross Proceeds)**:
+   - **Valor Bruto da Venda (Gross Proceeds)**:
      $$\text{grossProceeds} = \text{sellQuantity} \times \text{unitPrice}$$
    - **Custos Explícitos de Alienação (Selling Costs)**:
      $$\text{sellingCosts} = \text{fees} + \text{taxes}$$
-     Encargos intrínsecos à venda (corretagem, taxas B3) reduzem o valor líquido apurado. Devem ser expressos na mesma moeda da transação e não podem ser negativos.
-   - **Receita Líquida (Net Proceeds)**:
+     Encargos intrínsecos à venda (corretagem, taxas B3) reduzem o valor líquido apurado. Devem ser expressos na mesma moeda da transação e não podem ser negativos. Registra-se que `SELL.taxes` representa única e exclusivamente encargos contratuais atribuídos à transação de alienação pelo intermediário/custodiante, não se confundindo com apuração fiscal, IRRF, DARF ou obrigação tributária.
+   - **Valor Líquido da Venda (Net Proceeds)**:
      $$\text{netProceeds} = \text{grossProceeds} - \text{sellingCosts}$$
    - **Custo Carregado Removido (Cost Basis Removed)**:
      $$\text{costBasisRemoved} = \text{averageCostBefore} \times \text{sellQuantity}$$
