@@ -3,6 +3,7 @@ import React from 'react';
 import { QueryProvider } from '@/providers/query-provider';
 import { AuthProvider } from '@/providers/auth-provider';
 import { ToastProvider } from '@/components/ui/Toast';
+import { colors } from '@atlas/ui';
 
 export const metadata: Metadata = {
   title: 'Project Atlas',
@@ -29,8 +30,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             margin: 0;
             padding: 0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background-color: #0B0E14;
-            color: #F3F4F6;
+            background-color: ${colors.background};
+            color: ${colors.textPrimary};
             min-height: 100vh;
           }
           a {

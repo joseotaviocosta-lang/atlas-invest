@@ -40,7 +40,7 @@ export function Chip({
 
   const getTextColor = () => {
     if (disabled) return colors.disabledText;
-    if (selected) return '#FFFFFF';
+    if (selected) return colors.textPrimary;
     switch (variant) {
       case 'positive':
         return colors.positive;

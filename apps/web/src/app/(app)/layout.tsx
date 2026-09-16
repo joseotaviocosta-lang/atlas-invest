@@ -12,6 +12,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+  const status = useAuthStore((state) => state.status);
+  const isInitialized = useAuthStore((state) => state.isInitialized);
+
+  React.useEffect(() => {
+    if (isInitialized && status === 'unauthenticated') {
+      router.replace('/login');
+    }
+  }, [isInitialized, status, router]);
 
   const handleLogout = async () => {
     await logout();
@@ -299,7 +307,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       <style jsx global>{`
-        @media (max-width: 768px) {
+        @media (max-width: 767px) {
           .desktop-sidebar {
             display: none !important;
           }

@@ -238,7 +238,7 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
      - `Hoje` (`/today`): Resumo diário, boas-vindas contextuais e indicadores patrimoniais de alto nível.
      - `Carteira` (`/portfolio`): Alternador de carteiras (`PortfolioSwitcher`), abas (Visão Geral, Ativos, Rentabilidade, Histórico, Alocação, Operações) e modal de criação de carteira.
      - `Mercado` (`/market`): Radar de oportunidades, watchlist, calendário de eventos e notícias curadas.
-     - `Fiscal` (`/tax`): Apuração tributária, limite de isenção de R$ 20k em ações, DARFs, prejuízos a compensar e suporte ao IRPF anual.
+     - `Fiscal` (`/tax`): Gestão e acompanhamento tributário, DARFs, prejuízos a compensar e relatórios de IRPF (integrados ao futuro Tax Engine).
      - `IA` (`/ai`): Assistente contextual financeiro com chips de sugestões.
    - A área `Perfil` (`/profile`) concentra preferências globais, dados cadastrais, auditoria de segurança da sessão e logout, sem descaracterizar a navegação primária das 5 abas.
 3. **FLUXO DE ONBOARDING NÃO-BLOQUEANTE:**

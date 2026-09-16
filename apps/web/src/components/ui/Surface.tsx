@@ -20,7 +20,7 @@ export function Surface({
       case 'elevated':
         return colors.surfaceElevated;
       case 'sunken':
-        return '#0E121A';
+        return colors.background;
       case 'base':
       default:
         return colors.surface;

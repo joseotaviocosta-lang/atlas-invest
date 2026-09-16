@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { themeTokens } from '@atlas/ui';
+import { colors, borderRadius } from '@atlas/ui';
 
 export interface BadgeProps {
   children: React.ReactNode;
@@ -22,21 +22,21 @@ export function Badge({ children, variant = 'neutral', style }: BadgeProps) {
   const getStyles = () => {
     switch (variant) {
       case 'primary':
-        return { bg: 'rgba(10, 132, 255, 0.15)', color: themeTokens.colors.primary };
+        return { bg: colors.accentSubtle, color: colors.accent };
       case 'positive':
       case 'success':
-        return { bg: 'rgba(16, 185, 129, 0.15)', color: themeTokens.colors.success };
+        return { bg: colors.positiveSubtle, color: colors.positive };
       case 'warning':
-        return { bg: 'rgba(245, 158, 11, 0.15)', color: themeTokens.colors.warning };
+        return { bg: colors.warningSubtle, color: colors.warning };
       case 'negative':
       case 'danger':
-        return { bg: 'rgba(239, 68, 68, 0.15)', color: themeTokens.colors.danger };
+        return { bg: colors.negativeSubtle, color: colors.negative };
       case 'info':
-        return { bg: 'rgba(56, 189, 248, 0.15)', color: '#38BDF8' };
+        return { bg: colors.infoSubtle, color: colors.info };
       case 'neutral':
       case 'default':
       default:
-        return { bg: '#1F2937', color: themeTokens.colors.textMuted };
+        return { bg: colors.surfaceElevated, color: colors.textSecondary };
     }
   };
 
@@ -48,7 +48,7 @@ export function Badge({ children, variant = 'neutral', style }: BadgeProps) {
         display: 'inline-flex',
         alignItems: 'center',
         padding: '0.2rem 0.6rem',
-        borderRadius: `${themeTokens.borderRadius.full}px`,
+        borderRadius: `${borderRadius.pill}px`,
         fontSize: '0.75rem',
         fontWeight: 600,
         backgroundColor: bg,

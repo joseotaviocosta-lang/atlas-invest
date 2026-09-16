@@ -36,27 +36,27 @@ export default function TaxPage() {
           }}
         >
           <StatCard
-            label="DARF Estimado"
+            label="Resumo Fiscal"
             value="—"
-            subValue="Aguardando primeiras operações"
+            subValue="Disponível após ativação do motor fiscal"
             isPlaceholder
           />
           <StatCard
-            label="Vendas no Mês (Ações)"
+            label="Apuração do Mês"
             value="—"
-            subValue="Limite de isenção: R$ 20.000"
+            subValue="Disponível após ativação do motor fiscal"
             isPlaceholder
           />
           <StatCard
             label="Prejuízos a Compensar"
             value="—"
-            subValue="Histórico de compensação"
+            subValue="Disponível após ativação do motor fiscal"
             isPlaceholder
           />
           <StatCard
-            label="Imposto Retido na Fonte"
+            label="Retenções na Fonte"
             value="—"
-            subValue="Dedo-duro B3"
+            subValue="Disponível após ativação do motor fiscal"
             isPlaceholder
           />
         </div>
@@ -67,8 +67,8 @@ export default function TaxPage() {
       {activeTab === 'summary' && (
         <Card style={{ padding: `${spacing.xl}px` }}>
           <EmptyState
-            title="O resumo fiscal aparecerá após suas primeiras operações"
-            description="O motor fiscal calculará automaticamente seus lucros tributáveis, deduções, compensação de prejuízos e emissão de guias de recolhimento."
+            title="Resumo fiscal em preparação"
+            description="O resumo fiscal consolidado estará disponível após a ativação do motor fiscal."
           />
         </Card>
       )}
@@ -77,7 +77,7 @@ export default function TaxPage() {
         <Card style={{ padding: `${spacing.xl}px` }}>
           <EmptyState
             title="Apuração do mês atual em preparação"
-            description="Acompanhe vendas comuns (15%), Day Trade (20%) e FIIs (20%) com controle em tempo real dos limites legais."
+            description="Os cálculos de apuração mensal estarão disponíveis após a ativação do motor fiscal."
           />
         </Card>
       )}
@@ -85,8 +85,8 @@ export default function TaxPage() {
       {activeTab === 'darf' && (
         <Card style={{ padding: `${spacing.xl}px` }}>
           <EmptyState
-            title="Nenhum DARF a recolher"
-            description="Quando houver operações com ganho líquido tributável acima da isenção, a guia de pagamento com código de barras será gerada aqui."
+            title="Emissão de DARF em preparação"
+            description="A apuração e emissão de guias de recolhimento estarão disponíveis após a ativação do motor fiscal."
           />
         </Card>
       )}
@@ -94,8 +94,8 @@ export default function TaxPage() {
       {activeTab === 'losses' && (
         <Card style={{ padding: `${spacing.xl}px` }}>
           <EmptyState
-            title="Sem prejuízos cadastrados para compensação"
-            description="Prejuízos passados de Swing Trade, Day Trade e Fundos Imobiliários poderão ser abatidos de lucros futuros na mesma modalidade."
+            title="Compensação de prejuízos em preparação"
+            description="O controle e histórico de prejuízos a compensar estarão disponíveis após a ativação do motor fiscal."
           />
         </Card>
       )}
@@ -103,8 +103,8 @@ export default function TaxPage() {
       {activeTab === 'irpf' && (
         <Card style={{ padding: `${spacing.xl}px` }}>
           <EmptyState
-            title="Informe de Rendimentos e Bens e Direitos"
-            description="Relatório estruturado pronto para preenchimento do programa da Receita Federal (IRPF) será disponibilizado no encerramento do exercício."
+            title="Declaração Anual IRPF em preparação"
+            description="Os relatórios para a Declaração de Ajuste Anual estarão disponíveis após a ativação do motor fiscal."
           />
         </Card>
       )}

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { themeTokens } from '@atlas/ui';
+import { colors, borderRadius as radiusTokens } from '@atlas/ui';
 
 export interface SkeletonProps {
   width?: string | number;
@@ -13,7 +13,7 @@ export interface SkeletonProps {
 export function Skeleton({
   width = '100%',
   height = '1rem',
-  borderRadius = themeTokens.borderRadius.md,
+  borderRadius = radiusTokens.md,
   style,
 }: SkeletonProps) {
   return (
@@ -22,7 +22,7 @@ export function Skeleton({
         width,
         height,
         borderRadius: `${borderRadius}px`,
-        backgroundColor: '#1E2533',
+        backgroundColor: colors.surfaceElevated,
         animation: 'pulse 1.5s ease-in-out infinite',
         ...style,
       }}

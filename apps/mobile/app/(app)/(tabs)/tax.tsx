@@ -19,11 +19,9 @@ export default function TaxScreen() {
       />
       <View style={styles.content}>
         <Card>
-          <Text style={styles.cardTitle}>Modulo Tributario</Text>
+          <Text style={styles.cardTitle}>Resumo Fiscal</Text>
           <Text style={styles.cardText}>
-            A apuracao automatica de ganho de capital, controle do limite de R$ 20.000 em operacoes
-            comuns, compensacao de prejuizos acumulados e emissao de DARF serao integrados no Motor
-            Fiscal.
+            A apuração e gestão tributária estarão disponíveis após a ativação do motor fiscal.
           </Text>
         </Card>
       </View>

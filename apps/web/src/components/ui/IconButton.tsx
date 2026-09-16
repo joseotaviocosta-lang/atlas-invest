@@ -41,7 +41,7 @@ export function IconButton({
     switch (variant) {
       case 'primary':
       case 'danger':
-        return '#FFFFFF';
+        return colors.textPrimary;
       case 'secondary':
       case 'ghost':
       default:

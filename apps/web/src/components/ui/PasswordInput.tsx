@@ -37,7 +37,7 @@ export function PasswordInput({ label, error, fullWidth = true, style, id, ...pr
           style={{
             padding: '0.625rem 2.5rem 0.625rem 0.875rem',
             fontSize: '0.875rem',
-            backgroundColor: '#11161F',
+            backgroundColor: colors.surfaceElevated,
             color: colors.textPrimary,
             border: `1px solid ${error ? colors.negative : colors.border}`,
             borderRadius: `${borderRadius.md}px`,

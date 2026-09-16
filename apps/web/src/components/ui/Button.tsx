@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { themeTokens } from '@atlas/ui';
+import { colors, borderRadius } from '@atlas/ui';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'outline' | 'danger';
@@ -21,34 +21,34 @@ export function Button({
   ...props
 }: ButtonProps) {
   const getBackgroundColor = () => {
-    if (disabled || isLoading) return '#1F2937';
+    if (disabled || isLoading) return colors.surfaceElevated;
     switch (variant) {
       case 'primary':
-        return themeTokens.colors.primary;
+        return colors.accent;
       case 'secondary':
-        return '#1F2937';
+        return colors.surfaceElevated;
       case 'outline':
         return 'transparent';
       case 'danger':
-        return themeTokens.colors.danger;
+        return colors.negative;
       default:
-        return themeTokens.colors.primary;
+        return colors.accent;
     }
   };
 
   const getTextColor = () => {
-    if (disabled || isLoading) return '#9CA3AF';
+    if (disabled || isLoading) return colors.textMuted;
     switch (variant) {
       case 'outline':
-        return themeTokens.colors.text;
+        return colors.textPrimary;
       default:
-        return '#FFFFFF';
+        return colors.textPrimary;
     }
   };
 
   const getBorder = () => {
     if (variant === 'outline') {
-      return `1px solid ${themeTokens.colors.border}`;
+      return `1px solid ${colors.border}`;
     }
     return 'none';
   };
@@ -86,7 +86,7 @@ export function Button({
         justifyContent: 'center',
         gap: '0.5rem',
         padding: getPadding(),
-        borderRadius: `${themeTokens.borderRadius.md}px`,
+        borderRadius: `${borderRadius.md}px`,
         fontSize: getFontSize(),
         fontWeight: 600,
         backgroundColor: getBackgroundColor(),
@@ -107,9 +107,9 @@ export function Button({
               display: 'inline-block',
               width: '14px',
               height: '14px',
-              border: '2px solid rgba(255,255,255,0.3)',
+              border: `2px solid ${colors.border}`,
               borderRadius: '50%',
-              borderTopColor: '#FFFFFF',
+              borderTopColor: colors.textPrimary,
               animation: 'spin 0.6s linear infinite',
             }}
           />

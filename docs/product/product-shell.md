@@ -51,14 +51,14 @@ A navegação primária do produto é composta por 5 áreas canônicas, compleme
 
 ### 2.4. Fiscal (`/tax`)
 
-- **Propósito:** Apuração tributária rigorosa e suporte à declaração de imposto de renda.
+- **Propósito:** Gestão e acompanhamento da conformidade tributária do investidor.
 - **Componentes:**
   - Abas:
-    1. **Resumo:** Alertas fiscais do ano-calendário.
-    2. **Mês Atual:** Vendas realizadas no mês e apuração do limite de isenção de R$ 20.000 (Ações).
-    3. **DARF:** Guias pendentes ou pagas com códigos oficiais da Receita Federal (ex: 6015).
-    4. **Prejuízos a Compensar:** Saldo acumulado por classe de ativo (Ações, FIIs, Cripto).
-    5. **IRPF Anual:** Relatório consolidado para a Declaração de Ajuste Anual da Receita Federal.
+    1. **Resumo:** Resumo fiscal consolidado (disponível após ativação do motor fiscal).
+    2. **Mês Atual:** Estrutura de apuração mensal.
+    3. **DARF:** Acompanhamento e emissão de guias de recolhimento.
+    4. **Prejuízos a Compensar:** Histórico e controle de prejuízos acumulados.
+    5. **IRPF Anual:** Relatórios para a Declaração de Ajuste Anual.
 
 ### 2.5. IA Contextual (`/ai`)
 
