@@ -297,7 +297,7 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 4. **CUSTO DESCONHECIDO NUNCA É ZERO:**
    - Se uma posição possui quantidade conhecida mas custo de aquisição indeterminado (ex: `TRANSFER_IN` sem nota ou custo de aquisição explícito), o status é `costBasisStatus: 'INCOMPLETE'` com `totalCost = undefined` e `averageCost = undefined`.
    - Custo desconhecido **NUNCA** deve ser representado como zero (ADR-043).
-5. **CUSTO PATRIMONIAL NÃO É CUSTO FISCAL:**
-   - O estoque de custo apurado no Portfolio Engine reflete o custo contábil/patrimonial da carteira. Regras tributárias (alíquotas, isenções, DARF) pertencem exclusivamente ao futuro Tax Engine.
-6. **ARREDONDAMENTO DE INTERFACE NUNCA ALTERA VALORES CANÔNICOS:**
-   - Cálculos e acumulações no motor mantêm precisão total arbitrária (40 dígitos em `Decimal.js`). Arredondamentos visuais para 2 casas decimais ocorrem estritamente na camada de exibição (`@atlas/ui`).
+5. **PORTFOLIO COST BASIS ≠ TAX BASIS:**
+   - O estoque de custo apurado no Portfolio Engine reflete exclusivamente a base de custo patrimonial carregada (`portfolio cost basis`). Esta NÃO é a base fiscal tributária (`tax basis`). Regras fiscais (alíquotas, isenções, DARF, compensação de prejuízos, day-trade) pertencem exclusivamente ao futuro Tax Engine.
+6. **PRECISÃO DECIMAL OPERACIONAL (OPERATIONAL DECIMAL PRECISION):**
+   - Cálculos e acumulações no motor operam com contexto decimal de 40 dígitos (`DecimalValue` / `Decimal.js`) com arredondamento `ROUND_HALF_UP`. Registra-se expressamente que 40 dígitos constituem precisão decimal operacional de alta fidelidade para mitigar erros cumulativos de ponto flutuante, não precisão matemática infinita. Arredondamentos visuais para 2 casas decimais ocorrem estritamente na camada de exibição (`@atlas/ui`).
