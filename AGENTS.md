@@ -274,8 +274,8 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - `state.assets.size` reflete estritamente ativos com custódia positiva (> 0). O encerramento da posição é auditado pelo histórico de transações aplicadas.
 6. **DISPATCHER EXAUSTIVO E POLÍTICA DE DIFERIMENTO (ADR-038):**
    - Todos os 16 tipos de transação (`TRANSACTION_TYPES`) são exaustivamente tratados com verificação `never` em tempo de compilação.
-   - Tipos de quantidade (`BUY`, `SELL`, `TRANSFER_IN`, `TRANSFER_OUT`) são computados em `appliedTransactions`.
-   - Os demais 12 tipos não são descartados: são registrados em `deferredEvents` com justificativa explícita.
+   - 8 tipos canônicos (`BUY`, `SELL`, `TRANSFER_IN`, `TRANSFER_OUT`, `SPLIT`, `REVERSE_SPLIT`, `BONUS`, `AMORTIZATION`) são computados em `appliedTransactions`.
+   - Os 8 tipos restantes (`DIVIDEND`, `JCP`, `FII_INCOME`, `SUBSCRIPTION`, `DEPOSIT`, `WITHDRAWAL`, `FEE`, `TAX`) não são descartados: são registrados em `deferredEvents` com justificativa explícita.
    - Satisfaz sempre: `totalProcessedCount === appliedTransactions.length + deferredEvents.length`.
 7. **IMUTABILIDADE ESTRITA DE ENTRADA E SAÍDA:**
    - O array de transações fornecido na entrada nunca é alterado ou ordenado in-place.
@@ -306,8 +306,9 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 
 ## 13. Regras de Realização de Vendas e Ganho/Prejuízo Econômico (Fase 1C)
 
-1. **RESULTADO REALIZADO É RECEITA LÍQUIDA MENOS CUSTO REMOVIDO:**
+1. **RESULTADO REALIZADO É VALOR LÍQUIDO DA VENDA MENOS CUSTO REMOVIDO:**
    - O resultado de uma venda (`RealizedDisposal`) é estritamente: `realizedGainLoss = netProceeds - costBasisRemoved`, onde `netProceeds = (quantity * unitPrice) - sellingCosts`.
+   - `sellingCosts = fees + taxes`, onde `SELL.taxes` representa única e exclusivamente encargos contratuais/emolumentos atribuídos à transação de venda pelo custodiante/corretor (não se confunde com IR, IRRF, DARF ou tax liability).
 2. **PREÇO DE VENDA NUNCA ALTERA O PREÇO MÉDIO REMANESCENTE:**
    - Vendas parciais deduzem o custo proporcionalmente pelo preço médio anterior. O preço de venda nunca altera a base unitária das cotas que permanecem em carteira (ADR-041, ADR-044).
 3. **TRANSFER_OUT NÃO É ALIENAÇÃO ECONÔMICA:**
@@ -319,3 +320,31 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 6. **SEGURANÇA DE MOEDA E PRECISÃO DECIMAL:**
    - Vendas e encargos devem ser expressos na moeda da posição. Sumarizações no portfólio são agregadas por moeda (`Map<Currency, RealizedSummary>`), sem conversão cambial fictícia.
    - Retorno consolidado é `totalRealizedGainLoss / totalCostBasisRemoved * 100`, **NUNCA** média de retornos percentuais (ADR-045).
+
+---
+
+## 14. Regras de Eventos Corporativos / Ações Societárias (Fase 1D)
+
+1. **SPLIT E REVERSE_SPLIT PRESERVAM CUSTO TOTAL CARREGADO (INVARIANTE 1):**
+   - Em desdobramentos (`SPLIT`) e grupamentos (`REVERSE_SPLIT`), o custo total acumulado não se altera: `totalCost_after = totalCost_before` (ADR-048).
+   - O preço médio unitário é recalculado como `totalCost / quantity_after`.
+   - Sobras fracionárias resultantes de grupamentos são preservadas com precisão operacional de 40 dígitos (`Quantity`), sem truncamento arbitrário para inteiros.
+   - Rejeitam fator $\le 0$ ou fator $= 1$ com `InvalidCorporateActionFactorError`.
+2. **BONIFICAÇÃO COM CUSTO ATRIBUÍDO vs CUSTO INCOMPLETO (ADR-049):**
+   - Novas ações somam-se à custódia: `quantity_after = quantity_before + bonusQuantity`.
+   - Se `assignedCost` for fornecido: `totalCost_after = totalCost_before + assignedCost` e status permanece `KNOWN`.
+   - Se `assignedCost` for ausente/indefinido: é **TERMINANTEMENTE PROIBIDO** assumir custo zero. A posição transiciona para `costBasisStatus: 'INCOMPLETE'`, com `totalCost = undefined` e `averageCost = undefined`.
+3. **AMORTIZAÇÃO DEDUZ CUSTO CARREGADO COM LIMITE DE EXAUSTÃO (ADR-050):**
+   - A amortização deduz o custo contábil: `totalCost_after = totalCost_before - amortizationAmount`, mantendo quantidade idêntica.
+   - O valor amortizado não pode exceder o custo carregado (`amortizationAmount <= totalCost_before`), disparando `AmortizationExceedsCostError` em caso de excesso.
+   - Se o custo atingir exatamente zero, `totalCost = 0` e `averageCost = 0` com status `KNOWN`. Custo zero conhecido é ontologicamente distinto de custo ausente (`INCOMPLETE`).
+   - Amortizar posição com custo `INCOMPLETE` dispara compulsoriamente `IncompleteAmortizationCostError`.
+4. **EXIGÊNCIA DE POSIÇÃO PRÉVIA ATIVA:**
+   - Eventos corporativos exigem posição existente com quantidade estritamente positiva (`quantity > 0`). Tentar aplicar evento corporativo em ativo inexistente ou zerado dispara `EmptyPositionCorporateActionError`.
+5. **EVENTOS CORPORATIVOS NUNCA EMITEM REALIZED DISPOSALS:**
+   - `SPLIT`, `REVERSE_SPLIT`, `BONUS` e `AMORTIZATION` **nunca** configuram alienação e não emitem `RealizedDisposal` (contagem de descarte permanece inalterada).
+6. **TRILHA DE AUDITORIA FORMAL (AppliedCorporateAction):**
+   - Cada evento aplicado gera um registro imutável em `AccountState.appliedCorporateActions` e `PortfolioState.appliedCorporateActions` com os valores de quantidade e custo antes e depois do evento.
+7. **FRONTEIRA TRIBUTÁRIA E PADRONIZAÇÃO TERMINOLÓGICA (ADR-051):**
+   - Eventos corporativos refletem contabilidade patrimonial econômica interna. O motor não apura obrigações fiscais ou tributação exclusiva de leilões de frações.
+   - O termo "Proventos" é reservado para rendimentos (`DIVIDEND`, `JCP`, `FII_INCOME`). Em alienações (`SELL`), os valores resultantes denominam-se rigorosamente "Valor Bruto/Líquido da Venda".

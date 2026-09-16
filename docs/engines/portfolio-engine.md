@@ -29,14 +29,18 @@ A consistência de um motor financeiro depende criticamente da estabilidade e de
 
 ## 3. Semântica de Quantidade e Transações Suportadas
 
-Na Fase 1A, o motor concentra-se estritamente na reconstituição de **quantidades de custódia**:
+Com a conclusão das Fases 1A, 1B, 1C e 1D, o motor processa 8 tipos canônicos de transações aplicadas:
 
-| Tipo de Transação | Efeito na Quantidade | Destino               |
-| :---------------- | :------------------- | :-------------------- |
-| `BUY`             | Acréscimo (+qty)     | `appliedTransactions` |
-| `SELL`            | Dedução (-qty)       | `appliedTransactions` |
-| `TRANSFER_IN`     | Acréscimo (+qty)     | `appliedTransactions` |
-| `TRANSFER_OUT`    | Dedução (-qty)       | `appliedTransactions` |
+| Tipo de Transação | Efeito Patrimonial / Custódia            | Destino               |
+| :---------------- | :--------------------------------------- | :-------------------- |
+| `BUY`             | Acréscimo de quantidade e custo          | `appliedTransactions` |
+| `SELL`            | Dedução de quantidade e custo realizado  | `appliedTransactions` |
+| `TRANSFER_IN`     | Acréscimo de quantidade                  | `appliedTransactions` |
+| `TRANSFER_OUT`    | Dedução de quantidade                    | `appliedTransactions` |
+| `SPLIT`           | Multiplicação de quantidade (custo fixo) | `appliedTransactions` |
+| `REVERSE_SPLIT`   | Divisão de quantidade (custo fixo)       | `appliedTransactions` |
+| `BONUS`           | Acréscimo de quantidade bonificada       | `appliedTransactions` |
+| `AMORTIZATION`    | Redução de custo (quantidade fixa)       | `appliedTransactions` |
 
 ### Invariante Long-Only (Sem Posições Vendidas a Descoberto)
 
@@ -61,13 +65,16 @@ Quando a quantidade de um ativo é integralmente liquidada (`quantity.isZero()`)
 
 ## 4. Política de Transações Diferidas (ADR-038)
 
-O modelo de domínio possui 16 tipos de transação. Na Fase 1A, operações que envolvem precificação média, desdobramentos societários ou fluxo de caixa puro são formalmente diferidas:
+O modelo de domínio possui 16 tipos de transação. Na Fase 1D, 8 tipos são aplicados e 8 tipos permanecem formalmente diferidos:
 
-- **Proventos**: `DIVIDEND`, `JCP`, `FII_INCOME` (Diferidos para Fase 1B/1D)
-- **Ações Societárias**: `SPLIT`, `REVERSE_SPLIT`, `BONUS`, `SUBSCRIPTION`, `AMORTIZATION` (Diferidos para Fase 1C)
-- **Caixa & Encargos**: `DEPOSIT`, `WITHDRAWAL`, `FEE`, `TAX` (Diferidos para Fase 1D/1E)
+- **Proventos Periódicos**: `DIVIDEND`, `JCP`, `FII_INCOME` (Diferidos para Fase 1E)
+- **Subscrição**: `SUBSCRIPTION` (Diferido para Fase 1F)
+- **Caixa & Encargos Isolados**: `DEPOSIT`, `WITHDRAWAL`, `FEE`, `TAX` (Diferidos para Fase 1G)
 
 **Zero Silent Drops**: Toda transação diferida é registrada no array `deferredEvents` de `ReplayResult` com justificativa explícita e metadados, satisfazendo a invariante:
+
+$$\text{totalProcessed} = \text{appliedCount} + \text{deferredCount}$$
+
 $$\text{totalProcessedCount} = \text{appliedTransactions.length} + \text{deferredEvents.length}$$
 
 ---
@@ -176,10 +183,11 @@ $$\text{realizedReturnPercentage} = \frac{\text{realizedGainLoss}}{\text{costBas
 
 - **Sinal do Retorno**: Lucros resultam em ganho positivo; prejuízos resultam em ganho negativo; break-even resulta em ganho zero.
 - **Validações**: Exige `unitPrice > 0` (`InvalidSellPriceError`) e encargos não-negativos (`InvalidSellingCostError`). Rejeita moedas conflitantes com `CurrencyMismatchError`.
+- **Semântica de `SELL.taxes`**: Representa estritamente encargos contratuais atribuídos à transação de venda na nota de corretagem (ex: emolumentos, taxas de liquidação B3). Não expressa nem antecipa apuração de imposto de renda, IRRF, DARF ou obrigação tributária.
 
 ### 9.2. Agregação e Proibição de Média de Retornos
 
-- Os totais de receita e ganho realizado em cada moeda são obtidos pela soma estrita dos eventos da respectiva moeda (ADR-045):
+- Os totais de valor bruto da venda e ganho realizado em cada moeda são obtidos pela soma estrita dos eventos da respectiva moeda (ADR-045):
   $$\text{portfolioRealizedGainLoss} = \sum \text{accountRealizedGainLoss}$$
 - **Proibição de Média de Retornos**: O retorno percentual consolidado **nunca** é calculado como a média simples dos retornos das contas ou vendas individuais. Utiliza-se exclusivamente a razão entre o ganho líquido total e o custo total removido:
   $$\text{portfolioRealizedReturnPercentage} = \frac{\text{portfolioRealizedGainLoss}}{\text{portfolioCostBasisRemoved}} \times 100$$
@@ -189,7 +197,7 @@ $$\text{realizedReturnPercentage} = \frac{\text{realizedGainLoss}}{\text{costBas
 
 - Quando uma posição possui `costBasisStatus: 'INCOMPLETE'` e cotas são vendidas:
   - A quantidade é deduzida normalmente da custódia.
-  - A receita (`grossProceeds`, `netProceeds`) é apurada com base no preço de venda.
+  - Os valores de venda (`grossProceeds`, `netProceeds`) são apurados com exatidão com base no preço negociado e custos explícitos.
   - `costBasisRemoved`, `realizedGainLoss` e `realizedReturnPercentage` permanecem `undefined`.
   - O evento e os resumos da conta e do portfólio são marcados como `status: 'INCOMPLETE'` (ADR-046).
   - **Zero Custo é Proibido**: Custo desconhecido nunca é tratado como zero para inventar lucros artificiais.
@@ -204,3 +212,55 @@ $$\text{realizedReturnPercentage} = \frac{\text{realizedGainLoss}}{\text{costBas
 
 - O `PortfolioReplayEngine` apura exclusivamente o **resultado econômico** da carteira (ADR-047).
 - O motor **não** calcula imposto de renda, DARF, isenção de R$ 20.000, segregação de day trade ou compensação de prejuízos fiscais. O futuro `Tax Engine` consumirá os eventos de alienação e aplicará autonomamente a legislação fiscal pertinente.
+
+---
+
+## 10. Eventos Corporativos (Corporate Actions)
+
+Na Fase 1D, o `PortfolioReplayEngine` incorpora suporte determinístico para 4 eventos societários canônicos: `SPLIT`, `REVERSE_SPLIT`, `BONUS` e `AMORTIZATION`.
+
+### 10.1. Desdobramento (`SPLIT`) — ADR-048
+
+- **Regra**: Multiplica a quantidade pelo fator; preserva integralmente o custo carregado; recalcula o preço médio unitário:
+  $$\text{quantity}_{after} = \text{quantity}_{before} \times \text{factor}$$
+  $$\text{totalCost}_{after} = \text{totalCost}_{before}$$
+  $$\text{averageCost}_{after} = \frac{\text{totalCost}_{after}}{\text{quantity}_{after}}$$
+- **Validações**: $\text{factor} > 0 \land \text{factor} \neq 1$. Rejeita posições vazias com `EmptyPositionCorporateActionError`.
+
+### 10.2. Grupamento (`REVERSE_SPLIT`) — ADR-048
+
+- **Regra**: Divide a quantidade pelo fator; preserva integralmente o custo carregado; recalcula o preço médio unitário:
+  $$\text{quantity}_{after} = \frac{\text{quantity}_{before}}{\text{factor}}$$
+  $$\text{totalCost}_{after} = \text{totalCost}_{before}$$
+  $$\text{averageCost}_{after} = \frac{\text{totalCost}_{after}}{\text{quantity}_{after}}$$
+- **Precisão de Sobras Fracionárias**: Frações de cotas/ações são preservadas com precisão exata (40 dígitos decimais) e não sofrem truncamento arbitrário para inteiros.
+- **Validações**: $\text{factor} > 0 \land \text{factor} \neq 1$. Rejeita posições vazias com `EmptyPositionCorporateActionError`.
+
+### 10.3. Bonificação (`BONUS`) — ADR-049
+
+- **Regra**: Acrescenta as novas cotas bonificadas à custódia:
+  $$\text{quantity}_{after} = \text{quantity}_{before} + \text{bonusQuantity}$$
+- **Com Custo Atribuído (`assignedCost` informado)**:
+  $$\text{totalCost}_{after} = \text{totalCost}_{before} + \text{assignedCost}$$
+  $$\text{averageCost}_{after} = \frac{\text{totalCost}_{after}}{\text{quantity}_{after}}$$
+  Mantém `costBasisStatus: 'KNOWN'` (se a posição prévia já for `KNOWN`).
+- **Sem Custo Atribuído (`assignedCost` ausente/indefinido)**:
+  - O motor **NÃO** assume custo zero.
+  - $\text{totalCost} \to \text{undefined}$, $\text{averageCost} \to \text{undefined}$, $\text{costBasisStatus} \to \text{'INCOMPLETE'}$.
+- **Validações**: $\text{bonusQuantity} > 0$. Rejeita posições vazias com `EmptyPositionCorporateActionError`.
+
+### 10.4. Amortização de Capital (`AMORTIZATION`) — ADR-050
+
+- **Regra**: Quantidade permanece estritamente inalterada; o montante amortizado é subtraído do custo total carregado:
+  $$\text{quantity}_{after} = \text{quantity}_{before}$$
+  $$\text{totalCost}_{after} = \text{totalCost}_{before} - \text{amortizationAmount}$$
+  $$\text{averageCost}_{after} = \frac{\text{totalCost}_{after}}{\text{quantity}_{after}}$$
+- **Limite de Custo Carregado**: A amortização não pode exceder o custo total carregado ($\text{amortizationAmount} \le \text{totalCost}_{before}$). Se exceder, lança `AmortizationExceedsCostError`.
+- **Fronteira de Custo Zero Conhecido**: Se o custo atingir exatamente zero, $\text{totalCost} = 0$, $\text{averageCost} = 0$ com `costBasisStatus: 'KNOWN'`. Custo zero conhecido é ontologicamente distinto de custo ausente (`INCOMPLETE`).
+- **Posição Incompleta**: Lança `IncompleteAmortizationCostError` se a posição possuir custo `INCOMPLETE`.
+
+### 10.5. Invariantes & Auditoria de Eventos Corporativos
+
+1. **Zero Disposals**: Eventos corporativos nunca são alienações econômicas e **nunca** emitem registros em `realizedDisposals`.
+2. **Trilha de Auditoria (`AppliedCorporateAction`)**: Registrados em `AccountState.appliedCorporateActions` e `PortfolioState.appliedCorporateActions` com o snapshot antes e depois das grandezas financeiras.
+3. **Filtro Temporal `asOfDate`**: Eventos societários ocorridos estritamente após a data de corte `asOfDate` não afetam o estado reconstituído.
