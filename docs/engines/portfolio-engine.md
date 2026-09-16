@@ -114,3 +114,45 @@ console.log(petr4?.quantity.value); // ex: "150"
 - **1.000 Transações**: Replay completo em menos de **120ms** (alvo: < 500ms).
 - **10.000 Transações**: Replay completo em menos de **1.100ms** (alvo: < 3.000ms).
 - **Memória**: Zero retenção ou acúmulo de estado; estruturas de transações antigas liberadas para coleta de lixo.
+
+---
+
+## 8. Custo Base e Preço Médio Ponderado (Fase 1B)
+
+A Fase 1B introduz a matemática patrimonial de estoque contábil móvel no motor, expandindo `AssetState` com `totalCost`, `averageCost`, `currency` e `costBasisStatus`.
+
+### 8.1. Acumulação no BUY
+
+Para cada compra, o custo de aquisição incorpora os encargos acessórios atribuíveis:
+$$\text{grossCost} = \text{quantity} \times \text{unitPrice}$$
+$$\text{acquisitionCost} = \text{grossCost} + \text{fees} + \text{taxes}$$
+$$\text{newTotalCost} = \text{previousTotalCost} + \text{acquisitionCost}$$
+$$\text{newQuantity} = \text{previousQuantity} + \text{buyQuantity}$$
+$$\text{newAverageCost} = \frac{\text{newTotalCost}}{\text{newQuantity}}$$
+
+- **Média Ponderada**: O preço médio é estritamente ponderado por quantidade e custo (ADR-040). Média aritmética simples de preços de aquisição é proibida.
+- **Precisão**: Operações financeiras executadas exclusivamente com `Decimal.js` (40 dígitos de precisão). Sem arredondamentos prematuros na camada de cálculo.
+
+### 8.2. Dedução Proporcional no SELL
+
+Ao alienar cotas (`SELL`), o custo carregado é deduzido proporcionalmente pelo preço médio unitário pré-venda:
+$$\text{costRemoved} = \text{averageCost} \times \text{sellQuantity}$$
+$$\text{newTotalCost} = \text{totalCost} - \text{costRemoved}$$
+
+- **Invariância do Preço Médio**: O preço de execução da venda (`unitPrice`) **não** altera o preço médio das cotas remanescentes (ADR-041).
+- **Liquidação Integral**: Se todas as cotas forem vendidas, o custo acumulado zera exatamente (`totalCost = 0`) e a posição é omitida do mapa ativo (ADR-039). Recompras posteriores iniciam novo estoque limpo.
+
+### 8.3. Agregação no Nível da Carteira (Portfolio-Level)
+
+O preço médio consolidado da carteira reflete a razão entre o custo total agregado de todas as contas e a quantidade agregada (ADR-042):
+$$\text{portfolioTotalCost} = \sum \text{accountTotalCost}$$
+$$\text{portfolioQuantity} = \sum \text{accountQuantity}$$
+$$\text{portfolioAverageCost} = \frac{\text{portfolioTotalCost}}{\text{portfolioQuantity}}$$
+
+- **Proibição de 'Média de Médias'**: O preço médio da carteira nunca é a média simples dos preços médios das contas individuais.
+
+### 8.4. Política de Transferências e Custo Incompleto
+
+- Transações `TRANSFER_IN` sem nota ou custo de aquisição explícito estabelecem `costBasisStatus: 'INCOMPLETE'` (ADR-043).
+- **Custo Desconhecido ≠ Zero**: É expressamente proibido inventar `averageCost = 0` para posições sem histórico de custo conhecido. `totalCost` e `averageCost` tornam-se `undefined`.
+- A presença de uma posição com custo incompleto propaga o status `INCOMPLETE` para o ativo na consolidação do portfólio.

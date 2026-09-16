@@ -280,3 +280,24 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 7. **IMUTABILIDADE ESTRITA DE ENTRADA E SAÍDA:**
    - O array de transações fornecido na entrada nunca é alterado ou ordenado in-place.
    - Todas as estruturas retornadas em `ReplayResult` e `PortfolioState` (objetos, maps e arrays) são profundamente congeladas (`Object.freeze`).
+
+---
+
+## 12. Regras de Custo Base e Preço Médio (Fase 1B)
+
+1. **PREÇO MÉDIO COMO RAZÃO DO CUSTO CARREGADO PELA QUANTIDADE:**
+   - O preço médio (`averageCost`) é estritamente a razão entre o custo contábil total carregado e a quantidade em custódia (`totalCost / quantity`).
+   - Média aritmética simples de preços de aquisição é terminantemente proibida (ADR-040).
+2. **INVARIÂNCIA DO PREÇO MÉDIO NA VENDA:**
+   - Operações de venda (`SELL`) deduzem o custo proporcionalmente pelo preço médio unitário pré-venda.
+   - O preço de execução da venda **NUNCA** recalcula ou altera o preço médio das cotas remanescentes (ADR-041).
+3. **AGREGAÇÃO PONDERADA NO NÍVEL DO PORTFÓLIO:**
+   - O preço médio consolidado da carteira é ponderado: `sum(account.totalCost) / sum(account.quantity)`.
+   - É proibido realizar "média de médias" entre contas (ADR-042).
+4. **CUSTO DESCONHECIDO NUNCA É ZERO:**
+   - Se uma posição possui quantidade conhecida mas custo de aquisição indeterminado (ex: `TRANSFER_IN` sem nota ou custo de aquisição explícito), o status é `costBasisStatus: 'INCOMPLETE'` com `totalCost = undefined` e `averageCost = undefined`.
+   - Custo desconhecido **NUNCA** deve ser representado como zero (ADR-043).
+5. **CUSTO PATRIMONIAL NÃO É CUSTO FISCAL:**
+   - O estoque de custo apurado no Portfolio Engine reflete o custo contábil/patrimonial da carteira. Regras tributárias (alíquotas, isenções, DARF) pertencem exclusivamente ao futuro Tax Engine.
+6. **ARREDONDAMENTO DE INTERFACE NUNCA ALTERA VALORES CANÔNICOS:**
+   - Cálculos e acumulações no motor mantêm precisão total arbitrária (40 dígitos em `Decimal.js`). Arredondamentos visuais para 2 casas decimais ocorrem estritamente na camada de exibição (`@atlas/ui`).

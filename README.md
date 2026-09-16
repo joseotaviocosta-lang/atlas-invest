@@ -2,12 +2,8 @@
 
 Plataforma completa de gestão de investimentos para investidores brasileiros.
 
-# Project Atlas
-
-Plataforma completa de gestão de investimentos para investidores brasileiros.
-
-> **Status Atual: Fase 1A — Portfolio Engine Core & Deterministic Replay (Concluída)**  
-> Esta fase implementa o núcleo financeiro determinístico do Project Atlas (`@atlas/portfolio-engine`). Consolida: Transaction Ledger como Fonte Única da Verdade (`Source of Truth`), reconstituição de posições derivadas via replay puro funcional (`PortfolioReplayEngine`), ordenação canônica cronológica em 3 níveis (`tradeDate ASC, createdAt ASC, id ASC`), invariante long-only (proibição de posições negativas com `NegativePositionError`), política de posição zero (ADR-039), tratamento exaustivo com política de diferimento de transações sem drops silenciosos (ADR-038), suporte a cortes históricos (`asOfDate`), ausência estrita de ponto flutuante IEEE 754 (uso exclusivo de `Quantity`), imutabilidade profunda de entradas e saídas, e benchmarks de alta performance (< 120ms para 1.000 transações).
+> **Status Atual: Fase 1B — BUY Cost Basis & Average Cost (Concluída)**  
+> Esta fase implementa a matemática patrimonial de custo base e preço médio ponderado no núcleo determinístico do Project Atlas (`@atlas/portfolio-engine` v1.0.0-alpha.2). Consolida: cálculo determinístico de custo de aquisição em operações BUY com custos acessórios rateados (taxas e impostos atribuíveis), preço médio móvel ponderado por quantidade (ADR-040), remoção proporcional de custo em operações parciais de SELL e TRANSFER_OUT preservando a invariância do preço médio unitário remanescente (ADR-041), agregação consolidada de portfólio ponderada por ativos multiconas (`sum(costs) / sum(quantities)`) proibindo estritamente a média de médias (ADR-042), e política rigorosa para custódias transferidas sem custo de aquisição auditado com status `INCOMPLETE` (`totalCost: undefined`, `averageCost: undefined`), proibindo a assunção de custo zero (ADR-043).
 
 ---
 
@@ -217,4 +213,4 @@ pnpm build
 - [Especificação Técnica do Product Shell](file:///c:/Projetos/atlas-invest/docs/product/product-shell.md)
 - [Documentação do Design System](file:///c:/Projetos/atlas-invest/docs/design-system/README.md)
 - [Diretrizes de Segurança](file:///c:/Projetos/atlas-invest/docs/security/README.md)
-- [Registros de Decisões Arquiteturais (ADRs 001-039)](file:///c:/Projetos/atlas-invest/docs/decisions/)
+- [Registros de Decisões Arquiteturais (ADRs 001-043)](file:///c:/Projetos/atlas-invest/docs/decisions/)
