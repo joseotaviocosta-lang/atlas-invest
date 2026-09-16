@@ -1,9 +1,16 @@
-import { Transaction, PortfolioId, AssetId, LocalDate, Money, Quantity } from '@atlas/domain';
+export * from './version';
+export * from './errors';
+export * from './types';
+export * from './ordering';
+export * from './dispatcher';
+export * from './engine';
 
-export const PORTFOLIO_ENGINE_VERSION = '0.1.0';
+import { Transaction, PortfolioId, AssetId, LocalDate, Money, Quantity } from '@atlas/domain';
+import { PortfolioState } from './types';
 
 /**
  * Placeholder interface for derived Position (derived state, not source of truth).
+ * Maintained for forward contract compatibility.
  */
 export interface PositionSummary {
   assetId: AssetId;
@@ -19,19 +26,15 @@ export interface PortfolioSummary {
 }
 
 /**
- * Future Portfolio Engine contract.
- * Pure interface contract - zero calculation logic in Phase 0B.
+ * High-level Portfolio Engine contract.
+ * Reflects core replay capabilities established in Phase 1A.
  */
 export interface PortfolioEngineContract {
-  applyTransaction(currentState: PortfolioSummary, transaction: Transaction): PortfolioSummary;
-  calculatePosition(transactions: Transaction[], assetId: AssetId): PositionSummary;
-  calculatePortfolio(transactions: Transaction[], portfolioId: PortfolioId): PortfolioSummary;
+  calculatePortfolio(transactions: Transaction[], portfolioId: PortfolioId): PortfolioState;
   calculatePortfolioAt(
     transactions: Transaction[],
     portfolioId: PortfolioId,
     date: LocalDate,
-  ): PortfolioSummary;
-  calculateAverageCost(transactions: Transaction[], assetId: AssetId): Money;
-  calculateCashFlow(transactions: Transaction[], portfolioId: PortfolioId): Money;
-  rebuildPortfolio(transactions: Transaction[], portfolioId: PortfolioId): PortfolioSummary;
+  ): PortfolioState;
+  rebuildPortfolio(transactions: Transaction[], portfolioId: PortfolioId): PortfolioState;
 }
