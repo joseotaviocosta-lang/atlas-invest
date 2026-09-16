@@ -2,8 +2,8 @@
 
 Plataforma completa de gestão de investimentos para investidores brasileiros.
 
-> **Status Atual: Fase 0E — Authentication & Security Foundation**  
-> Esta fase implementa a infraestrutura de autenticação segura baseada em senhas com Argon2id, emissão e rotação compulsória de tokens (JWT 15m e Refresh Tokens opacos sob HMAC-SHA256), gerenciamento e revogação de sessões em PostgreSQL/Prisma, recuperação de senha com proteção anti-enumeração e isolamento estrito de recursos financeiros por usuário.
+> **Status Atual: Fase 0F — Mobile Foundation**  
+> Esta fase transforma o `apps/mobile` em uma aplicação funcional sobre Expo SDK 52 e Expo Router v4, integrada à API NestJS com autenticação completa (login, cadastro, recuperação de senha), sessão segura (refresh token em `expo-secure-store`, access token em memória), interceptor single-flight para renovação de tokens com 401, gerenciamento de estado de servidor com TanStack Query e expurgo cross-user, navegação em abas inferiores (`Hoje`, `Carteira`, `Mercado`, `Fiscal`, `IA`) e gestão estrutural de carteiras.
 
 ---
 
@@ -172,6 +172,9 @@ pnpm test:auth
 # Executar a suite de integração da API HTTP (NestJS/Supertest)
 pnpm test:api
 
+# Executar a suite de testes móveis (armazenamento seguro, auth store, single-flight refresh e carteiras)
+pnpm test:mobile
+
 # Executar a suite de validação da fundação arquitetural
 pnpm test:foundation
 ```
@@ -198,5 +201,6 @@ pnpm clean
 - [Arquitetura do Banco de Dados](file:///c:/Projetos/atlas-invest/docs/architecture/database.md)
 - [Arquitetura da API HTTP](file:///c:/Projetos/atlas-invest/docs/architecture/api.md)
 - [Arquitetura de Autenticação & Segurança](file:///c:/Projetos/atlas-invest/docs/architecture/authentication.md)
+- [Arquitetura Mobile](file:///c:/Projetos/atlas-invest/docs/architecture/mobile.md)
 - [Diretrizes de Segurança](file:///c:/Projetos/atlas-invest/docs/security/README.md)
-- [Registros de Decisões Arquiteturais (ADRs 001-023)](file:///c:/Projetos/atlas-invest/docs/decisions/)
+- [Registros de Decisões Arquiteturais (ADRs 001-027)](file:///c:/Projetos/atlas-invest/docs/decisions/)

@@ -81,6 +81,9 @@ jobs:
       - name: Test Foundation Rules
         run: pnpm test:foundation
 
+      - name: Test Mobile Foundation
+        run: pnpm test:mobile
+
       - name: Run All Tests
         run: pnpm test
 

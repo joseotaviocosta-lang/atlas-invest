@@ -164,3 +164,32 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - **INVARIANTE DE ISOLAMENTO ANTI-ENUMERAÇÃO:** Tentativas de acesso, inserção ou manipulação de recursos pertencentes a outro investidor devem invariavelmente retornar **`404 Not Found`**, e **NUNCA** `403 Forbidden`.
 6. **SUÍTE DE TESTES DE SEGURANÇA:**
    - Testes de autenticação e segurança executados com `pnpm test:auth`.
+
+---
+
+## 8. Arquitetura e Regras da Aplicação Mobile (Fase 0F)
+
+1. **ESTRUTURA DE NAVEGAÇÃO E FILE-BASED ROUTING:**
+   - `apps/mobile` utiliza **Expo Router v4** com roteamento baseado em arquivos em `app/`.
+   - Rotas públicas residem no grupo `app/(auth)/` (`login`, `register`, `forgot-password`, `reset-password`).
+   - Rotas autenticadas residem no grupo `app/(app)/`, contendo o Bottom Tab Navigator `app/(app)/(tabs)/` com as 5 abas canônicas: `today`, `portfolio`, `market`, `tax`, `ai`.
+   - Modais e telas filhas (como `create-portfolio` e `profile`) residem diretamente em `app/(app)/`.
+   - O `app/_layout.tsx` atua como guard central e sentinela de restauração de sessão.
+2. **POLÍTICA DE ARMAZENAMENTO SEGURO:**
+   - O `refreshToken` rotativo deve ser armazenado exclusivamente via `expo-secure-store` sob a chave `atlas.refresh-token`.
+   - O `accessToken` (JWT) reside **estritamente em memória volátil** (variável de módulo e Zustand Store). **PROIBIDO** armazenar o access token em disco ou no SecureStore.
+   - **PROIBIDO** utilizar `@react-native-async-storage/async-storage` para armazenar tokens sensíveis.
+   - **PROIBIDO** salvar senhas em texto plano sob qualquer circunstância.
+3. **CLIENTE HTTP E INTERCEPTOR SINGLE-FLIGHT:**
+   - Todas as requisições do app móvel passam por `apiClient` (`apps/mobile/src/api/client.ts`).
+   - Ao receber status 401 em requisição autenticada, ativa o interceptor de renovação single-flight: se houver renovação em andamento, as demais requisições concorrentes aguardam a mesma `Promise`.
+   - Após renovação com sucesso, as requisições originais são reexecutadas com o novo token de acesso e a flag `isRetry: true`.
+   - **Invariante Anti-Loop:** Se a requisição reexecutada retornar 401 novamente, aborta imediatamente sem nova tentativa.
+   - Se o refresh falhar, o cliente cancela a fila, limpa o `expo-secure-store`, expurga o cache e desloga o usuário.
+4. **GERENCIAMENTO DE ESTADO DE SERVIDOR E ISOLAMENTO DE CACHE:**
+   - Dados de servidor gerenciados exclusivamente por `@tanstack/react-query`.
+   - Ao executar logout (voluntário ou por sessão revogada), a função `clearQueryCache()` executa obrigatoriamente `queryClient.clear()` para isolamento cross-user.
+5. **ZERO CÁLCULOS FINANCEIROS NA INTERFACE:**
+   - O cliente móvel nunca calcula preço médio, rentabilidade ou DARF; apenas renderiza dados estruturais fornecidos pela API.
+6. **SUÍTE DE TESTES MÓVEIS:**
+   - Testes unitários e de integração mobile executados com `pnpm test:mobile`.
