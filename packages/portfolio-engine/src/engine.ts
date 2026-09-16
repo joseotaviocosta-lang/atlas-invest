@@ -5,6 +5,7 @@ import {
   LocalDate,
   Quantity,
   Money,
+  Percentage,
   Currency,
   Transaction,
 } from '@atlas/domain';
@@ -13,6 +14,8 @@ import {
   AccountState,
   AssetState,
   CostBasisStatus,
+  RealizedDisposal,
+  RealizedSummary,
   ReplayResult,
   ReplayOptions,
 } from './types';
@@ -139,9 +142,16 @@ export class PortfolioReplayEngine {
         }
       }
 
+      const accountDisposals = Object.freeze(
+        ctx.realizedDisposals.filter((d) => String(d.accountId) === accIdStr),
+      );
+      const accountRealizedSummary = buildRealizedSummaries(accountDisposals);
+
       const accountState: AccountState = Object.freeze({
         accountId: createAccountId(accIdStr),
         assets: Object.freeze(accountAssets),
+        realizedDisposals: accountDisposals,
+        realizedSummary: accountRealizedSummary,
       });
       accountsMap.set(accIdStr, accountState);
     }
@@ -169,11 +179,16 @@ export class PortfolioReplayEngine {
       }
     }
 
+    const portfolioDisposals = Object.freeze([...ctx.realizedDisposals]);
+    const portfolioRealizedSummary = buildRealizedSummaries(portfolioDisposals);
+
     const portfolioState: PortfolioState = Object.freeze({
       portfolioId,
       asOfDate,
       accounts: Object.freeze(accountsMap),
       assets: Object.freeze(portfolioAssetsMap),
+      realizedDisposals: portfolioDisposals,
+      realizedSummary: portfolioRealizedSummary,
       processedTransactionCount: filtered.length,
       appliedTransactionCount: ctx.appliedTransactions.length,
       deferredTransactionCount: ctx.deferredEvents.length,
@@ -202,4 +217,88 @@ export function createPortfolioReplayEngine(): PortfolioReplayEngine {
 export function replayPortfolio(options: ReplayOptions): ReplayResult {
   const engine = new PortfolioReplayEngine();
   return engine.replay(options);
+}
+
+/**
+ * Aggregates realized disposals into deterministic per-currency summaries (ADR-045).
+ * - Guarantees portfolio totals equal the sum of account totals per currency.
+ * - Prevents averaging of returns across accounts or sales (strictly computes totalRealizedGainLoss / totalCostBasisRemoved).
+ * - Propagates INCOMPLETE status if any disposal in the currency has an unknown cost basis (ADR-046).
+ */
+function buildRealizedSummaries(
+  disposals: readonly RealizedDisposal[],
+): ReadonlyMap<Currency, RealizedSummary> {
+  const byCurrency = new Map<Currency, RealizedDisposal[]>();
+  for (const disposal of disposals) {
+    let list = byCurrency.get(disposal.currency);
+    if (!list) {
+      list = [];
+      byCurrency.set(disposal.currency, list);
+    }
+    list.push(disposal);
+  }
+
+  const result = new Map<Currency, RealizedSummary>();
+  for (const [currency, currencyDisposals] of byCurrency.entries()) {
+    let grossProceeds = Money.zero(currency);
+    let sellingCosts = Money.zero(currency);
+    let netProceeds = Money.zero(currency);
+    let costBasisRemovedSum = Money.zero(currency);
+    let realizedGainLossSum = Money.zero(currency);
+    let hasIncomplete = false;
+
+    for (const d of currencyDisposals) {
+      grossProceeds = grossProceeds.add(d.grossProceeds);
+      sellingCosts = sellingCosts.add(d.sellingCosts);
+      netProceeds = netProceeds.add(d.netProceeds);
+
+      if (d.status === 'INCOMPLETE' || !d.costBasisRemoved || !d.realizedGainLoss) {
+        hasIncomplete = true;
+      } else {
+        costBasisRemovedSum = costBasisRemovedSum.add(d.costBasisRemoved);
+        realizedGainLossSum = realizedGainLossSum.add(d.realizedGainLoss);
+      }
+    }
+
+    if (hasIncomplete) {
+      result.set(
+        currency,
+        Object.freeze({
+          currency,
+          status: 'INCOMPLETE',
+          grossProceeds,
+          sellingCosts,
+          netProceeds,
+          costBasisRemoved: undefined,
+          realizedGainLoss: undefined,
+          realizedReturnPercentage: undefined,
+          disposalCount: currencyDisposals.length,
+        }),
+      );
+    } else {
+      let realizedReturnPercentage: Percentage | undefined;
+      if (costBasisRemovedSum.isPositive()) {
+        const ratio = Quantity.from(realizedGainLossSum.amount)
+          .divide(Quantity.from(costBasisRemovedSum.amount))
+          .multiply('100');
+        realizedReturnPercentage = Percentage.from(ratio.value);
+      }
+      result.set(
+        currency,
+        Object.freeze({
+          currency,
+          status: 'KNOWN',
+          grossProceeds,
+          sellingCosts,
+          netProceeds,
+          costBasisRemoved: costBasisRemovedSum,
+          realizedGainLoss: realizedGainLossSum,
+          realizedReturnPercentage,
+          disposalCount: currencyDisposals.length,
+        }),
+      );
+    }
+  }
+
+  return Object.freeze(result);
 }

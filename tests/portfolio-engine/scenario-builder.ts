@@ -184,6 +184,52 @@ export class PortfolioScenarioBuilder {
     return this;
   }
 
+  fee(props: {
+    amount: string | number;
+    tradeDate: string | LocalDate;
+    assetId?: AssetId | string;
+    accountId?: AccountId | string;
+    createdAt?: Date;
+    id?: string;
+  }): this {
+    const tx = TransactionFactory.createExpense({
+      id: props.id ?? nextTxId(),
+      portfolioId: String(this.portfolioId),
+      accountId: String(props.accountId ?? this.defaultAccountId),
+      assetId: props.assetId ? String(props.assetId) : undefined,
+      type: 'FEE',
+      amount: props.amount.toString(),
+      currency: 'BRL',
+      tradeDate: props.tradeDate,
+      createdAt: props.createdAt,
+    });
+    this.transactions.push(tx);
+    return this;
+  }
+
+  tax(props: {
+    amount: string | number;
+    tradeDate: string | LocalDate;
+    assetId?: AssetId | string;
+    accountId?: AccountId | string;
+    createdAt?: Date;
+    id?: string;
+  }): this {
+    const tx = TransactionFactory.createExpense({
+      id: props.id ?? nextTxId(),
+      portfolioId: String(this.portfolioId),
+      accountId: String(props.accountId ?? this.defaultAccountId),
+      assetId: props.assetId ? String(props.assetId) : undefined,
+      type: 'TAX',
+      amount: props.amount.toString(),
+      currency: 'BRL',
+      tradeDate: props.tradeDate,
+      createdAt: props.createdAt,
+    });
+    this.transactions.push(tx);
+    return this;
+  }
+
   asOf(date: string | LocalDate): this {
     this.asOfDate = typeof date === 'string' ? LocalDate.from(date) : date;
     return this;

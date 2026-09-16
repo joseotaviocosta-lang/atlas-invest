@@ -123,6 +123,22 @@ describe('Portfolio Engine Integration: Repository Replay', () => {
     expect(vale3Position?.totalCost?.amount).toBe('6800');
     expect(vale3Position?.averageCost?.amount).toBe('68');
     expect(vale3Position?.costBasisStatus).toBe('KNOWN');
+
+    // Verify derived realized disposal (Section 134)
+    expect(result.state.realizedDisposals).toHaveLength(1);
+    const disposal = result.state.realizedDisposals[0]!;
+    expect(disposal.grossProceeds.amount).toBe('1750'); // 50 * 35.00
+    expect(disposal.netProceeds.amount).toBe('1750');
+    expect(disposal.costBasisRemoved?.amount).toBe('1625'); // 50 * 32.50
+    expect(disposal.realizedGainLoss?.amount).toBe('125'); // 1750 - 1625
+    expect(disposal.status).toBe('KNOWN');
+
+    const portSummary = result.state.realizedSummary.get('BRL')!;
+    expect(portSummary.grossProceeds.amount).toBe('1750');
+    expect(portSummary.netProceeds.amount).toBe('1750');
+    expect(portSummary.costBasisRemoved?.amount).toBe('1625');
+    expect(portSummary.realizedGainLoss?.amount).toBe('125');
+    expect(portSummary.status).toBe('KNOWN');
   });
 
   it('should replay historical state with asOfDate from repository-fetched records', async () => {
