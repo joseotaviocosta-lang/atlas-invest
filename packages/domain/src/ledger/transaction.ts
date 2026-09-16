@@ -55,6 +55,7 @@ export interface BonusTransaction extends BaseTransactionData {
   type: 'BONUS';
   assetId: AssetId;
   quantity: Quantity;
+  assignedCost?: Money;
 }
 
 export interface SubscriptionTransaction extends BaseTransactionData {
@@ -118,6 +119,7 @@ export interface TransactionJSON {
   taxes?: MoneyJSON;
   amount?: MoneyJSON;
   factor?: string;
+  assignedCost?: MoneyJSON;
 }
 
 function validateSource(source: string): TransactionSource {
@@ -377,6 +379,7 @@ export class TransactionFactory {
     accountId: string;
     assetId: string;
     quantity: string | Quantity;
+    assignedCost?: string | Money;
     currency: string;
     tradeDate: string | LocalDate;
     source?: string;
@@ -396,11 +399,23 @@ export class TransactionFactory {
       );
     }
 
+    let assignedCost: Money | undefined;
+    if (props.assignedCost !== undefined) {
+      assignedCost =
+        props.assignedCost instanceof Money
+          ? props.assignedCost
+          : Money.from(props.assignedCost, common.currency);
+      if (assignedCost.isNegative()) {
+        throw new InvalidTransactionError('BONUS assignedCost cannot be negative');
+      }
+    }
+
     const tx: BonusTransaction = {
       ...common,
       type: 'BONUS',
       assetId,
       quantity,
+      assignedCost,
     };
     return Object.freeze(tx);
   }
@@ -618,6 +633,9 @@ export function serializeTransaction(tx: Transaction): TransactionJSON {
   }
   if ('factor' in tx && tx.factor) {
     json.factor = tx.factor.toString();
+  }
+  if ('assignedCost' in tx && (tx as BonusTransaction).assignedCost) {
+    json.assignedCost = (tx as BonusTransaction).assignedCost!.toJSON();
   }
 
   return json;

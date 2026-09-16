@@ -76,6 +76,7 @@ export class TransactionMapper {
           ...base,
           assetId: tx.assetId,
           quantity: DecimalConverter.toPersistence(tx.quantity.value),
+          amount: DecimalConverter.toPersistence(tx.assignedCost?.amount),
         };
       }
       case 'SUBSCRIPTION': {
@@ -220,10 +221,12 @@ export class TransactionMapper {
           throw new PersistenceMappingError('BONUS transaction requires assetId and quantity');
         }
         const quantity = DecimalConverter.toCanonicalString(raw.quantity)!;
+        const assignedCost = DecimalConverter.toCanonicalString(raw.amount) ?? undefined;
         return TransactionFactory.createBonus({
           ...common,
           assetId: raw.assetId,
           quantity,
+          assignedCost,
         });
       }
       case 'SUBSCRIPTION': {
