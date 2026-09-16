@@ -301,3 +301,21 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - O estoque de custo apurado no Portfolio Engine reflete exclusivamente a base de custo patrimonial carregada (`portfolio cost basis`). Esta NÃO é a base fiscal tributária (`tax basis`). Regras fiscais (alíquotas, isenções, DARF, compensação de prejuízos, day-trade) pertencem exclusivamente ao futuro Tax Engine.
 6. **PRECISÃO DECIMAL OPERACIONAL (OPERATIONAL DECIMAL PRECISION):**
    - Cálculos e acumulações no motor operam com contexto decimal de 40 dígitos (`DecimalValue` / `Decimal.js`) com arredondamento `ROUND_HALF_UP`. Registra-se expressamente que 40 dígitos constituem precisão decimal operacional de alta fidelidade para mitigar erros cumulativos de ponto flutuante, não precisão matemática infinita. Arredondamentos visuais para 2 casas decimais ocorrem estritamente na camada de exibição (`@atlas/ui`).
+
+---
+
+## 13. Regras de Realização de Vendas e Ganho/Prejuízo Econômico (Fase 1C)
+
+1. **RESULTADO REALIZADO É RECEITA LÍQUIDA MENOS CUSTO REMOVIDO:**
+   - O resultado de uma venda (`RealizedDisposal`) é estritamente: `realizedGainLoss = netProceeds - costBasisRemoved`, onde `netProceeds = (quantity * unitPrice) - sellingCosts`.
+2. **PREÇO DE VENDA NUNCA ALTERA O PREÇO MÉDIO REMANESCENTE:**
+   - Vendas parciais deduzem o custo proporcionalmente pelo preço médio anterior. O preço de venda nunca altera a base unitária das cotas que permanecem em carteira (ADR-041, ADR-044).
+3. **TRANSFER_OUT NÃO É ALIENAÇÃO ECONÔMICA:**
+   - Transferências de custódia (`TRANSFER_OUT` e `TRANSFER_IN`) removem/acrescentam cotas e custo da conta, mas **NUNCA** emitem `RealizedDisposal`.
+4. **GANHO ECONÔMICO NÃO É OBRIGAÇÃO TRIBUTÁRIA:**
+   - O resultado realizado apurado no Portfolio Engine é o lucro/prejuízo econômico patrimonial (`economic realized gain`). Ele **NÃO** calcula imposto devido, DARF, isenção de R$ 20.000 ou classificação de day trade (ADR-047).
+5. **CUSTO INCOMPLETO NUNCA PRODUZ GANHO FABRICADO:**
+   - Vender cotas com `costBasisStatus: 'INCOMPLETE'` gera `RealizedDisposal` com `status: 'INCOMPLETE'`, deixando `costBasisRemoved`, `realizedGainLoss` e `realizedReturnPercentage` como `undefined`. É proibido assumir custo zero (ADR-046).
+6. **SEGURANÇA DE MOEDA E PRECISÃO DECIMAL:**
+   - Vendas e encargos devem ser expressos na moeda da posição. Sumarizações no portfólio são agregadas por moeda (`Map<Currency, RealizedSummary>`), sem conversão cambial fictícia.
+   - Retorno consolidado é `totalRealizedGainLoss / totalCostBasisRemoved * 100`, **NUNCA** média de retornos percentuais (ADR-045).

@@ -131,7 +131,8 @@ $$\text{newQuantity} = \text{previousQuantity} + \text{buyQuantity}$$
 $$\text{newAverageCost} = \frac{\text{newTotalCost}}{\text{newQuantity}}$$
 
 - **Média Ponderada**: O preço médio é estritamente ponderado por quantidade e custo (ADR-040). Média aritmética simples de preços de aquisição é proibida.
-- **Precisão**: Operações financeiras executadas exclusivamente com `Decimal.js` (40 dígitos de precisão). Sem arredondamentos prematuros na camada de cálculo.
+- **Precisão Decimal Operacional**: Operações financeiras executadas exclusivamente com `Decimal.js` (40 dígitos de precisão decimal operacional, suficiente para mitigar qualquer erro de ponto flutuante, não precisão infinita). Sem arredondamentos prematuros na camada de cálculo.
+- **Portfolio Cost Basis ≠ Tax Basis**: A base de custo calculada pelo motor é estritamente a base patrimonial carregada da carteira, não se confundindo com apuração tributária (ADR-040).
 
 ### 8.2. Dedução Proporcional no SELL
 
@@ -156,3 +157,50 @@ $$\text{portfolioAverageCost} = \frac{\text{portfolioTotalCost}}{\text{portfolio
 - Transações `TRANSFER_IN` sem nota ou custo de aquisição explícito estabelecem `costBasisStatus: 'INCOMPLETE'` (ADR-043).
 - **Custo Desconhecido ≠ Zero**: É expressamente proibido inventar `averageCost = 0` para posições sem histórico de custo conhecido. `totalCost` e `averageCost` tornam-se `undefined`.
 - A presença de uma posição com custo incompleto propaga o status `INCOMPLETE` para o ativo na consolidação do portfólio.
+
+---
+
+## 9. Alienação Econômica e Resultado Realizado (Fase 1C)
+
+A Fase 1C introduz a derivação matemática dos resultados econômicos de vendas (`SELL`), registrando os eventos derivados `RealizedDisposal` e os resumos agregados `RealizedSummary` por moeda em cada conta e no portfólio.
+
+### 9.1. Fórmulas Canônicas de Venda
+
+Para cada transação `SELL`:
+$$\text{grossProceeds} = \text{quantity} \times \text{unitPrice}$$
+$$\text{sellingCosts} = \text{fees} + \text{taxes}$$
+$$\text{netProceeds} = \text{grossProceeds} - \text{sellingCosts}$$
+$$\text{costBasisRemoved} = \text{averageCostBefore} \times \text{quantity}$$
+$$\text{realizedGainLoss} = \text{netProceeds} - \text{costBasisRemoved}$$
+$$\text{realizedReturnPercentage} = \frac{\text{realizedGainLoss}}{\text{costBasisRemoved}} \times 100 \quad (\text{quando } \text{costBasisRemoved} > 0)$$
+
+- **Sinal do Retorno**: Lucros resultam em ganho positivo; prejuízos resultam em ganho negativo; break-even resulta em ganho zero.
+- **Validações**: Exige `unitPrice > 0` (`InvalidSellPriceError`) e encargos não-negativos (`InvalidSellingCostError`). Rejeita moedas conflitantes com `CurrencyMismatchError`.
+
+### 9.2. Agregação e Proibição de Média de Retornos
+
+- Os totais de receita e ganho realizado em cada moeda são obtidos pela soma estrita dos eventos da respectiva moeda (ADR-045):
+  $$\text{portfolioRealizedGainLoss} = \sum \text{accountRealizedGainLoss}$$
+- **Proibição de Média de Retornos**: O retorno percentual consolidado **nunca** é calculado como a média simples dos retornos das contas ou vendas individuais. Utiliza-se exclusivamente a razão entre o ganho líquido total e o custo total removido:
+  $$\text{portfolioRealizedReturnPercentage} = \frac{\text{portfolioRealizedGainLoss}}{\text{portfolioCostBasisRemoved}} \times 100$$
+- **Segregação Multimoeda**: Saldos e resumos de moedas distintas (ex: BRL e USD) são mantidos em mapas independentes (`realizedSummary`), sem conversão cambial fictícia.
+
+### 9.3. Política de Custo Incompleto em Vendas
+
+- Quando uma posição possui `costBasisStatus: 'INCOMPLETE'` e cotas são vendidas:
+  - A quantidade é deduzida normalmente da custódia.
+  - A receita (`grossProceeds`, `netProceeds`) é apurada com base no preço de venda.
+  - `costBasisRemoved`, `realizedGainLoss` e `realizedReturnPercentage` permanecem `undefined`.
+  - O evento e os resumos da conta e do portfólio são marcados como `status: 'INCOMPLETE'` (ADR-046).
+  - **Zero Custo é Proibido**: Custo desconhecido nunca é tratado como zero para inventar lucros artificiais.
+
+### 9.4. Exclusão de Operações Não-Alienações
+
+- `TRANSFER_OUT` e `TRANSFER_IN` não são disposições econômicas e **nunca** emitem `RealizedDisposal` (a contagem de eventos realizados permanece rigorosamente inalterada).
+- `BUY` nunca gera resultado realizado.
+- Transações separadas `FEE` e `TAX` permanecem em `deferredEvents` e **nunca** são associadas a vendas por heurística temporal ou de valor.
+
+### 9.5. Separação Estrita da Esfera Fiscal (Economic ≠ Tax)
+
+- O `PortfolioReplayEngine` apura exclusivamente o **resultado econômico** da carteira (ADR-047).
+- O motor **não** calcula imposto de renda, DARF, isenção de R$ 20.000, segregação de day trade ou compensação de prejuízos fiscais. O futuro `Tax Engine` consumirá os eventos de alienação e aplicará autonomamente a legislação fiscal pertinente.

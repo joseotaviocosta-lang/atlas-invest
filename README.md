@@ -2,8 +2,8 @@
 
 Plataforma completa de gestão de investimentos para investidores brasileiros.
 
-> **Status Atual: Fase 1B — BUY Cost Basis & Average Cost (Concluída)**  
-> Esta fase implementa a matemática patrimonial de custo base e preço médio ponderado no núcleo determinístico do Project Atlas (`@atlas/portfolio-engine` v1.0.0-alpha.2). Consolida: cálculo determinístico de custo de aquisição em operações BUY com custos acessórios rateados (taxas e impostos atribuíveis), preço médio móvel ponderado por quantidade (ADR-040), remoção proporcional de custo em operações parciais de SELL e TRANSFER_OUT preservando a invariância do preço médio unitário remanescente (ADR-041), agregação consolidada de portfólio ponderada por ativos multiconas (`sum(costs) / sum(quantities)`) proibindo estritamente a média de médias (ADR-042), e política rigorosa para custódias transferidas sem custo de aquisição auditado com status `INCOMPLETE` (`totalCost: undefined`, `averageCost: undefined`), proibindo a assunção de custo zero (ADR-043).
+> **Status Atual: Fase 1C — SELL Proceeds & Realized Gain/Loss (Concluída)**  
+> Esta fase implementa a matemática econômica de realização de vendas no núcleo determinístico do Project Atlas (`@atlas/portfolio-engine` v1.0.0-alpha.3). Consolida: apuração de receita bruta (`grossProceeds`), dedução de custos explícitos de venda (`sellingCosts`), apuração de receita líquida (`netProceeds`), custo carregado removido (`costBasisRemoved`), ganho/prejuízo realizado econômico (`realizedGainLoss = netProceeds - costBasisRemoved`), percentual de retorno realizado (`realizedReturnPercentage`), registro estruturado do histórico derivado (`realizedDisposals`), agregação de resumos contábeis por conta e portfólio segregados por moeda (`realizedSummary`, ADR-044, ADR-045), preservação estrita da invariância do preço médio unitário remanescente em vendas parciais (ADR-041), política para alienação de posições com custo incompleto sem fabricação de ganho artificial (ADR-046), exclusão de transferências (`TRANSFER_OUT`/`TRANSFER_IN`) do conjunto de alienações econômicas, e separação arquitetural cristalina entre resultado econômico patrimonial e obrigações fiscais tributárias (Economic ≠ Tax, ADR-047).
 
 ---
 
@@ -213,4 +213,4 @@ pnpm build
 - [Especificação Técnica do Product Shell](file:///c:/Projetos/atlas-invest/docs/product/product-shell.md)
 - [Documentação do Design System](file:///c:/Projetos/atlas-invest/docs/design-system/README.md)
 - [Diretrizes de Segurança](file:///c:/Projetos/atlas-invest/docs/security/README.md)
-- [Registros de Decisões Arquiteturais (ADRs 001-043)](file:///c:/Projetos/atlas-invest/docs/decisions/)
+- [Registros de Decisões Arquiteturais (ADRs 001-047)](file:///c:/Projetos/atlas-invest/docs/decisions/)

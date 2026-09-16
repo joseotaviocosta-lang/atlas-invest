@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-Na determinação do custo de aquisição e precificação patrimonial de ativos em custódia, existem diferentes convenções de apuração de estoque contábil (ex: PEPS/FIFO, UEPS/LIFO e Média Ponderada Móvel). 
+Na determinação do custo de aquisição e precificação patrimonial de ativos em custódia, existem diferentes convenções de apuração de estoque contábil (ex: PEPS/FIFO, UEPS/LIFO e Média Ponderada Móvel).
 
 Na Fase 1B do Project Atlas, o `PortfolioReplayEngine` adota o método do Custo Médio Ponderado Móvel como o método canônico de custo carregado do Portfolio Engine para compras sucessivas (`BUY`). Faz-se necessário definir a metodologia de cálculo, a inclusão de encargos operacionais intrínsecos de aquisição, a separação estrita da esfera fiscal e a política de preservação de precisão decimal operacional.
 
