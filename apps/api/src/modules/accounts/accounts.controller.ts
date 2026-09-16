@@ -1,5 +1,12 @@
 import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus, Inject } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBody,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import {
   CreateAccountUseCase,
   GetAccountUseCase,
@@ -11,8 +18,10 @@ import {
   CreateAccountSwaggerDto,
 } from './dto/create-account.dto';
 import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
+import { CurrentPrincipal, AuthenticatedPrincipal } from '../../auth';
 
 @ApiTags('Accounts')
+@ApiBearerAuth()
 @Controller('api/v1/portfolios/:portfolioId/accounts')
 export class PortfolioAccountsController {
   constructor(
@@ -33,6 +42,7 @@ export class PortfolioAccountsController {
   async create(
     @Param('portfolioId', UUIDParamPipe) portfolioId: string,
     @Body(new ZodValidationPipe(CreateAccountBodySchema)) body: CreateAccountBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
   ) {
     const account = await this.createAccountUseCase.execute({
       portfolioId,
@@ -40,6 +50,7 @@ export class PortfolioAccountsController {
       name: body.name,
       currency: body.currency,
       status: body.status,
+      userId: principal.userId,
     });
     return {
       data: account.toJSON(),
@@ -51,8 +62,11 @@ export class PortfolioAccountsController {
   @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
   @ApiResponse({ status: 200, description: 'List of accounts' })
   @ApiResponse({ status: 404, description: 'Portfolio not found' })
-  async list(@Param('portfolioId', UUIDParamPipe) portfolioId: string) {
-    const accounts = await this.listAccountsUseCase.execute(portfolioId);
+  async list(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const accounts = await this.listAccountsUseCase.execute(portfolioId, principal.userId);
     return {
       data: accounts.map((a) => a.toJSON()),
     };
@@ -60,6 +74,7 @@ export class PortfolioAccountsController {
 }
 
 @ApiTags('Accounts')
+@ApiBearerAuth()
 @Controller('api/v1/accounts')
 export class AccountsController {
   constructor(
@@ -71,9 +86,12 @@ export class AccountsController {
   @ApiOperation({ summary: 'Get an account by ID' })
   @ApiParam({ name: 'accountId', description: 'UUID of the account' })
   @ApiResponse({ status: 200, description: 'Account found' })
-  @ApiResponse({ status: 404, description: 'Account not found' })
-  async getById(@Param('accountId', UUIDParamPipe) accountId: string) {
-    const account = await this.getAccountUseCase.execute(accountId);
+  @ApiResponse({ status: 404, description: 'Account not found or belongs to another user' })
+  async getById(
+    @Param('accountId', UUIDParamPipe) accountId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const account = await this.getAccountUseCase.execute(accountId, principal.userId);
     return {
       data: account.toJSON(),
     };

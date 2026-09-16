@@ -1,5 +1,22 @@
-import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus, Inject } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  ForbiddenException,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBody,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import {
   CreateInstitutionUseCase,
   GetInstitutionUseCase,
@@ -13,6 +30,7 @@ import {
 import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
 
 @ApiTags('Institutions')
+@ApiBearerAuth()
 @Controller('api/v1/institutions')
 export class InstitutionsController {
   constructor(
@@ -30,7 +48,18 @@ export class InstitutionsController {
   @ApiBody({ type: CreateInstitutionSwaggerDto })
   @ApiResponse({ status: 201, description: 'Institution created successfully' })
   @ApiResponse({ status: 400, description: 'Validation failed' })
+  @ApiResponse({ status: 403, description: 'Catalog mutations are disabled in this environment' })
   async create(@Body(new ZodValidationPipe(InstitutionInputSchema)) dto: CreateInstitutionDto) {
+    if (
+      process.env.ENABLE_CATALOG_MUTATIONS === 'false' ||
+      (process.env.NODE_ENV === 'production' && process.env.ENABLE_CATALOG_MUTATIONS !== 'true')
+    ) {
+      throw new ForbiddenException({
+        message: 'Catalog mutations are disabled in this environment.',
+        code: 'COMMON.FORBIDDEN',
+      });
+    }
+
     const institution = await this.createInstitutionUseCase.execute(dto);
     return {
       data: institution.toJSON(),

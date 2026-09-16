@@ -19,6 +19,9 @@ export interface ReadyCheckResponse {
   error?: string;
 }
 
+import { Public } from '../auth/decorators/public.decorator';
+
+@Public()
 @Controller()
 export class HealthController {
   constructor(

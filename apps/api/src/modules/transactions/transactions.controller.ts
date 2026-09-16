@@ -9,7 +9,15 @@ import {
   HttpStatus,
   Inject,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBody,
+  ApiQuery,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { serializeTransaction } from '@atlas/domain';
 import {
   CreateTransactionUseCase,
@@ -23,8 +31,10 @@ import {
 } from './dto/create-transaction.dto';
 import { ListTransactionsQuery, ListTransactionsQuerySchema } from './dto/list-transactions.dto';
 import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
+import { CurrentPrincipal, AuthenticatedPrincipal } from '../../auth';
 
 @ApiTags('Transactions')
+@ApiBearerAuth()
 @Controller('api/v1/portfolios/:portfolioId/transactions')
 export class PortfolioTransactionsController {
   constructor(
@@ -53,6 +63,7 @@ export class PortfolioTransactionsController {
   async create(
     @Param('portfolioId', UUIDParamPipe) portfolioId: string,
     @Body(new ZodValidationPipe(CreateTransactionBodySchema)) body: CreateTransactionBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
   ) {
     const tx = await this.createTransactionUseCase.execute({
       portfolioId,
@@ -72,6 +83,7 @@ export class PortfolioTransactionsController {
       taxes: body.taxes,
       amount: body.amount,
       factor: body.factor,
+      userId: principal.userId,
     });
 
     return {
@@ -110,6 +122,7 @@ export class PortfolioTransactionsController {
   async list(
     @Param('portfolioId', UUIDParamPipe) portfolioId: string,
     @Query(new ZodValidationPipe(ListTransactionsQuerySchema)) query: ListTransactionsQuery,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
   ) {
     const result = await this.listTransactionsUseCase.execute({
       portfolioId,
@@ -120,6 +133,7 @@ export class PortfolioTransactionsController {
       endDate: query.endDate,
       cursor: query.cursor,
       limit: query.limit,
+      userId: principal.userId,
     });
 
     return {
@@ -135,6 +149,7 @@ export class PortfolioTransactionsController {
 }
 
 @ApiTags('Transactions')
+@ApiBearerAuth()
 @Controller('api/v1/transactions')
 export class TransactionsController {
   constructor(
@@ -146,9 +161,12 @@ export class TransactionsController {
   @ApiOperation({ summary: 'Get a specific transaction by ID' })
   @ApiParam({ name: 'transactionId', description: 'UUID of the transaction' })
   @ApiResponse({ status: 200, description: 'Transaction found' })
-  @ApiResponse({ status: 404, description: 'Transaction not found' })
-  async getById(@Param('transactionId', UUIDParamPipe) transactionId: string) {
-    const tx = await this.getTransactionUseCase.execute(transactionId);
+  @ApiResponse({ status: 404, description: 'Transaction not found or belongs to another user' })
+  async getById(
+    @Param('transactionId', UUIDParamPipe) transactionId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const tx = await this.getTransactionUseCase.execute(transactionId, principal.userId);
     return {
       data: serializeTransaction(tx),
     };

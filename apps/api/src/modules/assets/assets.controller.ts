@@ -8,14 +8,24 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  ForbiddenException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+  ApiBody,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { AssetType } from '@atlas/domain';
 import { CreateAssetUseCase, GetAssetUseCase, SearchAssetsUseCase } from '../../application/assets';
 import { CreateAssetDto, CreateAssetSwaggerDto, AssetInputSchema } from './dto/create-asset.dto';
 import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
 
 @ApiTags('Assets')
+@ApiBearerAuth()
 @Controller('api/v1/assets')
 export class AssetsController {
   constructor(
@@ -33,7 +43,18 @@ export class AssetsController {
   @ApiBody({ type: CreateAssetSwaggerDto })
   @ApiResponse({ status: 201, description: 'Asset registered successfully' })
   @ApiResponse({ status: 400, description: 'Validation failed' })
+  @ApiResponse({ status: 403, description: 'Catalog mutations are disabled in this environment' })
   async create(@Body(new ZodValidationPipe(AssetInputSchema)) dto: CreateAssetDto) {
+    if (
+      process.env.ENABLE_CATALOG_MUTATIONS === 'false' ||
+      (process.env.NODE_ENV === 'production' && process.env.ENABLE_CATALOG_MUTATIONS !== 'true')
+    ) {
+      throw new ForbiddenException({
+        message: 'Catalog mutations are disabled in this environment.',
+        code: 'COMMON.FORBIDDEN',
+      });
+    }
+
     const asset = await this.createAssetUseCase.execute(dto);
     return {
       data: asset.toJSON(),
