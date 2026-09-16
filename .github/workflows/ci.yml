@@ -84,6 +84,9 @@ jobs:
       - name: Test Mobile Foundation
         run: pnpm test:mobile
 
+      - name: Test UI & Design System
+        run: pnpm test:ui
+
       - name: Test Web Foundation
         run: pnpm test:web
 
@@ -92,3 +95,9 @@ jobs:
 
       - name: Build Applications
         run: pnpm build
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Test Web E2E (Playwright)
+        run: pnpm test:web:e2e

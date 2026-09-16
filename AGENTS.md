@@ -225,3 +225,32 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Toda listagem de dados deve implementar os 5 estados visuais: Loading (`Skeleton`), Vazio (`EmptyState`), Erro com retentativa (`ErrorState`), Sucesso (`Card`) e Desconectado (`OfflineBanner`).
 8. **SUÍTE DE TESTES WEB:**
    - Testes unitários e de integração web executados com `pnpm test:web`.
+
+---
+
+## 10. Arquitetura e Regras do Product Shell e Design System (Fase 0H)
+
+1. **AUTORIDADE CENTRAL DO DESIGN SYSTEM (`packages/ui`):**
+   - O pacote `@atlas/ui` é a autoridade central de tokens (`colors`, `typography`, `spacing`, `borderRadius`, `shadows`, `breakpoints`), formatadores puros (`formatCurrency`, `formatPercentage`, `formatDate`) e contratos tipados de componentes (`contracts.ts`).
+   - **PROIBIDO** o uso de cores literais/hexadecimais arbitrárias nas interfaces de aplicação; use exclusivamente os tokens semânticos (`positive`, `negative`, `accent`, `surface`, `border`, etc.).
+2. **AS 5 ÁREAS CANÔNICAS DE NAVEGAÇÃO:**
+   - A arquitetura do produto adota exatamente 5 áreas principais unificadas entre Web e Mobile:
+     - `Hoje` (`/today`): Resumo diário, boas-vindas contextuais e indicadores patrimoniais de alto nível.
+     - `Carteira` (`/portfolio`): Alternador de carteiras (`PortfolioSwitcher`), abas (Visão Geral, Ativos, Rentabilidade, Histórico, Alocação, Operações) e modal de criação de carteira.
+     - `Mercado` (`/market`): Radar de oportunidades, watchlist, calendário de eventos e notícias curadas.
+     - `Fiscal` (`/tax`): Apuração tributária, limite de isenção de R$ 20k em ações, DARFs, prejuízos a compensar e suporte ao IRPF anual.
+     - `IA` (`/ai`): Assistente contextual financeiro com chips de sugestões.
+   - A área `Perfil` (`/profile`) concentra preferências globais, dados cadastrais, auditoria de segurança da sessão e logout, sem descaracterizar a navegação primária das 5 abas.
+3. **FLUXO DE ONBOARDING NÃO-BLOQUEANTE:**
+   - Investidores recém-cadastrados são direcionados ao fluxo de 3 passos (`/onboarding`): Boas-vindas -> Criação da Primeira Carteira (com persistência real via API) -> Escolha do Método de Início.
+   - **Bypass Automático:** Usuários que já possuem ao menos uma carteira ativa são automaticamente redirecionados de `/onboarding` para `/today`.
+4. **POLÍTICA DE HONESTIDADE VISUAL E ZERO DADOS FICTÍCIOS:**
+   - **PROIBIDO** renderizar saldos falsos, gráficos randômicos ou tickers fictícios nas interfaces.
+   - Onde o cálculo depender de motores em desenvolvimento (ex: Portfolio Engine, Tax Engine), o valor numérico deve ser estritamente o travessão (`—`), acompanhado de nota contextual explicativa.
+5. **HARDENING DE SEGURANÇA NO BFF WEB:**
+   - Todos os Route Handlers mutatórios (`POST`, `PUT`, `DELETE` em `/api/auth/*`) exigem validação rigorosa de cabeçalhos de origem (`Origin` / `Referer`) correspondentes à URL canônica da aplicação (`NEXT_PUBLIC_APP_URL`).
+   - O cookie `atlas_logged_in` atua estritamente como hint visual para roteamento no middleware do Next.js e **NUNCA** como prova de autenticação em endpoints protegidos do BFF ou da API backend.
+6. **ACESSIBILIDADE E TESTES E2E EM NAVEGADOR REAL:**
+   - Componentes devem obedecer aos padrões WAI-ARIA, suportar navegação por teclado e possuir alvos de toque mínimos de 44x44px.
+   - O fluxo completo de usuário (Registro -> Onboarding -> Navegação canônica -> Logout) é validado em navegador real via **Playwright** (`pnpm test:web:e2e`) nos viewports Desktop (1440x900), Tablet (768x1024) e Mobile (390x844).
+

@@ -2,8 +2,8 @@
 
 Plataforma completa de gestão de investimentos para investidores brasileiros.
 
-> **Status Atual: Fase 0G — Web Foundation**  
-> Esta fase transforma o `apps/web` em uma aplicação web moderna e funcional sobre Next.js 15 (App Router) e React 19, com segurança de nível financeiro via padrão Backend-for-Frontend (BFF) com cookies `HttpOnly` seguros para o refresh token rotativo, `accessToken` em memória volátil, zero armazenamento de tokens no JavaScript do navegador (`localStorage`, `sessionStorage`, `IndexedDB`), sentinela de rotas no Edge Middleware, casca visual responsiva (Desktop Sidebar e Mobile Bottom Nav), gerenciamento de dados estruturais de carteiras com TanStack Query v5 e purga compulsória de cache cross-user.
+> **Status Atual: Fase 0H — Product Shell**  
+> Esta fase transforma o Project Atlas em uma experiência de produto completa e visualmente coerente, estabelecendo as 5 áreas canônicas de navegação (`Hoje`, `Carteira`, `Mercado`, `Fiscal`, `IA`) e `Perfil`, o Design System consolidado no pacote `@atlas/ui` (tokens semânticos, contratos de componentes, formatadores de precisão), fluxo de onboarding em 3 passos com criação real de primeira carteira e bypass automático para investidores com carteiras ativas, componentes reutilizáveis acessíveis com WAI-ARIA, política de honestidade visual estrita (zero gráficos sintéticos ou dados fictícios; placeholders canônicos `—`), e suíte de testes E2E em navegador real com Playwright cobrindo Desktop, Tablet e Mobile.
 
 ---
 
@@ -172,11 +172,17 @@ pnpm test:auth
 # Executar a suite de integração da API HTTP (NestJS/Supertest)
 pnpm test:api
 
-# Executar a suite de testes móveis (armazenamento seguro, auth store, single-flight refresh e carteiras)
+# Executar a suite de testes móveis (armazenamento seguro, auth store, single-flight refresh e navegação)
 pnpm test:mobile
 
 # Executar a suite de testes web (cookies seguros, auth store, single-flight refresh, CSRF e carteiras)
 pnpm test:web
+
+# Executar a suite de tokens e contratos do design system
+pnpm test:ui
+
+# Executar a suite de testes end-to-end (Playwright em navegador real: Desktop, Tablet, Mobile)
+pnpm test:web:e2e
 
 # Executar a suite de validação da fundação arquitetural
 pnpm test:foundation
@@ -199,6 +205,8 @@ pnpm clean
 ## 6. Documentação Adicional
 
 - [Regras de Desenvolvimento para Agentes de IA](file:///c:/Projetos/atlas-invest/AGENTS.md)
+- [Especificação Técnica do Product Shell](file:///c:/Projetos/atlas-invest/docs/product/product-shell.md)
+- [Documentação do Design System](file:///c:/Projetos/atlas-invest/docs/design-system/README.md)
 - [Visão Arquitetural](file:///c:/Projetos/atlas-invest/docs/architecture/overview.md)
 - [Modelo de Domínio Financeiro](file:///c:/Projetos/atlas-invest/docs/architecture/domain-model.md)
 - [Arquitetura do Banco de Dados](file:///c:/Projetos/atlas-invest/docs/architecture/database.md)
@@ -206,4 +214,4 @@ pnpm clean
 - [Arquitetura de Autenticação & Segurança](file:///c:/Projetos/atlas-invest/docs/architecture/authentication.md)
 - [Arquitetura Mobile](file:///c:/Projetos/atlas-invest/docs/architecture/mobile.md)
 - [Diretrizes de Segurança](file:///c:/Projetos/atlas-invest/docs/security/README.md)
-- [Registros de Decisões Arquiteturais (ADRs 001-027)](file:///c:/Projetos/atlas-invest/docs/decisions/)
+- [Registros de Decisões Arquiteturais (ADRs 001-035)](file:///c:/Projetos/atlas-invest/docs/decisions/)
