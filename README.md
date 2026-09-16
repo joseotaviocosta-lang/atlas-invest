@@ -6,8 +6,8 @@ Plataforma completa de gestão de investimentos para investidores brasileiros.
 
 Plataforma completa de gestão de investimentos para investidores brasileiros.
 
-> **Status Atual: Fase 0J — Foundation Hardening & Release Readiness (Concluída)**  
-> Esta fase estabelece o congelamento de estabilidade, endurecimento de segurança e auditoria rigorosa da fundação (Fases 0A a 0J). Consolida: autoridade CAS em banco de dados (`SELECT ... FOR UPDATE`), detecção de reuso em qualquer nó do histórico da família de tokens, proteção contra adulteração de dicas de sessão no Edge (`atlas_logged_in`), isolamento de camadas com barreira estrita entre formatação e cálculo (`formatting ≠ calculation`), design system padronizado com formatadores BigInt de alta precisão sem ponto flutuante IEEE 754, migrações e seed determinísticos validados do zero, auditoria de dependências com zero vulnerabilidades críticas, e suites automatizadas de segurança e arquitetura. O projeto está 100% preparado para o início do desenvolvimento do **Portfolio Engine**.
+> **Status Atual: Fase 1A — Portfolio Engine Core & Deterministic Replay (Concluída)**  
+> Esta fase implementa o núcleo financeiro determinístico do Project Atlas (`@atlas/portfolio-engine`). Consolida: Transaction Ledger como Fonte Única da Verdade (`Source of Truth`), reconstituição de posições derivadas via replay puro funcional (`PortfolioReplayEngine`), ordenação canônica cronológica em 3 níveis (`tradeDate ASC, createdAt ASC, id ASC`), invariante long-only (proibição de posições negativas com `NegativePositionError`), política de posição zero (ADR-039), tratamento exaustivo com política de diferimento de transações sem drops silenciosos (ADR-038), suporte a cortes históricos (`asOfDate`), ausência estrita de ponto flutuante IEEE 754 (uso exclusivo de `Quantity`), imutabilidade profunda de entradas e saídas, e benchmarks de alta performance (< 120ms para 1.000 transações).
 
 ---
 
@@ -178,6 +178,9 @@ pnpm test:web
 # Design System e Contratos Visuais (formatters BigInt, tokens)
 pnpm test:ui
 
+# Portfolio Engine Core (replay determinístico, ordenação, precisão, long-only)
+pnpm test:portfolio-engine
+
 # Suite Consolidada de Segurança
 pnpm test:security
 
@@ -203,6 +206,7 @@ pnpm build
 
 - [Regras de Desenvolvimento para Agentes de IA](file:///c:/Projetos/atlas-invest/AGENTS.md)
 - [Status da Fundação e Escopo Diferido](file:///c:/Projetos/atlas-invest/docs/foundation/status.md)
+- [Especificação Técnica do Portfolio Replay Engine](file:///c:/Projetos/atlas-invest/docs/engines/portfolio-engine.md)
 - [Guia de Testes e Qualidade](file:///c:/Projetos/atlas-invest/docs/development/testing.md)
 - [Visão Arquitetural](file:///c:/Projetos/atlas-invest/docs/architecture/overview.md)
 - [Modelo de Domínio Financeiro](file:///c:/Projetos/atlas-invest/docs/architecture/domain-model.md)
@@ -213,4 +217,4 @@ pnpm build
 - [Especificação Técnica do Product Shell](file:///c:/Projetos/atlas-invest/docs/product/product-shell.md)
 - [Documentação do Design System](file:///c:/Projetos/atlas-invest/docs/design-system/README.md)
 - [Diretrizes de Segurança](file:///c:/Projetos/atlas-invest/docs/security/README.md)
-- [Registros de Decisões Arquiteturais (ADRs 001-035)](file:///c:/Projetos/atlas-invest/docs/decisions/)
+- [Registros de Decisões Arquiteturais (ADRs 001-039)](file:///c:/Projetos/atlas-invest/docs/decisions/)

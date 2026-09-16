@@ -253,3 +253,30 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 6. **ACESSIBILIDADE E TESTES E2E EM NAVEGADOR REAL:**
    - Componentes devem obedecer aos padrões WAI-ARIA, suportar navegação por teclado e possuir alvos de toque mínimos de 44x44px.
    - O fluxo completo de usuário (Registro -> Onboarding -> Navegação canônica -> Logout) é validado em navegador real via **Playwright** (`pnpm test:web:e2e`) nos viewports Desktop (1440x900), Tablet (768x1024) e Mobile (390x844).
+
+---
+
+## 11. Arquitetura e Invariantes do Portfolio Engine (Fase 1A)
+
+1. **PURE DETERMINISTIC REPLAY ENGINE (`@atlas/portfolio-engine`):**
+   - O `PortfolioReplayEngine` é estritamente puro, sem estado mantido entre chamadas, sem I/O e sem dependência de persistência ou rede.
+   - O Ledger de Transações (`Transaction`) é a Única Fonte da Verdade (Source of Truth); todo estado patrimonial (`PortfolioState`, `AccountState`, `AssetState`) é derivado sob demanda.
+2. **ORDENAÇÃO CANÔNICA EM 3 NÍVEIS (3-TUPLE):**
+   - Todas as transações são obrigatoriamente ordenadas por: `(tradeDate ASC, createdAt ASC, id ASC)`.
+   - Garante determinismo matemático absoluto, reprodutível 1.000x com saídas idênticas mesmo diante de embaralhamentos na entrada.
+3. **PRECISÃO ARBITRÁRIA (ZERO FLOATS):**
+   - É terminantemente proibido o uso de `number` ou ponto flutuante IEEE 754 em cálculos de quantidade ou financeiro.
+   - Todas as operações utilizam o Value Object `Quantity` do `@atlas/domain` (baseado em Decimal.js com até 18 casas decimais).
+4. **INVARIANTE LONG-ONLY E POSIÇÃO NÃO-NEGATIVA:**
+   - O sistema proíbe posições vendidas a descoberto. Qualquer `SELL` ou `TRANSFER_OUT` que resulte em `quantity < 0` dispara compulsoriamente `NegativePositionError` contendo diagnóstico detalhado.
+5. **POLÍTICA DE POSIÇÃO ZERO (ADR-039):**
+   - Quando a quantidade de um ativo atinge exatamente zero (`quantity.isZero()`), o ativo é omitido do mapa de posições ativas (`state.assets` e `accountState.assets`).
+   - `state.assets.size` reflete estritamente ativos com custódia positiva (> 0). O encerramento da posição é auditado pelo histórico de transações aplicadas.
+6. **DISPATCHER EXAUSTIVO E POLÍTICA DE DIFERIMENTO (ADR-038):**
+   - Todos os 16 tipos de transação (`TRANSACTION_TYPES`) são exaustivamente tratados com verificação `never` em tempo de compilação.
+   - Tipos de quantidade (`BUY`, `SELL`, `TRANSFER_IN`, `TRANSFER_OUT`) são computados em `appliedTransactions`.
+   - Os demais 12 tipos não são descartados: são registrados em `deferredEvents` com justificativa explícita.
+   - Satisfaz sempre: `totalProcessedCount === appliedTransactions.length + deferredEvents.length`.
+7. **IMUTABILIDADE ESTRITA DE ENTRADA E SAÍDA:**
+   - O array de transações fornecido na entrada nunca é alterado ou ordenado in-place.
+   - Todas as estruturas retornadas em `ReplayResult` e `PortfolioState` (objetos, maps e arrays) são profundamente congeladas (`Object.freeze`).
