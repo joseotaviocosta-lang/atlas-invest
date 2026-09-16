@@ -8,3 +8,6 @@ allowBuilds:
   '@prisma/engines': true
   '@scarf/scarf': false
   argon2: true
+overrides:
+  tar: '>=7.5.19'
+  '@xmldom/xmldom': '>=0.8.15'
