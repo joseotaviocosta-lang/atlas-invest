@@ -42,7 +42,7 @@ describe('Portfolio Engine Core: Deferred Transaction Semantics & Exhaustiveness
     expect(result.state.assets.get(String(ASSET_PETR4))?.quantity.value).toBe('100');
   });
 
-  it('SPLIT and corporate actions should be recognized but deferred without modifying quantity', () => {
+  it('SUBSCRIPTION should be recognized but deferred without modifying quantity', () => {
     const buy = TransactionFactory.createBuy({
       portfolioId: String(PORTFOLIO_DEFAULT),
       accountId: String(ACCOUNT_XP),
@@ -53,27 +53,27 @@ describe('Portfolio Engine Core: Deferred Transaction Semantics & Exhaustiveness
       tradeDate: '2026-01-10',
     });
 
-    const split = TransactionFactory.createSplit({
+    const sub = TransactionFactory.createSubscription({
       portfolioId: String(PORTFOLIO_DEFAULT),
       accountId: String(ACCOUNT_XP),
       assetId: String(ASSET_PETR4),
-      type: 'SPLIT',
-      factor: '2',
+      quantity: '20',
+      unitPrice: '8.00',
       currency: 'BRL',
       tradeDate: '2026-01-20',
     });
 
     const result = replayPortfolio({
       portfolioId: PORTFOLIO_DEFAULT,
-      transactions: [buy, split],
+      transactions: [buy, sub],
     });
 
     expect(result.deferredEvents).toHaveLength(1);
-    expect(result.deferredEvents[0].type).toBe('SPLIT');
+    expect(result.deferredEvents[0].type).toBe('SUBSCRIPTION');
     expect(result.state.assets.get(String(ASSET_PETR4))?.quantity.value).toBe('100');
   });
 
-  it('Exhaustiveness Check: all 16 transaction types must be explicitly handled (applied or deferred, never dropped)', () => {
+  it('Exhaustiveness Check: all 16 transaction types must be explicitly handled (8 applied, 8 deferred, never dropped)', () => {
     const commonProps = {
       portfolioId: String(PORTFOLIO_DEFAULT),
       accountId: String(ACCOUNT_XP),
@@ -82,28 +82,53 @@ describe('Portfolio Engine Core: Deferred Transaction Semantics & Exhaustiveness
       tradeDate: '2026-01-10',
     };
 
+    // Construct valid sequence so corporate actions have an active position to act upon
     const allTypeTransactions = [
-      TransactionFactory.createBuy({ ...commonProps, quantity: '10', unitPrice: '10' }),
+      TransactionFactory.createBuy({ ...commonProps, quantity: '100', unitPrice: '10' }),
+      TransactionFactory.createSplit({
+        ...commonProps,
+        type: 'SPLIT',
+        factor: '2',
+        tradeDate: '2026-01-11',
+      }),
+      TransactionFactory.createSplit({
+        ...commonProps,
+        type: 'REVERSE_SPLIT',
+        factor: '2',
+        tradeDate: '2026-01-12',
+      }),
+      TransactionFactory.createBonus({
+        ...commonProps,
+        quantity: '10',
+        assignedCost: '50',
+        tradeDate: '2026-01-13',
+      }),
+      TransactionFactory.createAmortization({
+        ...commonProps,
+        amount: '100',
+        tradeDate: '2026-01-14',
+      }),
       TransactionFactory.createSell({
         ...commonProps,
         quantity: '5',
         unitPrice: '10',
-        tradeDate: '2026-01-11',
+        tradeDate: '2026-01-15',
       }),
       TransactionFactory.createIncome({ ...commonProps, type: 'DIVIDEND', amount: '10' }),
       TransactionFactory.createIncome({ ...commonProps, type: 'JCP', amount: '10' }),
       TransactionFactory.createIncome({ ...commonProps, type: 'FII_INCOME', amount: '10' }),
-      TransactionFactory.createSplit({ ...commonProps, type: 'SPLIT', factor: '2' }),
-      TransactionFactory.createSplit({ ...commonProps, type: 'REVERSE_SPLIT', factor: '2' }),
-      TransactionFactory.createBonus({ ...commonProps, quantity: '5' }),
       TransactionFactory.createSubscription({ ...commonProps, quantity: '5', unitPrice: '10' }),
-      TransactionFactory.createAmortization({ ...commonProps, amount: '10' }),
-      TransactionFactory.createTransfer({ ...commonProps, type: 'TRANSFER_IN', quantity: '5' }),
+      TransactionFactory.createTransfer({
+        ...commonProps,
+        type: 'TRANSFER_IN',
+        quantity: '5',
+        tradeDate: '2026-01-17',
+      }),
       TransactionFactory.createTransfer({
         ...commonProps,
         type: 'TRANSFER_OUT',
         quantity: '2',
-        tradeDate: '2026-01-12',
+        tradeDate: '2026-01-16',
       }),
       TransactionFactory.createCashMovement({ ...commonProps, type: 'DEPOSIT', amount: '100' }),
       TransactionFactory.createCashMovement({ ...commonProps, type: 'WITHDRAWAL', amount: '50' }),
@@ -124,12 +149,12 @@ describe('Portfolio Engine Core: Deferred Transaction Semantics & Exhaustiveness
       transactions: allTypeTransactions,
     });
 
-    // 4 types are applied: BUY, SELL, TRANSFER_IN, TRANSFER_OUT
-    expect(result.appliedTransactions).toHaveLength(4);
+    // 8 types are applied: BUY, SPLIT, REVERSE_SPLIT, BONUS, AMORTIZATION, SELL, TRANSFER_IN, TRANSFER_OUT
+    expect(result.appliedTransactions).toHaveLength(8);
 
-    // 12 types are deferred:
-    // DIVIDEND, JCP, FII_INCOME, SPLIT, REVERSE_SPLIT, BONUS, SUBSCRIPTION, AMORTIZATION, DEPOSIT, WITHDRAWAL, FEE, TAX
-    expect(result.deferredEvents).toHaveLength(12);
+    // 8 types are deferred:
+    // DIVIDEND, JCP, FII_INCOME, SUBSCRIPTION, DEPOSIT, WITHDRAWAL, FEE, TAX
+    expect(result.deferredEvents).toHaveLength(8);
 
     // Total must equal 16 (zero drops)
     expect(result.totalProcessedCount).toBe(16);

@@ -184,6 +184,77 @@ export class PortfolioScenarioBuilder {
     return this;
   }
 
+  reverseSplit(props: {
+    assetId?: AssetId | string;
+    factor: string | number;
+    tradeDate: string | LocalDate;
+    accountId?: AccountId | string;
+    createdAt?: Date;
+    id?: string;
+  }): this {
+    const tx = TransactionFactory.createSplit({
+      id: props.id ?? nextTxId(),
+      portfolioId: String(this.portfolioId),
+      accountId: String(props.accountId ?? this.defaultAccountId),
+      assetId: String(props.assetId ?? ASSET_PETR4),
+      type: 'REVERSE_SPLIT',
+      factor: props.factor.toString(),
+      currency: 'BRL',
+      tradeDate: props.tradeDate,
+      createdAt: props.createdAt,
+    });
+    this.transactions.push(tx);
+    return this;
+  }
+
+  bonus(props: {
+    assetId?: AssetId | string;
+    quantity: string | number;
+    assignedCost?: string | number;
+    currency?: string;
+    tradeDate: string | LocalDate;
+    accountId?: AccountId | string;
+    createdAt?: Date;
+    id?: string;
+  }): this {
+    const tx = TransactionFactory.createBonus({
+      id: props.id ?? nextTxId(),
+      portfolioId: String(this.portfolioId),
+      accountId: String(props.accountId ?? this.defaultAccountId),
+      assetId: String(props.assetId ?? ASSET_PETR4),
+      quantity: props.quantity.toString(),
+      assignedCost: props.assignedCost !== undefined ? props.assignedCost.toString() : undefined,
+      currency: props.currency ?? 'BRL',
+      tradeDate: props.tradeDate,
+      createdAt: props.createdAt,
+    });
+    this.transactions.push(tx);
+    return this;
+  }
+
+  amortization(props: {
+    assetId?: AssetId | string;
+    amount: string | number;
+    currency?: string;
+    tradeDate: string | LocalDate;
+    accountId?: AccountId | string;
+    createdAt?: Date;
+    id?: string;
+  }): this {
+    const tx = TransactionFactory.createAmortization({
+      id: props.id ?? nextTxId(),
+      portfolioId: String(this.portfolioId),
+      accountId: String(props.accountId ?? this.defaultAccountId),
+      assetId: String(props.assetId ?? ASSET_PETR4),
+      amount: props.amount.toString(),
+      currency: props.currency ?? 'BRL',
+      tradeDate: props.tradeDate,
+      createdAt: props.createdAt,
+    });
+    this.transactions.push(tx);
+    return this;
+  }
+
   fee(props: {
     amount: string | number;
     tradeDate: string | LocalDate;

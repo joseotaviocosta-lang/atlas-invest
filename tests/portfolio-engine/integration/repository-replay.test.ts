@@ -189,4 +189,71 @@ describe('Portfolio Engine Integration: Repository Replay', () => {
     expect(petr4Position?.averageCost?.amount).toBe('31');
     expect(petr4Position?.costBasisStatus).toBe('KNOWN');
   });
+
+  it('should replay a corporate action sequence (BUY -> SPLIT -> SELL) fetched from TransactionRepository', async () => {
+    const tx1 = TransactionFactory.createBuy({
+      portfolioId,
+      accountId,
+      assetId: assetPetr4Id,
+      quantity: '100',
+      unitPrice: '30.00',
+      currency: 'BRL',
+      tradeDate: '2026-01-10',
+    });
+    const tx2 = TransactionFactory.createSplit({
+      portfolioId,
+      accountId,
+      assetId: assetPetr4Id,
+      type: 'SPLIT',
+      factor: '2',
+      currency: 'BRL',
+      tradeDate: '2026-01-18',
+    });
+    const tx3 = TransactionFactory.createSell({
+      portfolioId,
+      accountId,
+      assetId: assetPetr4Id,
+      quantity: '50',
+      unitPrice: '20.00',
+      currency: 'BRL',
+      tradeDate: '2026-01-25',
+    });
+
+    await txRepo.createMany([tx1, tx2, tx3]);
+
+    const storedTxs = await txRepo.findByPortfolioId(portfolioId);
+    expect(storedTxs).toHaveLength(3);
+
+    const result = engine.replay({
+      portfolioId,
+      transactions: storedTxs,
+    });
+
+    expect(result.totalProcessedCount).toBe(3);
+    expect(result.appliedTransactions).toHaveLength(3);
+    expect(result.state.appliedCorporateActions).toHaveLength(1);
+
+    const ca = result.state.appliedCorporateActions[0]!;
+    expect(ca.type).toBe('SPLIT');
+    expect(ca.assetId).toBe(assetPetr4Id);
+    expect(ca.beforeQuantity.equals(Quantity.from('100'))).toBe(true);
+    expect(ca.afterQuantity.equals(Quantity.from('200'))).toBe(true);
+    expect(ca.beforeTotalCost?.amount).toBe('3000');
+    expect(ca.afterTotalCost?.amount).toBe('3000');
+    expect(ca.beforeAverageCost?.amount).toBe('30');
+    expect(ca.afterAverageCost?.amount).toBe('15');
+    expect(ca.status).toBe('KNOWN');
+
+    const petr4Position = result.state.assets.get(assetPetr4Id);
+    expect(petr4Position?.quantity.equals(Quantity.from('150'))).toBe(true);
+    expect(petr4Position?.totalCost?.amount).toBe('2250');
+    expect(petr4Position?.averageCost?.amount).toBe('15');
+    expect(petr4Position?.costBasisStatus).toBe('KNOWN');
+
+    expect(result.state.realizedDisposals).toHaveLength(1);
+    const disposal = result.state.realizedDisposals[0]!;
+    expect(disposal.grossProceeds.amount).toBe('1000');
+    expect(disposal.costBasisRemoved?.amount).toBe('750');
+    expect(disposal.realizedGainLoss?.amount).toBe('250');
+  });
 });
