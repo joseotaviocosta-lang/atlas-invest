@@ -90,6 +90,12 @@ jobs:
       - name: Test Web Foundation
         run: pnpm test:web
 
+      - name: Test Security Suite
+        run: pnpm test:security
+
+      - name: Test Architecture Suite
+        run: pnpm test:architecture
+
       - name: Run All Tests
         run: pnpm test
 

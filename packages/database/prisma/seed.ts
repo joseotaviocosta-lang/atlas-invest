@@ -1,3 +1,18 @@
+import * as path from 'path';
+
+// Load .env file if DATABASE_URL is not set
+if (!process.env.DATABASE_URL) {
+  try {
+    process.loadEnvFile(path.resolve(__dirname, '../.env'));
+  } catch {
+    try {
+      process.loadEnvFile(path.resolve(__dirname, '../../../.env'));
+    } catch {
+      // Ignored if not found
+    }
+  }
+}
+
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
