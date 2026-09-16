@@ -96,6 +96,9 @@ jobs:
       - name: Test Architecture Suite
         run: pnpm test:architecture
 
+      - name: Test Portfolio Engine
+        run: pnpm test:portfolio-engine
+
       - name: Run All Tests
         run: pnpm test
 
