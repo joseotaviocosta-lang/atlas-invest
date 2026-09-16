@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { Response } from 'express';
 import { HealthController } from './health.controller';
+import { getPrismaClient } from '@atlas/database';
+
+type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
 
 describe('HealthController', () => {
   it('should return ok status and service information', () => {
@@ -16,9 +20,9 @@ describe('HealthController', () => {
   it('should return ok when database check succeeds', async () => {
     const mockPrisma = {
       $queryRawUnsafe: async () => [{ '?column?': 1 }],
-    };
-    const controller = new HealthController(mockPrisma as any);
-    const mockRes = { status: () => mockRes } as any;
+    } as unknown as AtlasPrismaClient;
+    const controller = new HealthController(mockPrisma);
+    const mockRes = { status: () => mockRes } as unknown as Response;
 
     const result = await controller.getReady(mockRes);
     expect(result.status).toBe('ok');
@@ -31,15 +35,15 @@ describe('HealthController', () => {
       $queryRawUnsafe: async () => {
         throw new Error('Connection refused');
       },
-    };
-    const controller = new HealthController(mockPrisma as any);
+    } as unknown as AtlasPrismaClient;
+    const controller = new HealthController(mockPrisma);
     let statusCode: number | undefined;
     const mockRes = {
       status: (code: number) => {
         statusCode = code;
         return mockRes;
       },
-    } as any;
+    } as unknown as Response;
 
     const result = await controller.getReady(mockRes);
     expect(statusCode).toBe(503);

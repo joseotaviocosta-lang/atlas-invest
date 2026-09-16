@@ -99,7 +99,10 @@ Porta padrão: `3001`
 pnpm dev:api
 ```
 
-Endpoint de verificação de saúde: `http://localhost:3001/health`
+Endpoint de verificação de saúde (liveness): `http://localhost:3001/health`  
+Endpoint de verificação de prontidão do banco (readiness): `http://localhost:3001/ready`  
+Documentação interativa da API (Swagger): `http://localhost:3001/docs`  
+Especificação OpenAPI 3.0: `http://localhost:3001/docs-json`
 
 ### 4.2. Executar a Aplicação Web (Next.js)
 
@@ -122,7 +125,7 @@ Abra o leitor QR code no Expo Go (Android/iOS) ou pressione `a` para emulador An
 ### 4.4. Executar Todos os Serviços Simultaneamente
 
 ```bash
-pnpm dev
+pnpm dev:all
 ```
 
 ---
@@ -154,7 +157,7 @@ pnpm format
 ### Testes Automatizados
 
 ```bash
-# Executar todos os testes do monorepo (engines, domain, database e fundação)
+# Executar todos os testes do monorepo (engines, domain, database, api e fundação)
 pnpm test
 
 # Executar a suite de testes de domínio (primitivas, entidades e invariantes)
@@ -162,6 +165,9 @@ pnpm test:domain
 
 # Executar a suite de integração de banco de dados (PostgreSQL/Prisma)
 pnpm test:database
+
+# Executar a suite de integração da API HTTP (NestJS/Supertest)
+pnpm test:api
 
 # Executar a suite de validação da fundação arquitetural
 pnpm test:foundation
@@ -187,5 +193,6 @@ pnpm clean
 - [Visão Arquitetural](file:///c:/Projetos/atlas-invest/docs/architecture/overview.md)
 - [Modelo de Domínio Financeiro](file:///c:/Projetos/atlas-invest/docs/architecture/domain-model.md)
 - [Arquitetura do Banco de Dados](file:///c:/Projetos/atlas-invest/docs/architecture/database.md)
+- [Arquitetura da API HTTP](file:///c:/Projetos/atlas-invest/docs/architecture/api.md)
 - [Diretrizes de Segurança](file:///c:/Projetos/atlas-invest/docs/security/README.md)
 - [Registros de Decisões Arquiteturais (ADRs)](file:///c:/Projetos/atlas-invest/docs/decisions/)

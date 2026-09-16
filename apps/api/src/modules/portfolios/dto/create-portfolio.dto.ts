@@ -14,7 +14,11 @@ export class CreatePortfolioSwaggerDto {
   @ApiProperty({ type: String, example: 'BRL' })
   baseCurrency!: string;
 
-  @ApiPropertyOptional({ type: String, enum: ['PERSONAL', 'FAMILY', 'COMPANY', 'SIMULATION'], default: 'PERSONAL' })
+  @ApiPropertyOptional({
+    type: String,
+    enum: ['PERSONAL', 'FAMILY', 'COMPANY', 'SIMULATION'],
+    default: 'PERSONAL',
+  })
   type?: 'PERSONAL' | 'FAMILY' | 'COMPANY' | 'SIMULATION';
 
   @ApiPropertyOptional({ type: String, enum: ['ACTIVE', 'ARCHIVED'], default: 'ACTIVE' })

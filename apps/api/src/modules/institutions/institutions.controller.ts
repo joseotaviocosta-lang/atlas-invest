@@ -1,13 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Param,
-  HttpCode,
-  HttpStatus,
-  Inject,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus, Inject } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 import {
   CreateInstitutionUseCase,
@@ -39,9 +30,7 @@ export class InstitutionsController {
   @ApiBody({ type: CreateInstitutionSwaggerDto })
   @ApiResponse({ status: 201, description: 'Institution created successfully' })
   @ApiResponse({ status: 400, description: 'Validation failed' })
-  async create(
-    @Body(new ZodValidationPipe(InstitutionInputSchema)) dto: CreateInstitutionDto,
-  ) {
+  async create(@Body(new ZodValidationPipe(InstitutionInputSchema)) dto: CreateInstitutionDto) {
     const institution = await this.createInstitutionUseCase.execute(dto);
     return {
       data: institution.toJSON(),

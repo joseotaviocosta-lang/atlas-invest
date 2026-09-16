@@ -1,25 +1,13 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../database';
-import {
-  CreatePortfolioUseCase,
-  GetPortfolioUseCase,
-  ListPortfoliosUseCase,
-} from './portfolios';
+import { CreatePortfolioUseCase, GetPortfolioUseCase, ListPortfoliosUseCase } from './portfolios';
 import {
   CreateInstitutionUseCase,
   GetInstitutionUseCase,
   ListInstitutionsUseCase,
 } from './institutions';
-import {
-  CreateAccountUseCase,
-  GetAccountUseCase,
-  ListAccountsUseCase,
-} from './accounts';
-import {
-  CreateAssetUseCase,
-  GetAssetUseCase,
-  SearchAssetsUseCase,
-} from './assets';
+import { CreateAccountUseCase, GetAccountUseCase, ListAccountsUseCase } from './accounts';
+import { CreateAssetUseCase, GetAssetUseCase, SearchAssetsUseCase } from './assets';
 import {
   CreateTransactionUseCase,
   GetTransactionUseCase,

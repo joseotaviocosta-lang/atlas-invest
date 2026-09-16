@@ -41,9 +41,7 @@ export class PortfoliosController {
   @ApiBody({ type: CreatePortfolioSwaggerDto })
   @ApiResponse({ status: 201, description: 'Portfolio created successfully' })
   @ApiResponse({ status: 400, description: 'Validation failed or invalid currency' })
-  async create(
-    @Body(new ZodValidationPipe(PortfolioInputSchema)) dto: CreatePortfolioDto,
-  ) {
+  async create(@Body(new ZodValidationPipe(PortfolioInputSchema)) dto: CreatePortfolioDto) {
     const portfolio = await this.createPortfolioUseCase.execute(dto);
     return {
       data: portfolio.toJSON(),

@@ -52,15 +52,11 @@ export class ListTransactionsUseCase {
 
     const limit = query.limit ?? 50;
     // Request limit + 1 to check if there are subsequent items
-    const rawItems = await this.transactionRepository.findByPortfolioId(
-      query.portfolioId,
-      filter,
-      {
-        cursor: query.cursor,
-        skip: query.cursor ? 1 : 0,
-        limit: limit + 1,
-      },
-    );
+    const rawItems = await this.transactionRepository.findByPortfolioId(query.portfolioId, filter, {
+      cursor: query.cursor,
+      skip: query.cursor ? 1 : 0,
+      limit: limit + 1,
+    });
 
     const hasMore = rawItems.length > limit;
     const items = hasMore ? rawItems.slice(0, limit) : rawItems;

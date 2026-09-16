@@ -21,10 +21,7 @@ import {
   CreateTransactionBodySchema,
   CreateTransactionSwaggerDto,
 } from './dto/create-transaction.dto';
-import {
-  ListTransactionsQuery,
-  ListTransactionsQuerySchema,
-} from './dto/list-transactions.dto';
+import { ListTransactionsQuery, ListTransactionsQuerySchema } from './dto/list-transactions.dto';
 import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
 
 @ApiTags('Transactions')
@@ -49,7 +46,10 @@ export class PortfolioTransactionsController {
   @ApiResponse({ status: 201, description: 'Transaction appended successfully' })
   @ApiResponse({ status: 400, description: 'Validation failed or domain rule violated' })
   @ApiResponse({ status: 404, description: 'Portfolio, account, or asset not found' })
-  @ApiResponse({ status: 409, description: 'Cross-portfolio integrity violation or duplicate external transaction' })
+  @ApiResponse({
+    status: 409,
+    description: 'Cross-portfolio integrity violation or duplicate external transaction',
+  })
   async create(
     @Param('portfolioId', UUIDParamPipe) portfolioId: string,
     @Body(new ZodValidationPipe(CreateTransactionBodySchema)) body: CreateTransactionBody,
@@ -89,9 +89,21 @@ export class PortfolioTransactionsController {
   @ApiQuery({ name: 'accountId', required: false, description: 'Filter by account UUID' })
   @ApiQuery({ name: 'assetId', required: false, description: 'Filter by asset UUID' })
   @ApiQuery({ name: 'type', required: false, description: 'Filter by transaction type' })
-  @ApiQuery({ name: 'startDate', required: false, description: 'Filter tradeDate >= startDate (YYYY-MM-DD)' })
-  @ApiQuery({ name: 'endDate', required: false, description: 'Filter tradeDate <= endDate (YYYY-MM-DD)' })
-  @ApiQuery({ name: 'cursor', required: false, description: 'Pagination cursor (transaction UUID)' })
+  @ApiQuery({
+    name: 'startDate',
+    required: false,
+    description: 'Filter tradeDate >= startDate (YYYY-MM-DD)',
+  })
+  @ApiQuery({
+    name: 'endDate',
+    required: false,
+    description: 'Filter tradeDate <= endDate (YYYY-MM-DD)',
+  })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    description: 'Pagination cursor (transaction UUID)',
+  })
   @ApiQuery({ name: 'limit', required: false, description: 'Number of items (1-100, default 50)' })
   @ApiResponse({ status: 200, description: 'Paginated transactions list' })
   @ApiResponse({ status: 404, description: 'Portfolio not found' })

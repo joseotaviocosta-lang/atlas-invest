@@ -11,16 +11,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { AssetType } from '@atlas/domain';
-import {
-  CreateAssetUseCase,
-  GetAssetUseCase,
-  SearchAssetsUseCase,
-} from '../../application/assets';
-import {
-  CreateAssetDto,
-  CreateAssetSwaggerDto,
-  AssetInputSchema,
-} from './dto/create-asset.dto';
+import { CreateAssetUseCase, GetAssetUseCase, SearchAssetsUseCase } from '../../application/assets';
+import { CreateAssetDto, CreateAssetSwaggerDto, AssetInputSchema } from './dto/create-asset.dto';
 import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
 
 @ApiTags('Assets')
@@ -41,9 +33,7 @@ export class AssetsController {
   @ApiBody({ type: CreateAssetSwaggerDto })
   @ApiResponse({ status: 201, description: 'Asset registered successfully' })
   @ApiResponse({ status: 400, description: 'Validation failed' })
-  async create(
-    @Body(new ZodValidationPipe(AssetInputSchema)) dto: CreateAssetDto,
-  ) {
+  async create(@Body(new ZodValidationPipe(AssetInputSchema)) dto: CreateAssetDto) {
     const asset = await this.createAssetUseCase.execute(dto);
     return {
       data: asset.toJSON(),
@@ -65,8 +55,16 @@ export class AssetsController {
   @Get()
   @ApiOperation({ summary: 'Search and filter assets' })
   @ApiQuery({ name: 'q', required: false, description: 'Search term for ticker or name' })
-  @ApiQuery({ name: 'exchange', required: false, description: 'Exchange filter (e.g. BVMF, NASDAQ)' })
-  @ApiQuery({ name: 'type', required: false, description: 'Asset type filter (e.g. EQUITY, FII, ETF)' })
+  @ApiQuery({
+    name: 'exchange',
+    required: false,
+    description: 'Exchange filter (e.g. BVMF, NASDAQ)',
+  })
+  @ApiQuery({
+    name: 'type',
+    required: false,
+    description: 'Asset type filter (e.g. EQUITY, FII, ETF)',
+  })
   @ApiResponse({ status: 200, description: 'List of assets' })
   async search(
     @Query('q') q?: string,

@@ -63,6 +63,9 @@ jobs:
       - name: Test Database Integration
         run: pnpm test:database
 
+      - name: Test API Integration
+        run: pnpm test:api
+
       - name: Test Domain Models
         run: pnpm test:domain
 

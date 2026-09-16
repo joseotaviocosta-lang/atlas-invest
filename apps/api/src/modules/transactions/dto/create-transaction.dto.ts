@@ -65,13 +65,25 @@ export class CreateTransactionSwaggerDto {
   @ApiProperty({ type: String, example: 'BRL' })
   currency!: string;
 
-  @ApiProperty({ type: String, example: '2026-03-15', description: 'Trade date in YYYY-MM-DD format' })
+  @ApiProperty({
+    type: String,
+    example: '2026-03-15',
+    description: 'Trade date in YYYY-MM-DD format',
+  })
   tradeDate!: string;
 
-  @ApiPropertyOptional({ type: String, example: '2026-03-17', description: 'Settlement date in YYYY-MM-DD format' })
+  @ApiPropertyOptional({
+    type: String,
+    example: '2026-03-17',
+    description: 'Settlement date in YYYY-MM-DD format',
+  })
   settlementDate?: string;
 
-  @ApiPropertyOptional({ type: String, enum: ['MANUAL', 'B3', 'OPEN_FINANCE', 'BROKER_NOTE', 'IMPORT'], default: 'MANUAL' })
+  @ApiPropertyOptional({
+    type: String,
+    enum: ['MANUAL', 'B3', 'OPEN_FINANCE', 'BROKER_NOTE', 'IMPORT'],
+    default: 'MANUAL',
+  })
   source?: string;
 
   @ApiPropertyOptional({ type: String, example: 'XP' })
@@ -86,21 +98,45 @@ export class CreateTransactionSwaggerDto {
   @ApiPropertyOptional({ type: String, example: '44444444-4444-4444-8444-444444444444' })
   assetId?: string;
 
-  @ApiPropertyOptional({ type: String, example: '100', description: 'Strict decimal string for quantity' })
+  @ApiPropertyOptional({
+    type: String,
+    example: '100',
+    description: 'Strict decimal string for quantity',
+  })
   quantity?: string;
 
-  @ApiPropertyOptional({ type: String, example: '38.50', description: 'Strict decimal string for unit price' })
+  @ApiPropertyOptional({
+    type: String,
+    example: '38.50',
+    description: 'Strict decimal string for unit price',
+  })
   unitPrice?: string;
 
-  @ApiPropertyOptional({ type: String, example: '4.90', description: 'Strict decimal string for fees' })
+  @ApiPropertyOptional({
+    type: String,
+    example: '4.90',
+    description: 'Strict decimal string for fees',
+  })
   fees?: string;
 
-  @ApiPropertyOptional({ type: String, example: '0.00', description: 'Strict decimal string for taxes' })
+  @ApiPropertyOptional({
+    type: String,
+    example: '0.00',
+    description: 'Strict decimal string for taxes',
+  })
   taxes?: string;
 
-  @ApiPropertyOptional({ type: String, example: '3850.00', description: 'Strict decimal string for cash movements/income' })
+  @ApiPropertyOptional({
+    type: String,
+    example: '3850.00',
+    description: 'Strict decimal string for cash movements/income',
+  })
   amount?: string;
 
-  @ApiPropertyOptional({ type: String, example: '2.00', description: 'Strict decimal string for split factor' })
+  @ApiPropertyOptional({
+    type: String,
+    example: '2.00',
+    description: 'Strict decimal string for split factor',
+  })
   factor?: string;
 }

@@ -1,12 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import request from 'supertest';
 import { INestApplication } from '@nestjs/common';
-import {
-  createTestApp,
-  closeTestApp,
-  cleanDatabase,
-  seedBaseFixtures,
-} from './setup';
+import { createTestApp, closeTestApp, cleanDatabase, seedBaseFixtures } from './setup';
 
 describe('API Integration: Institutions, Accounts & Assets', () => {
   let app: INestApplication;
@@ -30,13 +25,11 @@ describe('API Integration: Institutions, Accounts & Assets', () => {
 
   describe('Institutions', () => {
     it('should create and retrieve a financial institution', async () => {
-      const createRes = await request(app.getHttpServer())
-        .post('/api/v1/institutions')
-        .send({
-          name: 'BTG Pactual',
-          type: 'BANK',
-          country: 'BR',
-        });
+      const createRes = await request(app.getHttpServer()).post('/api/v1/institutions').send({
+        name: 'BTG Pactual',
+        type: 'BANK',
+        country: 'BR',
+      });
 
       expect(createRes.status).toBe(201);
       expect(createRes.body.data.name).toBe('BTG Pactual');
@@ -70,9 +63,7 @@ describe('API Integration: Institutions, Accounts & Assets', () => {
       expect(createRes.body.data.institutionId).toBe(institutionId);
 
       const accountId = createRes.body.data.id;
-      const getRes = await request(app.getHttpServer()).get(
-        `/api/v1/accounts/${accountId}`,
-      );
+      const getRes = await request(app.getHttpServer()).get(`/api/v1/accounts/${accountId}`);
       expect(getRes.status).toBe(200);
       expect(getRes.body.data.name).toBe('Conta Corretora XP');
 
@@ -108,45 +99,37 @@ describe('API Integration: Institutions, Accounts & Assets', () => {
 
   describe('Assets', () => {
     it('should create and search assets by query, exchange, and type', async () => {
-      const petr4Res = await request(app.getHttpServer())
-        .post('/api/v1/assets')
-        .send({
-          ticker: 'PETR4',
-          name: 'Petrobras PN',
-          type: 'STOCK',
-          currency: 'BRL',
-          exchange: 'BVMF',
-          isin: 'BRPETRACNPR6',
-        });
+      const petr4Res = await request(app.getHttpServer()).post('/api/v1/assets').send({
+        ticker: 'PETR4',
+        name: 'Petrobras PN',
+        type: 'STOCK',
+        currency: 'BRL',
+        exchange: 'BVMF',
+        isin: 'BRPETRACNPR6',
+      });
       expect(petr4Res.status).toBe(201);
       expect(petr4Res.body.data.ticker).toBe('PETR4');
 
-      const knri11Res = await request(app.getHttpServer())
-        .post('/api/v1/assets')
-        .send({
-          ticker: 'KNRI11',
-          name: 'Kinea Renda Imobiliária',
-          type: 'FII',
-          currency: 'BRL',
-          exchange: 'BVMF',
-        });
+      const knri11Res = await request(app.getHttpServer()).post('/api/v1/assets').send({
+        ticker: 'KNRI11',
+        name: 'Kinea Renda Imobiliária',
+        type: 'FII',
+        currency: 'BRL',
+        exchange: 'BVMF',
+      });
       expect(knri11Res.status).toBe(201);
 
-      const aaplRes = await request(app.getHttpServer())
-        .post('/api/v1/assets')
-        .send({
-          ticker: 'AAPL',
-          name: 'Apple Inc.',
-          type: 'STOCK',
-          currency: 'USD',
-          exchange: 'NASDAQ',
-        });
+      const aaplRes = await request(app.getHttpServer()).post('/api/v1/assets').send({
+        ticker: 'AAPL',
+        name: 'Apple Inc.',
+        type: 'STOCK',
+        currency: 'USD',
+        exchange: 'NASDAQ',
+      });
       expect(aaplRes.status).toBe(201);
 
       // Search by q
-      const searchQ = await request(app.getHttpServer())
-        .get('/api/v1/assets')
-        .query({ q: 'petr' });
+      const searchQ = await request(app.getHttpServer()).get('/api/v1/assets').query({ q: 'petr' });
       expect(searchQ.status).toBe(200);
       expect(searchQ.body.data.length).toBe(1);
       expect(searchQ.body.data[0].ticker).toBe('PETR4');

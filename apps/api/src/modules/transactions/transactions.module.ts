@@ -1,9 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ApplicationModule } from '../../application';
-import {
-  TransactionsController,
-  PortfolioTransactionsController,
-} from './transactions.controller';
+import { TransactionsController, PortfolioTransactionsController } from './transactions.controller';
 
 @Module({
   imports: [ApplicationModule],

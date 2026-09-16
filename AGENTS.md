@@ -100,3 +100,37 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Todo novo recurso ou engine deve vir acompanhado de testes unitários ou de integração via Vitest.
 3. **DEPENDÊNCIAS EXTERNAS:**
    - Não adicionar novas bibliotecas de terceiros sem justificativa clara e análise de segurança e bundle size.
+
+---
+
+## 6. Camada de API HTTP (Fase 0D)
+
+1. **ARQUITETURA EM CAMADAS LIMPAS:**
+   - `HTTP Request -> Controller -> Application Service (Use Case) -> Repository -> Database / Domain`.
+   - Controllers lidam apenas com rotas, status codes, anotações Swagger e delegação para casos de uso.
+   - Casos de uso orquestram entidades e repositórios sem acoplamento com objetos de request/response do NestJS/Express.
+   - Repositórios são injetados exclusivamente através de tokens tipados desacoplados (`Symbol('..._REPOSITORY')`).
+2. **VERSIONAMENTO E ROTAS:**
+   - Recursos de domínio sob prefixo explícito `/api/v1/*` (ex: `/api/v1/portfolios`, `/api/v1/institutions`, `/api/v1/transactions`).
+   - Rotas operacionais permanecem na raiz (`/health`, `/ready`, `/docs`, `/docs-json`).
+3. **TRANSACTION LEDGER APPEND-ONLY NA API:**
+   - Disponibilizar unicamente `POST /api/v1/portfolios/:portfolioId/transactions` e `GET`.
+   - **PROIBIDO** criar rotas `PUT`, `PATCH` ou `DELETE` para transações. O ledger é imutável.
+4. **IMPOSIÇÃO DE STRINGS DECIMAIS E DATAS DE CALENDÁRIO:**
+   - Valores monetários e quantitativos devem ser strings decimais (`"1234.56"`). O envio de `number` ou float de JavaScript deve falhar imediatamente com `400 Bad Request` (`VALIDATION.INVALID_INPUT`).
+   - Datas econômicas (`tradeDate`, `settlementDate`) devem ser validadas contra datas civis válidas (`YYYY-MM-DD`). Datas irreais (ex: `2026-02-30`) devem ser rejeitadas com `400 Bad Request`.
+5. **ENVELOPE DE RESPOSTA E TRATAMENTO DE ERROS:**
+   - Recursos individuais: `{ data: T }`.
+   - Listas paginadas por cursor: `{ data: T[], meta: { limit, cursor, nextCursor, hasMore } }`.
+   - Erros são centralizados no `GlobalExceptionFilter` com schema unificado: `{ statusCode, error, code, message, details?, timestamp, path, requestId }`.
+   - Mapeamentos padronizados: `ZodError` / `DomainError` -> `400`, `EntityNotFoundError` -> `404`, `CrossPortfolioIntegrityError` / `DuplicateExternalTransactionError` -> `409`, `PersistenceError` -> `500`.
+6. **RASTREAMENTO E LOGGING SEGURO:**
+   - Header `x-request-id` deve ser propagado em todas as requisições e respostas.
+   - Logs de erro devem conter apenas metadados técnicos (`timestamp`, `requestId`, `method`, `url`, `statusCode`, `code`, `message`). **NUNCA** logar payloads com dados financeiros ou sensíveis.
+7. **DOCUMENTAÇÃO OPENAPI 3.0:**
+   - Swagger documentado em `/docs` e OpenAPI JSON em `/docs-json`.
+8. **PROBES OPERACIONAIS:**
+   - `/health`: Liveness probe (processo no ar).
+   - `/ready`: Readiness probe (conectividade com banco de dados via `SELECT 1`). Retorna 503 se o banco estiver inacessível.
+9. **EXECUÇÃO DE TESTES:**
+   - Testes de integração da API executados com `pnpm test:api` contra banco de dados PostgreSQL real (`atlas_test`).

@@ -190,19 +190,13 @@ describe('API Integration: Append-Only Transaction Ledger', () => {
         });
       const txId = createRes.body.data.id;
 
-      const putRes = await request(app.getHttpServer()).put(
-        `/api/v1/transactions/${txId}`,
-      );
+      const putRes = await request(app.getHttpServer()).put(`/api/v1/transactions/${txId}`);
       expect(putRes.status).toBe(404);
 
-      const patchRes = await request(app.getHttpServer()).patch(
-        `/api/v1/transactions/${txId}`,
-      );
+      const patchRes = await request(app.getHttpServer()).patch(`/api/v1/transactions/${txId}`);
       expect(patchRes.status).toBe(404);
 
-      const deleteRes = await request(app.getHttpServer()).delete(
-        `/api/v1/transactions/${txId}`,
-      );
+      const deleteRes = await request(app.getHttpServer()).delete(`/api/v1/transactions/${txId}`);
       expect(deleteRes.status).toBe(404);
     });
   });

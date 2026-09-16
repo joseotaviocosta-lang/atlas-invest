@@ -1,10 +1,4 @@
-import {
-  ExceptionFilter,
-  Catch,
-  ArgumentsHost,
-  HttpException,
-  HttpStatus,
-} from '@nestjs/common';
+import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { ZodError } from 'zod';
 import {
@@ -80,7 +74,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           errorCode = String(obj['code']);
         }
       }
-      errorCode = errorCode === 'INTERNAL_SERVER_ERROR' ? this.getDefaultCodeForStatus(statusCode) : errorCode;
+      errorCode =
+        errorCode === 'INTERNAL_SERVER_ERROR'
+          ? this.getDefaultCodeForStatus(statusCode)
+          : errorCode;
     } else if (exception instanceof PersistenceError) {
       statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
       errorCode = exception.code ?? 'PERSISTENCE.ERROR';
