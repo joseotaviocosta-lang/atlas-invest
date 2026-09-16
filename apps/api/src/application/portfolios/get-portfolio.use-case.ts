@@ -10,9 +10,12 @@ export class GetPortfolioUseCase {
     private readonly portfolioRepository: IPortfolioRepository,
   ) {}
 
-  async execute(portfolioId: string): Promise<Portfolio> {
+  async execute(portfolioId: string, userId?: string): Promise<Portfolio> {
     const portfolio = await this.portfolioRepository.findById(portfolioId);
     if (!portfolio) {
+      throw new EntityNotFoundError('Portfolio', portfolioId);
+    }
+    if (userId && portfolio.userId !== userId) {
       throw new EntityNotFoundError('Portfolio', portfolioId);
     }
     return portfolio;

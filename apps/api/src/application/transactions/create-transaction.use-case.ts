@@ -39,6 +39,7 @@ export interface CreateTransactionCommand {
   taxes?: string;
   amount?: string;
   factor?: string;
+  userId?: string;
 }
 
 @Injectable()
@@ -57,6 +58,10 @@ export class CreateTransactionUseCase {
   async execute(command: CreateTransactionCommand): Promise<Transaction> {
     const portfolio = await this.portfolioRepository.findById(command.portfolioId);
     if (!portfolio) {
+      throw new EntityNotFoundError('Portfolio', command.portfolioId);
+    }
+
+    if (command.userId && portfolio.userId !== command.userId) {
       throw new EntityNotFoundError('Portfolio', command.portfolioId);
     }
 

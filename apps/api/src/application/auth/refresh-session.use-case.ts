@@ -1,0 +1,74 @@
+import { Injectable, Inject, UnauthorizedException } from '@nestjs/common';
+import { SESSION_REPOSITORY } from '../../database/tokens';
+import { ISessionRepository } from '@atlas/database';
+import { TokenService } from '../../auth/services/token.service';
+
+export interface RefreshSessionDto {
+  refreshToken: string;
+}
+
+export interface RefreshSessionResponseDto {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}
+
+@Injectable()
+export class RefreshSessionUseCase {
+  constructor(
+    @Inject(SESSION_REPOSITORY)
+    private readonly sessionRepository: ISessionRepository,
+    @Inject(TokenService)
+    private readonly tokenService: TokenService,
+  ) {}
+
+  async execute(dto: RefreshSessionDto): Promise<RefreshSessionResponseDto> {
+    const presentedHash = this.tokenService.hashRefreshToken(dto.refreshToken);
+
+    // 1. Detect token reuse from previously rotated token
+    const reusedSession =
+      await this.sessionRepository.findByPreviousRefreshTokenHash(presentedHash);
+    if (reusedSession) {
+      await this.sessionRepository.revoke(reusedSession.id);
+      throw new UnauthorizedException({
+        message: 'Refresh token reuse detected. Session has been revoked.',
+        code: 'AUTH.INVALID_REFRESH_TOKEN',
+      });
+    }
+
+    // 2. Lookup session by current active refresh token hash
+    const session = await this.sessionRepository.findByRefreshTokenHash(presentedHash);
+    if (!session) {
+      throw new UnauthorizedException({
+        message: 'Invalid or expired refresh token.',
+        code: 'AUTH.INVALID_REFRESH_TOKEN',
+      });
+    }
+
+    if (session.revokedAt !== null || session.expiresAt <= new Date()) {
+      throw new UnauthorizedException({
+        message: 'Session has been revoked or expired.',
+        code: 'AUTH.SESSION_REVOKED',
+      });
+    }
+
+    // 3. Rotate refresh token
+    const newRawRefreshToken = this.tokenService.generateRefreshToken();
+    const newRefreshTokenHash = this.tokenService.hashRefreshToken(newRawRefreshToken);
+    const newExpiresAt = this.tokenService.getRefreshTokenExpiresAt();
+
+    await this.sessionRepository.rotateRefreshToken(session.id, newRefreshTokenHash, newExpiresAt);
+
+    // 4. Issue new access token
+    const accessToken = this.tokenService.generateAccessToken({
+      userId: session.userId,
+      sessionId: session.id,
+    });
+
+    return {
+      accessToken,
+      refreshToken: newRawRefreshToken,
+      expiresIn: this.tokenService.getAccessTokenExpiresIn(),
+    };
+  }
+}

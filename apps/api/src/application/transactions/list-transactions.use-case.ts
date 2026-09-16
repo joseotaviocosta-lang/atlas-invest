@@ -17,6 +17,7 @@ export interface ListTransactionsQuery {
   endDate?: string;
   cursor?: string;
   limit?: number;
+  userId?: string;
 }
 
 export interface PaginatedTransactionsResult {
@@ -39,6 +40,10 @@ export class ListTransactionsUseCase {
   async execute(query: ListTransactionsQuery): Promise<PaginatedTransactionsResult> {
     const portfolio = await this.portfolioRepository.findById(query.portfolioId);
     if (!portfolio) {
+      throw new EntityNotFoundError('Portfolio', query.portfolioId);
+    }
+
+    if (query.userId && portfolio.userId !== query.userId) {
       throw new EntityNotFoundError('Portfolio', query.portfolioId);
     }
 

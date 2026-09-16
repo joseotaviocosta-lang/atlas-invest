@@ -18,6 +18,7 @@ export interface CreateAccountCommand {
   name: string;
   currency: string;
   status?: AccountStatus;
+  userId?: string;
 }
 
 @Injectable()
@@ -34,6 +35,9 @@ export class CreateAccountUseCase {
   async execute(command: CreateAccountCommand): Promise<Account> {
     const portfolio = await this.portfolioRepository.findById(command.portfolioId);
     if (!portfolio) {
+      throw new EntityNotFoundError('Portfolio', command.portfolioId);
+    }
+    if (command.userId && portfolio.userId !== command.userId) {
       throw new EntityNotFoundError('Portfolio', command.portfolioId);
     }
 
