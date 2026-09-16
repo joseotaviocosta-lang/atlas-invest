@@ -124,4 +124,33 @@ describe('Database Integration: Entities Round-Trip', () => {
     expect(reloadedAccount?.name).toBe('Conta XP Renomeada');
     expect(reloadedAccount?.status).toBe('ARCHIVED');
   });
+
+  it('should round-trip Portfolio entity with SIMULATION type', async () => {
+    const user = await prisma.user.create({
+      data: {
+        id: '88888888-8888-4888-8888-888888888888',
+        email: 'simulation-owner@atlas.dev',
+        name: 'Simulation User',
+      },
+    });
+
+    const simulationPortfolio = Portfolio.create({
+      userId: user.id,
+      name: 'Carteira Simulada 2026',
+      baseCurrency: 'BRL',
+      type: 'SIMULATION',
+    });
+
+    const saved = await portfolioRepo.create(simulationPortfolio);
+    expect(saved.type).toBe('SIMULATION');
+    expect(saved.name).toBe('Carteira Simulada 2026');
+
+    const fetched = await portfolioRepo.findById(saved.id);
+    expect(fetched).not.toBeNull();
+    expect(fetched?.type).toBe('SIMULATION');
+    expect(fetched?.equals(simulationPortfolio)).toBe(true);
+
+    const userPortfolios = await portfolioRepo.findByUserId(user.id);
+    expect(userPortfolios.some((p) => p.id === saved.id && p.type === 'SIMULATION')).toBe(true);
+  });
 });
