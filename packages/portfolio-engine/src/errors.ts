@@ -188,3 +188,105 @@ export class IncompleteCostBasisError extends PortfolioReplayError {
     this.accountId = accountId;
   }
 }
+
+/**
+ * Thrown when a SPLIT or REVERSE_SPLIT specifies an invalid factor (e.g. factor <= 0 or factor == 1).
+ */
+export class InvalidCorporateActionFactorError extends PortfolioReplayError {
+  readonly transactionId: string;
+  readonly factor: string;
+
+  constructor(
+    transactionId: string,
+    factor: string,
+    reason = 'Factor must be greater than zero and cannot be 1 (no-op)',
+  ) {
+    super(
+      `Invalid corporate action factor for '${transactionId}': ${reason} (received '${factor}')`,
+      'PORTFOLIO_ENGINE.INVALID_CA_FACTOR',
+    );
+    this.transactionId = transactionId;
+    this.factor = factor;
+  }
+}
+
+/**
+ * Thrown when a BONUS transaction specifies an invalid bonus quantity (e.g. quantity <= 0).
+ */
+export class InvalidBonusQuantityError extends PortfolioReplayError {
+  readonly transactionId: string;
+  readonly quantity: string;
+
+  constructor(transactionId: string, quantity: string) {
+    super(
+      `Invalid BONUS quantity for '${transactionId}': quantity must be greater than zero (received '${quantity}')`,
+      'PORTFOLIO_ENGINE.INVALID_BONUS_QUANTITY',
+    );
+    this.transactionId = transactionId;
+    this.quantity = quantity;
+  }
+}
+
+/**
+ * Thrown when an AMORTIZATION amount exceeds the carried total cost of the position.
+ */
+export class AmortizationExceedsCostError extends PortfolioReplayError {
+  readonly transactionId: string;
+  readonly amortizationAmount: string;
+  readonly currentTotalCost: string;
+
+  constructor(transactionId: string, amortizationAmount: string, currentTotalCost: string) {
+    super(
+      `AMORTIZATION amount '${amortizationAmount}' exceeds current carried total cost '${currentTotalCost}' for transaction '${transactionId}'. Negative cost basis is strictly disallowed.`,
+      'PORTFOLIO_ENGINE.AMORTIZATION_EXCEEDS_COST',
+    );
+    this.transactionId = transactionId;
+    this.amortizationAmount = amortizationAmount;
+    this.currentTotalCost = currentTotalCost;
+  }
+}
+
+/**
+ * Thrown when an AMORTIZATION is attempted on a position with INCOMPLETE cost basis.
+ */
+export class IncompleteAmortizationCostError extends PortfolioReplayError {
+  readonly transactionId: string;
+  readonly accountId: string;
+  readonly assetId: string;
+
+  constructor(transactionId: string, accountId: string, assetId: string) {
+    super(
+      `Cannot apply AMORTIZATION '${transactionId}' for asset '${assetId}' in account '${accountId}': position cost basis is INCOMPLETE. Amortization requires a verifiable carried cost basis.`,
+      'PORTFOLIO_ENGINE.INCOMPLETE_AMORTIZATION_COST',
+    );
+    this.transactionId = transactionId;
+    this.accountId = accountId;
+    this.assetId = assetId;
+  }
+}
+
+/**
+ * Thrown when a corporate action is applied to an account that has no active custody/shares of the target asset.
+ */
+export class EmptyPositionCorporateActionError extends PortfolioReplayError {
+  readonly transactionId: string;
+  readonly accountId: string;
+  readonly assetId: string;
+  readonly corporateActionType: string;
+
+  constructor(
+    transactionId: string,
+    accountId: string,
+    assetId: string,
+    corporateActionType: string,
+  ) {
+    super(
+      `Cannot apply corporate action '${corporateActionType}' ('${transactionId}') for asset '${assetId}' in account '${accountId}': account holds no active position for this asset.`,
+      'PORTFOLIO_ENGINE.EMPTY_POSITION_CORPORATE_ACTION',
+    );
+    this.transactionId = transactionId;
+    this.accountId = accountId;
+    this.assetId = assetId;
+    this.corporateActionType = corporateActionType;
+  }
+}

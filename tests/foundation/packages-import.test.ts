@@ -18,7 +18,7 @@ describe('Foundation: Packages Import & Version Contracts', () => {
     expect(CONFIG_VERSION).toBe('0.1.0');
     expect(DOMAIN_VERSION).toBe('0.1.0');
     expect(DATABASE_VERSION).toBe('0.1.0');
-    expect(PORTFOLIO_ENGINE_VERSION).toBe('1.0.0-alpha.3');
+    expect(PORTFOLIO_ENGINE_VERSION).toBe('1.0.0-alpha.4');
     expect(PERFORMANCE_ENGINE_VERSION).toBe('0.1.0');
     expect(TAX_ENGINE_VERSION).toBe('0.1.0');
     expect(MARKET_DATA_VERSION).toBe('0.1.0');

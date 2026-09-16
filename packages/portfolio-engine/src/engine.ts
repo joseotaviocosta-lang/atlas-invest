@@ -146,12 +146,16 @@ export class PortfolioReplayEngine {
         ctx.realizedDisposals.filter((d) => String(d.accountId) === accIdStr),
       );
       const accountRealizedSummary = buildRealizedSummaries(accountDisposals);
+      const accountCorporateActions = Object.freeze(
+        ctx.appliedCorporateActions.filter((ca) => String(ca.accountId) === accIdStr),
+      );
 
       const accountState: AccountState = Object.freeze({
         accountId: createAccountId(accIdStr),
         assets: Object.freeze(accountAssets),
         realizedDisposals: accountDisposals,
         realizedSummary: accountRealizedSummary,
+        appliedCorporateActions: accountCorporateActions,
       });
       accountsMap.set(accIdStr, accountState);
     }
@@ -181,6 +185,7 @@ export class PortfolioReplayEngine {
 
     const portfolioDisposals = Object.freeze([...ctx.realizedDisposals]);
     const portfolioRealizedSummary = buildRealizedSummaries(portfolioDisposals);
+    const portfolioCorporateActions = Object.freeze([...ctx.appliedCorporateActions]);
 
     const portfolioState: PortfolioState = Object.freeze({
       portfolioId,
@@ -189,6 +194,7 @@ export class PortfolioReplayEngine {
       assets: Object.freeze(portfolioAssetsMap),
       realizedDisposals: portfolioDisposals,
       realizedSummary: portfolioRealizedSummary,
+      appliedCorporateActions: portfolioCorporateActions,
       processedTransactionCount: filtered.length,
       appliedTransactionCount: ctx.appliedTransactions.length,
       deferredTransactionCount: ctx.deferredEvents.length,

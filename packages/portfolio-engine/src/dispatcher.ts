@@ -7,12 +7,16 @@ import {
   PortfolioId,
   TradeTransaction,
   TransferTransaction,
+  SplitTransaction,
+  BonusTransaction,
+  AmortizationTransaction,
 } from '@atlas/domain';
 import {
   DeferredPortfolioEvent,
   CostBasisStatus,
   RealizedDisposal,
   RealizedResultStatus,
+  AppliedCorporateAction,
 } from './types';
 import {
   NegativePositionError,
@@ -21,6 +25,11 @@ import {
   InvalidSellPriceError,
   InvalidSellingCostError,
   UnsupportedTransactionStateError,
+  InvalidCorporateActionFactorError,
+  InvalidBonusQuantityError,
+  AmortizationExceedsCostError,
+  IncompleteAmortizationCostError,
+  EmptyPositionCorporateActionError,
 } from './errors';
 
 /**
@@ -45,6 +54,7 @@ export class ReplayContext {
   readonly appliedTransactions: Transaction[] = [];
   readonly deferredEvents: DeferredPortfolioEvent[] = [];
   readonly realizedDisposals: RealizedDisposal[] = [];
+  readonly appliedCorporateActions: AppliedCorporateAction[] = [];
 
   constructor(portfolioId: PortfolioId) {
     this.portfolioId = portfolioId;
@@ -61,6 +71,10 @@ export class ReplayContext {
 
   recordRealizedDisposal(disposal: RealizedDisposal): void {
     this.realizedDisposals.push(disposal);
+  }
+
+  recordAppliedCorporateAction(ca: AppliedCorporateAction): void {
+    this.appliedCorporateActions.push(ca);
   }
 }
 
@@ -368,6 +382,303 @@ const transferOutHandler: TransactionHandler<TransferTransaction> = {
   },
 };
 
+const splitHandler: TransactionHandler<SplitTransaction> = {
+  handle(ctx, tx) {
+    // 1. Factor validation (ADR-048)
+    if (!tx.factor.isPositive() || tx.factor.equals(Quantity.from('1'))) {
+      throw new InvalidCorporateActionFactorError(
+        String(tx.id),
+        tx.factor.value,
+        'SPLIT factor must be greater than zero and cannot be 1 (no-op)',
+      );
+    }
+
+    const accountAssets = ctx.getOrCreateAccountAssets(String(tx.accountId));
+    const assetKey = String(tx.assetId);
+    const currentPos = accountAssets.get(assetKey);
+
+    // 2. Active position validation
+    if (!currentPos || currentPos.quantity.isZero()) {
+      throw new EmptyPositionCorporateActionError(
+        String(tx.id),
+        String(tx.accountId),
+        assetKey,
+        'SPLIT',
+      );
+    }
+
+    // 3. Compute transformed quantities and preserved cost basis
+    const beforeQuantity = currentPos.quantity;
+    const afterQuantity = beforeQuantity.multiply(tx.factor);
+    const beforeTotalCost = currentPos.totalCost;
+    const beforeAverageCost = currentPos.averageCost;
+
+    let afterTotalCost: Money | undefined;
+    let afterAverageCost: Money | undefined;
+    const status: CostBasisStatus = currentPos.costBasisStatus;
+
+    if (status === 'KNOWN' && beforeTotalCost) {
+      afterTotalCost = beforeTotalCost; // Total carried cost unchanged
+      afterAverageCost = afterTotalCost.divide(afterQuantity);
+    } else {
+      afterTotalCost = undefined;
+      afterAverageCost = undefined;
+    }
+
+    // 4. Update position state
+    accountAssets.set(assetKey, {
+      quantity: afterQuantity,
+      totalCost: afterTotalCost,
+      averageCost: afterAverageCost,
+      currency: currentPos.currency,
+      costBasisStatus: status,
+    });
+
+    // 5. Record audit corporate action
+    ctx.recordAppliedCorporateAction({
+      transactionId: tx.id,
+      type: 'SPLIT',
+      accountId: tx.accountId,
+      assetId: tx.assetId,
+      tradeDate: tx.tradeDate,
+      beforeQuantity,
+      afterQuantity,
+      beforeTotalCost,
+      afterTotalCost,
+      beforeAverageCost,
+      afterAverageCost,
+      status,
+    });
+
+    ctx.appliedTransactions.push(tx);
+  },
+};
+
+const reverseSplitHandler: TransactionHandler<SplitTransaction> = {
+  handle(ctx, tx) {
+    // 1. Factor validation (ADR-048)
+    if (!tx.factor.isPositive() || tx.factor.equals(Quantity.from('1'))) {
+      throw new InvalidCorporateActionFactorError(
+        String(tx.id),
+        tx.factor.value,
+        'REVERSE_SPLIT factor must be greater than zero and cannot be 1 (no-op)',
+      );
+    }
+
+    const accountAssets = ctx.getOrCreateAccountAssets(String(tx.accountId));
+    const assetKey = String(tx.assetId);
+    const currentPos = accountAssets.get(assetKey);
+
+    // 2. Active position validation
+    if (!currentPos || currentPos.quantity.isZero()) {
+      throw new EmptyPositionCorporateActionError(
+        String(tx.id),
+        String(tx.accountId),
+        assetKey,
+        'REVERSE_SPLIT',
+      );
+    }
+
+    // 3. Compute transformed quantities and preserved cost basis
+    const beforeQuantity = currentPos.quantity;
+    const afterQuantity = beforeQuantity.divide(tx.factor); // Exact fractional preservation
+    const beforeTotalCost = currentPos.totalCost;
+    const beforeAverageCost = currentPos.averageCost;
+
+    let afterTotalCost: Money | undefined;
+    let afterAverageCost: Money | undefined;
+    const status: CostBasisStatus = currentPos.costBasisStatus;
+
+    if (status === 'KNOWN' && beforeTotalCost) {
+      afterTotalCost = beforeTotalCost; // Total carried cost unchanged
+      afterAverageCost = afterTotalCost.divide(afterQuantity);
+    } else {
+      afterTotalCost = undefined;
+      afterAverageCost = undefined;
+    }
+
+    // 4. Update position state
+    accountAssets.set(assetKey, {
+      quantity: afterQuantity,
+      totalCost: afterTotalCost,
+      averageCost: afterAverageCost,
+      currency: currentPos.currency,
+      costBasisStatus: status,
+    });
+
+    // 5. Record audit corporate action
+    ctx.recordAppliedCorporateAction({
+      transactionId: tx.id,
+      type: 'REVERSE_SPLIT',
+      accountId: tx.accountId,
+      assetId: tx.assetId,
+      tradeDate: tx.tradeDate,
+      beforeQuantity,
+      afterQuantity,
+      beforeTotalCost,
+      afterTotalCost,
+      beforeAverageCost,
+      afterAverageCost,
+      status,
+    });
+
+    ctx.appliedTransactions.push(tx);
+  },
+};
+
+const bonusHandler: TransactionHandler<BonusTransaction> = {
+  handle(ctx, tx) {
+    // 1. Quantity validation (ADR-049)
+    if (!tx.quantity.isPositive()) {
+      throw new InvalidBonusQuantityError(String(tx.id), tx.quantity.value);
+    }
+
+    const accountAssets = ctx.getOrCreateAccountAssets(String(tx.accountId));
+    const assetKey = String(tx.assetId);
+    const currentPos = accountAssets.get(assetKey);
+
+    // 2. Active position validation
+    if (!currentPos || currentPos.quantity.isZero()) {
+      throw new EmptyPositionCorporateActionError(
+        String(tx.id),
+        String(tx.accountId),
+        assetKey,
+        'BONUS',
+      );
+    }
+
+    // 3. Currency validation
+    if (tx.assignedCost && tx.assignedCost.currency !== currentPos.currency) {
+      throw new CurrencyMismatchError(currentPos.currency, tx.assignedCost.currency);
+    }
+
+    // 4. Compute transformed quantities and cost basis
+    const beforeQuantity = currentPos.quantity;
+    const afterQuantity = beforeQuantity.add(tx.quantity);
+    const beforeTotalCost = currentPos.totalCost;
+    const beforeAverageCost = currentPos.averageCost;
+
+    let afterTotalCost: Money | undefined;
+    let afterAverageCost: Money | undefined;
+    let status: CostBasisStatus;
+
+    if (tx.assignedCost && currentPos.costBasisStatus === 'KNOWN' && beforeTotalCost) {
+      // Explicit assigned cost provided -> KNOWN status with weighted average cost
+      afterTotalCost = beforeTotalCost.add(tx.assignedCost);
+      afterAverageCost = afterTotalCost.divide(afterQuantity);
+      status = 'KNOWN';
+    } else {
+      // Missing assigned cost OR position already INCOMPLETE -> INCOMPLETE status
+      afterTotalCost = undefined;
+      afterAverageCost = undefined;
+      status = 'INCOMPLETE';
+    }
+
+    // 5. Update position state
+    accountAssets.set(assetKey, {
+      quantity: afterQuantity,
+      totalCost: afterTotalCost,
+      averageCost: afterAverageCost,
+      currency: currentPos.currency,
+      costBasisStatus: status,
+    });
+
+    // 6. Record audit corporate action
+    ctx.recordAppliedCorporateAction({
+      transactionId: tx.id,
+      type: 'BONUS',
+      accountId: tx.accountId,
+      assetId: tx.assetId,
+      tradeDate: tx.tradeDate,
+      beforeQuantity,
+      afterQuantity,
+      beforeTotalCost,
+      afterTotalCost,
+      beforeAverageCost,
+      afterAverageCost,
+      status,
+    });
+
+    ctx.appliedTransactions.push(tx);
+  },
+};
+
+const amortizationHandler: TransactionHandler<AmortizationTransaction> = {
+  handle(ctx, tx) {
+    const accountAssets = ctx.getOrCreateAccountAssets(String(tx.accountId));
+    const assetKey = String(tx.assetId);
+    const currentPos = accountAssets.get(assetKey);
+
+    // 1. Active position validation
+    if (!currentPos || currentPos.quantity.isZero()) {
+      throw new EmptyPositionCorporateActionError(
+        String(tx.id),
+        String(tx.accountId),
+        assetKey,
+        'AMORTIZATION',
+      );
+    }
+
+    // 2. Currency validation (ADR-050)
+    if (currentPos.currency !== tx.currency) {
+      throw new CurrencyMismatchError(currentPos.currency, tx.currency);
+    }
+
+    // 3. Incomplete cost basis rejection (cannot safely subtract without knowing carried cost)
+    if (currentPos.costBasisStatus === 'INCOMPLETE') {
+      throw new IncompleteAmortizationCostError(String(tx.id), String(tx.accountId), assetKey);
+    }
+
+    const beforeTotalCost = currentPos.totalCost!;
+    // 4. Disallow amortization exceeding current carried total cost
+    if (tx.amount.compare(beforeTotalCost) > 0) {
+      throw new AmortizationExceedsCostError(
+        String(tx.id),
+        tx.amount.amount,
+        beforeTotalCost.amount,
+      );
+    }
+
+    // 5. Compute transformed cost basis (quantity remains unchanged)
+    const beforeQuantity = currentPos.quantity;
+    const afterQuantity = beforeQuantity;
+    const beforeAverageCost = currentPos.averageCost;
+
+    const afterTotalCost = beforeTotalCost.subtract(tx.amount);
+    const afterAverageCost = afterTotalCost.isZero()
+      ? Money.zero(currentPos.currency)
+      : afterTotalCost.divide(afterQuantity);
+    const status: CostBasisStatus = 'KNOWN'; // Known zero or positive cost is KNOWN, distinct from INCOMPLETE
+
+    // 6. Update position state
+    accountAssets.set(assetKey, {
+      quantity: afterQuantity,
+      totalCost: afterTotalCost,
+      averageCost: afterAverageCost,
+      currency: currentPos.currency,
+      costBasisStatus: status,
+    });
+
+    // 7. Record audit corporate action
+    ctx.recordAppliedCorporateAction({
+      transactionId: tx.id,
+      type: 'AMORTIZATION',
+      accountId: tx.accountId,
+      assetId: tx.assetId,
+      tradeDate: tx.tradeDate,
+      beforeQuantity,
+      afterQuantity,
+      beforeTotalCost,
+      afterTotalCost,
+      beforeAverageCost,
+      afterAverageCost,
+      status,
+    });
+
+    ctx.appliedTransactions.push(tx);
+  },
+};
+
 /**
  * Registry of deferred transaction handlers with explicit rationale.
  */
@@ -407,6 +718,22 @@ export function dispatchTransaction(ctx: ReplayContext, tx: Transaction): void {
       transferOutHandler.handle(ctx, tx as TransferTransaction);
       break;
 
+    case 'SPLIT':
+      splitHandler.handle(ctx, tx as SplitTransaction);
+      break;
+
+    case 'REVERSE_SPLIT':
+      reverseSplitHandler.handle(ctx, tx as SplitTransaction);
+      break;
+
+    case 'BONUS':
+      bonusHandler.handle(ctx, tx as BonusTransaction);
+      break;
+
+    case 'AMORTIZATION':
+      amortizationHandler.handle(ctx, tx as AmortizationTransaction);
+      break;
+
     case 'DIVIDEND':
       recordDeferredEvent(
         ctx,
@@ -431,43 +758,11 @@ export function dispatchTransaction(ctx: ReplayContext, tx: Transaction): void {
       );
       break;
 
-    case 'SPLIT':
-      recordDeferredEvent(
-        ctx,
-        tx,
-        'Stock splits require historical quantity and price factor adjustments, formally deferred to Phase 1D.',
-      );
-      break;
-
-    case 'REVERSE_SPLIT':
-      recordDeferredEvent(
-        ctx,
-        tx,
-        'Reverse stock splits require consolidation adjustments, formally deferred to Phase 1D.',
-      );
-      break;
-
-    case 'BONUS':
-      recordDeferredEvent(
-        ctx,
-        tx,
-        'Bonus share allocations require cost basis distribution, formally deferred to Phase 1D.',
-      );
-      break;
-
     case 'SUBSCRIPTION':
       recordDeferredEvent(
         ctx,
         tx,
-        'Subscription rights execution requires cash outlay and entitlement semantics, formally deferred to Phase 1D.',
-      );
-      break;
-
-    case 'AMORTIZATION':
-      recordDeferredEvent(
-        ctx,
-        tx,
-        'Principal amortization requires asset cost reduction, formally deferred to Phase 1D.',
+        'Subscription rights execution requires cash outlay and entitlement semantics, formally deferred to Phase 1E.',
       );
       break;
 

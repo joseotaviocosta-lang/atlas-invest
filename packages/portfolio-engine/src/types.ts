@@ -65,6 +65,30 @@ export interface RealizedSummary {
 }
 
 /**
+ * Supported corporate action types processed in Phase 1D (ADR-048, ADR-049, ADR-050).
+ */
+export type CorporateActionType = 'SPLIT' | 'REVERSE_SPLIT' | 'BONUS' | 'AMORTIZATION';
+
+/**
+ * Immutable audit record of an applied corporate action event.
+ * Documents historical quantity and carried cost transformations without database persistence.
+ */
+export interface AppliedCorporateAction {
+  readonly transactionId: TransactionId;
+  readonly type: CorporateActionType;
+  readonly accountId: AccountId;
+  readonly assetId: AssetId;
+  readonly tradeDate: LocalDate;
+  readonly beforeQuantity: Quantity;
+  readonly afterQuantity: Quantity;
+  readonly beforeTotalCost?: Money;
+  readonly afterTotalCost?: Money;
+  readonly beforeAverageCost?: Money;
+  readonly afterAverageCost?: Money;
+  readonly status: CostBasisStatus;
+}
+
+/**
  * Derived state for a specific asset within an account or aggregated in a portfolio.
  * In Phase 1B, this tracks quantity, carried total cost, unit average cost, and cost basis status.
  */
@@ -85,6 +109,7 @@ export interface AccountState {
   readonly assets: ReadonlyMap<string, AssetState>;
   readonly realizedDisposals: readonly RealizedDisposal[];
   readonly realizedSummary: ReadonlyMap<Currency, RealizedSummary>;
+  readonly appliedCorporateActions: readonly AppliedCorporateAction[];
 }
 
 /**
@@ -97,6 +122,7 @@ export interface PortfolioState {
   readonly assets: ReadonlyMap<string, AssetState>;
   readonly realizedDisposals: readonly RealizedDisposal[];
   readonly realizedSummary: ReadonlyMap<Currency, RealizedSummary>;
+  readonly appliedCorporateActions: readonly AppliedCorporateAction[];
   readonly processedTransactionCount: number;
   readonly appliedTransactionCount: number;
   readonly deferredTransactionCount: number;
