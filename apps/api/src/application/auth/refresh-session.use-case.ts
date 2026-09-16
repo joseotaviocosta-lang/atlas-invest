@@ -15,6 +15,8 @@ export interface RefreshSessionResponseDto {
 
 @Injectable()
 export class RefreshSessionUseCase {
+  private readonly inFlightRefreshes = new Map<string, Promise<RefreshSessionResponseDto>>();
+
   constructor(
     @Inject(SESSION_REPOSITORY)
     private readonly sessionRepository: ISessionRepository,
@@ -25,6 +27,36 @@ export class RefreshSessionUseCase {
   async execute(dto: RefreshSessionDto): Promise<RefreshSessionResponseDto> {
     const presentedHash = this.tokenService.hashRefreshToken(dto.refreshToken);
 
+    // If another request is currently refreshing the exact same token in-flight,
+    // this is a concurrent race condition. We wait for the leader and then fail safely
+    // as a concurrency conflict WITHOUT revoking the winner's session.
+    const existing = this.inFlightRefreshes.get(presentedHash);
+    if (existing) {
+      try {
+        await existing;
+      } catch {
+        // leader failed or rejected
+      }
+      throw new UnauthorizedException({
+        message: 'Concurrent refresh conflict or invalid session state.',
+        code: 'AUTH.INVALID_REFRESH_TOKEN',
+      });
+    }
+
+    const refreshPromise = this.performRefresh(dto, presentedHash);
+    this.inFlightRefreshes.set(presentedHash, refreshPromise);
+
+    try {
+      return await refreshPromise;
+    } finally {
+      this.inFlightRefreshes.delete(presentedHash);
+    }
+  }
+
+  private async performRefresh(
+    dto: RefreshSessionDto,
+    presentedHash: string,
+  ): Promise<RefreshSessionResponseDto> {
     // 1. Detect token reuse from any previously rotated token in the session family
     const reusedSession =
       await this.sessionRepository.findByAnyPreviousRefreshTokenHash(presentedHash);
@@ -45,14 +77,21 @@ export class RefreshSessionUseCase {
       });
     }
 
-    if (session.revokedAt !== null || session.expiresAt <= new Date()) {
+    if (session.revokedAt !== null) {
       throw new UnauthorizedException({
         message: 'Session has been revoked or expired.',
         code: 'AUTH.SESSION_REVOKED',
       });
     }
 
-    // 3. Rotate refresh token with concurrency protection
+    if (session.expiresAt <= new Date()) {
+      throw new UnauthorizedException({
+        message: 'Session has expired.',
+        code: 'AUTH.SESSION_EXPIRED',
+      });
+    }
+
+    // 3. Generate new refresh token and rotate in database atomically
     const newRawRefreshToken = this.tokenService.generateRefreshToken();
     const newRefreshTokenHash = this.tokenService.hashRefreshToken(newRawRefreshToken);
     const newExpiresAt = this.tokenService.getRefreshTokenExpiresAt();
@@ -65,8 +104,8 @@ export class RefreshSessionUseCase {
         presentedHash,
       );
     } catch {
-      // If concurrent rotation detected, revoke session and throw UnauthorizedException
-      await this.sessionRepository.revoke(session.id).catch(() => {});
+      // If concurrent rotation detected, another transaction already succeeded.
+      // Do NOT revoke the session so the winner remains valid!
       throw new UnauthorizedException({
         message: 'Concurrent refresh conflict or invalid session state.',
         code: 'AUTH.INVALID_REFRESH_TOKEN',

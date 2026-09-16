@@ -51,7 +51,7 @@ export default function RegisterScreen() {
       });
 
       await setSession(loginRes.data.user, loginRes.data.accessToken, loginRes.data.refreshToken);
-      router.replace('/(app)/(tabs)/portfolio');
+      router.replace('/(app)/(tabs)/today');
     } catch (error) {
       if (error instanceof ApiError) {
         if (error.statusCode === 409) {

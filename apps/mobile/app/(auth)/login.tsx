@@ -31,7 +31,7 @@ export default function LoginScreen() {
       });
 
       await setSession(res.data.user, res.data.accessToken, res.data.refreshToken);
-      router.replace('/(app)/(tabs)/portfolio');
+      router.replace('/(app)/(tabs)/today');
     } catch (error) {
       if (error instanceof ApiError) {
         if (error.code === 'AUTH.INVALID_CREDENTIALS') {

@@ -74,7 +74,7 @@ describe('Auth E2E: Phase 0E Security Hardening Suite', () => {
     expect(resSubsequentC.body.code).toBe('AUTH.SESSION_REVOKED');
   });
 
-  it('2. Refresh Concurrency: should safely serialize concurrent refresh requests with same token', async () => {
+  it('2. Refresh Concurrency Winner: should safely serialize concurrent refresh requests, preserving the winner session', async () => {
     const session = await registerAndLoginUser(
       app,
       'concurrent-refresh@atlas.dev',
@@ -93,6 +93,29 @@ describe('Auth E2E: Phase 0E Security Hardening Suite', () => {
     const statuses = [res1.status, res2.status].sort();
     // One must succeed (200), the other must fail (401)
     expect(statuses).toEqual([200, 401]);
+
+    // Identify the winning response
+    const winnerRes = res1.status === 200 ? res1 : res2;
+    const loserRes = res1.status === 401 ? res1 : res2;
+
+    expect(winnerRes.body.data.refreshToken).toBeDefined();
+    expect(loserRes.body.code).toBe('AUTH.INVALID_REFRESH_TOKEN');
+
+    // Invariant: The winning session MUST NOT have been revoked by the loser request in the race!
+    const winningAccessToken = winnerRes.body.data.accessToken;
+    const meRes = await request(app.getHttpServer())
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${winningAccessToken}`);
+
+    expect(meRes.status).toBe(200);
+    expect(meRes.body.data.email).toBe('concurrent-refresh@atlas.dev');
+
+    // And the new rotated refresh token B continues valid for future refresh
+    const nextRefreshRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: winnerRes.body.data.refreshToken });
+
+    expect(nextRefreshRes.status).toBe(200);
   });
 
   it('3. Password Reset Concurrency: should prevent race conditions on single-use reset token', async () => {

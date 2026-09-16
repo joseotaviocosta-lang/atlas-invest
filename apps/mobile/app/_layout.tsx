@@ -40,7 +40,7 @@ function NavigationRoot() {
     if (status === 'unauthenticated' && !inAuthGroup) {
       router.replace('/(auth)/login');
     } else if (status === 'authenticated' && inAuthGroup) {
-      router.replace('/(app)/(tabs)/portfolio');
+      router.replace('/(app)/(tabs)/today');
     }
   }, [status, segments, router]);
 
