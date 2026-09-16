@@ -92,3 +92,59 @@ export class UnsupportedTransactionStateError extends PortfolioReplayError {
     this.transactionType = transactionType;
   }
 }
+
+/**
+ * Thrown when transactions for the same asset position have conflicting currencies.
+ * Multi-currency FX is deferred to future phases (ADR-040).
+ */
+export class CurrencyMismatchError extends PortfolioReplayError {
+  readonly expectedCurrency: string;
+  readonly receivedCurrency: string;
+
+  constructor(expectedCurrency: string, receivedCurrency: string) {
+    super(
+      `Currency mismatch for position: expected currency '${expectedCurrency}', but received transaction with currency '${receivedCurrency}'. Multi-currency positions are not supported without FX conversion.`,
+      'PORTFOLIO_ENGINE.CURRENCY_MISMATCH',
+    );
+    this.expectedCurrency = expectedCurrency;
+    this.receivedCurrency = receivedCurrency;
+  }
+}
+
+/**
+ * Thrown when a BUY transaction contains an invalid cost basis (e.g. unitPrice <= 0).
+ */
+export class InvalidBuyCostError extends PortfolioReplayError {
+  readonly transactionId: string;
+  readonly unitPrice: string;
+
+  constructor(
+    transactionId: string,
+    unitPrice: string,
+    reason = 'unitPrice must be greater than zero',
+  ) {
+    super(
+      `Invalid BUY transaction cost for '${transactionId}': ${reason} (received '${unitPrice}')`,
+      'PORTFOLIO_ENGINE.INVALID_BUY_COST',
+    );
+    this.transactionId = transactionId;
+    this.unitPrice = unitPrice;
+  }
+}
+
+/**
+ * Thrown when a calculation requires a known cost basis but the position cost basis is incomplete.
+ */
+export class IncompleteCostBasisError extends PortfolioReplayError {
+  readonly assetId: string;
+  readonly accountId?: string;
+
+  constructor(assetId: string, accountId?: string) {
+    super(
+      `Incomplete cost basis for asset '${assetId}'${accountId ? ` in account '${accountId}'` : ''}: position includes inbound transfers or events without verifiable acquisition costs.`,
+      'PORTFOLIO_ENGINE.INCOMPLETE_COST_BASIS',
+    );
+    this.assetId = assetId;
+    this.accountId = accountId;
+  }
+}

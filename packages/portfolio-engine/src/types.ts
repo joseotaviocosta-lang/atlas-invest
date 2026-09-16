@@ -8,15 +8,28 @@ import {
   Quantity,
   Transaction,
   TransactionType,
+  Currency,
 } from '@atlas/domain';
 
 /**
- * Derived structural state for a specific asset within an account or aggregated in a portfolio.
- * In Phase 1A, this tracks purely structural quantity without premature cost basis math.
+ * Status of the cost basis for a derived asset position.
+ * - 'KNOWN': The cost basis is complete and mathematically known.
+ * - 'INCOMPLETE': The cost basis cannot be determined completely (e.g. inbound transfer without acquisition cost).
+ * Unknown cost basis is NEVER represented as zero (ADR-043).
+ */
+export type CostBasisStatus = 'KNOWN' | 'INCOMPLETE';
+
+/**
+ * Derived state for a specific asset within an account or aggregated in a portfolio.
+ * In Phase 1B, this tracks quantity, carried total cost, unit average cost, and cost basis status.
  */
 export interface AssetState {
   readonly assetId: AssetId;
   readonly quantity: Quantity;
+  readonly totalCost?: Money;
+  readonly averageCost?: Money;
+  readonly currency?: Currency;
+  readonly costBasisStatus: CostBasisStatus;
 }
 
 /**

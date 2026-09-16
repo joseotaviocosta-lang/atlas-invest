@@ -1,12 +1,30 @@
 import {
   Transaction,
   Quantity,
+  Money,
+  Currency,
   PortfolioId,
   TradeTransaction,
   TransferTransaction,
 } from '@atlas/domain';
-import { DeferredPortfolioEvent } from './types';
-import { NegativePositionError, UnsupportedTransactionStateError } from './errors';
+import { DeferredPortfolioEvent, CostBasisStatus } from './types';
+import {
+  NegativePositionError,
+  CurrencyMismatchError,
+  InvalidBuyCostError,
+  UnsupportedTransactionStateError,
+} from './errors';
+
+/**
+ * Internal mutable position state tracked during replay.
+ */
+export interface InternalPositionState {
+  quantity: Quantity;
+  totalCost?: Money;
+  averageCost?: Money;
+  currency: Currency;
+  costBasisStatus: CostBasisStatus;
+}
 
 /**
  * Internal mutable builder context used during a single replay run.
@@ -14,8 +32,8 @@ import { NegativePositionError, UnsupportedTransactionStateError } from './error
  */
 export class ReplayContext {
   readonly portfolioId: PortfolioId;
-  /** accountId -> (assetId -> Quantity) */
-  readonly accounts = new Map<string, Map<string, Quantity>>();
+  /** accountId -> (assetId -> InternalPositionState) */
+  readonly accounts = new Map<string, Map<string, InternalPositionState>>();
   readonly appliedTransactions: Transaction[] = [];
   readonly deferredEvents: DeferredPortfolioEvent[] = [];
 
@@ -23,10 +41,10 @@ export class ReplayContext {
     this.portfolioId = portfolioId;
   }
 
-  getOrCreateAccountAssets(accountId: string): Map<string, Quantity> {
+  getOrCreateAccountAssets(accountId: string): Map<string, InternalPositionState> {
     let assetMap = this.accounts.get(accountId);
     if (!assetMap) {
-      assetMap = new Map<string, Quantity>();
+      assetMap = new Map<string, InternalPositionState>();
       this.accounts.set(accountId, assetMap);
     }
     return assetMap;
@@ -42,11 +60,60 @@ export interface TransactionHandler<T extends Transaction = Transaction> {
 
 const buyHandler: TransactionHandler<TradeTransaction> = {
   handle(ctx, tx) {
+    // 1. Validate BUY cost invariants
+    if (!tx.unitPrice.isPositive()) {
+      throw new InvalidBuyCostError(
+        String(tx.id),
+        tx.unitPrice.amount,
+        'BUY transaction requires unitPrice > 0',
+      );
+    }
+
     const accountAssets = ctx.getOrCreateAccountAssets(String(tx.accountId));
     const assetKey = String(tx.assetId);
-    const currentQty = accountAssets.get(assetKey) ?? Quantity.zero();
-    const newQty = currentQty.add(tx.quantity);
-    accountAssets.set(assetKey, newQty);
+    const currentPos = accountAssets.get(assetKey);
+
+    // 2. Multi-currency safety (ADR-040)
+    if (currentPos && currentPos.currency !== tx.currency) {
+      throw new CurrencyMismatchError(currentPos.currency, tx.currency);
+    }
+
+    // 3. Compute acquisition cost (gross cost + explicit attributable fees/taxes)
+    const grossCost = tx.unitPrice.multiply(tx.quantity);
+    let acquisitionCost = grossCost;
+    if (tx.fees) {
+      acquisitionCost = acquisitionCost.add(tx.fees);
+    }
+    if (tx.taxes) {
+      acquisitionCost = acquisitionCost.add(tx.taxes);
+    }
+
+    // 4. Update position state
+    if (!currentPos || currentPos.costBasisStatus === 'KNOWN') {
+      const prevTotalCost = currentPos?.totalCost ?? Money.zero(tx.currency);
+      const prevQuantity = currentPos?.quantity ?? Quantity.zero();
+
+      const newTotalCost = prevTotalCost.add(acquisitionCost);
+      const newQuantity = prevQuantity.add(tx.quantity);
+      const newAverageCost = newTotalCost.divide(newQuantity);
+
+      accountAssets.set(assetKey, {
+        quantity: newQuantity,
+        totalCost: newTotalCost,
+        averageCost: newAverageCost,
+        currency: tx.currency,
+        costBasisStatus: 'KNOWN',
+      });
+    } else {
+      // Incomplete cost basis remains INCOMPLETE upon subsequent purchases
+      const newQuantity = currentPos.quantity.add(tx.quantity);
+      accountAssets.set(assetKey, {
+        quantity: newQuantity,
+        currency: tx.currency,
+        costBasisStatus: 'INCOMPLETE',
+      });
+    }
+
     ctx.appliedTransactions.push(tx);
   },
 };
@@ -55,9 +122,10 @@ const sellHandler: TransactionHandler<TradeTransaction> = {
   handle(ctx, tx) {
     const accountAssets = ctx.getOrCreateAccountAssets(String(tx.accountId));
     const assetKey = String(tx.assetId);
-    const currentQty = accountAssets.get(assetKey) ?? Quantity.zero();
+    const currentPos = accountAssets.get(assetKey);
+    const currentQty = currentPos?.quantity ?? Quantity.zero();
 
-    // Check long-only invariant
+    // 1. Check long-only invariant
     if (tx.quantity.compare(currentQty) > 0) {
       const resultingQty = currentQty.subtract(tx.quantity);
       throw new NegativePositionError({
@@ -70,13 +138,45 @@ const sellHandler: TransactionHandler<TradeTransaction> = {
       });
     }
 
+    // 2. Multi-currency safety
+    if (currentPos && currentPos.currency !== tx.currency) {
+      throw new CurrencyMismatchError(currentPos.currency, tx.currency);
+    }
+
+    // 3. Update quantity and cost basis
     const newQty = currentQty.subtract(tx.quantity);
     if (newQty.isZero()) {
-      // Zero position policy: omit liquidated positions from active state
+      // Full SELL (Section 26 & ADR-039): omit liquidated positions from active state, cost resets to zero
       accountAssets.delete(assetKey);
     } else {
-      accountAssets.set(assetKey, newQty);
+      // Partial SELL: remove cost basis proportionally using current average cost (ADR-041)
+      if (
+        currentPos &&
+        currentPos.costBasisStatus === 'KNOWN' &&
+        currentPos.averageCost &&
+        currentPos.totalCost
+      ) {
+        const currentAvg = currentPos.averageCost;
+        const costRemoved = currentAvg.multiply(tx.quantity);
+        const newTotalCost = currentPos.totalCost.subtract(costRemoved);
+
+        // Pre-sale averageCost remains unchanged; sale price does NOT alter averageCost
+        accountAssets.set(assetKey, {
+          quantity: newQty,
+          totalCost: newTotalCost,
+          averageCost: currentAvg,
+          currency: currentPos.currency,
+          costBasisStatus: 'KNOWN',
+        });
+      } else {
+        accountAssets.set(assetKey, {
+          quantity: newQty,
+          currency: currentPos?.currency ?? tx.currency,
+          costBasisStatus: 'INCOMPLETE',
+        });
+      }
     }
+
     ctx.appliedTransactions.push(tx);
   },
 };
@@ -85,9 +185,23 @@ const transferInHandler: TransactionHandler<TransferTransaction> = {
   handle(ctx, tx) {
     const accountAssets = ctx.getOrCreateAccountAssets(String(tx.accountId));
     const assetKey = String(tx.assetId);
-    const currentQty = accountAssets.get(assetKey) ?? Quantity.zero();
+    const currentPos = accountAssets.get(assetKey);
+    const currentQty = currentPos?.quantity ?? Quantity.zero();
+
+    // Check currency compatibility
+    if (currentPos && currentPos.currency !== tx.currency) {
+      throw new CurrencyMismatchError(currentPos.currency, tx.currency);
+    }
+
     const newQty = currentQty.add(tx.quantity);
-    accountAssets.set(assetKey, newQty);
+
+    // In Phase 1B, TRANSFER_IN without explicit cost basis sets costBasisStatus = 'INCOMPLETE' (ADR-043)
+    accountAssets.set(assetKey, {
+      quantity: newQty,
+      currency: tx.currency,
+      costBasisStatus: 'INCOMPLETE',
+    });
+
     ctx.appliedTransactions.push(tx);
   },
 };
@@ -96,8 +210,10 @@ const transferOutHandler: TransactionHandler<TransferTransaction> = {
   handle(ctx, tx) {
     const accountAssets = ctx.getOrCreateAccountAssets(String(tx.accountId));
     const assetKey = String(tx.assetId);
-    const currentQty = accountAssets.get(assetKey) ?? Quantity.zero();
+    const currentPos = accountAssets.get(assetKey);
+    const currentQty = currentPos?.quantity ?? Quantity.zero();
 
+    // 1. Check long-only invariant
     if (tx.quantity.compare(currentQty) > 0) {
       const resultingQty = currentQty.subtract(tx.quantity);
       throw new NegativePositionError({
@@ -110,12 +226,42 @@ const transferOutHandler: TransactionHandler<TransferTransaction> = {
       });
     }
 
+    // 2. Check currency compatibility
+    if (currentPos && currentPos.currency !== tx.currency) {
+      throw new CurrencyMismatchError(currentPos.currency, tx.currency);
+    }
+
+    // 3. Deduct quantity and proportional cost basis from source account
     const newQty = currentQty.subtract(tx.quantity);
     if (newQty.isZero()) {
       accountAssets.delete(assetKey);
     } else {
-      accountAssets.set(assetKey, newQty);
+      if (
+        currentPos &&
+        currentPos.costBasisStatus === 'KNOWN' &&
+        currentPos.averageCost &&
+        currentPos.totalCost
+      ) {
+        const currentAvg = currentPos.averageCost;
+        const costRemoved = currentAvg.multiply(tx.quantity);
+        const newTotalCost = currentPos.totalCost.subtract(costRemoved);
+
+        accountAssets.set(assetKey, {
+          quantity: newQty,
+          totalCost: newTotalCost,
+          averageCost: currentAvg,
+          currency: currentPos.currency,
+          costBasisStatus: 'KNOWN',
+        });
+      } else {
+        accountAssets.set(assetKey, {
+          quantity: newQty,
+          currency: currentPos?.currency ?? tx.currency,
+          costBasisStatus: 'INCOMPLETE',
+        });
+      }
     }
+
     ctx.appliedTransactions.push(tx);
   },
 };

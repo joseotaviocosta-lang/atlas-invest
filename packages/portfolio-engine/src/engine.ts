@@ -4,9 +4,18 @@ import {
   createAssetId,
   LocalDate,
   Quantity,
+  Money,
+  Currency,
   Transaction,
 } from '@atlas/domain';
-import { PortfolioState, AccountState, AssetState, ReplayResult, ReplayOptions } from './types';
+import {
+  PortfolioState,
+  AccountState,
+  AssetState,
+  CostBasisStatus,
+  ReplayResult,
+  ReplayOptions,
+} from './types';
 import { PORTFOLIO_ENGINE_VERSION } from './version';
 import { compareTransactionsChronologically } from './ordering';
 import { ReplayContext, dispatchTransaction } from './dispatcher';
@@ -76,22 +85,57 @@ export class PortfolioReplayEngine {
 
     // 5. Finalize Immutable Derived State
     const accountsMap = new Map<string, AccountState>();
-    const aggregatedQuantities = new Map<string, Quantity>();
+
+    interface AggregatedAssetHolder {
+      totalQuantity: Quantity;
+      totalCost: Money;
+      currency?: Currency;
+      hasIncomplete: boolean;
+    }
+    const aggregatedAssets = new Map<string, AggregatedAssetHolder>();
 
     for (const [accIdStr, assetMap] of ctx.accounts.entries()) {
       const accountAssets = new Map<string, AssetState>();
 
-      for (const [assetIdStr, qty] of assetMap.entries()) {
-        if (!qty.isZero()) {
+      for (const [assetIdStr, pos] of assetMap.entries()) {
+        if (!pos.quantity.isZero()) {
           const assetState: AssetState = Object.freeze({
             assetId: createAssetId(assetIdStr),
-            quantity: qty,
+            quantity: pos.quantity,
+            totalCost: pos.totalCost,
+            averageCost: pos.averageCost,
+            currency: pos.currency,
+            costBasisStatus: pos.costBasisStatus,
           });
           accountAssets.set(assetIdStr, assetState);
 
           // Aggregate for portfolio view
-          const currentAgg = aggregatedQuantities.get(assetIdStr) ?? Quantity.zero();
-          aggregatedQuantities.set(assetIdStr, currentAgg.add(qty));
+          let agg = aggregatedAssets.get(assetIdStr);
+          if (!agg) {
+            agg = {
+              totalQuantity: Quantity.zero(),
+              totalCost: Money.zero(pos.currency),
+              currency: pos.currency,
+              hasIncomplete: false,
+            };
+            aggregatedAssets.set(assetIdStr, agg);
+          }
+
+          // Validate multi-currency consistency at portfolio level
+          if (agg.currency !== pos.currency) {
+            throw new CrossPortfolioTransactionError(
+              String(portfolioId),
+              `Currency mismatch for asset '${assetIdStr}': portfolio contains accounts with divergent currencies '${agg.currency}' and '${pos.currency}'`,
+              String(portfolioId),
+            );
+          }
+
+          agg.totalQuantity = agg.totalQuantity.add(pos.quantity);
+          if (pos.costBasisStatus === 'INCOMPLETE' || !pos.totalCost) {
+            agg.hasIncomplete = true;
+          } else {
+            agg.totalCost = agg.totalCost.add(pos.totalCost);
+          }
         }
       }
 
@@ -102,15 +146,24 @@ export class PortfolioReplayEngine {
       accountsMap.set(accIdStr, accountState);
     }
 
-    // Build portfolio aggregated asset state
+    // Build portfolio aggregated asset state (ADR-042: weighted cost aggregation, never average-of-averages)
     const portfolioAssetsMap = new Map<string, AssetState>();
-    for (const [assetIdStr, totalQty] of aggregatedQuantities.entries()) {
-      if (!totalQty.isZero()) {
+    for (const [assetIdStr, agg] of aggregatedAssets.entries()) {
+      if (!agg.totalQuantity.isZero()) {
+        const isKnown = !agg.hasIncomplete;
+        const totalCost = isKnown ? agg.totalCost : undefined;
+        const averageCost = isKnown ? agg.totalCost.divide(agg.totalQuantity) : undefined;
+        const costBasisStatus: CostBasisStatus = isKnown ? 'KNOWN' : 'INCOMPLETE';
+
         portfolioAssetsMap.set(
           assetIdStr,
           Object.freeze({
             assetId: createAssetId(assetIdStr),
-            quantity: totalQty,
+            quantity: agg.totalQuantity,
+            totalCost,
+            averageCost,
+            currency: agg.currency,
+            costBasisStatus,
           }),
         );
       }
