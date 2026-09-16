@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { REFRESH_COOKIE_NAME, LOGGED_IN_COOKIE_NAME } from './lib/auth-cookie';
+import { REFRESH_COOKIE_NAME } from './lib/auth-cookie';
 
 // Routes that require authentication
 const PROTECTED_PREFIXES = [
@@ -30,12 +30,10 @@ export function middleware(request: NextRequest) {
   }
 
   const hasRefreshCookie = request.cookies.has(REFRESH_COOKIE_NAME);
-  const hasLoggedInCookie = request.cookies.has(LOGGED_IN_COOKIE_NAME);
-  const isAuthenticated = hasRefreshCookie || hasLoggedInCookie;
 
   // Handle Root URL "/"
   if (pathname === '/') {
-    if (isAuthenticated) {
+    if (hasRefreshCookie) {
       return NextResponse.redirect(new URL('/today', request.url));
     } else {
       return NextResponse.redirect(new URL('/login', request.url));
@@ -43,11 +41,13 @@ export function middleware(request: NextRequest) {
   }
 
   // Protect private application routes
+  // Security Hardening: Only an authentic refresh token cookie authorizes access.
+  // atlas_logged_in is strictly a client-side visual hint and cannot bypass server route protection.
   const isProtected = PROTECTED_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 
-  if (isProtected && !isAuthenticated) {
+  if (isProtected && !hasRefreshCookie) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(loginUrl);
@@ -58,7 +58,7 @@ export function middleware(request: NextRequest) {
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
 
-  if (isAuthRoute && isAuthenticated) {
+  if (isAuthRoute && hasRefreshCookie) {
     return NextResponse.redirect(new URL('/today', request.url));
   }
 

@@ -9,6 +9,9 @@ import {
   registerAndLoginUser,
 } from '../setup';
 import { InMemoryPasswordResetNotifier } from '../../../apps/api/src/auth/services/password-reset-notifier.interface';
+import { SESSION_REPOSITORY } from '../../../apps/api/src/database/tokens';
+import { TokenService } from '../../../apps/api/src/auth/services/token.service';
+import { ISessionRepository } from '@atlas/database';
 
 describe('Auth E2E: Phase 0E Security Hardening Suite', () => {
   let app: INestApplication;
@@ -74,6 +77,48 @@ describe('Auth E2E: Phase 0E Security Hardening Suite', () => {
     expect(resSubsequentC.body.code).toBe('AUTH.SESSION_REVOKED');
   });
 
+  it('1b. Token Family History (Reuse B): should detect reuse of intermediate token (A -> B -> C, reuse B revokes session)', async () => {
+    const session = await registerAndLoginUser(
+      app,
+      'family-history-b@atlas.dev',
+      'FamilyPass123!',
+      'Family User B',
+    );
+
+    const tokenA = session.refreshToken;
+
+    // Step 1: Rotate A -> B
+    const resB = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: tokenA });
+    expect(resB.status).toBe(200);
+    const tokenB = resB.body.data.refreshToken;
+
+    // Step 2: Rotate B -> C
+    const resC = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: tokenB });
+    expect(resC.status).toBe(200);
+    const tokenC = resC.body.data.refreshToken;
+
+    // Step 3: Reuse intermediate token B
+    const reuseB = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: tokenB });
+
+    expect(reuseB.status).toBe(401);
+    expect(reuseB.body.code).toBe('AUTH.INVALID_REFRESH_TOKEN');
+    expect(reuseB.body.message).toContain('reuse detected');
+
+    // Step 4: Token C should now also be rejected
+    const resSubsequentC = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: tokenC });
+
+    expect(resSubsequentC.status).toBe(401);
+    expect(resSubsequentC.body.code).toBe('AUTH.SESSION_REVOKED');
+  });
+
   it('2. Refresh Concurrency Winner: should safely serialize concurrent refresh requests, preserving the winner session', async () => {
     const session = await registerAndLoginUser(
       app,
@@ -116,6 +161,44 @@ describe('Auth E2E: Phase 0E Security Hardening Suite', () => {
       .send({ refreshToken: winnerRes.body.data.refreshToken });
 
     expect(nextRefreshRes.status).toBe(200);
+  });
+
+  it('2b. Multi-Instance Database CAS Authority: should enforce atomic rotation at database level without relying on in-memory mutex', async () => {
+    const session = await registerAndLoginUser(
+      app,
+      'multi-instance@atlas.dev',
+      'MultiPass123!',
+      'Multi Instance User',
+    );
+
+    const sessionRepo = app.get<ISessionRepository>(SESSION_REPOSITORY);
+    const tokenService = app.get(TokenService);
+
+    const dbSession = await sessionRepo.findByRefreshTokenHash(
+      tokenService.hashRefreshToken(session.refreshToken),
+    );
+    expect(dbSession).toBeDefined();
+
+    const expectedCurrentHash = tokenService.hashRefreshToken(session.refreshToken);
+    const newHash1 = tokenService.hashRefreshToken(tokenService.generateRefreshToken());
+    const newHash2 = tokenService.hashRefreshToken(tokenService.generateRefreshToken());
+    const newExpiresAt = tokenService.getRefreshTokenExpiresAt();
+
+    // Two concurrent rotations directly against the database with the same expected current hash
+    const results = await Promise.allSettled([
+      sessionRepo.rotateRefreshToken(dbSession!.id, newHash1, newExpiresAt, expectedCurrentHash),
+      sessionRepo.rotateRefreshToken(dbSession!.id, newHash2, newExpiresAt, expectedCurrentHash),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+
+    // Exactly one database update succeeds, and the other is rejected by database CAS!
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason.message).toContain(
+      'Concurrent rotation detected',
+    );
   });
 
   it('3. Password Reset Concurrency: should prevent race conditions on single-use reset token', async () => {

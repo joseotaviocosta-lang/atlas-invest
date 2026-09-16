@@ -59,6 +59,9 @@ export class SessionRepository implements ISessionRepository {
   ): Promise<SessionRecord> {
     try {
       return await this.prisma.$transaction(async (tx) => {
+        // Enforce authoritative database row-level locking for multi-instance concurrency safety
+        await tx.$executeRaw`SELECT id FROM sessions WHERE id = ${sessionId}::uuid FOR UPDATE`;
+
         const current = await tx.session.findUnique({ where: { id: sessionId } });
         if (!current) {
           throw new PersistenceError(`Session ${sessionId} not found`);

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { clearQueryCache } from '@/lib/react-query';
 import { AuthUser } from '@/api/types';
+import { LOGGED_IN_COOKIE_NAME } from '@/lib/auth-cookie';
 
 export type AuthStatus = 'unknown' | 'unauthenticated' | 'authenticated' | 'refreshing';
 
@@ -57,6 +58,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   clearSession: () => {
     inMemoryAccessToken = null;
     clearQueryCache();
+    if (typeof document !== 'undefined') {
+      document.cookie = `${LOGGED_IN_COOKIE_NAME}=; Max-Age=0; path=/`;
+    }
     set({
       status: 'unauthenticated',
       user: null,

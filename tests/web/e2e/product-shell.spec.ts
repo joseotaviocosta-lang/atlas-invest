@@ -250,4 +250,44 @@ test.describe('Product Shell & Canonical End-to-End Suite', () => {
     await page.goto('/today');
     await expect(page).toHaveURL(/.*login/);
   });
+
+  test('Session Hint Tamper Resistance: setting atlas_logged_in=true without session leaves private routes inaccessible', async ({
+    context,
+    page,
+  }) => {
+    // Manually tamper cookie to spoof being logged in
+    await context.addCookies([
+      {
+        name: 'atlas_logged_in',
+        value: 'true',
+        domain: 'localhost',
+        path: '/',
+      },
+    ]);
+
+    // Navigate to protected page
+    await page.goto('/today');
+
+    // Because there is no actual valid refresh cookie or active session,
+    // the application must refuse access and redirect to login
+    await expect(page).toHaveURL(/.*login/);
+  });
+
+  test('Origin Validation: mutating BFF request with cross-site origin is rejected with 403 Forbidden', async ({
+    request: apiRequest,
+  }) => {
+    const res = await apiRequest.post('/api/auth/login', {
+      headers: {
+        origin: 'https://evil-attacker.example.com',
+      },
+      data: {
+        email: 'user@atlas.dev',
+        password: 'Password123!',
+      },
+    });
+
+    expect(res.status()).toBe(403);
+    const body = await res.json();
+    expect(body.code).toBe('AUTH.INVALID_ORIGIN');
+  });
 });
