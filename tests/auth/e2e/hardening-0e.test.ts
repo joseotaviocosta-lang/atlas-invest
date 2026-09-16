@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import request from 'supertest';
-import * as crypto from 'crypto';
 import { INestApplication } from '@nestjs/common';
 import {
   createAuthTestApp,
@@ -97,12 +96,7 @@ describe('Auth E2E: Phase 0E Security Hardening Suite', () => {
   });
 
   it('3. Password Reset Concurrency: should prevent race conditions on single-use reset token', async () => {
-    await registerAndLoginUser(
-      app,
-      'reset-concurrency@atlas.dev',
-      'ResetPass123!',
-      'Reset User',
-    );
+    await registerAndLoginUser(app, 'reset-concurrency@atlas.dev', 'ResetPass123!', 'Reset User');
 
     await request(app.getHttpServer())
       .post('/api/v1/auth/forgot-password')

@@ -64,7 +64,7 @@ export class RefreshSessionUseCase {
         newExpiresAt,
         presentedHash,
       );
-    } catch (error) {
+    } catch {
       // If concurrent rotation detected, revoke session and throw UnauthorizedException
       await this.sessionRepository.revoke(session.id).catch(() => {});
       throw new UnauthorizedException({

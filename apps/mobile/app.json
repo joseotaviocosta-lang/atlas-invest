@@ -5,6 +5,8 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "scheme": "atlas",
+    "plugins": ["expo-router", "expo-secure-store"],
     "splash": {
       "resizeMode": "contain",
       "backgroundColor": "#0B0E14"

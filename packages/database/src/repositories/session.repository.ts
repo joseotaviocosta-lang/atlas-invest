@@ -40,9 +40,7 @@ export class SessionRepository implements ISessionRepository {
     return this.findByAnyPreviousRefreshTokenHash(previousRefreshTokenHash);
   }
 
-  async findByAnyPreviousRefreshTokenHash(
-    refreshTokenHash: string,
-  ): Promise<SessionRecord | null> {
+  async findByAnyPreviousRefreshTokenHash(refreshTokenHash: string): Promise<SessionRecord | null> {
     return this.prisma.session.findFirst({
       where: {
         OR: [
