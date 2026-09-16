@@ -5,6 +5,7 @@ import { themeTokens } from '@atlas/ui';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'outline' | 'danger';
+  size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
   fullWidth?: boolean;
 }
@@ -12,6 +13,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 export function Button({
   children,
   variant = 'primary',
+  size = 'md',
   isLoading = false,
   fullWidth = false,
   disabled,
@@ -51,6 +53,30 @@ export function Button({
     return 'none';
   };
 
+  const getPadding = () => {
+    switch (size) {
+      case 'sm':
+        return '0.375rem 0.75rem';
+      case 'lg':
+        return '0.75rem 1.5rem';
+      case 'md':
+      default:
+        return '0.625rem 1.25rem';
+    }
+  };
+
+  const getFontSize = () => {
+    switch (size) {
+      case 'sm':
+        return '0.8125rem';
+      case 'lg':
+        return '1rem';
+      case 'md':
+      default:
+        return '0.875rem';
+    }
+  };
+
   return (
     <button
       disabled={disabled || isLoading}
@@ -59,9 +85,9 @@ export function Button({
         alignItems: 'center',
         justifyContent: 'center',
         gap: '0.5rem',
-        padding: '0.625rem 1.25rem',
+        padding: getPadding(),
         borderRadius: `${themeTokens.borderRadius.md}px`,
-        fontSize: '0.875rem',
+        fontSize: getFontSize(),
         fontWeight: 600,
         backgroundColor: getBackgroundColor(),
         color: getTextColor(),

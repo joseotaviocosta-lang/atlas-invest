@@ -62,7 +62,7 @@ export default function RegisterPage() {
 
       if (data?.data?.user && data?.data?.accessToken) {
         setSession(data.data.user, data.data.accessToken);
-        router.replace('/today');
+        router.replace('/onboarding');
       } else {
         router.replace('/login');
       }

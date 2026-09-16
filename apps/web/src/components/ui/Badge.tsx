@@ -5,7 +5,7 @@ import { themeTokens } from '@atlas/ui';
 
 export interface BadgeProps {
   children: React.ReactNode;
-  variant?: 'primary' | 'success' | 'warning' | 'neutral';
+  variant?: 'primary' | 'positive' | 'success' | 'warning' | 'negative' | 'danger' | 'neutral' | 'default' | 'info';
   style?: React.CSSProperties;
 }
 
@@ -14,11 +14,18 @@ export function Badge({ children, variant = 'neutral', style }: BadgeProps) {
     switch (variant) {
       case 'primary':
         return { bg: 'rgba(10, 132, 255, 0.15)', color: themeTokens.colors.primary };
+      case 'positive':
       case 'success':
         return { bg: 'rgba(16, 185, 129, 0.15)', color: themeTokens.colors.success };
       case 'warning':
         return { bg: 'rgba(245, 158, 11, 0.15)', color: themeTokens.colors.warning };
+      case 'negative':
+      case 'danger':
+        return { bg: 'rgba(239, 68, 68, 0.15)', color: themeTokens.colors.danger };
+      case 'info':
+        return { bg: 'rgba(56, 189, 248, 0.15)', color: '#38BDF8' };
       case 'neutral':
+      case 'default':
       default:
         return { bg: '#1F2937', color: themeTokens.colors.textMuted };
     }

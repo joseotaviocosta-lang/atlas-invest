@@ -4,22 +4,8 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth.store';
-import { OfflineBanner } from '@/components/ui';
-import { themeTokens } from '@atlas/ui';
-
-interface NavItem {
-  label: string;
-  href: string;
-  icon: string;
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { label: 'Hoje', href: '/today', icon: '📅' },
-  { label: 'Carteira', href: '/portfolio', icon: '💼' },
-  { label: 'Mercado', href: '/market', icon: '📈' },
-  { label: 'Fiscal', href: '/tax', icon: '📑' },
-  { label: 'IA', href: '/ai', icon: '✨' },
-];
+import { OfflineBanner, Avatar } from '@/components/ui';
+import { colors, borderRadius, spacing, CANONICAL_NAV_ITEMS } from '@atlas/ui';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -32,20 +18,37 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     router.replace('/login');
   };
 
+  const getNavIcon = (id: string) => {
+    switch (id) {
+      case 'today':
+        return '📅';
+      case 'portfolio':
+        return '💼';
+      case 'market':
+        return '📈';
+      case 'tax':
+        return '📑';
+      case 'ai':
+        return '✨';
+      default:
+        return '●';
+    }
+  };
+
   return (
     <div
       style={{
         display: 'flex',
         minHeight: '100vh',
-        backgroundColor: themeTokens.colors.background,
+        backgroundColor: colors.background,
       }}
     >
       {/* Desktop Sidebar */}
       <aside
         style={{
           width: '240px',
-          borderRight: `1px solid ${themeTokens.colors.border}`,
-          backgroundColor: themeTokens.colors.surface,
+          borderRight: `1px solid ${colors.border}`,
+          backgroundColor: colors.surface,
           display: 'flex',
           flexDirection: 'column',
           flexShrink: 0,
@@ -54,19 +57,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       >
         <div
           style={{
-            padding: '1.5rem 1.25rem',
-            borderBottom: `1px solid ${themeTokens.colors.border}`,
+            padding: `${spacing.xl}px ${spacing.lg}px`,
+            borderBottom: `1px solid ${colors.border}`,
             display: 'flex',
             alignItems: 'center',
-            gap: '0.75rem',
+            gap: `${spacing.md}px`,
           }}
         >
           <div
             style={{
               width: '32px',
               height: '32px',
-              borderRadius: `${themeTokens.borderRadius.md}px`,
-              backgroundColor: themeTokens.colors.primary,
+              borderRadius: `${borderRadius.md}px`,
+              backgroundColor: colors.accent,
               color: '#FFFFFF',
               display: 'flex',
               alignItems: 'center',
@@ -78,10 +81,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             A
           </div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: '1rem', color: themeTokens.colors.text }}>
+            <div style={{ fontWeight: 700, fontSize: '1rem', color: colors.textPrimary }}>
               Project Atlas
             </div>
-            <div style={{ fontSize: '0.6875rem', color: themeTokens.colors.textMuted }}>
+            <div style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>
               Investimentos
             </div>
           </div>
@@ -89,34 +92,37 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Navigation items */}
         <nav
+          aria-label="Navegação principal"
           style={{
-            padding: '1rem 0.75rem',
+            padding: `${spacing.base}px ${spacing.sm}px`,
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
-            gap: '0.25rem',
+            gap: '4px',
           }}
         >
-          {NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          {CANONICAL_NAV_ITEMS.map((item) => {
+            const isActive = pathname === item.path || pathname.startsWith(`${item.path}/`);
             return (
               <Link
-                key={item.href}
-                href={item.href}
+                key={item.id}
+                href={item.path}
+                aria-current={isActive ? 'page' : undefined}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.75rem',
+                  gap: `${spacing.md}px`,
                   padding: '0.625rem 0.875rem',
-                  borderRadius: `${themeTokens.borderRadius.md}px`,
+                  borderRadius: `${borderRadius.md}px`,
                   fontSize: '0.875rem',
                   fontWeight: isActive ? 600 : 500,
-                  backgroundColor: isActive ? 'rgba(10, 132, 255, 0.12)' : 'transparent',
-                  color: isActive ? themeTokens.colors.primary : themeTokens.colors.textMuted,
+                  backgroundColor: isActive ? colors.accentSubtle : 'transparent',
+                  color: isActive ? colors.accent : colors.textSecondary,
                   transition: 'background-color 0.15s ease, color 0.15s ease',
+                  outline: 'none',
                 }}
               >
-                <span>{item.icon}</span>
+                <span>{getNavIcon(item.id)}</span>
                 <span>{item.label}</span>
               </Link>
             );
@@ -126,8 +132,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {/* User profile footer */}
         <div
           style={{
-            padding: '1rem 1.25rem',
-            borderTop: `1px solid ${themeTokens.colors.border}`,
+            padding: `${spacing.base}px ${spacing.lg}px`,
+            borderTop: `1px solid ${colors.border}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -135,36 +141,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         >
           <Link
             href="/profile"
+            aria-label="Acessar meu perfil"
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '0.625rem',
+              gap: `${spacing.md}px`,
               overflow: 'hidden',
+              flex: 1,
             }}
           >
-            <div
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '50%',
-                backgroundColor: '#232936',
-                color: themeTokens.colors.text,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                flexShrink: 0,
-              }}
-            >
-              {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
-            </div>
+            <Avatar name={user?.name} size="sm" />
             <div style={{ overflow: 'hidden' }}>
               <div
                 style={{
                   fontSize: '0.8125rem',
                   fontWeight: 600,
-                  color: themeTokens.colors.text,
+                  color: colors.textPrimary,
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -175,7 +167,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <div
                 style={{
                   fontSize: '0.6875rem',
-                  color: themeTokens.colors.textMuted,
+                  color: colors.textSecondary,
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -188,13 +180,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <button
             onClick={handleLogout}
             title="Sair da conta"
+            aria-label="Sair da conta"
             style={{
               background: 'transparent',
               border: 'none',
-              color: themeTokens.colors.textMuted,
+              color: colors.textSecondary,
               cursor: 'pointer',
-              padding: '0.25rem',
+              padding: '0.375rem',
               fontSize: '1rem',
+              borderRadius: `${borderRadius.sm}px`,
             }}
           >
             🚪
@@ -208,54 +202,66 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <header
           style={{
             height: '60px',
-            borderBottom: `1px solid ${themeTokens.colors.border}`,
-            backgroundColor: themeTokens.colors.surface,
-            padding: '0 1.5rem',
+            borderBottom: `1px solid ${colors.border}`,
+            backgroundColor: colors.surface,
+            padding: `0 ${spacing.xl}px`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <span style={{ fontSize: '0.875rem', color: themeTokens.colors.textMuted }}>
-              Project Atlas
-            </span>
-            <span style={{ color: themeTokens.colors.border }}>/</span>
-            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: themeTokens.colors.text }}>
-              {NAV_ITEMS.find(
-                (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
-              )?.label || 'Visão Geral'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.md}px` }}>
+            <span style={{ fontSize: '0.875rem', color: colors.textSecondary }}>Project Atlas</span>
+            <span style={{ color: colors.border }}>/</span>
+            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
+              {CANONICAL_NAV_ITEMS.find(
+                (item) => pathname === item.path || pathname.startsWith(`${item.path}/`),
+              )?.label || (pathname === '/onboarding' ? 'Boas-vindas' : 'Perfil')}
             </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.base}px` }}>
             <Link
               href="/profile"
+              aria-label="Perfil do usuário"
               style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: `${spacing.sm}px`,
                 fontSize: '0.8125rem',
-                color: themeTokens.colors.textMuted,
+                color: colors.textSecondary,
                 padding: '0.375rem 0.75rem',
-                borderRadius: `${themeTokens.borderRadius.md}px`,
-                backgroundColor: '#11161F',
-                border: `1px solid ${themeTokens.colors.border}`,
+                borderRadius: `${borderRadius.md}px`,
+                backgroundColor: colors.surfaceElevated,
+                border: `1px solid ${colors.border}`,
               }}
             >
-              Meu Perfil
+              <Avatar name={user?.name} size="sm" />
+              <span className="profile-label">{user?.name?.split(' ')[0] || 'Perfil'}</span>
             </Link>
           </div>
         </header>
 
-        {/* Page Content */}
-        <main style={{ flex: 1, padding: '1.5rem', overflowY: 'auto' }}>
-          <OfflineBanner />
-          {children}
+        {/* Page Content with Max Width container */}
+        <main
+          style={{
+            flex: 1,
+            padding: `${spacing.xl}px`,
+            overflowY: 'auto',
+          }}
+        >
+          <div style={{ maxWidth: '1280px', margin: '0 auto', width: '100%' }}>
+            <OfflineBanner />
+            {children}
+          </div>
         </main>
 
         {/* Mobile Bottom Navigation */}
         <nav
+          aria-label="Navegação móvel inferior"
           style={{
-            borderTop: `1px solid ${themeTokens.colors.border}`,
-            backgroundColor: themeTokens.colors.surface,
+            borderTop: `1px solid ${colors.border}`,
+            backgroundColor: colors.surface,
             padding: '0.5rem 0',
             display: 'none',
             justifyContent: 'space-around',
@@ -265,24 +271,28 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           }}
           className="mobile-bottom-nav"
         >
-          {NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          {CANONICAL_NAV_ITEMS.map((item) => {
+            const isActive = pathname === item.path || pathname.startsWith(`${item.path}/`);
             return (
               <Link
-                key={item.href}
-                href={item.href}
+                key={item.id}
+                href={item.path}
+                aria-current={isActive ? 'page' : undefined}
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  gap: '0.125rem',
+                  gap: '2px',
                   fontSize: '0.6875rem',
                   fontWeight: isActive ? 600 : 500,
-                  color: isActive ? themeTokens.colors.primary : themeTokens.colors.textMuted,
+                  color: isActive ? colors.accent : colors.textSecondary,
                   padding: '0.25rem 0.5rem',
+                  minWidth: '44px',
+                  minHeight: '44px',
+                  justifyContent: 'center',
                 }}
               >
-                <span style={{ fontSize: '1.125rem' }}>{item.icon}</span>
+                <span style={{ fontSize: '1.125rem' }}>{getNavIcon(item.id)}</span>
                 <span>{item.label}</span>
               </Link>
             );
@@ -297,6 +307,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           }
           .mobile-bottom-nav {
             display: flex !important;
+          }
+          .profile-label {
+            display: none;
           }
         }
       `}</style>

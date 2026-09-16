@@ -2,9 +2,9 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, Button, Badge } from '@/components/ui';
+import { PageHeader, SectionHeader, Card, Button, Badge, Avatar } from '@/components/ui';
 import { useAuthStore } from '@/stores/auth.store';
-import { themeTokens } from '@atlas/ui';
+import { colors, spacing, borderRadius } from '@atlas/ui';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -25,160 +25,166 @@ export default function ProfilePage() {
   };
 
   return (
-    <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-      <div style={{ marginBottom: '1.75rem' }}>
-        <h1
+    <div style={{ maxWidth: '840px', margin: '0 auto' }}>
+      <PageHeader
+        title="Perfil"
+        subtitle="Gerencie suas informações cadastrais, preferências e segurança da sessão"
+      />
+
+      {/* Personal Information */}
+      <Card style={{ marginBottom: `${spacing.xl}px`, padding: `${spacing.xl}px` }}>
+        <div
           style={{
-            margin: '0 0 0.375rem 0',
-            fontSize: '1.75rem',
-            fontWeight: 700,
-            color: themeTokens.colors.text,
-            letterSpacing: '-0.02em',
+            display: 'flex',
+            alignItems: 'center',
+            gap: `${spacing.base}px`,
+            marginBottom: `${spacing.xl}px`,
           }}
         >
-          Meu Perfil
-        </h1>
-        <p style={{ margin: 0, fontSize: '0.875rem', color: themeTokens.colors.textMuted }}>
-          Informações da sua conta e preferências de segurança
-        </p>
-      </div>
-
-      <Card style={{ marginBottom: '1.5rem' }}>
-        <div
-          style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1.5rem' }}
-        >
-          <div
-            style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '50%',
-              backgroundColor: themeTokens.colors.primary,
-              color: '#FFFFFF',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '1.75rem',
-              fontWeight: 700,
-            }}
-          >
-            {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
-          </div>
+          <Avatar name={user?.name} size="lg" />
           <div>
             <h2
               style={{
-                margin: '0 0 0.25rem 0',
+                margin: '0 0 4px 0',
                 fontSize: '1.25rem',
                 fontWeight: 600,
-                color: themeTokens.colors.text,
+                color: colors.textPrimary,
               }}
             >
               {user?.name || 'Investidor'}
             </h2>
-            <div style={{ fontSize: '0.875rem', color: themeTokens.colors.textMuted }}>
+            <div style={{ fontSize: '0.875rem', color: colors.textSecondary }}>
               {user?.email || 'investidor@atlas.dev'}
             </div>
           </div>
         </div>
 
+        <SectionHeader title="Preferências Globais" description="Parâmetros de localização e formatação financeira" />
+
         <div
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '1rem',
-            paddingTop: '1rem',
-            borderTop: `1px solid ${themeTokens.colors.border}`,
+            gap: `${spacing.base}px`,
+            paddingTop: `${spacing.md}px`,
+            borderTop: `1px solid ${colors.border}`,
           }}
         >
           <div>
-            <div
-              style={{
-                fontSize: '0.75rem',
-                color: themeTokens.colors.textMuted,
-                marginBottom: '0.25rem',
-              }}
-            >
-              IDIOMA / LOCALIDADE
-            </div>
-            <div style={{ fontSize: '0.875rem', fontWeight: 500, color: themeTokens.colors.text }}>
-              {user?.locale || 'pt-BR'}
-            </div>
-          </div>
-
-          <div>
-            <div
-              style={{
-                fontSize: '0.75rem',
-                color: themeTokens.colors.textMuted,
-                marginBottom: '0.25rem',
-              }}
-            >
-              FUSO HORÁRIO
-            </div>
-            <div style={{ fontSize: '0.875rem', fontWeight: 500, color: themeTokens.colors.text }}>
-              {user?.timezone || 'America/Sao_Paulo'}
-            </div>
-          </div>
-
-          <div>
-            <div
-              style={{
-                fontSize: '0.75rem',
-                color: themeTokens.colors.textMuted,
-                marginBottom: '0.25rem',
-              }}
-            >
+            <div style={{ fontSize: '0.75rem', color: colors.textMuted, marginBottom: '4px' }}>
               MOEDA BASE
             </div>
-            <div style={{ fontSize: '0.875rem', fontWeight: 500, color: themeTokens.colors.text }}>
-              {user?.baseCurrency || 'BRL'}
+            <div style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
+              BRL (Real brasileiro)
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: '0.75rem', color: colors.textMuted, marginBottom: '4px' }}>
+              IDIOMA / LOCALIDADE
+            </div>
+            <div style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
+              Português (Brasil) • pt-BR
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: '0.75rem', color: colors.textMuted, marginBottom: '4px' }}>
+              FUSO HORÁRIO
+            </div>
+            <div style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
+              America/Sao_Paulo (UTC-03:00)
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: '0.75rem', color: colors.textMuted, marginBottom: '4px' }}>
+              TEMA VISUAL
+            </div>
+            <div style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
+              Dark Theme (Canônico)
             </div>
           </div>
         </div>
       </Card>
 
-      <Card style={{ marginBottom: '1.5rem' }}>
-        <h3
-          style={{
-            margin: '0 0 0.75rem 0',
-            fontSize: '1rem',
-            fontWeight: 600,
-            color: themeTokens.colors.text,
-          }}
-        >
-          Segurança da Sessão Web
-        </h3>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '1rem',
-          }}
-        >
-          <div>
-            <div style={{ fontSize: '0.875rem', fontWeight: 500, color: themeTokens.colors.text }}>
-              Armazenamento de Credenciais
-            </div>
-            <div style={{ fontSize: '0.75rem', color: themeTokens.colors.textMuted }}>
-              Refresh token gravado em cookie HttpOnly com proteção SameSite e CSRF mitigado.
-            </div>
-          </div>
-          <Badge variant="success">PROTEGIDO</Badge>
-        </div>
+      {/* Security and Session Information */}
+      <Card style={{ marginBottom: `${spacing.xl}px`, padding: `${spacing.xl}px` }}>
+        <SectionHeader
+          title="Segurança e Sessão"
+          description="Controles criptográficos e políticas de isolamento de dados"
+        />
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: '0.875rem', fontWeight: 500, color: themeTokens.colors.text }}>
-              Isolamento de Cache
+        <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.base}px`, marginTop: `${spacing.md}px` }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: `${spacing.md}px`,
+              borderRadius: `${borderRadius.md}px`,
+              backgroundColor: colors.surfaceElevated,
+              border: `1px solid ${colors.border}`,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
+                BFF com Cookies HttpOnly
+              </div>
+              <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '2px' }}>
+                Refresh token rotativo mantido exclusivamente no servidor com SameSite=Lax e validação de Origin.
+              </div>
             </div>
-            <div style={{ fontSize: '0.75rem', color: themeTokens.colors.textMuted }}>
-              Cache de requisições do TanStack Query purgado automaticamente ao sair.
-            </div>
+            <Badge variant="positive">PROTEGIDO</Badge>
           </div>
-          <Badge variant="primary">ATIVO</Badge>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: `${spacing.md}px`,
+              borderRadius: `${borderRadius.md}px`,
+              backgroundColor: colors.surfaceElevated,
+              border: `1px solid ${colors.border}`,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
+                Isolamento Compulsório de Cache
+              </div>
+              <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '2px' }}>
+                Purga total do cache do TanStack Query na revogação da sessão para prevenir vazamento cross-user.
+              </div>
+            </div>
+            <Badge variant="primary">ATIVO</Badge>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: `${spacing.md}px`,
+              borderRadius: `${borderRadius.md}px`,
+              backgroundColor: colors.surfaceElevated,
+              border: `1px solid ${colors.border}`,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
+                Token em Memória Volátil
+              </div>
+              <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '2px' }}>
+                Access token nunca persistido em localStorage, sessionStorage ou IndexedDB.
+              </div>
+            </div>
+            <Badge variant="positive">SEGURO</Badge>
+          </div>
         </div>
       </Card>
 
+      {/* Logout Action */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Button variant="danger" onClick={handleLogout} isLoading={isLoggingOut}>
           Sair da Conta (Logout)

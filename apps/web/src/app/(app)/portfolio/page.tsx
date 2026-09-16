@@ -14,8 +14,13 @@ import {
   Skeleton,
   EmptyState,
   ErrorState,
+  PageHeader,
+  SectionHeader,
+  Tabs,
+  PortfolioSwitcher,
+  useToast,
 } from '@/components/ui';
-import { themeTokens } from '@atlas/ui';
+import { colors, spacing, borderRadius } from '@atlas/ui';
 
 const PORTFOLIO_TYPE_LABELS: Record<PortfolioType, string> = {
   PERSONAL: 'Pessoal',
@@ -25,14 +30,28 @@ const PORTFOLIO_TYPE_LABELS: Record<PortfolioType, string> = {
 };
 
 const PORTFOLIO_TYPE_OPTIONS = [
-  { value: 'PERSONAL', label: 'Pessoal' },
-  { value: 'FAMILY', label: 'Família' },
-  { value: 'COMPANY', label: 'Empresa' },
-  { value: 'SIMULATION', label: 'Simulação' },
+  { value: 'PERSONAL', label: 'Pessoal (Investimentos próprios)' },
+  { value: 'FAMILY', label: 'Família (Gestão conjunta)' },
+  { value: 'COMPANY', label: 'Empresa (Pessoa Jurídica)' },
+  { value: 'SIMULATION', label: 'Simulação (Estratégias/Testes)' },
+];
+
+const CARTEIRA_TABS = [
+  { id: 'overview', label: 'Visão Geral' },
+  { id: 'assets', label: 'Ativos' },
+  { id: 'returns', label: 'Rentabilidade' },
+  { id: 'dividends', label: 'Proventos' },
+  { id: 'allocation', label: 'Alocação' },
+  { id: 'operations', label: 'Operações' },
 ];
 
 export default function PortfolioPage() {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
+
+  const [activeTab, setActiveTab] = useState('overview');
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(null);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [name, setName] = useState('');
   const [type, setType] = useState<PortfolioType>('PERSONAL');
@@ -41,7 +60,7 @@ export default function PortfolioPage() {
 
   // Fetch Portfolios
   const {
-    data: portfolios,
+    data: portfolios = [],
     isLoading,
     isError,
     error,
@@ -50,9 +69,13 @@ export default function PortfolioPage() {
     queryKey: ['portfolios'],
     queryFn: async () => {
       const res = await apiClient.get<{ data: PortfolioDto[] }>('/api/v1/portfolios');
-      return res.data;
+      return res.data || [];
     },
   });
+
+  // Keep active portfolio selected
+  const activePortfolio =
+    portfolios.find((p) => p.id === selectedPortfolioId) || portfolios[0] || null;
 
   // Create Portfolio Mutation
   const createMutation = useMutation({
@@ -60,13 +83,15 @@ export default function PortfolioPage() {
       const res = await apiClient.post<{ data: PortfolioDto }>('/api/v1/portfolios', payload);
       return res.data;
     },
-    onSuccess: () => {
+    onSuccess: (newPortfolio) => {
       queryClient.invalidateQueries({ queryKey: ['portfolios'] });
       setIsModalOpen(false);
       setName('');
       setType('PERSONAL');
       setBaseCurrency('BRL');
       setFormError(null);
+      setSelectedPortfolioId(newPortfolio.id);
+      showToast(`Carteira '${newPortfolio.name}' criada com sucesso!`, 'positive');
     },
     onError: (err: ApiError) => {
       setFormError(err.message || 'Falha ao criar carteira. Verifique os dados.');
@@ -89,71 +114,53 @@ export default function PortfolioPage() {
     });
   };
 
-  const getBadgeVariant = (
-    portType: PortfolioType,
-  ): 'primary' | 'success' | 'warning' | 'neutral' => {
+  const getBadgeVariant = (portType: PortfolioType): 'primary' | 'positive' | 'warning' | 'default' => {
     switch (portType) {
       case 'PERSONAL':
         return 'primary';
       case 'FAMILY':
-        return 'success';
+        return 'positive';
       case 'COMPANY':
         return 'warning';
       case 'SIMULATION':
-        return 'neutral';
       default:
-        return 'neutral';
+        return 'default';
     }
   };
 
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-      {/* Header & Actions */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '1.75rem',
-        }}
-      >
-        <div>
-          <h1
-            style={{
-              margin: '0 0 0.375rem 0',
-              fontSize: '1.75rem',
-              fontWeight: 700,
-              color: themeTokens.colors.text,
-              letterSpacing: '-0.02em',
-            }}
-          >
-            Carteiras de Investimento
-          </h1>
-          <p style={{ margin: 0, fontSize: '0.875rem', color: themeTokens.colors.textMuted }}>
-            Gerencie suas carteiras e patrimônio estrutural
-          </p>
-        </div>
+    <div>
+      {/* Header with Title and Portfolio Switcher */}
+      <PageHeader
+        title="Carteira"
+        subtitle="Gerencie suas carteiras e acompanhe seus investimentos estruturados"
+        action={
+          <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px` }}>
+            {portfolios.length > 0 && (
+              <PortfolioSwitcher
+                portfolios={portfolios}
+                selectedPortfolioId={activePortfolio?.id || null}
+                onSelectPortfolio={(id) => setSelectedPortfolioId(id)}
+                onCreatePortfolio={() => setIsModalOpen(true)}
+              />
+            )}
+            <Button onClick={() => setIsModalOpen(true)}>+ Nova Carteira</Button>
+          </div>
+        }
+      />
 
-        <Button onClick={() => setIsModalOpen(true)}>+ Nova Carteira</Button>
-      </div>
-
-      {/* Loading State: Skeletons */}
+      {/* Loading Skeletons */}
       {isLoading && (
         <div
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-            gap: '1.25rem',
+            gap: `${spacing.base}px`,
           }}
         >
           {[1, 2, 3].map((i) => (
             <Card key={i} style={{ minHeight: '160px' }}>
-              <div
-                style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}
-              >
-                <Skeleton width="60%" height="1.25rem" />
-                <Skeleton width="25%" height="1rem" />
-              </div>
+              <Skeleton width="60%" height="1.25rem" style={{ marginBottom: '1rem' }} />
               <Skeleton width="40%" height="0.875rem" style={{ marginBottom: '1.5rem' }} />
               <Skeleton width="80%" height="0.75rem" />
             </Card>
@@ -170,101 +177,210 @@ export default function PortfolioPage() {
         />
       )}
 
-      {/* Empty State */}
-      {!isLoading && !isError && (!portfolios || portfolios.length === 0) && (
+      {/* Global Empty State */}
+      {!isLoading && !isError && portfolios.length === 0 && (
         <EmptyState
           title="Nenhuma carteira encontrada"
           description="Você ainda não possui carteiras cadastradas. Crie sua primeira carteira para começar a estruturar seus investimentos."
-          actionLabel="Criar Carteira"
+          actionLabel="Criar Primeira Carteira"
           onAction={() => setIsModalOpen(true)}
-          icon={<span style={{ fontSize: '2.5rem' }}>💼</span>}
         />
       )}
 
-      {/* Success State: Portfolio Cards Grid */}
-      {!isLoading && !isError && portfolios && portfolios.length > 0 && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-            gap: '1.25rem',
-          }}
-        >
-          {portfolios.map((portfolio) => (
-            <Card key={portfolio.id}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                  marginBottom: '0.75rem',
-                }}
-              >
-                <h3
-                  style={{
-                    margin: 0,
-                    fontSize: '1.125rem',
-                    fontWeight: 600,
-                    color: themeTokens.colors.text,
-                  }}
-                >
-                  {portfolio.name}
-                </h3>
-                <Badge variant={getBadgeVariant(portfolio.type)}>
-                  {PORTFOLIO_TYPE_LABELS[portfolio.type] || portfolio.type}
-                </Badge>
-              </div>
+      {/* Active Tabs Navigation & Content */}
+      {!isLoading && !isError && portfolios.length > 0 && (
+        <div>
+          <Tabs tabs={CARTEIRA_TABS} activeTab={activeTab} onTabChange={setActiveTab} />
 
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  marginBottom: '1rem',
-                  fontSize: '0.8125rem',
-                  color: themeTokens.colors.textMuted,
-                }}
-              >
-                <span>
-                  Moeda:{' '}
-                  <strong style={{ color: themeTokens.colors.text }}>
-                    {portfolio.baseCurrency}
-                  </strong>
-                </span>
-                <span>•</span>
-                <span>
-                  Status:{' '}
-                  <strong
+          {/* TAB 1: VISÃO GERAL */}
+          {activeTab === 'overview' && (
+            <div>
+              {activePortfolio && (
+                <Card style={{ marginBottom: `${spacing.xl}px`, padding: `${spacing.base}px` }}>
+                  <div
                     style={{
-                      color:
-                        portfolio.status === 'ACTIVE'
-                          ? themeTokens.colors.success
-                          : themeTokens.colors.textMuted,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: `${spacing.sm}px`,
+                      marginBottom: `${spacing.md}px`,
                     }}
                   >
-                    {portfolio.status === 'ACTIVE' ? 'Ativa' : 'Arquivada'}
-                  </strong>
-                </span>
-              </div>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: colors.textSecondary, textTransform: 'uppercase' }}>
+                        Carteira Ativa
+                      </span>
+                      <h2 style={{ margin: '2px 0 0 0', fontSize: '1.25rem', fontWeight: 700, color: colors.textPrimary }}>
+                        {activePortfolio.name}
+                      </h2>
+                    </div>
+                    <Badge variant={getBadgeVariant(activePortfolio.type)}>
+                      {PORTFOLIO_TYPE_LABELS[activePortfolio.type] || activePortfolio.type}
+                    </Badge>
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: `${spacing.xl}px`,
+                      fontSize: '0.8125rem',
+                      color: colors.textSecondary,
+                      paddingTop: `${spacing.sm}px`,
+                      borderTop: `1px solid ${colors.border}`,
+                    }}
+                  >
+                    <span>
+                      Moeda base: <strong style={{ color: colors.textPrimary }}>{activePortfolio.baseCurrency}</strong>
+                    </span>
+                    <span>
+                      Status:{' '}
+                      <strong style={{ color: activePortfolio.status === 'ACTIVE' ? colors.positive : colors.textMuted }}>
+                        {activePortfolio.status === 'ACTIVE' ? 'Ativa' : 'Arquivada'}
+                      </strong>
+                    </span>
+                  </div>
+                </Card>
+              )}
+
+              <SectionHeader
+                title="Todas as Carteiras"
+                description="Selecione ou gerencie suas carteiras cadastradas"
+              />
 
               <div
                 style={{
-                  paddingTop: '0.75rem',
-                  borderTop: `1px solid ${themeTokens.colors.border}`,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  fontSize: '0.75rem',
-                  color: themeTokens.colors.textMuted,
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                  gap: `${spacing.base}px`,
                 }}
               >
-                <span>Criada em {new Date(portfolio.createdAt).toLocaleDateString('pt-BR')}</span>
-                <span style={{ color: themeTokens.colors.primary, fontWeight: 500 }}>
-                  Estrutura pronta
-                </span>
+                {portfolios.map((portfolio) => {
+                  const isCurrent = portfolio.id === activePortfolio?.id;
+                  return (
+                    <Card
+                      key={portfolio.id}
+                      style={{
+                        borderColor: isCurrent ? colors.accent : colors.border,
+                        backgroundColor: isCurrent ? colors.surfaceElevated : colors.surface,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
+                          marginBottom: `${spacing.sm}px`,
+                        }}
+                      >
+                        <h3
+                          style={{
+                            margin: 0,
+                            fontSize: '1rem',
+                            fontWeight: 600,
+                            color: colors.textPrimary,
+                          }}
+                        >
+                          {portfolio.name}
+                        </h3>
+                        <Badge variant={getBadgeVariant(portfolio.type)}>
+                          {PORTFOLIO_TYPE_LABELS[portfolio.type] || portfolio.type}
+                        </Badge>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: `${spacing.sm}px`,
+                          marginBottom: `${spacing.md}px`,
+                          fontSize: '0.8125rem',
+                          color: colors.textSecondary,
+                        }}
+                      >
+                        <span>Moeda: {portfolio.baseCurrency}</span>
+                        <span>•</span>
+                        <span>{portfolio.status === 'ACTIVE' ? 'Ativa' : 'Arquivada'}</span>
+                      </div>
+
+                      <div
+                        style={{
+                          paddingTop: `${spacing.sm}px`,
+                          borderTop: `1px solid ${colors.border}`,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <span style={{ fontSize: '0.75rem', color: colors.textMuted }}>
+                          {isCurrent ? 'Selecionada' : 'Disponível'}
+                        </span>
+                        {!isCurrent && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setSelectedPortfolioId(portfolio.id)}
+                          >
+                            Selecionar
+                          </Button>
+                        )}
+                      </div>
+                    </Card>
+                  );
+                })}
               </div>
+            </div>
+          )}
+
+          {/* TAB 2: ATIVOS */}
+          {activeTab === 'assets' && (
+            <Card style={{ padding: `${spacing.xl}px` }}>
+              <EmptyState
+                title="Posições de Ativos em Estruturação"
+                description="A agregação de quantidades, cotações e preço médio ponderado por lote será ativada na Fase de Portfolio Engine 1.0."
+              />
             </Card>
-          ))}
+          )}
+
+          {/* TAB 3: RENTABILIDADE */}
+          {activeTab === 'returns' && (
+            <Card style={{ padding: `${spacing.xl}px` }}>
+              <EmptyState
+                title="Módulo de Rentabilidade"
+                description="O cálculo de TWR (Time-Weighted Return), MWR (Money-Weighted Return) e rentabilidade histórica será implementado na Fase de Performance Engine."
+              />
+            </Card>
+          )}
+
+          {/* TAB 4: PROVENTOS */}
+          {activeTab === 'dividends' && (
+            <Card style={{ padding: `${spacing.xl}px` }}>
+              <EmptyState
+                title="Agenda de Proventos"
+                description="Acompanhamento detalhado de dividendos, JCP e rendimentos estará disponível na Fase de Proventos."
+              />
+            </Card>
+          )}
+
+          {/* TAB 5: ALOCAÇÃO */}
+          {activeTab === 'allocation' && (
+            <Card style={{ padding: `${spacing.xl}px` }}>
+              <EmptyState
+                title="Alocação e Rebalanceamento"
+                description="Visualização da distribuição patrimonial por classe de ativo, moeda e setor programada para as próximas fases."
+              />
+            </Card>
+          )}
+
+          {/* TAB 6: OPERAÇÕES */}
+          {activeTab === 'operations' && (
+            <Card style={{ padding: `${spacing.xl}px` }}>
+              <EmptyState
+                title="Livro-Razão de Operações"
+                description="O extrato cronológico e imutável de transações conectadas a esta carteira será exibido aqui."
+              />
+            </Card>
+          )}
         </div>
       )}
 
@@ -275,13 +391,13 @@ export default function PortfolioPage() {
             <div
               role="alert"
               style={{
-                backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                border: `1px solid ${themeTokens.colors.danger}`,
-                color: themeTokens.colors.danger,
-                padding: '0.75rem',
-                borderRadius: `${themeTokens.borderRadius.md}px`,
+                backgroundColor: colors.negativeSubtle,
+                border: `1px solid ${colors.negative}`,
+                color: colors.negative,
+                padding: `${spacing.md}px`,
+                borderRadius: `${borderRadius.md}px`,
                 fontSize: '0.875rem',
-                marginBottom: '1rem',
+                marginBottom: `${spacing.base}px`,
               }}
             >
               {formError}
@@ -290,7 +406,7 @@ export default function PortfolioPage() {
 
           <Input
             label="Nome da Carteira"
-            placeholder="Ex: Carteira Principal, Reserva de Emergência"
+            placeholder="Ex: Carteira Principal, Reserva, Ações Brasil"
             value={name}
             onChange={(e) => setName(e.target.value)}
             disabled={createMutation.isPending}
@@ -318,19 +434,19 @@ export default function PortfolioPage() {
             style={{
               display: 'flex',
               justifyContent: 'flex-end',
-              gap: '0.75rem',
-              marginTop: '1.5rem',
+              gap: `${spacing.sm}px`,
+              marginTop: `${spacing.xl}px`,
             }}
           >
             <Button
               type="button"
-              variant="outline"
+              variant="secondary"
               onClick={() => setIsModalOpen(false)}
               disabled={createMutation.isPending}
             >
               Cancelar
             </Button>
-            <Button type="submit" variant="primary" isLoading={createMutation.isPending}>
+            <Button type="submit" isLoading={createMutation.isPending}>
               Salvar Carteira
             </Button>
           </div>
