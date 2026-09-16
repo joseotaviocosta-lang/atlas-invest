@@ -23,6 +23,7 @@ import {
   ForgotPasswordUseCase,
   ResetPasswordUseCase,
 } from '../application/auth';
+import { TokenService } from './services/token.service';
 
 @ApiTags('Authentication')
 @Controller('api/v1/auth')
@@ -42,6 +43,8 @@ export class AuthController {
     private readonly forgotPasswordUseCase: ForgotPasswordUseCase,
     @Inject(ResetPasswordUseCase)
     private readonly resetPasswordUseCase: ResetPasswordUseCase,
+    @Inject(TokenService)
+    private readonly tokenService: TokenService,
   ) {}
 
   @Public()
@@ -64,9 +67,12 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async login(@Body(new ZodValidationPipe(LoginInputSchema)) dto: LoginDto, @Req() req: Request) {
     const userAgent = req.headers['user-agent'];
+    const ip = req.ip || req.socket.remoteAddress;
+    const ipHash = ip ? this.tokenService.hashIp(ip) : undefined;
     const result = await this.loginUseCase.execute({
       ...dto,
       userAgent,
+      ipHash,
     });
     return { data: result };
   }

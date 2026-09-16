@@ -94,6 +94,7 @@ export interface SessionRecord {
   userId: string;
   refreshTokenHash: string;
   previousRefreshTokenHash: string | null;
+  usedRefreshTokenHashes: string[];
   createdAt: Date;
   lastUsedAt: Date;
   expiresAt: Date;
@@ -117,10 +118,12 @@ export interface ISessionRepository {
   findById(id: string): Promise<SessionRecord | null>;
   findByRefreshTokenHash(refreshTokenHash: string): Promise<SessionRecord | null>;
   findByPreviousRefreshTokenHash(previousRefreshTokenHash: string): Promise<SessionRecord | null>;
+  findByAnyPreviousRefreshTokenHash(hash: string): Promise<SessionRecord | null>;
   rotateRefreshToken(
     sessionId: string,
     newRefreshTokenHash: string,
     newExpiresAt: Date,
+    expectedCurrentHash?: string,
   ): Promise<SessionRecord>;
   revoke(sessionId: string): Promise<void>;
   revokeAllForUser(userId: string): Promise<void>;
@@ -146,4 +149,5 @@ export interface IPasswordResetTokenRepository {
   create(data: CreatePasswordResetTokenData): Promise<PasswordResetTokenRecord>;
   findByTokenHash(tokenHash: string): Promise<PasswordResetTokenRecord | null>;
   markAsUsed(id: string): Promise<void>;
+  markAsUsedIfUnused(id: string): Promise<boolean>;
 }

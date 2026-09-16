@@ -50,8 +50,14 @@ export class ResetPasswordUseCase {
       });
     }
 
-    // 1. Mark token as used immediately (single-use invariant)
-    await this.resetTokenRepository.markAsUsed(record.id);
+    // 1. Mark token as used immediately (single-use invariant) using atomic update
+    const marked = await this.resetTokenRepository.markAsUsedIfUnused(record.id);
+    if (!marked) {
+      throw new BadRequestException({
+        message: 'Invalid or already used password reset token.',
+        code: 'AUTH.INVALID_RESET_TOKEN',
+      });
+    }
 
     // 2. Hash new password and update user record
     const passwordHash = await this.passwordHasher.hash(dto.newPassword);

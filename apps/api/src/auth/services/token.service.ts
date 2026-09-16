@@ -107,6 +107,10 @@ export class TokenService {
     return crypto.createHmac('sha256', this.refreshTokenPepper).update(token).digest('hex');
   }
 
+  hashIp(ip: string): string {
+    return crypto.createHmac('sha256', this.refreshTokenPepper).update(ip).digest('hex');
+  }
+
   getRefreshTokenExpiresAt(): Date {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + this.refreshTokenTtlDays);

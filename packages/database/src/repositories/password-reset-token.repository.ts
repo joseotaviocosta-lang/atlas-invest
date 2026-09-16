@@ -45,4 +45,23 @@ export class PasswordResetTokenRepository implements IPasswordResetTokenReposito
       );
     }
   }
+
+  async markAsUsedIfUnused(id: string): Promise<boolean> {
+    try {
+      const result = await this.prisma.passwordResetToken.updateMany({
+        where: {
+          id,
+          usedAt: null,
+        },
+        data: {
+          usedAt: new Date(),
+        },
+      });
+      return result.count > 0;
+    } catch (error) {
+      throw new PersistenceError(
+        `Failed to mark password reset token as used: ${(error as Error).message}`,
+      );
+    }
+  }
 }

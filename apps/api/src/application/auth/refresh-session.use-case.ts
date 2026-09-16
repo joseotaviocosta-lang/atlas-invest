@@ -25,9 +25,9 @@ export class RefreshSessionUseCase {
   async execute(dto: RefreshSessionDto): Promise<RefreshSessionResponseDto> {
     const presentedHash = this.tokenService.hashRefreshToken(dto.refreshToken);
 
-    // 1. Detect token reuse from previously rotated token
+    // 1. Detect token reuse from any previously rotated token in the session family
     const reusedSession =
-      await this.sessionRepository.findByPreviousRefreshTokenHash(presentedHash);
+      await this.sessionRepository.findByAnyPreviousRefreshTokenHash(presentedHash);
     if (reusedSession) {
       await this.sessionRepository.revoke(reusedSession.id);
       throw new UnauthorizedException({
@@ -52,12 +52,26 @@ export class RefreshSessionUseCase {
       });
     }
 
-    // 3. Rotate refresh token
+    // 3. Rotate refresh token with concurrency protection
     const newRawRefreshToken = this.tokenService.generateRefreshToken();
     const newRefreshTokenHash = this.tokenService.hashRefreshToken(newRawRefreshToken);
     const newExpiresAt = this.tokenService.getRefreshTokenExpiresAt();
 
-    await this.sessionRepository.rotateRefreshToken(session.id, newRefreshTokenHash, newExpiresAt);
+    try {
+      await this.sessionRepository.rotateRefreshToken(
+        session.id,
+        newRefreshTokenHash,
+        newExpiresAt,
+        presentedHash,
+      );
+    } catch (error) {
+      // If concurrent rotation detected, revoke session and throw UnauthorizedException
+      await this.sessionRepository.revoke(session.id).catch(() => {});
+      throw new UnauthorizedException({
+        message: 'Concurrent refresh conflict or invalid session state.',
+        code: 'AUTH.INVALID_REFRESH_TOKEN',
+      });
+    }
 
     // 4. Issue new access token
     const accessToken = this.tokenService.generateAccessToken({

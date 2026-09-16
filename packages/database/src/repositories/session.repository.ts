@@ -37,8 +37,19 @@ export class SessionRepository implements ISessionRepository {
   async findByPreviousRefreshTokenHash(
     previousRefreshTokenHash: string,
   ): Promise<SessionRecord | null> {
+    return this.findByAnyPreviousRefreshTokenHash(previousRefreshTokenHash);
+  }
+
+  async findByAnyPreviousRefreshTokenHash(
+    refreshTokenHash: string,
+  ): Promise<SessionRecord | null> {
     return this.prisma.session.findFirst({
-      where: { previousRefreshTokenHash },
+      where: {
+        OR: [
+          { previousRefreshTokenHash: refreshTokenHash },
+          { usedRefreshTokenHashes: { has: refreshTokenHash } },
+        ],
+      },
     });
   }
 
@@ -46,19 +57,36 @@ export class SessionRepository implements ISessionRepository {
     sessionId: string,
     newRefreshTokenHash: string,
     newExpiresAt: Date,
+    expectedCurrentHash?: string,
   ): Promise<SessionRecord> {
     try {
-      const current = await this.prisma.session.findUnique({ where: { id: sessionId } });
-      return await this.prisma.session.update({
-        where: { id: sessionId },
-        data: {
-          previousRefreshTokenHash: current?.refreshTokenHash ?? null,
-          refreshTokenHash: newRefreshTokenHash,
-          expiresAt: newExpiresAt,
-          lastUsedAt: new Date(),
-        },
+      return await this.prisma.$transaction(async (tx) => {
+        const current = await tx.session.findUnique({ where: { id: sessionId } });
+        if (!current) {
+          throw new PersistenceError(`Session ${sessionId} not found`);
+        }
+        if (expectedCurrentHash && current.refreshTokenHash !== expectedCurrentHash) {
+          throw new PersistenceError(
+            `Concurrent rotation detected: current token hash does not match expected hash`,
+          );
+        }
+        const updatedUsedHashes = current.refreshTokenHash
+          ? [...current.usedRefreshTokenHashes, current.refreshTokenHash]
+          : current.usedRefreshTokenHashes;
+
+        return await tx.session.update({
+          where: { id: sessionId },
+          data: {
+            previousRefreshTokenHash: current.refreshTokenHash ?? null,
+            usedRefreshTokenHashes: updatedUsedHashes,
+            refreshTokenHash: newRefreshTokenHash,
+            expiresAt: newExpiresAt,
+            lastUsedAt: new Date(),
+          },
+        });
       });
     } catch (error) {
+      if (error instanceof PersistenceError) throw error;
       throw new PersistenceError(`Failed to rotate refresh token: ${(error as Error).message}`);
     }
   }
