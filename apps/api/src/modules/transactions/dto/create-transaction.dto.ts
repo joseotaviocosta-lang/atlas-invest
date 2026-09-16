@@ -32,13 +32,14 @@ export const CreateTransactionBodySchema = z.object({
 export type CreateTransactionBody = z.infer<typeof CreateTransactionBodySchema>;
 
 export class CreateTransactionSwaggerDto {
-  @ApiPropertyOptional({ example: '33333333-3333-4333-8333-333333333333' })
+  @ApiPropertyOptional({ type: String, example: '33333333-3333-4333-8333-333333333333' })
   id?: string;
 
-  @ApiProperty({ example: '22222222-2222-4222-8222-222222222222' })
+  @ApiProperty({ type: String, example: '22222222-2222-4222-8222-222222222222' })
   accountId!: string;
 
   @ApiProperty({
+    type: String,
     enum: [
       'BUY',
       'SELL',
@@ -61,45 +62,45 @@ export class CreateTransactionSwaggerDto {
   })
   type!: string;
 
-  @ApiProperty({ example: 'BRL' })
+  @ApiProperty({ type: String, example: 'BRL' })
   currency!: string;
 
-  @ApiProperty({ example: '2026-03-15', description: 'Trade date in YYYY-MM-DD format' })
+  @ApiProperty({ type: String, example: '2026-03-15', description: 'Trade date in YYYY-MM-DD format' })
   tradeDate!: string;
 
-  @ApiPropertyOptional({ example: '2026-03-17', description: 'Settlement date in YYYY-MM-DD format' })
+  @ApiPropertyOptional({ type: String, example: '2026-03-17', description: 'Settlement date in YYYY-MM-DD format' })
   settlementDate?: string;
 
-  @ApiPropertyOptional({ enum: ['MANUAL', 'B3', 'OPEN_FINANCE', 'BROKER_NOTE', 'IMPORT'], default: 'MANUAL' })
+  @ApiPropertyOptional({ type: String, enum: ['MANUAL', 'B3', 'OPEN_FINANCE', 'BROKER_NOTE', 'IMPORT'], default: 'MANUAL' })
   source?: string;
 
-  @ApiPropertyOptional({ example: 'XP' })
+  @ApiPropertyOptional({ type: String, example: 'XP' })
   provider?: string;
 
-  @ApiPropertyOptional({ example: 'ORD-987654' })
+  @ApiPropertyOptional({ type: String, example: 'ORD-987654' })
   externalId?: string;
 
-  @ApiPropertyOptional({ example: 'Compra de oportunidade' })
+  @ApiPropertyOptional({ type: String, example: 'Compra de oportunidade' })
   notes?: string;
 
-  @ApiPropertyOptional({ example: '44444444-4444-4444-8444-444444444444' })
+  @ApiPropertyOptional({ type: String, example: '44444444-4444-4444-8444-444444444444' })
   assetId?: string;
 
-  @ApiPropertyOptional({ example: '100', description: 'Strict decimal string for quantity' })
+  @ApiPropertyOptional({ type: String, example: '100', description: 'Strict decimal string for quantity' })
   quantity?: string;
 
-  @ApiPropertyOptional({ example: '38.50', description: 'Strict decimal string for unit price' })
+  @ApiPropertyOptional({ type: String, example: '38.50', description: 'Strict decimal string for unit price' })
   unitPrice?: string;
 
-  @ApiPropertyOptional({ example: '4.90', description: 'Strict decimal string for fees' })
+  @ApiPropertyOptional({ type: String, example: '4.90', description: 'Strict decimal string for fees' })
   fees?: string;
 
-  @ApiPropertyOptional({ example: '0.00', description: 'Strict decimal string for taxes' })
+  @ApiPropertyOptional({ type: String, example: '0.00', description: 'Strict decimal string for taxes' })
   taxes?: string;
 
-  @ApiPropertyOptional({ example: '3850.00', description: 'Strict decimal string for cash movements/income' })
+  @ApiPropertyOptional({ type: String, example: '3850.00', description: 'Strict decimal string for cash movements/income' })
   amount?: string;
 
-  @ApiPropertyOptional({ example: '2.00', description: 'Strict decimal string for split factor' })
+  @ApiPropertyOptional({ type: String, example: '2.00', description: 'Strict decimal string for split factor' })
   factor?: string;
 }

@@ -5,12 +5,12 @@ export { InstitutionInputSchema };
 export type CreateInstitutionDto = InstitutionInput;
 
 export class CreateInstitutionSwaggerDto {
-  @ApiProperty({ example: 'XP Investimentos' })
+  @ApiProperty({ type: String, example: 'XP Investimentos' })
   name!: string;
 
-  @ApiProperty({ enum: ['BANK', 'BROKER', 'CRYPTO_EXCHANGE', 'OTHER'], example: 'BROKER' })
+  @ApiProperty({ type: String, enum: ['BANK', 'BROKER', 'CRYPTO_EXCHANGE', 'OTHER'], example: 'BROKER' })
   type!: 'BANK' | 'BROKER' | 'CRYPTO_EXCHANGE' | 'OTHER';
 
-  @ApiProperty({ example: 'BR' })
+  @ApiProperty({ type: String, example: 'BR' })
   country!: string;
 }

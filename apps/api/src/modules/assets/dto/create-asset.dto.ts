@@ -6,27 +6,27 @@ export { AssetInputSchema };
 export type CreateAssetDto = AssetInput;
 
 export class CreateAssetSwaggerDto {
-  @ApiProperty({ example: 'PETR4' })
+  @ApiProperty({ type: String, example: 'PETR4' })
   ticker!: string;
 
-  @ApiProperty({ example: 'Petróleo Brasileiro S.A.' })
+  @ApiProperty({ type: String, example: 'Petróleo Brasileiro S.A.' })
   name!: string;
 
-  @ApiProperty({ enum: ASSET_TYPES, example: 'EQUITY' })
+  @ApiProperty({ type: String, enum: ASSET_TYPES, example: 'EQUITY' })
   type!: (typeof ASSET_TYPES)[number];
 
-  @ApiProperty({ example: 'BRL' })
+  @ApiProperty({ type: String, example: 'BRL' })
   currency!: string;
 
-  @ApiProperty({ example: 'BVMF' })
+  @ApiProperty({ type: String, example: 'BVMF' })
   exchange!: string;
 
-  @ApiPropertyOptional({ example: 'BRPETRACNPR6' })
+  @ApiPropertyOptional({ type: String, example: 'BRPETRACNPR6' })
   isin?: string;
 
-  @ApiPropertyOptional({ example: '33.000.167/0001-01' })
+  @ApiPropertyOptional({ type: String, example: '33.000.167/0001-01' })
   cnpj?: string;
 
-  @ApiPropertyOptional({ enum: ['ACTIVE', 'ARCHIVED'], default: 'ACTIVE' })
+  @ApiPropertyOptional({ type: String, enum: ['ACTIVE', 'ARCHIVED'], default: 'ACTIVE' })
   status?: 'ACTIVE' | 'ARCHIVED';
 }

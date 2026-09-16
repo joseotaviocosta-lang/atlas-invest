@@ -5,18 +5,18 @@ export { PortfolioInputSchema };
 export type CreatePortfolioDto = PortfolioInput;
 
 export class CreatePortfolioSwaggerDto {
-  @ApiProperty({ example: '11111111-1111-4111-8111-111111111111' })
+  @ApiProperty({ type: String, example: '11111111-1111-4111-8111-111111111111' })
   userId!: string;
 
-  @ApiProperty({ example: 'Carteira Principal' })
+  @ApiProperty({ type: String, example: 'Carteira Principal' })
   name!: string;
 
-  @ApiProperty({ example: 'BRL' })
+  @ApiProperty({ type: String, example: 'BRL' })
   baseCurrency!: string;
 
-  @ApiPropertyOptional({ enum: ['PERSONAL', 'FAMILY', 'COMPANY', 'SIMULATION'], default: 'PERSONAL' })
+  @ApiPropertyOptional({ type: String, enum: ['PERSONAL', 'FAMILY', 'COMPANY', 'SIMULATION'], default: 'PERSONAL' })
   type?: 'PERSONAL' | 'FAMILY' | 'COMPANY' | 'SIMULATION';
 
-  @ApiPropertyOptional({ enum: ['ACTIVE', 'ARCHIVED'], default: 'ACTIVE' })
+  @ApiPropertyOptional({ type: String, enum: ['ACTIVE', 'ARCHIVED'], default: 'ACTIVE' })
   status?: 'ACTIVE' | 'ARCHIVED';
 }

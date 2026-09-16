@@ -6,7 +6,7 @@ import {
   Param,
   HttpCode,
   HttpStatus,
-  UsePipes,
+  Inject,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 import {
@@ -25,7 +25,9 @@ import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
 @Controller('api/v1/portfolios/:portfolioId/accounts')
 export class PortfolioAccountsController {
   constructor(
+    @Inject(CreateAccountUseCase)
     private readonly createAccountUseCase: CreateAccountUseCase,
+    @Inject(ListAccountsUseCase)
     private readonly listAccountsUseCase: ListAccountsUseCase,
   ) {}
 
@@ -37,10 +39,9 @@ export class PortfolioAccountsController {
   @ApiResponse({ status: 201, description: 'Account created successfully' })
   @ApiResponse({ status: 404, description: 'Portfolio or institution not found' })
   @ApiResponse({ status: 400, description: 'Validation failed' })
-  @UsePipes(new ZodValidationPipe(CreateAccountBodySchema))
   async create(
     @Param('portfolioId', UUIDParamPipe) portfolioId: string,
-    @Body() body: CreateAccountBody,
+    @Body(new ZodValidationPipe(CreateAccountBodySchema)) body: CreateAccountBody,
   ) {
     const account = await this.createAccountUseCase.execute({
       portfolioId,
@@ -70,7 +71,10 @@ export class PortfolioAccountsController {
 @ApiTags('Accounts')
 @Controller('api/v1/accounts')
 export class AccountsController {
-  constructor(private readonly getAccountUseCase: GetAccountUseCase) {}
+  constructor(
+    @Inject(GetAccountUseCase)
+    private readonly getAccountUseCase: GetAccountUseCase,
+  ) {}
 
   @Get(':accountId')
   @ApiOperation({ summary: 'Get an account by ID' })

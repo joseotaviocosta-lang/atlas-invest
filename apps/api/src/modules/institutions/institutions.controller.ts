@@ -6,7 +6,7 @@ import {
   Param,
   HttpCode,
   HttpStatus,
-  UsePipes,
+  Inject,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 import {
@@ -25,8 +25,11 @@ import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
 @Controller('api/v1/institutions')
 export class InstitutionsController {
   constructor(
+    @Inject(CreateInstitutionUseCase)
     private readonly createInstitutionUseCase: CreateInstitutionUseCase,
+    @Inject(GetInstitutionUseCase)
     private readonly getInstitutionUseCase: GetInstitutionUseCase,
+    @Inject(ListInstitutionsUseCase)
     private readonly listInstitutionsUseCase: ListInstitutionsUseCase,
   ) {}
 
@@ -36,8 +39,9 @@ export class InstitutionsController {
   @ApiBody({ type: CreateInstitutionSwaggerDto })
   @ApiResponse({ status: 201, description: 'Institution created successfully' })
   @ApiResponse({ status: 400, description: 'Validation failed' })
-  @UsePipes(new ZodValidationPipe(InstitutionInputSchema))
-  async create(@Body() dto: CreateInstitutionDto) {
+  async create(
+    @Body(new ZodValidationPipe(InstitutionInputSchema)) dto: CreateInstitutionDto,
+  ) {
     const institution = await this.createInstitutionUseCase.execute(dto);
     return {
       data: institution.toJSON(),

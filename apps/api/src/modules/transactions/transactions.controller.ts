@@ -7,7 +7,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
-  UsePipes,
+  Inject,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { serializeTransaction } from '@atlas/domain';
@@ -31,7 +31,9 @@ import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
 @Controller('api/v1/portfolios/:portfolioId/transactions')
 export class PortfolioTransactionsController {
   constructor(
+    @Inject(CreateTransactionUseCase)
     private readonly createTransactionUseCase: CreateTransactionUseCase,
+    @Inject(ListTransactionsUseCase)
     private readonly listTransactionsUseCase: ListTransactionsUseCase,
   ) {}
 
@@ -48,10 +50,9 @@ export class PortfolioTransactionsController {
   @ApiResponse({ status: 400, description: 'Validation failed or domain rule violated' })
   @ApiResponse({ status: 404, description: 'Portfolio, account, or asset not found' })
   @ApiResponse({ status: 409, description: 'Cross-portfolio integrity violation or duplicate external transaction' })
-  @UsePipes(new ZodValidationPipe(CreateTransactionBodySchema))
   async create(
     @Param('portfolioId', UUIDParamPipe) portfolioId: string,
-    @Body() body: CreateTransactionBody,
+    @Body(new ZodValidationPipe(CreateTransactionBodySchema)) body: CreateTransactionBody,
   ) {
     const tx = await this.createTransactionUseCase.execute({
       portfolioId,
@@ -94,10 +95,9 @@ export class PortfolioTransactionsController {
   @ApiQuery({ name: 'limit', required: false, description: 'Number of items (1-100, default 50)' })
   @ApiResponse({ status: 200, description: 'Paginated transactions list' })
   @ApiResponse({ status: 404, description: 'Portfolio not found' })
-  @UsePipes(new ZodValidationPipe(ListTransactionsQuerySchema))
   async list(
     @Param('portfolioId', UUIDParamPipe) portfolioId: string,
-    @Query() query: ListTransactionsQuery,
+    @Query(new ZodValidationPipe(ListTransactionsQuerySchema)) query: ListTransactionsQuery,
   ) {
     const result = await this.listTransactionsUseCase.execute({
       portfolioId,
@@ -125,7 +125,10 @@ export class PortfolioTransactionsController {
 @ApiTags('Transactions')
 @Controller('api/v1/transactions')
 export class TransactionsController {
-  constructor(private readonly getTransactionUseCase: GetTransactionUseCase) {}
+  constructor(
+    @Inject(GetTransactionUseCase)
+    private readonly getTransactionUseCase: GetTransactionUseCase,
+  ) {}
 
   @Get(':transactionId')
   @ApiOperation({ summary: 'Get a specific transaction by ID' })

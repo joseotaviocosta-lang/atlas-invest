@@ -7,7 +7,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
-  UsePipes,
+  Inject,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { AssetType } from '@atlas/domain';
@@ -27,8 +27,11 @@ import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
 @Controller('api/v1/assets')
 export class AssetsController {
   constructor(
+    @Inject(CreateAssetUseCase)
     private readonly createAssetUseCase: CreateAssetUseCase,
+    @Inject(GetAssetUseCase)
     private readonly getAssetUseCase: GetAssetUseCase,
+    @Inject(SearchAssetsUseCase)
     private readonly searchAssetsUseCase: SearchAssetsUseCase,
   ) {}
 
@@ -38,8 +41,9 @@ export class AssetsController {
   @ApiBody({ type: CreateAssetSwaggerDto })
   @ApiResponse({ status: 201, description: 'Asset registered successfully' })
   @ApiResponse({ status: 400, description: 'Validation failed' })
-  @UsePipes(new ZodValidationPipe(AssetInputSchema))
-  async create(@Body() dto: CreateAssetDto) {
+  async create(
+    @Body(new ZodValidationPipe(AssetInputSchema)) dto: CreateAssetDto,
+  ) {
     const asset = await this.createAssetUseCase.execute(dto);
     return {
       data: asset.toJSON(),

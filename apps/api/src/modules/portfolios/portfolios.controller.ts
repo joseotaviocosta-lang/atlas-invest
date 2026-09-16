@@ -7,7 +7,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
-  UsePipes,
+  Inject,
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
@@ -27,8 +27,11 @@ import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
 @Controller('api/v1/portfolios')
 export class PortfoliosController {
   constructor(
+    @Inject(CreatePortfolioUseCase)
     private readonly createPortfolioUseCase: CreatePortfolioUseCase,
+    @Inject(GetPortfolioUseCase)
     private readonly getPortfolioUseCase: GetPortfolioUseCase,
+    @Inject(ListPortfoliosUseCase)
     private readonly listPortfoliosUseCase: ListPortfoliosUseCase,
   ) {}
 
@@ -38,8 +41,9 @@ export class PortfoliosController {
   @ApiBody({ type: CreatePortfolioSwaggerDto })
   @ApiResponse({ status: 201, description: 'Portfolio created successfully' })
   @ApiResponse({ status: 400, description: 'Validation failed or invalid currency' })
-  @UsePipes(new ZodValidationPipe(PortfolioInputSchema))
-  async create(@Body() dto: CreatePortfolioDto) {
+  async create(
+    @Body(new ZodValidationPipe(PortfolioInputSchema)) dto: CreatePortfolioDto,
+  ) {
     const portfolio = await this.createPortfolioUseCase.execute(dto);
     return {
       data: portfolio.toJSON(),

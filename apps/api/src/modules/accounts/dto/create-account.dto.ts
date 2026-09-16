@@ -12,15 +12,15 @@ export const CreateAccountBodySchema = z.object({
 export type CreateAccountBody = z.infer<typeof CreateAccountBodySchema>;
 
 export class CreateAccountSwaggerDto {
-  @ApiProperty({ example: '22222222-2222-4222-8222-222222222222' })
+  @ApiProperty({ type: String, example: '22222222-2222-4222-8222-222222222222' })
   institutionId!: string;
 
-  @ApiProperty({ example: 'Conta Investimento Principal' })
+  @ApiProperty({ type: String, example: 'Conta Investimento Principal' })
   name!: string;
 
-  @ApiProperty({ example: 'BRL' })
+  @ApiProperty({ type: String, example: 'BRL' })
   currency!: string;
 
-  @ApiPropertyOptional({ enum: ['ACTIVE', 'ARCHIVED'], default: 'ACTIVE' })
+  @ApiPropertyOptional({ type: String, enum: ['ACTIVE', 'ARCHIVED'], default: 'ACTIVE' })
   status?: 'ACTIVE' | 'ARCHIVED';
 }
