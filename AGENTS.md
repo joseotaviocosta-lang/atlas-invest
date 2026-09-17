@@ -416,3 +416,36 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Replay testado e validado em benchmarks sintéticos determinísticos com sementes fixas para 1.000, 10.000 e 50.000 transações multi-contas (5+) e multi-ativos (20+) (observed development/test benchmark, não SLA de produção).
    - Tempo de replay de 50.000 transações atinge desempenho sub-segundo (~480ms) com complexidade linear $\mathcal{O}(N \log N)$.
    - Aritmética com precisão decimal operacional de 40 dígitos e 18 casas decimais via Value Objects (`Quantity`, `Money`, `DecimalValue`), sem deriva IEEE-754 nos cenários testados.
+
+---
+
+## 17. Integração API/Aplicação e Modelos de Leitura (Fase 1G)
+
+1. **FRONTEIRA ESTREITA E NÃO-VAZAMENTO DE DOMÍNIO (ADR-062):**
+   - Controladores NestJS e DTOs de apresentação nunca expõem entidades e tipos internos do engine (`PortfolioState`, `AccountState`, `AssetState`, `Money`, `Quantity`, `Percentage`, `DecimalValue`, `ReadonlyMap`).
+   - A camada de aplicação atua como barreira estrita e converte os dados exclusivamente para Read Models serializáveis puros (`PortfolioStateReadModel`, `PortfolioPositionsReadModel`, `PortfolioHistoryReadModel`).
+   - Mapeador utilitário puro `PortfolioReadModelMapper` aplica ordenações determinísticas (`assetId ASC` para posições, `accountId ASC` para contas, `tradeDate DESC, id DESC` para histórico).
+   - Teste de arquitetura em `tests/architecture/dependency-boundaries.test.ts` fiscaliza a ausência de importações diretas de tipos internos nos controladores.
+
+2. **ENDPOINTS DE ESTADO E POSIÇÕES E AUTORIZAÇÃO SEGURA (ADR-063):**
+   - `GET /api/v1/portfolios/:portfolioId/state`: Replay do livro-razão consolidado e por conta, com metadados de execução (`engineVersion`, `processedTransactionCount`).
+   - `GET /api/v1/portfolios/:portfolioId/positions`: Posições em aberto consolidadas ou filtradas por `accountId`.
+   - **Isolamento e Privacidade**: Requer autenticação JWT. Tentativas de acessar carteiras de outros usuários ou contas fora do escopo da carteira resultam compulsoriamente em HTTP `404 Not Found` (evitando confirmação de existência de IDs de terceiros).
+   - **Falhas de Integridade do Livro-Razão**: `PortfolioReplayError` é capturado pelo filtro global e mapeado para HTTP `422 Unprocessable Entity` (`PORTFOLIO.REPLAY_FAILED`).
+
+3. **SEMÂNTICA TEMPORAL DE PONTO NO TEMPO (`asOf`) — ADR-064:**
+   - Parâmetro `asOf` nos formatos ISO `YYYY-MM-DD`.
+   - Validação estrita de calendário civil gregoriano (rejeita datas inexistentes como `2026-02-30` com `400 Bad Request` / `PORTFOLIO.INVALID_AS_OF_DATE`).
+   - Corte inclusivo: transações com `tradeDate <= asOf` são processadas no replay; transações posteriores são omitidas.
+   - Chamadas com `asOf` anterior à primeira transação retornam com sucesso o estado vazio da carteira (`processedTransactionCount = 0`).
+
+4. **SERIALIZAÇÃO DECIMAL EXATA E SEMÂNTICA NULL VS ZERO (ADR-065):**
+   - **Zero Float Math**: Todos os montantes financeiros e quantidades de cotas são serializados estritamente como `string` decimal exata (nunca tipos numéricos IEEE-754).
+   - **Semântica Null vs Zero**: Posições com status `INCOMPLETE` serializam `totalCost` e `averageCost` estritamente como `null` (nunca `0` ou `"0"`).
+   - Números primitivos são permitidos exclusivamente em contadores inteiros e limites de paginação de metadados (`limit`, `totalCount`, `processedTransactionCount`).
+
+5. **EXTRATO DE HISTÓRICO PATRIMONIAL CATEGORIZADO (ADR-066):**
+   - `GET /api/v1/portfolios/:portfolioId/history`: Extrato auditável unificado cobrindo `REALIZED_DISPOSAL`, `INCOME`, `CASH_FLOW`, `CORPORATE_ACTION` e `TRANSFER`.
+   - Ordenação cronológica reversa estrita: `tradeDate DESC, id DESC`.
+   - Paginação estável via keyset cursor (`data: items`, `meta: { limit, cursor, nextCursor, hasMore, totalCount }`).
+   - Suporte a filtros por `type`, `from`, `to`, `accountId` e `assetId`, com validação de consistência do intervalo temporal (`PORTFOLIO.INVALID_DATE_RANGE`).

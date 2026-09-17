@@ -213,4 +213,4 @@ pnpm build
 - [Especificação Técnica do Product Shell](file:///c:/Projetos/atlas-invest/docs/product/product-shell.md)
 - [Documentação do Design System](file:///c:/Projetos/atlas-invest/docs/design-system/README.md)
 - [Diretrizes de Segurança](file:///c:/Projetos/atlas-invest/docs/security/README.md)
-- [Registros de Decisões Arquiteturais (ADRs 001-047)](file:///c:/Projetos/atlas-invest/docs/decisions/)
+- [Registros de Decisões Arquiteturais (ADRs 001-066)](file:///c:/Projetos/atlas-invest/docs/decisions/)

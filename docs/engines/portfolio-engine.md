@@ -393,3 +393,42 @@ O replay do motor garante propriedades matemáticas formais:
   - 10.000 transações: ~110ms
   - 50.000 transações: ~480ms (sub-segundo para carteiras ativas massivas multi-ativos e multi-contas).
 - **Complexidade**: Linear $\mathcal{O}(N \log N)$ garantida.
+
+---
+
+## 18. Integração com Aplicação e Modelos de Leitura (Fase 1G) — ADR-062 a ADR-066
+
+Na Fase 1G, o Portfolio Engine foi integrado à camada de aplicação NestJS e à API HTTP pública através de uma fronteira estrita de encapsulamento e modelos de leitura imutáveis.
+
+### 18.1. Fronteira e Encapsulamento de Domínio (ADR-062)
+
+- **Proibição de Vazamento**: As entidades internas do motor (`PortfolioState`, `AccountState`, `AssetState`, `Money`, `Quantity`, `Percentage`, `DecimalValue`, `ReadonlyMap`) **nunca** são expostas na camada de apresentação ou controladores HTTP.
+- **Read Models Dedicados**: A aplicação consome e expõe tipos serializáveis puros (`PortfolioStateReadModel`, `PortfolioPositionsReadModel`, `PortfolioHistoryReadModel`).
+- **Mapeador Unidirecional**: `PortfolioReadModelMapper` transforma o `ReplayResult` do motor em DTOs ordenados deterministicamente (`assetId ASC` para posições, `tradeDate DESC, id DESC` para histórico).
+- **Fiscalização Arquitetural**: Teste automatizado em `tests/architecture/dependency-boundaries.test.ts` impede controladores de importar classes internas do motor.
+
+### 18.2. Contrato da API de Estado e Posições (ADR-063)
+
+- `GET /api/v1/portfolios/:portfolioId/state`: Retorna o estado patrimonial consolidado, completude do custo médio, posições, contas, sumários de ganhos realizados, proventos e metadados de execução.
+- `GET /api/v1/portfolios/:portfolioId/positions`: Retorna a lista de posições em aberto, suportando filtro opcional por `accountId`.
+- **Segurança e Privacidade**: Requer autenticação. O acesso a carteira ou conta alheia retorna invariavelmente `404 Not Found` (evitando inferência de existência de recursos alheios).
+- **Falhas de Integridade**: Erros de integridade contábil no replay (`PortfolioReplayError`) são mapeados para HTTP `422 Unprocessable Entity` (`PORTFOLIO.REPLAY_FAILED`).
+
+### 18.3. Semântica Temporal de Ponto no Tempo (`asOf`) — ADR-064
+
+- Os endpoints de estado e posições aceitam o parâmetro opcional `asOf` (`YYYY-MM-DD`).
+- **Corte Inclusivo**: Todo evento com `tradeDate <= asOf` é processado; transações posteriores são omitidas.
+- **Validação de Calendário**: Datas inválidas no calendário civil (ex.: `2026-02-30`) são rejeitadas com HTTP `400 Bad Request` (`PORTFOLIO.INVALID_AS_OF_DATE`).
+- **Comportamento Limítrofe**: `asOf` anterior à primeira transação retorna estado vazio com sucesso (`processedTransactionCount = 0`).
+
+### 18.4. Serialização Decimal e Semântica Null vs Zero (ADR-065)
+
+- **Zero Float Math**: Todos os valores monetários e quantidades são serializados como `string` decimal exata (nunca ponto flutuante IEEE-754).
+- **Semântica de Custo Incompleto**: Se uma posição possuir `costBasisStatus: 'INCOMPLETE'`, os campos `totalCost` e `averageCost` são estritamente `null` (nunca `0` ou `"0"`).
+
+### 18.5. Histórico Categorizado e Paginação Keyset (ADR-066)
+
+- `GET /api/v1/portfolios/:portfolioId/history`: Extrato unificado de auditoria patrimonial, categorizado por `kind` (`REALIZED_DISPOSAL`, `INCOME`, `CASH_FLOW`, `CORPORATE_ACTION`, `TRANSFER`).
+- **Ordenação**: Determinística reversa (`tradeDate DESC, id DESC`).
+- **Paginação**: Keyset cursor (`cursor`, `limit`, `nextCursor`, `hasMore`, `totalCount`).
+- **Filtros**: Suporta filtros por `type`, `from`, `to`, `accountId` e `assetId`, validando inversão de datas com `PORTFOLIO.INVALID_DATE_RANGE`.
