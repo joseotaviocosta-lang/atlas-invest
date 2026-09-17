@@ -2,8 +2,8 @@
 
 Plataforma completa de gestão de investimentos para investidores brasileiros.
 
-> **Status Atual: Fase 1E — Income Events, Cash Flows & Subscription Semantics (Concluída)**  
-> Esta fase implementa o suporte contábil a proventos operacionais, movimentações de caixa externas e exercício de subscrições no núcleo determinístico do Project Atlas (`@atlas/portfolio-engine` v1.0.0-alpha.5). Consolida: proventos periódicos (`DIVIDEND`, `JCP`, `FII_INCOME`, sem impacto em custódia ou custo carregado, ADR-052), fluxos de caixa externos com magnitude positiva (`DEPOSIT`, `WITHDRAWAL`, fluxo líquido externo $\text{netExternalFlow}$, ADR-053), exercício primário de subscrições (`SUBSCRIPTION`, aumento de quantidade e custo carregado com preço médio ponderado, preservação de status `INCOMPLETE`, ADR-054), despesas operacionais e tributárias avulsas (`FEE`, `TAX`, proibição estrita de vinculação heurística a vendas, ADR-055), dupla dimensão econômica de amortizações de capital (`AMORTIZATION`, redução de custo e componente de caixa `CAPITAL_RETURN`, ADR-056), e exaustividade operacional de 100% dos 16 tipos de transação do livro contábil (`appliedTransactions: 16`, `deferredEvents: 0`).
+> **Status Atual: Fase 1F — Transfers, Historical Consolidation & Replay Hardening (Concluída)**  
+> Esta fase implementa transferências explícitas de custódia entre contas via `transferGroupId` (zero heurística, ADR-057), preservação integral de base de custo e invariantes patrimoniais em pares casados (ADR-058), política de pernas desemparelhadas com degradação controlada para `costBasisStatus: 'INCOMPLETE'` (ADR-059), contrato de replay histórico com prefix consistency, append consistency e invariância de permutação (ADR-060), e hardening de desempenho com benchmarks sintéticos de 1k, 10k e 50k transações em sub-segundo (~480ms) sem deriva numérica (ADR-061) no núcleo determinístico do Project Atlas (`@atlas/portfolio-engine` v1.0.0-alpha.6).
 
 ---
 
