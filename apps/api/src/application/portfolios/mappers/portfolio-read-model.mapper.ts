@@ -7,6 +7,7 @@ import {
   CashFlowSummary,
 } from '@atlas/portfolio-engine';
 import { Currency } from '@atlas/domain';
+import { BadRequestException } from '@nestjs/common';
 import {
   PortfolioStateReadModel,
   PortfolioPositionReadModel,
@@ -286,14 +287,18 @@ export class PortfolioReadModelMapper {
     });
 
     const totalCount = filtered.length;
-    const limit = Math.max(1, Math.min(100, options.limit ?? 20));
+    const limit = Math.max(1, Math.min(200, options.limit ?? 50));
 
     let startIndex = 0;
     if (options.cursor) {
       const idx = filtered.findIndex((item) => item.id === options.cursor);
-      if (idx !== -1) {
-        startIndex = idx + 1;
+      if (idx === -1) {
+        throw new BadRequestException({
+          message: `Invalid pagination cursor '${options.cursor}'`,
+          code: 'PORTFOLIO.INVALID_PAGINATION_CURSOR',
+        });
       }
+      startIndex = idx + 1;
     }
 
     const pageItems = filtered.slice(startIndex, startIndex + limit);

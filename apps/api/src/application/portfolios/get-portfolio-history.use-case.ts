@@ -120,7 +120,17 @@ export class GetPortfolioHistoryUseCase {
       });
     }
 
-    // 5. Load transactions (optimizing with endDate if 'to' is specified)
+    // 5. Limit validation
+    if (params.limit !== undefined) {
+      if (!Number.isInteger(params.limit) || params.limit < 1 || params.limit > 200) {
+        throw new BadRequestException({
+          message: `Invalid limit: '${params.limit}'. Must be an integer between 1 and 200`,
+          code: 'PORTFOLIO.INVALID_HISTORY_FILTER',
+        });
+      }
+    }
+
+    // 6. Load transactions (optimizing with endDate if 'to' is specified)
     const transactions = await this.transactionRepository.findByPortfolioId(params.portfolioId, {
       endDate: toLocalDate,
     });

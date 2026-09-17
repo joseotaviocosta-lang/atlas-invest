@@ -72,9 +72,9 @@ export class GetPortfolioHistoryQueryDto {
 
   @ApiPropertyOptional({
     type: Number,
-    description: 'Maximum number of records to return (1 to 100, default: 20)',
-    example: 20,
-    default: 20,
+    description: 'Maximum number of records to return (1 to 200, default: 50)',
+    example: 50,
+    default: 50,
   })
   limit?: number;
 }
