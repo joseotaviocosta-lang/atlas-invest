@@ -212,3 +212,58 @@ export function formatDate(date: string | Date | null | undefined): string {
     return '—';
   }
 }
+
+export interface FormatQuantityOptions {
+  maxFractionDigits?: number;
+}
+
+/**
+ * Formats an exact decimal quantity string into localized Brazilian number format.
+ * Visual presentation uses '.' as thousands separator and ',' as decimal separator.
+ * Trims insignificant trailing zeros in the fractional part, or preserves exact digits.
+ *
+ * E.g.
+ * - "150" -> "150"
+ * - "1000" -> "1.000"
+ * - "1000.5" -> "1.000,5"
+ * - "0.12345678" -> "0,12345678"
+ * - null / undefined / "" -> "—"
+ */
+export function formatQuantity(
+  value: string | number | null | undefined,
+  _options: FormatQuantityOptions = {},
+): string {
+  if (value === null || value === undefined || value === '') {
+    return '—';
+  }
+
+  const str = String(value).trim();
+  if (str === '') return '—';
+
+  let normalizedStr = str;
+  if (normalizedStr.includes('e') || normalizedStr.includes('E')) {
+    const num = Number(normalizedStr);
+    if (!Number.isFinite(num)) return '—';
+    normalizedStr = num.toFixed(20).replace(/\.?0+$/, '');
+  }
+
+  const isNegative = normalizedStr.startsWith('-');
+  const clean = isNegative ? normalizedStr.slice(1) : normalizedStr;
+
+  if (!/^\d+(\.\d+)?$/.test(clean)) {
+    return '—';
+  }
+
+  const [intStr = '0', rawFracStr = ''] = clean.split('.');
+  const formattedInteger = intStr.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const sign = isNegative ? '-' : '';
+
+  // Trim trailing zeros from fractional part
+  const trimmedFrac = rawFracStr.replace(/0+$/, '');
+
+  if (trimmedFrac.length === 0) {
+    return `${sign}${formattedInteger}`;
+  }
+
+  return `${sign}${formattedInteger},${trimmedFrac}`;
+}
