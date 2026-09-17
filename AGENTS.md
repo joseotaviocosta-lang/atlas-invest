@@ -449,3 +449,26 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Ordenação cronológica reversa estrita: `tradeDate DESC, id DESC`.
    - Paginação estável via keyset cursor (`data: items`, `meta: { limit, cursor, nextCursor, hasMore, totalCount }`).
    - Suporte a filtros por `type`, `from`, `to`, `accountId` e `assetId`, com validação de consistência do intervalo temporal (`PORTFOLIO.INVALID_DATE_RANGE`).
+
+---
+
+## 18. Portfolio Engine 1.0 Final Hardening, Contract Freeze & Release Candidate (Fase 1H)
+
+1. **VERSIONAMENTO E CONTRATOS CONGELADOS (ADR-067, ADR-069):**
+   - Versão canônica formalizada: `1.0.0-rc.1`.
+   - Congelamento estrito do pipeline: `Transaction Ledger -> Deterministic Replay -> Derived State -> Application Read Models -> Portfolio Read API v1`.
+   - Matriz semântica formalmente congelada para todos os 16 tipos de transação do livro-razão.
+   - Nomenclatura oficial: "Portfolio Engine 1.0 Release Candidate" / "pronto para integração de MVP da carteira" (vedada qualquer alegação promocional de produção).
+
+2. **CONGELAMENTO DA API DE LEITURA V1 (ADR-068):**
+   - Endpoints congelados: `GET /state`, `GET /positions`, `GET /history`.
+   - Envelope padronizado `{ data }` e `{ data, meta }`.
+   - Validação estrita de limites (1 a 200) e rejeição de cursores adulterados ou transcarteiras (IDOR) com `400 Bad Request` (`PORTFOLIO.INVALID_PAGINATION_CURSOR`).
+
+3. **POLÍTICA FAIL-CLOSED E TRATAMENTO DE ERROS (ADR-070):**
+   - Inconsistências de ledger provocam falha atômica do replay disparando erro específico (`PortfolioReplayError`), mapeado para HTTP `422 Unprocessable Entity` (`PORTFOLIO.REPLAY_FAILED`).
+   - Zero descarte silencioso e zero emissão de estado parcial corrompido.
+
+4. **ESTRATÉGIA DE ESCALA E BOUNDEDNESS (ADR-071):**
+   - O payload de `/state` é estritamente limitado pelo número de ativos e contas custodiados (`O(posições)`), sem crescimento proporcional ao total de transações históricas.
+   - Preservação da pureza sem estado (zero persistência intermediária de posições ou cache prematuro em Redis).

@@ -25,6 +25,7 @@
     "test:web:e2e": "playwright test",
     "test:foundation": "vitest run --config vitest.foundation.config.ts",
     "validate:foundation": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm test:ui && pnpm test:portfolio-engine && pnpm test:security && pnpm test:architecture && pnpm test:web:e2e && pnpm build",
+    "validate:portfolio-engine-rc": "pnpm test:portfolio-engine && pnpm test:api && pnpm validate:foundation",
     "db:generate": "pnpm --filter @atlas/database generate",
     "db:migrate": "pnpm --filter @atlas/database migrate",
     "db:seed": "pnpm --filter @atlas/database seed",

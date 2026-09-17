@@ -1,5 +1,10 @@
 # Portfolio Replay Engine — Architecture & Specification
 
+**Versão Atual:** `1.0.0-rc.1` (Release Candidate — Contratos Congelados)  
+**Status:** Congelado para Integração de MVP (Fases 1A–1H concluídas)  
+**Contratos Formais:** [Portfolio Engine 1.0](../contracts/portfolio-engine-1.0.md) | [Portfolio Read API v1](../contracts/portfolio-read-api-v1.md)  
+**ADRs de Referência:** ADR-036 a ADR-071
+
 ## 1. Overview
 
 O **Portfolio Replay Engine** (`@atlas/portfolio-engine`) é o núcleo financeiro determinístico responsável por reconstituir o estado derivado de uma carteira de investimentos (`PortfolioState`, `AccountState`, `AssetState`) a partir do histórico imutável de transações do ledger (`Transaction`).

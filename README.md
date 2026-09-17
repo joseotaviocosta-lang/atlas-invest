@@ -2,8 +2,8 @@
 
 Plataforma completa de gestão de investimentos para investidores brasileiros.
 
-> **Status Atual: Fase 1F — Transfers, Historical Consolidation & Replay Hardening (Concluída)**  
-> Esta fase implementa transferências explícitas de custódia entre contas via `transferGroupId` (zero heurística, ADR-057), preservação integral de base de custo e invariantes patrimoniais em pares casados (ADR-058), política de pernas desemparelhadas com degradação controlada para `costBasisStatus: 'INCOMPLETE'` (ADR-059), contrato de replay histórico com prefix consistency, append consistency e invariância de permutação (ADR-060), e hardening de desempenho com benchmarks sintéticos de 1k, 10k e 50k transações em sub-segundo (~480ms) sem deriva numérica (ADR-061) no núcleo determinístico do Project Atlas (`@atlas/portfolio-engine` v1.0.0-alpha.6).
+> **Status Atual: Fase 1H — Portfolio Engine 1.0 Final Hardening, Contract Freeze & Release Candidate (Concluída)**  
+> Esta fase consolida o congelamento formal dos contratos do Portfolio Engine (`@atlas/portfolio-engine` v1.0.0-rc.1) e da Portfolio Read API v1 (`GET /state`, `GET /positions`, `GET /history`), estabelecendo a matriz semântica imutável para os 16 tipos de transação do livro-razão, política estrita fail-closed contra ledgers corrompidos, serialização decimal de alta precisão (zero float, sem notação científica), validação de cursores de paginação com proteção IDOR e delimitação de complexidade $O(\text{posições})$ (ADR-067 a ADR-071).
 
 ---
 
