@@ -348,3 +348,37 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 7. **FRONTEIRA TRIBUTÁRIA E PADRONIZAÇÃO TERMINOLÓGICA (ADR-051):**
    - Eventos corporativos refletem contabilidade patrimonial econômica interna. O motor não apura obrigações fiscais ou tributação exclusiva de leilões de frações.
    - O termo "Proventos" é reservado para rendimentos (`DIVIDEND`, `JCP`, `FII_INCOME`). Em alienações (`SELL`), os valores resultantes denominam-se rigorosamente "Valor Bruto/Líquido da Venda".
+
+---
+
+## 15. Regras de Proventos, Fluxos de Caixa e Subscrições (Fase 1E)
+
+1. **PROVENTOS NÃO ALTERAM CUSTÓDIA NEM BASE DE CUSTO (ADR-052):**
+   - `DIVIDEND`, `JCP` e `FII_INCOME` geram `IncomeEvent` sem alterar `quantity`, `totalCost` ou `averageCost` de posições em custódia.
+   - Podem ser auferidos mesmo após liquidação total da posição (ex-date anterior à venda, liquidação financeira posterior).
+   - Proventos **nunca** emitem `RealizedDisposal` e são sumarizados por moeda em `IncomeSummary`.
+
+2. **FLUXOS EXTERNOS DE CAIXA NÃO SÃO PERFORMANCE (ADR-053):**
+   - `DEPOSIT` (inflow / `EXTERNAL_CONTRIBUTION`) e `WITHDRAWAL` (outflow / `EXTERNAL_WITHDRAWAL`) registram movimentações financeiras externas com magnitude sempre positiva em `amount`.
+   - Não alteram posições de ativos nem representam rentabilidade patrimonial.
+   - O fluxo líquido externo é estritamente $\text{netExternalFlow} = \text{contributions} - \text{withdrawals}$.
+
+3. **SUBSGRIÇÃO É AQUISIÇÃO ONEROSA DE NOVAS COTAS (ADR-054):**
+   - No domínio do Atlas, `SUBSCRIPTION` modela o exercício do direito de subscrição: eleva a quantidade e incorpora o custo financeiro ($\text{quantity} \times \text{unitPrice}$) com recálculo de preço médio ponderado idêntico a uma compra (`BUY`).
+   - Mantém o tipo originário `SUBSCRIPTION` na trilha de auditoria e nunca emite `RealizedDisposal`.
+   - Se a posição possuir custo `INCOMPLETE`, o status permanece `INCOMPLETE` (custo total e médio indefinidos).
+
+4. **DESPESAS AVULSAS (FEE/TAX) E PROIBIÇÃO DE CASAMENTO HEURÍSTICO (ADR-055):**
+   - Transações independentes `FEE` e `TAX` geram `CashFlowEvent` com `direction: 'OUTFLOW'` (`OPERATIONAL_EXPENSE` e `TAX_PAYMENT`).
+   - Não alteram posição, quantidade ou preço médio de ativos.
+   - É **terminantemente proibido** correlacionar heuristicamente taxas ou tributos avulsos com alienações `SELL`. O resultado líquido de alienações em `RealizedDisposal` depende unicamente dos custos expressos na própria transação `SELL`.
+
+5. **AMORTIZAÇÃO POSSUI DUPLA DIMENSÃO ECONÔMICA (ADR-056):**
+   - Toda transação `AMORTIZATION` deduz a base de custo contábil do ativo (`AppliedCorporateAction`) E simultaneamente gera um `CashFlowEvent` (`CAPITAL_RETURN`, `direction: 'INFLOW'`).
+   - Invariante estrita: conta como **exatamente 1 transação aplicada** em `appliedTransactions`.
+   - Compõe `totalCapitalReturns` e `totalInflows` no `CashFlowSummary`, sem distorcer `netExternalFlow`.
+
+6. **EXHAUSTIVIDADE TOTAL DOS 16 TIPOS DE TRANSAÇÃO:**
+   - Na Fase 1E, todos os 16 tipos de transação do livro-razão são ativamente processados pelo motor.
+   - `appliedTransactions.length = totalProcessedCount` e `deferredEvents.length = 0`.
+   - Nenhuma transação é descartada silenciosamente.

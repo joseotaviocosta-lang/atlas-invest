@@ -29,18 +29,26 @@ A consistência de um motor financeiro depende criticamente da estabilidade e de
 
 ## 3. Semântica de Quantidade e Transações Suportadas
 
-Com a conclusão das Fases 1A, 1B, 1C e 1D, o motor processa 8 tipos canônicos de transações aplicadas:
+Com a conclusão da Fase 1E, o motor processa **todos os 16 tipos canônicos** de transações do domínio:
 
-| Tipo de Transação | Efeito Patrimonial / Custódia            | Destino               |
-| :---------------- | :--------------------------------------- | :-------------------- |
-| `BUY`             | Acréscimo de quantidade e custo          | `appliedTransactions` |
-| `SELL`            | Dedução de quantidade e custo realizado  | `appliedTransactions` |
-| `TRANSFER_IN`     | Acréscimo de quantidade                  | `appliedTransactions` |
-| `TRANSFER_OUT`    | Dedução de quantidade                    | `appliedTransactions` |
-| `SPLIT`           | Multiplicação de quantidade (custo fixo) | `appliedTransactions` |
-| `REVERSE_SPLIT`   | Divisão de quantidade (custo fixo)       | `appliedTransactions` |
-| `BONUS`           | Acréscimo de quantidade bonificada       | `appliedTransactions` |
-| `AMORTIZATION`    | Redução de custo (quantidade fixa)       | `appliedTransactions` |
+| Tipo de Transação | Efeito Patrimonial / Custódia            | Efeito de Fluxo / Caixa            | Destino               |
+| :---------------- | :--------------------------------------- | :--------------------------------- | :-------------------- |
+| `BUY`             | Acréscimo de quantidade e custo          | —                                  | `appliedTransactions` |
+| `SELL`            | Dedução de quantidade e custo realizado  | —                                  | `appliedTransactions` |
+| `TRANSFER_IN`     | Acréscimo de quantidade                  | —                                  | `appliedTransactions` |
+| `TRANSFER_OUT`    | Dedução de quantidade                    | —                                  | `appliedTransactions` |
+| `SPLIT`           | Multiplicação de quantidade (custo fixo) | —                                  | `appliedTransactions` |
+| `REVERSE_SPLIT`   | Divisão de quantidade (custo fixo)       | —                                  | `appliedTransactions` |
+| `BONUS`           | Acréscimo de quantidade bonificada       | —                                  | `appliedTransactions` |
+| `AMORTIZATION`    | Redução de custo (quantidade fixa)       | `CashFlowEvent` (`CAPITAL_RETURN`) | `appliedTransactions` |
+| `DIVIDEND`        | Posição inalterada                       | `IncomeEvent` (`DIVIDEND`)         | `appliedTransactions` |
+| `JCP`             | Posição inalterada                       | `IncomeEvent` (`JCP`)              | `appliedTransactions` |
+| `FII_INCOME`      | Posição inalterada                       | `IncomeEvent` (`FII_INCOME`)       | `appliedTransactions` |
+| `SUBSCRIPTION`    | Acréscimo de quantidade e custo          | —                                  | `appliedTransactions` |
+| `DEPOSIT`         | Posição inalterada                       | `CashFlowEvent` (`CONTRIBUTION`)   | `appliedTransactions` |
+| `WITHDRAWAL`      | Posição inalterada                       | `CashFlowEvent` (`WITHDRAWAL`)     | `appliedTransactions` |
+| `FEE`             | Posição inalterada                       | `CashFlowEvent` (`EXPENSE`)        | `appliedTransactions` |
+| `TAX`             | Posição inalterada                       | `CashFlowEvent` (`TAX_PAYMENT`)    | `appliedTransactions` |
 
 ### Invariante Long-Only (Sem Posições Vendidas a Descoberto)
 
@@ -63,19 +71,13 @@ Quando a quantidade de um ativo é integralmente liquidada (`quantity.isZero()`)
 
 ---
 
-## 4. Política de Transações Diferidas (ADR-038)
+## 4. Política de Transações e Exhaustiveness (ADR-038)
 
-O modelo de domínio possui 16 tipos de transação. Na Fase 1D, 8 tipos são aplicados e 8 tipos permanecem formalmente diferidos:
+O modelo de domínio possui 16 tipos de transação. Na Fase 1E, todos os 16 tipos são integralmente suportados e aplicados:
 
-- **Proventos Periódicos**: `DIVIDEND`, `JCP`, `FII_INCOME` (Diferidos para Fase 1E)
-- **Subscrição**: `SUBSCRIPTION` (Diferido para Fase 1F)
-- **Caixa & Encargos Isolados**: `DEPOSIT`, `WITHDRAWAL`, `FEE`, `TAX` (Diferidos para Fase 1G)
+$$\text{appliedTransactions.length} = \text{totalProcessedCount} \quad (\text{deferredEvents.length} = 0)$$
 
-**Zero Silent Drops**: Toda transação diferida é registrada no array `deferredEvents` de `ReplayResult` com justificativa explícita e metadados, satisfazendo a invariante:
-
-$$\text{totalProcessed} = \text{appliedCount} + \text{deferredCount}$$
-
-$$\text{totalProcessedCount} = \text{appliedTransactions.length} + \text{deferredEvents.length}$$
+**Zero Silent Drops**: Toda transação é avaliada e registrada na trilha auditável correspondente (`appliedTransactions`, `realizedDisposals`, `appliedCorporateActions`, `incomeEvents` e/ou `cashFlowEvents`).
 
 ---
 
@@ -264,3 +266,71 @@ Na Fase 1D, o `PortfolioReplayEngine` incorpora suporte determinístico para 4 e
 1. **Zero Disposals**: Eventos corporativos nunca são alienações econômicas e **nunca** emitem registros em `realizedDisposals`.
 2. **Trilha de Auditoria (`AppliedCorporateAction`)**: Registrados em `AccountState.appliedCorporateActions` e `PortfolioState.appliedCorporateActions` com o snapshot antes e depois das grandezas financeiras.
 3. **Filtro Temporal `asOfDate`**: Eventos societários ocorridos estritamente após a data de corte `asOfDate` não afetam o estado reconstituído.
+
+---
+
+## 11. Proventos Operacionais (Income Events) — ADR-052
+
+Na Fase 1E, o motor reconhece e estrutura os proventos distribuídos por ativos: `DIVIDEND`, `JCP` e `FII_INCOME`.
+
+### 11.1. Invariantes de Posição
+
+- Proventos operacionais **não alteram** a quantidade de cotas/ações em custódia ($\Delta\text{quantity} = 0$).
+- Proventos **não alteram** o custo total carregado ($\Delta\text{totalCost} = 0$) nem o preço médio unitário ($\Delta\text{averageCost} = 0$).
+- Proventos não geram `RealizedDisposal`.
+- Podem ocorrer mesmo com custódia ativa zerada (ex-date anterior à alienação e liquidação financeira posterior).
+
+### 11.2. Sumarização Segregada por Moeda (`IncomeSummary`)
+
+- Para cada conta e para o portfólio consolidado, apura-se por moeda (`Currency`):
+  - `totalDividends`: total de dividendos recebidos.
+  - `totalJcp`: total de juros sobre capital próprio brutos.
+  - `totalFiiIncome`: total de rendimentos imobiliários/fiagros.
+  - `totalIncome`: montante total consolidado de proventos daquela moeda ($\text{totalDividends} + \text{totalJcp} + \text{totalFiiIncome}$).
+
+---
+
+## 12. Movimentações de Caixa e Despesas Avulsas (Cash Flows) — ADR-053, ADR-055
+
+### 12.1. Aportes e Resgates Externos (`DEPOSIT` & `WITHDRAWAL`)
+
+- Classificados como `CashFlowEvent`:
+  - `DEPOSIT`: `direction: 'INFLOW'`, `category: 'EXTERNAL_CONTRIBUTION'`.
+  - `WITHDRAWAL`: `direction: 'OUTFLOW'`, `category: 'EXTERNAL_WITHDRAWAL'`.
+- **Magnitude Positiva**: O campo `amount` armazena invariavelmente uma quantia com magnitude estritamente positiva; o sentido econômico é determinado por `direction`.
+- **Isolamento Patrimonial**: Aportes e resgates externos não constituem rentabilidade nem alteram posições em custódia.
+- **Fluxo Líquido Externo**:
+  $$\text{netExternalFlow} = \text{totalExternalContributions} - \text{totalExternalWithdrawals}$$
+
+### 12.2. Taxas e Impostos Avulsos (`FEE` & `TAX`)
+
+- Despesas operacionais avulsas são classificadas com `direction: 'OUTFLOW'`:
+  - `FEE`: `category: 'OPERATIONAL_EXPENSE'`.
+  - `TAX`: `category: 'TAX_PAYMENT'`.
+- Preservam `relatedAssetId` quando informada a referência a um ativo específico.
+- **Proibição Estrita de Vinculação Heurística**: Despesas avulsas nunca são casadas heurísticamente com vendas de ativos (`SELL`). Apenas custos embutidos no trade reduzem o valor líquido em `RealizedDisposal`.
+
+---
+
+## 13. Subscrições de Ações e Cotas (`SUBSCRIPTION`) — ADR-054
+
+- A transação `SUBSCRIPTION` modela o **exercício** do direito de subscrição com aquisição onerosa das cotas emitidas.
+- **Matemática**:
+  $$\text{acquisitionCost} = \text{unitPrice} \times \text{quantity}$$
+  $$\text{quantity}_{after} = \text{quantity}_{before} + \text{quantity}$$
+  $$\text{totalCost}_{after} = \text{totalCost}_{before} + \text{acquisitionCost}$$
+  $$\text{averageCost}_{after} = \frac{\text{totalCost}_{after}}{\text{quantity}_{after}}$$
+- Preserva a categoria originária `type = 'SUBSCRIPTION'` para auditoria e nunca emite `RealizedDisposal`.
+- Se a posição possuía `costBasisStatus = 'INCOMPLETE'`, permanece com status `INCOMPLETE` (custo total e médio indefinidos).
+
+---
+
+## 14. Amortização de Capital: Dupla Dimensão — ADR-056
+
+Uma amortização de capital (`AMORTIZATION`) gera simultaneamente duas projeções derivadas:
+
+1. **Dimensão Patrimonial**: Redução do custo carregado do ativo em custódia (`AppliedCorporateAction`).
+2. **Dimensão de Caixa**: Entrada de recursos monetários como devolução de principal (`CashFlowEvent` com `category: 'CAPITAL_RETURN'` e `direction: 'INFLOW'`).
+
+- **Invariante de Contagem**: Conta rigorosamente como **1 transação aplicada** em `appliedTransactions`.
+- Compõe `totalCapitalReturns` e `totalInflows` em `CashFlowSummary`, sem distorcer `netExternalFlow` (que mede exclusivamente aportes vs resgates externos).
