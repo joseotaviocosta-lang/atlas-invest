@@ -173,6 +173,86 @@ test.describe('Product Shell & Canonical End-to-End Suite', () => {
         });
       }
     });
+
+    await page.route('**/api/v1/portfolios/*/state', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            portfolioId: 'port-1',
+            asOfDate: null,
+            completeness: { costBasis: 'COMPLETE' },
+            positions: [
+              {
+                assetId: 'PETR4',
+                quantity: '100',
+                currency: 'BRL',
+                costBasisStatus: 'KNOWN',
+                totalCost: { amount: '3200.00', currency: 'BRL' },
+                averageCost: { amount: '32.00', currency: 'BRL' },
+              },
+            ],
+            accounts: [
+              {
+                accountId: 'acc-1',
+                positions: [
+                  {
+                    assetId: 'PETR4',
+                    quantity: '100',
+                    currency: 'BRL',
+                    costBasisStatus: 'KNOWN',
+                    totalCost: { amount: '3200.00', currency: 'BRL' },
+                    averageCost: { amount: '32.00', currency: 'BRL' },
+                  },
+                ],
+              },
+            ],
+            realizedSummaries: [
+              {
+                currency: 'BRL',
+                status: 'KNOWN',
+                grossProceeds: { amount: '1500.00', currency: 'BRL' },
+                sellingCosts: { amount: '5.00', currency: 'BRL' },
+                netProceeds: { amount: '1495.00', currency: 'BRL' },
+                costBasisRemoved: { amount: '1200.00', currency: 'BRL' },
+                realizedGainLoss: { amount: '295.00', currency: 'BRL' },
+                realizedReturnPercentage: '24.58',
+                disposalCount: 1,
+              },
+            ],
+            incomeSummaries: [
+              {
+                currency: 'BRL',
+                totalDividends: { amount: '80.00', currency: 'BRL' },
+                totalJcp: { amount: '20.00', currency: 'BRL' },
+                totalFiiIncome: { amount: '0.00', currency: 'BRL' },
+                totalIncome: { amount: '100.00', currency: 'BRL' },
+              },
+            ],
+            cashFlowSummaries: [],
+            replayMetadata: {
+              engineVersion: '1.0.0-rc.1',
+              asOfDate: null,
+              processedTransactionCount: 3,
+              appliedTransactionCount: 3,
+              deferredTransactionCount: 0,
+              hasIncompleteCostBasis: false,
+            },
+          },
+        }),
+      });
+    });
+
+    await page.route('**/api/v1/portfolios/*/accounts', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [{ id: 'acc-1', name: 'Corretora XP' }],
+        }),
+      });
+    });
   });
 
   test('Complete Flow: Register -> Onboarding -> Today -> Tabs -> Logout', async ({ page }) => {
@@ -218,6 +298,8 @@ test.describe('Product Shell & Canonical End-to-End Suite', () => {
     await expect(page).toHaveURL(/.*portfolio/);
     await expect(page.locator('h1')).toContainText('Carteira');
     await expect(page.locator('button[role="tab"]:has-text("Visão Geral")')).toBeVisible();
+    await expect(page.getByText('Posições abertas', { exact: true })).toBeVisible();
+    await expect(page.locator('text=PETR4')).toBeVisible();
     await expect(page.locator('button[role="tab"]:has-text("Ativos")')).toBeVisible();
     await expect(page.locator('button[role="tab"]:has-text("Rentabilidade")')).toBeVisible();
 
