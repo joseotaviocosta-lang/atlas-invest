@@ -8,6 +8,7 @@ import {
   PersistenceError,
 } from '@atlas/database';
 import { DomainError } from '@atlas/domain';
+import { PortfolioReplayError } from '@atlas/portfolio-engine';
 
 const HTTP_STATUS_NAMES: Record<number, string> = {
   400: 'Bad Request',
@@ -57,6 +58,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     } else if (exception instanceof DuplicateExternalTransactionError) {
       statusCode = HttpStatus.CONFLICT;
       errorCode = 'TRANSACTION.DUPLICATE_EXTERNAL_ID';
+      message = exception.message;
+    } else if (exception instanceof PortfolioReplayError) {
+      statusCode = HttpStatus.UNPROCESSABLE_ENTITY;
+      errorCode = 'PORTFOLIO.REPLAY_FAILED';
       message = exception.message;
     } else if (exception instanceof DomainError) {
       statusCode = HttpStatus.BAD_REQUEST;

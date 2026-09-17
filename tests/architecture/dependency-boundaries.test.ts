@@ -139,4 +139,30 @@ describe('Architecture Gate: Layer Dependency Boundaries & Package Isolation', (
     }
     scanDir(mobileSrc);
   });
+
+  it('API presentation layer (controllers, DTOs) must not import internal engine state or domain value objects directly', () => {
+    const portfoliosModuleDir = path.join(rootDir, 'apps/api/src/modules/portfolios');
+    if (!fs.existsSync(portfoliosModuleDir)) return;
+
+    const files = fs.readdirSync(portfoliosModuleDir);
+    const forbiddenImports = [
+      'PortfolioState',
+      'AccountState',
+      'AssetState',
+      'DecimalValue',
+      'Money',
+      'Quantity',
+      'Percentage',
+    ];
+
+    for (const file of files) {
+      if (file.endsWith('.ts')) {
+        const content = fs.readFileSync(path.join(portfoliosModuleDir, file), 'utf8');
+        for (const forbidden of forbiddenImports) {
+          const importPattern = new RegExp(`import\\s+.*\\b${forbidden}\\b.*from`, 'g');
+          expect(content).not.toMatch(importPattern);
+        }
+      }
+    }
+  });
 });

@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus, Inject } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  HttpCode,
+  HttpStatus,
+  Inject,
+} from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -11,12 +21,25 @@ import {
   CreatePortfolioUseCase,
   GetPortfolioUseCase,
   ListPortfoliosUseCase,
+  GetPortfolioStateUseCase,
+  GetPortfolioPositionsUseCase,
+  GetPortfolioHistoryUseCase,
 } from '../../application/portfolios';
 import {
   CreatePortfolioDto,
   CreatePortfolioSwaggerDto,
   CreatePortfolioInputSchema,
 } from './dto/create-portfolio.dto';
+import {
+  GetPortfolioStateQueryDto,
+  GetPortfolioPositionsQueryDto,
+  GetPortfolioHistoryQueryDto,
+} from './dto/portfolio-queries.dto';
+import {
+  PortfolioStateResponseSwaggerDto,
+  PortfolioPositionsResponseSwaggerDto,
+  PortfolioHistoryResponseSwaggerDto,
+} from './dto/portfolio-responses.swagger.dto';
 import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
 import { CurrentPrincipal, AuthenticatedPrincipal } from '../../auth';
 
@@ -31,6 +54,12 @@ export class PortfoliosController {
     private readonly getPortfolioUseCase: GetPortfolioUseCase,
     @Inject(ListPortfoliosUseCase)
     private readonly listPortfoliosUseCase: ListPortfoliosUseCase,
+    @Inject(GetPortfolioStateUseCase)
+    private readonly getPortfolioStateUseCase: GetPortfolioStateUseCase,
+    @Inject(GetPortfolioPositionsUseCase)
+    private readonly getPortfolioPositionsUseCase: GetPortfolioPositionsUseCase,
+    @Inject(GetPortfolioHistoryUseCase)
+    private readonly getPortfolioHistoryUseCase: GetPortfolioHistoryUseCase,
   ) {}
 
   @Post()
@@ -49,6 +78,95 @@ export class PortfoliosController {
     });
     return {
       data: portfolio.toJSON(),
+    };
+  }
+
+  @Get(':portfolioId/state')
+  @ApiOperation({ summary: 'Get consolidated portfolio derived state (as of optional date)' })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({
+    status: 200,
+    description: 'Derived portfolio state',
+    type: PortfolioStateResponseSwaggerDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid asOf date format or non-existent civil date' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found or unauthorized' })
+  @ApiResponse({
+    status: 422,
+    description: 'Replay failure due to corrupted/inconsistent transaction ledger',
+  })
+  async getState(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Query() query: GetPortfolioStateQueryDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.getPortfolioStateUseCase.execute({
+      portfolioId,
+      userId: principal.userId,
+      asOfDate: query.asOf,
+    });
+    return { data };
+  }
+
+  @Get(':portfolioId/positions')
+  @ApiOperation({
+    summary: 'Get portfolio positions (consolidated or account-level, as of optional date)',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({
+    status: 200,
+    description: 'Portfolio positions',
+    type: PortfolioPositionsResponseSwaggerDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid asOf date format' })
+  @ApiResponse({ status: 404, description: 'Portfolio or account not found' })
+  @ApiResponse({ status: 422, description: 'Replay failure' })
+  async getPositions(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Query() query: GetPortfolioPositionsQueryDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.getPortfolioPositionsUseCase.execute({
+      portfolioId,
+      userId: principal.userId,
+      accountId: query.accountId,
+      asOfDate: query.asOf,
+    });
+    return { data };
+  }
+
+  @Get(':portfolioId/history')
+  @ApiOperation({
+    summary: 'Get categorized, deterministic historical audit events derived from engine replay',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({
+    status: 200,
+    description: 'Historical audit events',
+    type: PortfolioHistoryResponseSwaggerDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid history filter or date range' })
+  @ApiResponse({ status: 404, description: 'Portfolio or account not found' })
+  @ApiResponse({ status: 422, description: 'Replay failure' })
+  async getHistory(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Query() query: GetPortfolioHistoryQueryDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.getPortfolioHistoryUseCase.execute({
+      portfolioId,
+      userId: principal.userId,
+      type: query.type,
+      from: query.from,
+      to: query.to,
+      accountId: query.accountId,
+      assetId: query.assetId,
+      cursor: query.cursor,
+      limit: query.limit ? Number(query.limit) : undefined,
+    });
+    return {
+      data: result.items,
+      meta: result.meta,
     };
   }
 
