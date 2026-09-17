@@ -21,6 +21,12 @@ import {
   useToast,
 } from '@/components/ui';
 import { colors, spacing, borderRadius } from '@atlas/ui';
+import { mapToPortfolioOverviewViewModel, PortfolioStateDto } from '@atlas/ui';
+import {
+  PortfolioCompletenessBanner,
+  PortfolioSummaryCards,
+  PositionRow,
+} from '@/components/portfolio';
 
 const PORTFOLIO_TYPE_LABELS: Record<PortfolioType, string> = {
   PERSONAL: 'Pessoal',
@@ -76,6 +82,50 @@ export default function PortfolioPage() {
   // Keep active portfolio selected
   const activePortfolio =
     portfolios.find((p) => p.id === selectedPortfolioId) || portfolios[0] || null;
+
+  // Fetch Current Portfolio State
+  const {
+    data: stateData,
+    isLoading: isStateLoading,
+    isError: isStateError,
+    error: stateError,
+    refetch: refetchState,
+  } = useQuery<PortfolioStateDto | null, ApiError>({
+    queryKey: ['portfolio-state', activePortfolio?.id],
+    queryFn: async () => {
+      if (!activePortfolio?.id) return null;
+      const res = await apiClient.get<{ data: PortfolioStateDto }>(
+        `/api/v1/portfolios/${activePortfolio.id}/state`,
+      );
+      return res.data;
+    },
+    enabled: Boolean(activePortfolio?.id),
+    staleTime: 30000,
+  });
+
+  // Fetch Accounts for name resolution
+  const { data: accountsData = [] } = useQuery<Array<{ id: string; name: string }>, ApiError>({
+    queryKey: ['portfolio-accounts', activePortfolio?.id],
+    queryFn: async () => {
+      if (!activePortfolio?.id) return [];
+      try {
+        const res = await apiClient.get<{ data: Array<{ id: string; name: string }> }>(
+          `/api/v1/portfolios/${activePortfolio.id}/accounts`,
+        );
+        return res.data || [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: Boolean(activePortfolio?.id),
+    staleTime: 60000,
+  });
+
+  // Pure presentation view model
+  const overviewViewModel =
+    stateData && activePortfolio
+      ? mapToPortfolioOverviewViewModel(stateData, activePortfolio, accountsData)
+      : null;
 
   // Create Portfolio Mutation
   const createMutation = useMutation({
@@ -197,75 +247,225 @@ export default function PortfolioPage() {
           {/* TAB 1: VISÃO GERAL */}
           {activeTab === 'overview' && (
             <div>
+              {/* ACTIVE PORTFOLIO OVERVIEW */}
               {activePortfolio && (
-                <Card style={{ marginBottom: `${spacing.xl}px`, padding: `${spacing.base}px` }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: `${spacing.sm}px`,
-                      marginBottom: `${spacing.md}px`,
-                    }}
-                  >
-                    <div>
-                      <span
+                <div>
+                  {/* Loading State for Portfolio Replay */}
+                  {isStateLoading && (
+                    <div style={{ marginBottom: `${spacing.xl}px` }}>
+                      <Card
+                        style={{ marginBottom: `${spacing.base}px`, padding: `${spacing.base}px` }}
+                      >
+                        <Skeleton width="40%" height="1.5rem" style={{ marginBottom: '1rem' }} />
+                        <Skeleton width="20%" height="1rem" />
+                      </Card>
+                      <div
                         style={{
-                          fontSize: '0.75rem',
-                          color: colors.textSecondary,
-                          textTransform: 'uppercase',
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                          gap: `${spacing.base}px`,
+                          marginBottom: `${spacing.xl}px`,
                         }}
                       >
-                        Carteira Ativa
-                      </span>
-                      <h2
-                        style={{
-                          margin: '2px 0 0 0',
-                          fontSize: '1.25rem',
-                          fontWeight: 700,
-                          color: colors.textPrimary,
-                        }}
-                      >
-                        {activePortfolio.name}
-                      </h2>
+                        {[1, 2, 3, 4].map((i) => (
+                          <Card key={i} style={{ minHeight: '110px' }}>
+                            <Skeleton
+                              width="50%"
+                              height="0.875rem"
+                              style={{ marginBottom: '0.75rem' }}
+                            />
+                            <Skeleton width="75%" height="1.5rem" />
+                          </Card>
+                        ))}
+                      </div>
+                      <Skeleton width="30%" height="1.25rem" style={{ marginBottom: '1rem' }} />
+                      {[1, 2].map((i) => (
+                        <Card
+                          key={i}
+                          style={{ minHeight: '70px', marginBottom: `${spacing.sm}px` }}
+                        >
+                          <Skeleton width="90%" height="1.25rem" />
+                        </Card>
+                      ))}
                     </div>
-                    <Badge variant={getBadgeVariant(activePortfolio.type)}>
-                      {PORTFOLIO_TYPE_LABELS[activePortfolio.type] || activePortfolio.type}
-                    </Badge>
-                  </div>
+                  )}
 
-                  <div
-                    style={{
-                      display: 'flex',
-                      gap: `${spacing.xl}px`,
-                      fontSize: '0.8125rem',
-                      color: colors.textSecondary,
-                      paddingTop: `${spacing.sm}px`,
-                      borderTop: `1px solid ${colors.border}`,
-                    }}
-                  >
-                    <span>
-                      Moeda base:{' '}
-                      <strong style={{ color: colors.textPrimary }}>
-                        {activePortfolio.baseCurrency}
-                      </strong>
-                    </span>
-                    <span>
-                      Status:{' '}
-                      <strong
-                        style={{
-                          color:
-                            activePortfolio.status === 'ACTIVE'
-                              ? colors.positive
-                              : colors.textMuted,
-                        }}
+                  {/* Replay Error State */}
+                  {!isStateLoading && isStateError && (
+                    <div style={{ marginBottom: `${spacing.xl}px` }}>
+                      {stateError?.statusCode === 422 ||
+                      stateError?.code === 'PORTFOLIO.REPLAY_FAILED' ? (
+                        <ErrorState
+                          title="Inconsistência na Reconstituição da Carteira"
+                          message="Não foi possível reconstruir os dados desta carteira. Tente novamente ou revise o histórico de movimentações."
+                          onRetry={() => refetchState()}
+                        />
+                      ) : (
+                        <ErrorState
+                          title="Não foi possível carregar os dados da carteira"
+                          message={
+                            stateError?.message ||
+                            'Ocorreu um erro ao buscar o estado atual da carteira.'
+                          }
+                          onRetry={() => refetchState()}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Populated Overview */}
+                  {!isStateLoading && !isStateError && overviewViewModel && (
+                    <div style={{ marginBottom: `${spacing.xl}px` }}>
+                      {/* Portfolio Header Card */}
+                      <Card
+                        style={{ marginBottom: `${spacing.base}px`, padding: `${spacing.base}px` }}
                       >
-                        {activePortfolio.status === 'ACTIVE' ? 'Ativa' : 'Arquivada'}
-                      </strong>
-                    </span>
-                  </div>
-                </Card>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: `${spacing.sm}px`,
+                            marginBottom: `${spacing.md}px`,
+                          }}
+                        >
+                          <div>
+                            <span
+                              style={{
+                                fontSize: '0.75rem',
+                                color: colors.textSecondary,
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              Carteira Ativa
+                            </span>
+                            <h2
+                              style={{
+                                margin: '2px 0 0 0',
+                                fontSize: '1.25rem',
+                                fontWeight: 700,
+                                color: colors.textPrimary,
+                              }}
+                            >
+                              {overviewViewModel.header.name}
+                            </h2>
+                          </div>
+                          <Badge variant={getBadgeVariant(activePortfolio.type)}>
+                            {overviewViewModel.header.typeLabel}
+                          </Badge>
+                        </div>
+
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: `${spacing.xl}px`,
+                            fontSize: '0.8125rem',
+                            color: colors.textSecondary,
+                            paddingTop: `${spacing.sm}px`,
+                            borderTop: `1px solid ${colors.border}`,
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <span>
+                            Moeda base:{' '}
+                            <strong style={{ color: colors.textPrimary }}>
+                              {overviewViewModel.header.baseCurrency}
+                            </strong>
+                          </span>
+                          <span>
+                            Status:{' '}
+                            <strong
+                              style={{
+                                color:
+                                  activePortfolio.status === 'ACTIVE'
+                                    ? colors.positive
+                                    : colors.textMuted,
+                              }}
+                            >
+                              {activePortfolio.status === 'ACTIVE' ? 'Ativa' : 'Arquivada'}
+                            </strong>
+                          </span>
+                          <span>
+                            Posições abertas:{' '}
+                            <strong style={{ color: colors.textPrimary }}>
+                              {overviewViewModel.header.openPositionsCount}
+                            </strong>
+                          </span>
+                          <span>
+                            Contas ativas:{' '}
+                            <strong style={{ color: colors.textPrimary }}>
+                              {overviewViewModel.header.accountsCount}
+                            </strong>
+                          </span>
+                        </div>
+                      </Card>
+
+                      {/* Completeness Warning Banner */}
+                      {overviewViewModel.completenessNotice.hasIncompletePositions && (
+                        <PortfolioCompletenessBanner
+                          message={overviewViewModel.completenessNotice.message}
+                        />
+                      )}
+
+                      {/* Summary Cards */}
+                      <PortfolioSummaryCards
+                        openPositionsCount={overviewViewModel.summaryCards.openPositionsCount}
+                        knownTotalCost={overviewViewModel.summaryCards.knownTotalCost}
+                        realizedResult={overviewViewModel.summaryCards.realizedResult}
+                        incomeReceived={overviewViewModel.summaryCards.incomeReceived}
+                      />
+
+                      {/* Positions Section */}
+                      {overviewViewModel.stateIndicators.isEmptyPortfolio ? (
+                        <Card
+                          style={{ padding: `${spacing.xl}px`, marginBottom: `${spacing.xl}px` }}
+                        >
+                          <EmptyState
+                            title="Sua carteira ainda está vazia"
+                            description="Adicione movimentações para começar a acompanhar seus ativos e rendimentos."
+                          />
+                        </Card>
+                      ) : overviewViewModel.stateIndicators.hasCashFlowsOnly ? (
+                        <Card
+                          style={{
+                            padding: `${spacing.xl}px`,
+                            textAlign: 'center',
+                            marginBottom: `${spacing.xl}px`,
+                          }}
+                        >
+                          <h3
+                            style={{
+                              margin: '0 0 8px 0',
+                              fontSize: '1rem',
+                              color: colors.textPrimary,
+                            }}
+                          >
+                            Nenhuma posição de ativo aberta
+                          </h3>
+                          <p
+                            style={{ margin: 0, fontSize: '0.875rem', color: colors.textSecondary }}
+                          >
+                            Esta carteira possui movimentações financeiras registradas, mas nenhuma
+                            posição de ativo aberta no momento.
+                          </p>
+                        </Card>
+                      ) : (
+                        <div style={{ marginBottom: `${spacing.xl}px` }}>
+                          <SectionHeader
+                            title="Posições"
+                            description="Ativos atualmente em custódia com custo carregado e preço médio"
+                          />
+                          <div>
+                            {overviewViewModel.positions.map((position) => (
+                              <PositionRow key={position.assetId} position={position} />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
 
               <SectionHeader
