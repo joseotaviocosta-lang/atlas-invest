@@ -211,6 +211,7 @@ pnpm build
 - [Arquitetura de Autenticação & Segurança](file:///c:/Projetos/atlas-invest/docs/architecture/authentication.md)
 - [Arquitetura Mobile](file:///c:/Projetos/atlas-invest/docs/architecture/mobile.md)
 - [Especificação Técnica do Product Shell](file:///c:/Projetos/atlas-invest/docs/product/product-shell.md)
+- [Especificação da Carteira MVP (Overview Atual)](file:///c:/Projetos/atlas-invest/docs/product/portfolio-mvp.md)
 - [Documentação do Design System](file:///c:/Projetos/atlas-invest/docs/design-system/README.md)
 - [Diretrizes de Segurança](file:///c:/Projetos/atlas-invest/docs/security/README.md)
-- [Registros de Decisões Arquiteturais (ADRs 001-066)](file:///c:/Projetos/atlas-invest/docs/decisions/)
+- [Registros de Decisões Arquiteturais (ADRs 001-074)](file:///c:/Projetos/atlas-invest/docs/decisions/)

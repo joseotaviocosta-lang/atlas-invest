@@ -472,3 +472,28 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 4. **ESTRATÉGIA DE ESCALA E BOUNDEDNESS (ADR-071):**
    - O payload de `/state` é estritamente limitado pelo número de ativos e contas custodiados (`O(posições)`), sem crescimento proporcional ao total de transações históricas.
    - Preservação da pureza sem estado (zero persistência intermediária de posições ou cache prematuro em Redis).
+
+---
+
+## 19. Regras de Interface e Apresentação da Carteira MVP (Fase 2A)
+
+1. **CONSUMO EXCLUSIVO DE CONTRATOS CONGELADOS DA API V1:**
+   - A interface da Carteira consome exclusivamente os endpoints da API v1 (`GET /api/v1/portfolios/:portfolioId/state`).
+   - É terminantemente vedado acessar transações do ledger ou duplicar a lógica de cálculo do Portfolio Engine na camada visual.
+
+2. **ZERO CLIENT-SIDE FINANCIAL MATH (ADR-073):**
+   - O cliente (Web/Mobile) **nunca** multiplica quantidade por preço médio para derivar custo total.
+   - O cliente **nunca** calcula ganho/prejuízo ou total de proventos.
+   - O ViewModel apenas formata strings decimais exatas usando os formatters seguros de `@atlas/ui` (`formatCurrency`, `formatQuantity`, `formatPercentage`), sem uso de ponto flutuante IEEE-754.
+
+3. **PROIBIÇÃO DE VALOR DE MERCADO E PERFORMANCE ANTES DO MARKET DATA (ADR-074):**
+   - O custo carregado **jamais** pode ser rotulado como "Patrimônio Atual", "Valor de Mercado" ou "Patrimônio Total".
+   - Use terminologia analítica precisa: **"Custo total"** ou **"Custo total conhecido"**.
+   - Resultados de alienações e proventos não podem ser denominados "Rentabilidade da Carteira".
+
+4. **TRATAMENTO DE CUSTO INCOMPLETO (INCOMPLETE COST BASIS):**
+   - Posições com `costBasisStatus === 'INCOMPLETE'` renderizam preço médio e custo total como `—` (travessão), **nunca** como `0` ou `R$ 0,00`.
+   - Exibe banner informativo de completude de forma clara e não-alarmista.
+
+5. **SEGREGAÇÃO MULTIMOEDA:**
+   - Valores monetários em moedas distintas (ex: `BRL` e `USD`) devem permanecer segregados por moeda em blocos/linhas distintas, sem conversão cambial implícita ou agregação cruzada.
