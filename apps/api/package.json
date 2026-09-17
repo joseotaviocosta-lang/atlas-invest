@@ -13,6 +13,7 @@
     "@atlas/database": "workspace:*",
     "@atlas/domain": "workspace:*",
     "@atlas/logger": "workspace:*",
+    "@atlas/portfolio-engine": "workspace:*",
     "@atlas/validation": "workspace:*",
     "@nestjs/common": "^11.0.11",
     "@nestjs/core": "^11.0.11",

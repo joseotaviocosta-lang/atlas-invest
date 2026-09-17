@@ -15,6 +15,7 @@ export default defineConfig({
       '@atlas/database': path.resolve(__dirname, 'packages/database/src/index.ts'),
       '@atlas/validation': path.resolve(__dirname, 'packages/validation/src/index.ts'),
       '@atlas/logger': path.resolve(__dirname, 'packages/logger/src/index.ts'),
+      '@atlas/portfolio-engine': path.resolve(__dirname, 'packages/portfolio-engine/src/index.ts'),
       '@prisma/client': path.resolve(__dirname, 'packages/database/node_modules/@prisma/client'),
     },
   },

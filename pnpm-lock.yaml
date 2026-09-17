@@ -239,6 +239,9 @@ importers:
       '@atlas/logger':
         specifier: workspace:*
         version: link:../../packages/logger
+      '@atlas/portfolio-engine':
+        specifier: workspace:*
+        version: link:../../packages/portfolio-engine
       '@atlas/validation':
         specifier: workspace:*
         version: link:../../packages/validation
