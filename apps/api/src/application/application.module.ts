@@ -1,6 +1,13 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../database';
-import { CreatePortfolioUseCase, GetPortfolioUseCase, ListPortfoliosUseCase } from './portfolios';
+import {
+  CreatePortfolioUseCase,
+  GetPortfolioUseCase,
+  ListPortfoliosUseCase,
+  GetPortfolioStateUseCase,
+  GetPortfolioPositionsUseCase,
+  GetPortfolioHistoryUseCase,
+} from './portfolios';
 import {
   CreateInstitutionUseCase,
   GetInstitutionUseCase,
@@ -18,6 +25,9 @@ const USE_CASES = [
   CreatePortfolioUseCase,
   GetPortfolioUseCase,
   ListPortfoliosUseCase,
+  GetPortfolioStateUseCase,
+  GetPortfolioPositionsUseCase,
+  GetPortfolioHistoryUseCase,
   CreateInstitutionUseCase,
   GetInstitutionUseCase,
   ListInstitutionsUseCase,
