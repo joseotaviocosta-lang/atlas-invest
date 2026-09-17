@@ -290,3 +290,58 @@ export class EmptyPositionCorporateActionError extends PortfolioReplayError {
     this.corporateActionType = corporateActionType;
   }
 }
+
+/**
+ * Thrown when an income transaction contains an invalid amount (e.g. amount <= 0).
+ */
+export class InvalidIncomeAmountError extends PortfolioReplayError {
+  readonly transactionId: string;
+  readonly type: string;
+  readonly amount: string;
+
+  constructor(transactionId: string, type: string, amount: string) {
+    super(
+      `Invalid income transaction '${transactionId}' of type '${type}': amount must be greater than zero, received '${amount}'.`,
+      'PORTFOLIO_ENGINE.INVALID_INCOME_AMOUNT',
+    );
+    this.transactionId = transactionId;
+    this.type = type;
+    this.amount = amount;
+  }
+}
+
+/**
+ * Thrown when a cash flow transaction contains an invalid amount (e.g. amount <= 0).
+ */
+export class InvalidCashFlowAmountError extends PortfolioReplayError {
+  readonly transactionId: string;
+  readonly type: string;
+  readonly amount: string;
+
+  constructor(transactionId: string, type: string, amount: string) {
+    super(
+      `Invalid cash flow transaction '${transactionId}' of type '${type}': amount must be greater than zero, received '${amount}'.`,
+      'PORTFOLIO_ENGINE.INVALID_CASH_FLOW_AMOUNT',
+    );
+    this.transactionId = transactionId;
+    this.type = type;
+    this.amount = amount;
+  }
+}
+
+/**
+ * Thrown when a SUBSCRIPTION transaction contains an invalid acquisition cost or currency mismatch.
+ */
+export class SubscriptionCostBasisError extends PortfolioReplayError {
+  readonly transactionId: string;
+  readonly reason: string;
+
+  constructor(transactionId: string, reason: string) {
+    super(
+      `Invalid SUBSCRIPTION transaction '${transactionId}': ${reason}`,
+      'PORTFOLIO_ENGINE.SUBSCRIPTION_COST_BASIS_ERROR',
+    );
+    this.transactionId = transactionId;
+    this.reason = reason;
+  }
+}
