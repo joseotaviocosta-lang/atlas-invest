@@ -89,6 +89,92 @@ export interface AppliedCorporateAction {
 }
 
 /**
+ * Supported income event types in Phase 1E.
+ */
+export type IncomeEventType = 'DIVIDEND' | 'JCP' | 'FII_INCOME';
+
+/**
+ * Immutable audit record of an economic yield/income distribution.
+ * Does not modify position quantities or cost basis.
+ */
+export interface IncomeEvent {
+  readonly transactionId: TransactionId;
+  readonly portfolioId: PortfolioId;
+  readonly accountId: AccountId;
+  readonly assetId: AssetId;
+  readonly tradeDate: LocalDate;
+  readonly type: IncomeEventType;
+  readonly amount: Money;
+  readonly grossAmount: Money;
+  readonly currency: Currency;
+  readonly status: CostBasisStatus;
+}
+
+/**
+ * Currency-segregated economic income summary for an account or consolidated portfolio.
+ */
+export interface IncomeSummary {
+  readonly currency: Currency;
+  readonly totalDividends: Money;
+  readonly totalJcp: Money;
+  readonly totalFiiIncome: Money;
+  readonly totalIncome: Money;
+}
+
+/**
+ * Types of cash flow events supported in Phase 1E.
+ */
+export type CashFlowType = 'DEPOSIT' | 'WITHDRAWAL' | 'FEE' | 'TAX' | 'AMORTIZATION';
+
+/**
+ * Direction of cash movement from the perspective of the portfolio/account.
+ */
+export type CashFlowDirection = 'INFLOW' | 'OUTFLOW';
+
+/**
+ * High-level economic category of a cash flow event.
+ */
+export type CashFlowCategory =
+  | 'EXTERNAL_CONTRIBUTION'
+  | 'EXTERNAL_WITHDRAWAL'
+  | 'CAPITAL_RETURN'
+  | 'OPERATIONAL_EXPENSE'
+  | 'TAX_PAYMENT'
+  | 'FEE'
+  | 'TAX_CHARGE';
+
+/**
+ * Immutable audit record of an external or operational cash flow.
+ */
+export interface CashFlowEvent {
+  readonly transactionId: TransactionId;
+  readonly portfolioId: PortfolioId;
+  readonly accountId: AccountId;
+  readonly tradeDate: LocalDate;
+  readonly type: CashFlowType;
+  readonly direction: CashFlowDirection;
+  readonly category: CashFlowCategory;
+  readonly amount: Money; // Always positive magnitude
+  readonly currency: Currency;
+  readonly relatedAssetId?: AssetId;
+}
+
+/**
+ * Currency-segregated cash flow summary for an account or consolidated portfolio.
+ */
+export interface CashFlowSummary {
+  readonly currency: Currency;
+  readonly totalInflows: Money;
+  readonly totalOutflows: Money;
+  readonly netExternalFlow: Money; // totalExternalContributions - totalExternalWithdrawals
+  readonly totalExternalContributions: Money;
+  readonly totalExternalWithdrawals: Money;
+  readonly totalCapitalReturns: Money;
+  readonly totalFees: Money;
+  readonly totalTaxes: Money;
+}
+
+/**
  * Derived state for a specific asset within an account or aggregated in a portfolio.
  * In Phase 1B, this tracks quantity, carried total cost, unit average cost, and cost basis status.
  */
@@ -110,6 +196,10 @@ export interface AccountState {
   readonly realizedDisposals: readonly RealizedDisposal[];
   readonly realizedSummary: ReadonlyMap<Currency, RealizedSummary>;
   readonly appliedCorporateActions: readonly AppliedCorporateAction[];
+  readonly incomeEvents: readonly IncomeEvent[];
+  readonly incomeSummary: ReadonlyMap<Currency, IncomeSummary>;
+  readonly cashFlowEvents: readonly CashFlowEvent[];
+  readonly cashFlowSummary: ReadonlyMap<Currency, CashFlowSummary>;
 }
 
 /**
@@ -123,6 +213,10 @@ export interface PortfolioState {
   readonly realizedDisposals: readonly RealizedDisposal[];
   readonly realizedSummary: ReadonlyMap<Currency, RealizedSummary>;
   readonly appliedCorporateActions: readonly AppliedCorporateAction[];
+  readonly incomeEvents: readonly IncomeEvent[];
+  readonly incomeSummary: ReadonlyMap<Currency, IncomeSummary>;
+  readonly cashFlowEvents: readonly CashFlowEvent[];
+  readonly cashFlowSummary: ReadonlyMap<Currency, CashFlowSummary>;
   readonly processedTransactionCount: number;
   readonly appliedTransactionCount: number;
   readonly deferredTransactionCount: number;
