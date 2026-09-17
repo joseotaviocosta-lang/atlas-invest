@@ -141,6 +141,7 @@ export class PortfolioScenarioBuilder {
   dividend(props: {
     assetId?: AssetId | string;
     amount: string | number;
+    currency?: string;
     tradeDate: string | LocalDate;
     accountId?: AccountId | string;
     createdAt?: Date;
@@ -153,7 +154,55 @@ export class PortfolioScenarioBuilder {
       assetId: String(props.assetId ?? ASSET_PETR4),
       type: 'DIVIDEND',
       amount: props.amount.toString(),
-      currency: 'BRL',
+      currency: props.currency ?? 'BRL',
+      tradeDate: props.tradeDate,
+      createdAt: props.createdAt,
+    });
+    this.transactions.push(tx);
+    return this;
+  }
+
+  jcp(props: {
+    assetId?: AssetId | string;
+    amount: string | number;
+    currency?: string;
+    tradeDate: string | LocalDate;
+    accountId?: AccountId | string;
+    createdAt?: Date;
+    id?: string;
+  }): this {
+    const tx = TransactionFactory.createIncome({
+      id: props.id ?? nextTxId(),
+      portfolioId: String(this.portfolioId),
+      accountId: String(props.accountId ?? this.defaultAccountId),
+      assetId: String(props.assetId ?? ASSET_PETR4),
+      type: 'JCP',
+      amount: props.amount.toString(),
+      currency: props.currency ?? 'BRL',
+      tradeDate: props.tradeDate,
+      createdAt: props.createdAt,
+    });
+    this.transactions.push(tx);
+    return this;
+  }
+
+  fiiIncome(props: {
+    assetId?: AssetId | string;
+    amount: string | number;
+    currency?: string;
+    tradeDate: string | LocalDate;
+    accountId?: AccountId | string;
+    createdAt?: Date;
+    id?: string;
+  }): this {
+    const tx = TransactionFactory.createIncome({
+      id: props.id ?? nextTxId(),
+      portfolioId: String(this.portfolioId),
+      accountId: String(props.accountId ?? this.defaultAccountId),
+      assetId: String(props.assetId ?? ASSET_PETR4),
+      type: 'FII_INCOME',
+      amount: props.amount.toString(),
+      currency: props.currency ?? 'BRL',
       tradeDate: props.tradeDate,
       createdAt: props.createdAt,
     });
@@ -257,6 +306,7 @@ export class PortfolioScenarioBuilder {
 
   fee(props: {
     amount: string | number;
+    currency?: string;
     tradeDate: string | LocalDate;
     assetId?: AssetId | string;
     accountId?: AccountId | string;
@@ -270,7 +320,7 @@ export class PortfolioScenarioBuilder {
       assetId: props.assetId ? String(props.assetId) : undefined,
       type: 'FEE',
       amount: props.amount.toString(),
-      currency: 'BRL',
+      currency: props.currency ?? 'BRL',
       tradeDate: props.tradeDate,
       createdAt: props.createdAt,
     });
@@ -280,6 +330,7 @@ export class PortfolioScenarioBuilder {
 
   tax(props: {
     amount: string | number;
+    currency?: string;
     tradeDate: string | LocalDate;
     assetId?: AssetId | string;
     accountId?: AccountId | string;
@@ -293,7 +344,76 @@ export class PortfolioScenarioBuilder {
       assetId: props.assetId ? String(props.assetId) : undefined,
       type: 'TAX',
       amount: props.amount.toString(),
-      currency: 'BRL',
+      currency: props.currency ?? 'BRL',
+      tradeDate: props.tradeDate,
+      createdAt: props.createdAt,
+    });
+    this.transactions.push(tx);
+    return this;
+  }
+
+  subscription(props: {
+    assetId?: AssetId | string;
+    quantity: string | number;
+    unitPrice: string | number;
+    currency?: string;
+    tradeDate: string | LocalDate;
+    accountId?: AccountId | string;
+    createdAt?: Date;
+    id?: string;
+  }): this {
+    const tx = TransactionFactory.createSubscription({
+      id: props.id ?? nextTxId(),
+      portfolioId: String(this.portfolioId),
+      accountId: String(props.accountId ?? this.defaultAccountId),
+      assetId: String(props.assetId ?? ASSET_PETR4),
+      quantity: props.quantity.toString(),
+      unitPrice: props.unitPrice.toString(),
+      currency: props.currency ?? 'BRL',
+      tradeDate: props.tradeDate,
+      createdAt: props.createdAt,
+    });
+    this.transactions.push(tx);
+    return this;
+  }
+
+  deposit(props: {
+    amount: string | number;
+    currency?: string;
+    tradeDate: string | LocalDate;
+    accountId?: AccountId | string;
+    createdAt?: Date;
+    id?: string;
+  }): this {
+    const tx = TransactionFactory.createCashMovement({
+      id: props.id ?? nextTxId(),
+      portfolioId: String(this.portfolioId),
+      accountId: String(props.accountId ?? this.defaultAccountId),
+      type: 'DEPOSIT',
+      amount: props.amount.toString(),
+      currency: props.currency ?? 'BRL',
+      tradeDate: props.tradeDate,
+      createdAt: props.createdAt,
+    });
+    this.transactions.push(tx);
+    return this;
+  }
+
+  withdrawal(props: {
+    amount: string | number;
+    currency?: string;
+    tradeDate: string | LocalDate;
+    accountId?: AccountId | string;
+    createdAt?: Date;
+    id?: string;
+  }): this {
+    const tx = TransactionFactory.createCashMovement({
+      id: props.id ?? nextTxId(),
+      portfolioId: String(this.portfolioId),
+      accountId: String(props.accountId ?? this.defaultAccountId),
+      type: 'WITHDRAWAL',
+      amount: props.amount.toString(),
+      currency: props.currency ?? 'BRL',
       tradeDate: props.tradeDate,
       createdAt: props.createdAt,
     });

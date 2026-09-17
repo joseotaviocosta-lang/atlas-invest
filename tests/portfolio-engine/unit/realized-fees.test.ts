@@ -91,9 +91,12 @@ describe('Phase 1C: Realized Disposals with Fees & No Heuristic Matching', () =>
     expect(d.costBasisRemoved?.amount).toBe('400');
     expect(d.realizedGainLoss?.amount).toBe('200');
 
-    // 2 transactions deferred (FEE and TAX)
-    expect(result.deferredEvents).toHaveLength(2);
-    expect(result.deferredEvents[0]!.type).toBe('FEE');
-    expect(result.deferredEvents[1]!.type).toBe('TAX');
+    // Standalone FEE and TAX are recorded as cash flow outflows, NOT matched to disposal
+    expect(result.deferredEvents).toHaveLength(0);
+    expect(result.state.cashFlowEvents).toHaveLength(2);
+    expect(result.state.cashFlowEvents[0]!.type).toBe('FEE');
+    expect(result.state.cashFlowEvents[0]!.direction).toBe('OUTFLOW');
+    expect(result.state.cashFlowEvents[1]!.type).toBe('TAX');
+    expect(result.state.cashFlowEvents[1]!.direction).toBe('OUTFLOW');
   });
 });

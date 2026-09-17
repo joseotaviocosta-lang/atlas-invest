@@ -3,8 +3,8 @@ import { TransactionFactory, TRANSACTION_TYPES, TransactionType } from '@atlas/d
 import { replayPortfolio } from '@atlas/portfolio-engine';
 import { PORTFOLIO_DEFAULT, ACCOUNT_XP, ASSET_PETR4 } from '../fixtures/assets';
 
-describe('Portfolio Engine Core: Deferred Transaction Semantics & Exhaustiveness', () => {
-  it('DIVIDEND should not alter quantity and should be recorded in deferredEvents', () => {
+describe('Portfolio Engine Core: Exhaustive Transaction Semantics & Zero Drops', () => {
+  it('DIVIDEND should not alter quantity and should generate IncomeEvent (applied, 0 deferred)', () => {
     const buy = TransactionFactory.createBuy({
       portfolioId: String(PORTFOLIO_DEFAULT),
       accountId: String(ACCOUNT_XP),
@@ -30,19 +30,20 @@ describe('Portfolio Engine Core: Deferred Transaction Semantics & Exhaustiveness
       transactions: [buy, div],
     });
 
-    expect(result.appliedTransactions).toHaveLength(1);
-    expect(result.deferredEvents).toHaveLength(1);
+    expect(result.appliedTransactions).toHaveLength(2);
+    expect(result.deferredEvents).toHaveLength(0);
 
-    const deferred = result.deferredEvents[0];
-    expect(deferred.transactionId).toBe(div.id);
-    expect(deferred.type).toBe('DIVIDEND');
-    expect(deferred.reason).toContain('Dividend payouts require cash ledger balance');
+    expect(result.state.incomeEvents).toHaveLength(1);
+    const inc = result.state.incomeEvents[0];
+    expect(inc.transactionId).toBe(div.id);
+    expect(inc.type).toBe('DIVIDEND');
+    expect(inc.amount.amount).toBe('50');
 
     // Quantity remains exactly 100
     expect(result.state.assets.get(String(ASSET_PETR4))?.quantity.value).toBe('100');
   });
 
-  it('SUBSCRIPTION should be recognized but deferred without modifying quantity', () => {
+  it('SUBSCRIPTION should be applied and increase position quantity and carried cost', () => {
     const buy = TransactionFactory.createBuy({
       portfolioId: String(PORTFOLIO_DEFAULT),
       accountId: String(ACCOUNT_XP),
@@ -68,12 +69,14 @@ describe('Portfolio Engine Core: Deferred Transaction Semantics & Exhaustiveness
       transactions: [buy, sub],
     });
 
-    expect(result.deferredEvents).toHaveLength(1);
-    expect(result.deferredEvents[0].type).toBe('SUBSCRIPTION');
-    expect(result.state.assets.get(String(ASSET_PETR4))?.quantity.value).toBe('100');
+    expect(result.appliedTransactions).toHaveLength(2);
+    expect(result.deferredEvents).toHaveLength(0);
+    expect(result.state.assets.get(String(ASSET_PETR4))?.quantity.value).toBe('120');
+    // 1000 + 160 = 1160
+    expect(result.state.assets.get(String(ASSET_PETR4))?.totalCost?.amount).toBe('1160');
   });
 
-  it('Exhaustiveness Check: all 16 transaction types must be explicitly handled (8 applied, 8 deferred, never dropped)', () => {
+  it('Exhaustiveness Check: all 16 transaction types must be explicitly handled and applied (16 applied, 0 deferred, never dropped)', () => {
     const commonProps = {
       portfolioId: String(PORTFOLIO_DEFAULT),
       accountId: String(ACCOUNT_XP),
@@ -114,10 +117,30 @@ describe('Portfolio Engine Core: Deferred Transaction Semantics & Exhaustiveness
         unitPrice: '10',
         tradeDate: '2026-01-15',
       }),
-      TransactionFactory.createIncome({ ...commonProps, type: 'DIVIDEND', amount: '10' }),
-      TransactionFactory.createIncome({ ...commonProps, type: 'JCP', amount: '10' }),
-      TransactionFactory.createIncome({ ...commonProps, type: 'FII_INCOME', amount: '10' }),
-      TransactionFactory.createSubscription({ ...commonProps, quantity: '5', unitPrice: '10' }),
+      TransactionFactory.createIncome({
+        ...commonProps,
+        type: 'DIVIDEND',
+        amount: '10',
+        tradeDate: '2026-01-15',
+      }),
+      TransactionFactory.createIncome({
+        ...commonProps,
+        type: 'JCP',
+        amount: '10',
+        tradeDate: '2026-01-15',
+      }),
+      TransactionFactory.createIncome({
+        ...commonProps,
+        type: 'FII_INCOME',
+        amount: '10',
+        tradeDate: '2026-01-15',
+      }),
+      TransactionFactory.createSubscription({
+        ...commonProps,
+        quantity: '5',
+        unitPrice: '10',
+        tradeDate: '2026-01-16',
+      }),
       TransactionFactory.createTransfer({
         ...commonProps,
         type: 'TRANSFER_IN',
@@ -130,10 +153,30 @@ describe('Portfolio Engine Core: Deferred Transaction Semantics & Exhaustiveness
         quantity: '2',
         tradeDate: '2026-01-16',
       }),
-      TransactionFactory.createCashMovement({ ...commonProps, type: 'DEPOSIT', amount: '100' }),
-      TransactionFactory.createCashMovement({ ...commonProps, type: 'WITHDRAWAL', amount: '50' }),
-      TransactionFactory.createExpense({ ...commonProps, type: 'FEE', amount: '5' }),
-      TransactionFactory.createExpense({ ...commonProps, type: 'TAX', amount: '5' }),
+      TransactionFactory.createCashMovement({
+        ...commonProps,
+        type: 'DEPOSIT',
+        amount: '100',
+        tradeDate: '2026-01-18',
+      }),
+      TransactionFactory.createCashMovement({
+        ...commonProps,
+        type: 'WITHDRAWAL',
+        amount: '50',
+        tradeDate: '2026-01-19',
+      }),
+      TransactionFactory.createExpense({
+        ...commonProps,
+        type: 'FEE',
+        amount: '5',
+        tradeDate: '2026-01-20',
+      }),
+      TransactionFactory.createExpense({
+        ...commonProps,
+        type: 'TAX',
+        amount: '5',
+        tradeDate: '2026-01-21',
+      }),
     ];
 
     expect(allTypeTransactions).toHaveLength(16);
@@ -149,12 +192,9 @@ describe('Portfolio Engine Core: Deferred Transaction Semantics & Exhaustiveness
       transactions: allTypeTransactions,
     });
 
-    // 8 types are applied: BUY, SPLIT, REVERSE_SPLIT, BONUS, AMORTIZATION, SELL, TRANSFER_IN, TRANSFER_OUT
-    expect(result.appliedTransactions).toHaveLength(8);
-
-    // 8 types are deferred:
-    // DIVIDEND, JCP, FII_INCOME, SUBSCRIPTION, DEPOSIT, WITHDRAWAL, FEE, TAX
-    expect(result.deferredEvents).toHaveLength(8);
+    // In Phase 1E, ALL 16 types are applied
+    expect(result.appliedTransactions).toHaveLength(16);
+    expect(result.deferredEvents).toHaveLength(0);
 
     // Total must equal 16 (zero drops)
     expect(result.totalProcessedCount).toBe(16);

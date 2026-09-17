@@ -105,9 +105,10 @@ describe('Portfolio Engine Integration: Repository Replay', () => {
     });
 
     expect(result.totalProcessedCount).toBe(4);
-    expect(result.appliedTransactions).toHaveLength(3);
-    expect(result.deferredEvents).toHaveLength(1);
-    expect(result.deferredEvents[0].type).toBe('DIVIDEND');
+    expect(result.appliedTransactions).toHaveLength(4);
+    expect(result.deferredEvents).toHaveLength(0);
+    expect(result.state.incomeEvents).toHaveLength(1);
+    expect(result.state.incomeEvents[0].type).toBe('DIVIDEND');
 
     // Verify derived positions with cost basis
     const petr4Position = result.state.assets.get(assetPetr4Id);
@@ -255,5 +256,97 @@ describe('Portfolio Engine Integration: Repository Replay', () => {
     expect(disposal.grossProceeds.amount).toBe('1000');
     expect(disposal.costBasisRemoved?.amount).toBe('750');
     expect(disposal.realizedGainLoss?.amount).toBe('250');
+  });
+
+  it('should replay a multi-faceted sequence (DEPOSIT -> BUY -> SUBSCRIPTION -> DIVIDEND -> FEE -> AMORTIZATION) from TransactionRepository', async () => {
+    const tx1 = TransactionFactory.createCashMovement({
+      portfolioId,
+      accountId,
+      type: 'DEPOSIT',
+      amount: '10000.00',
+      currency: 'BRL',
+      tradeDate: '2026-01-01',
+    });
+    const tx2 = TransactionFactory.createBuy({
+      portfolioId,
+      accountId,
+      assetId: assetPetr4Id,
+      quantity: '100',
+      unitPrice: '20.00',
+      currency: 'BRL',
+      tradeDate: '2026-01-05',
+    });
+    const tx3 = TransactionFactory.createSubscription({
+      portfolioId,
+      accountId,
+      assetId: assetPetr4Id,
+      quantity: '50',
+      unitPrice: '14.00',
+      currency: 'BRL',
+      tradeDate: '2026-01-10',
+    });
+    const tx4 = TransactionFactory.createIncome({
+      portfolioId,
+      accountId,
+      assetId: assetPetr4Id,
+      type: 'DIVIDEND',
+      amount: '150.00',
+      currency: 'BRL',
+      tradeDate: '2026-01-15',
+    });
+    const tx5 = TransactionFactory.createExpense({
+      portfolioId,
+      accountId,
+      type: 'FEE',
+      amount: '25.00',
+      currency: 'BRL',
+      tradeDate: '2026-01-20',
+    });
+    const tx6 = TransactionFactory.createAmortization({
+      portfolioId,
+      accountId,
+      assetId: assetPetr4Id,
+      amount: '300.00',
+      currency: 'BRL',
+      tradeDate: '2026-01-25',
+    });
+
+    await txRepo.createMany([tx1, tx2, tx3, tx4, tx5, tx6]);
+
+    const storedTxs = await txRepo.findByPortfolioId(portfolioId);
+    expect(storedTxs).toHaveLength(6);
+
+    const result = engine.replay({
+      portfolioId,
+      transactions: storedTxs,
+    });
+
+    expect(result.totalProcessedCount).toBe(6);
+    expect(result.appliedTransactions).toHaveLength(6);
+    expect(result.deferredEvents).toHaveLength(0);
+
+    // Position verification: 100 @ 20 (2000) + 50 @ 14 (700) = 150 @ 18 (2700) - amortization 300 = 150 @ 16 (2400)
+    const petr4Position = result.state.assets.get(assetPetr4Id);
+    expect(petr4Position?.quantity.value).toBe('150');
+    expect(petr4Position?.totalCost?.amount).toBe('2400');
+    expect(petr4Position?.averageCost?.amount).toBe('16');
+    expect(petr4Position?.costBasisStatus).toBe('KNOWN');
+
+    // Income verification: 150 DIVIDEND
+    expect(result.state.incomeEvents).toHaveLength(1);
+    expect(result.state.incomeSummary.get('BRL')?.totalDividends.amount).toBe('150');
+
+    // Cash flow verification:
+    // Inflows: DEPOSIT (10000) + AMORTIZATION (300) = 10300
+    // Outflows: FEE (25) = 25
+    // Net external flow: 10000
+    expect(result.state.cashFlowEvents).toHaveLength(3); // DEPOSIT, FEE, AMORTIZATION
+    const cfSummary = result.state.cashFlowSummary.get('BRL')!;
+    expect(cfSummary.totalInflows.amount).toBe('10300');
+    expect(cfSummary.totalOutflows.amount).toBe('25');
+    expect(cfSummary.totalExternalContributions.amount).toBe('10000');
+    expect(cfSummary.netExternalFlow.amount).toBe('10000');
+    expect(cfSummary.totalCapitalReturns.amount).toBe('300');
+    expect(cfSummary.totalFees.amount).toBe('25');
   });
 });
