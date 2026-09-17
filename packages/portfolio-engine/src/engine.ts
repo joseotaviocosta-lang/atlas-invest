@@ -16,6 +16,10 @@ import {
   CostBasisStatus,
   RealizedDisposal,
   RealizedSummary,
+  IncomeEvent,
+  IncomeSummary,
+  CashFlowEvent,
+  CashFlowSummary,
   ReplayResult,
   ReplayOptions,
 } from './types';
@@ -149,6 +153,14 @@ export class PortfolioReplayEngine {
       const accountCorporateActions = Object.freeze(
         ctx.appliedCorporateActions.filter((ca) => String(ca.accountId) === accIdStr),
       );
+      const accountIncomeEvents = Object.freeze(
+        ctx.incomeEvents.filter((e) => String(e.accountId) === accIdStr),
+      );
+      const accountIncomeSummary = buildIncomeSummaries(accountIncomeEvents);
+      const accountCashFlowEvents = Object.freeze(
+        ctx.cashFlowEvents.filter((e) => String(e.accountId) === accIdStr),
+      );
+      const accountCashFlowSummary = buildCashFlowSummaries(accountCashFlowEvents);
 
       const accountState: AccountState = Object.freeze({
         accountId: createAccountId(accIdStr),
@@ -156,6 +168,10 @@ export class PortfolioReplayEngine {
         realizedDisposals: accountDisposals,
         realizedSummary: accountRealizedSummary,
         appliedCorporateActions: accountCorporateActions,
+        incomeEvents: accountIncomeEvents,
+        incomeSummary: accountIncomeSummary,
+        cashFlowEvents: accountCashFlowEvents,
+        cashFlowSummary: accountCashFlowSummary,
       });
       accountsMap.set(accIdStr, accountState);
     }
@@ -186,6 +202,10 @@ export class PortfolioReplayEngine {
     const portfolioDisposals = Object.freeze([...ctx.realizedDisposals]);
     const portfolioRealizedSummary = buildRealizedSummaries(portfolioDisposals);
     const portfolioCorporateActions = Object.freeze([...ctx.appliedCorporateActions]);
+    const portfolioIncomeEvents = Object.freeze([...ctx.incomeEvents]);
+    const portfolioIncomeSummary = buildIncomeSummaries(portfolioIncomeEvents);
+    const portfolioCashFlowEvents = Object.freeze([...ctx.cashFlowEvents]);
+    const portfolioCashFlowSummary = buildCashFlowSummaries(portfolioCashFlowEvents);
 
     const portfolioState: PortfolioState = Object.freeze({
       portfolioId,
@@ -195,6 +215,10 @@ export class PortfolioReplayEngine {
       realizedDisposals: portfolioDisposals,
       realizedSummary: portfolioRealizedSummary,
       appliedCorporateActions: portfolioCorporateActions,
+      incomeEvents: portfolioIncomeEvents,
+      incomeSummary: portfolioIncomeSummary,
+      cashFlowEvents: portfolioCashFlowEvents,
+      cashFlowSummary: portfolioCashFlowSummary,
       processedTransactionCount: filtered.length,
       appliedTransactionCount: ctx.appliedTransactions.length,
       deferredTransactionCount: ctx.deferredEvents.length,
@@ -304,6 +328,125 @@ function buildRealizedSummaries(
         }),
       );
     }
+  }
+
+  return Object.freeze(result);
+}
+
+/**
+ * Aggregates income events into deterministic per-currency summaries.
+ * Segregates dividends, JCP, and FII income per currency.
+ */
+function buildIncomeSummaries(
+  events: readonly IncomeEvent[],
+): ReadonlyMap<Currency, IncomeSummary> {
+  const byCurrency = new Map<Currency, IncomeEvent[]>();
+  for (const event of events) {
+    let list = byCurrency.get(event.currency);
+    if (!list) {
+      list = [];
+      byCurrency.set(event.currency, list);
+    }
+    list.push(event);
+  }
+
+  const result = new Map<Currency, IncomeSummary>();
+  for (const [currency, currencyEvents] of byCurrency.entries()) {
+    let totalDividends = Money.zero(currency);
+    let totalJcp = Money.zero(currency);
+    let totalFiiIncome = Money.zero(currency);
+
+    for (const e of currencyEvents) {
+      if (e.type === 'DIVIDEND') {
+        totalDividends = totalDividends.add(e.amount);
+      } else if (e.type === 'JCP') {
+        totalJcp = totalJcp.add(e.amount);
+      } else if (e.type === 'FII_INCOME') {
+        totalFiiIncome = totalFiiIncome.add(e.amount);
+      }
+    }
+
+    const totalIncome = totalDividends.add(totalJcp).add(totalFiiIncome);
+
+    result.set(
+      currency,
+      Object.freeze({
+        currency,
+        totalDividends,
+        totalJcp,
+        totalFiiIncome,
+        totalIncome,
+      }),
+    );
+  }
+
+  return Object.freeze(result);
+}
+
+/**
+ * Aggregates cash flow events into deterministic per-currency summaries.
+ * Classifies inflows vs outflows and separates external contributions/withdrawals,
+ * capital returns, fees, and taxes without heuristic conflation.
+ */
+function buildCashFlowSummaries(
+  events: readonly CashFlowEvent[],
+): ReadonlyMap<Currency, CashFlowSummary> {
+  const byCurrency = new Map<Currency, CashFlowEvent[]>();
+  for (const event of events) {
+    let list = byCurrency.get(event.currency);
+    if (!list) {
+      list = [];
+      byCurrency.set(event.currency, list);
+    }
+    list.push(event);
+  }
+
+  const result = new Map<Currency, CashFlowSummary>();
+  for (const [currency, currencyEvents] of byCurrency.entries()) {
+    let totalInflows = Money.zero(currency);
+    let totalOutflows = Money.zero(currency);
+    let totalExternalContributions = Money.zero(currency);
+    let totalExternalWithdrawals = Money.zero(currency);
+    let totalCapitalReturns = Money.zero(currency);
+    let totalFees = Money.zero(currency);
+    let totalTaxes = Money.zero(currency);
+
+    for (const e of currencyEvents) {
+      if (e.direction === 'INFLOW') {
+        totalInflows = totalInflows.add(e.amount);
+      } else {
+        totalOutflows = totalOutflows.add(e.amount);
+      }
+
+      if (e.category === 'EXTERNAL_CONTRIBUTION') {
+        totalExternalContributions = totalExternalContributions.add(e.amount);
+      } else if (e.category === 'EXTERNAL_WITHDRAWAL') {
+        totalExternalWithdrawals = totalExternalWithdrawals.add(e.amount);
+      } else if (e.category === 'CAPITAL_RETURN') {
+        totalCapitalReturns = totalCapitalReturns.add(e.amount);
+      } else if (e.category === 'OPERATIONAL_EXPENSE' || e.category === 'FEE') {
+        totalFees = totalFees.add(e.amount);
+      } else if (e.category === 'TAX_PAYMENT' || e.category === 'TAX_CHARGE') {
+        totalTaxes = totalTaxes.add(e.amount);
+      }
+    }
+
+    const netExternalFlow = totalExternalContributions.subtract(totalExternalWithdrawals);
+
+    result.set(
+      currency,
+      Object.freeze({
+        currency,
+        totalInflows,
+        totalOutflows,
+        netExternalFlow,
+        totalExternalContributions,
+        totalExternalWithdrawals,
+        totalCapitalReturns,
+        totalFees,
+        totalTaxes,
+      }),
+    );
   }
 
   return Object.freeze(result);

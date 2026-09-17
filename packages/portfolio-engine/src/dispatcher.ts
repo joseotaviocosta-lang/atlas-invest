@@ -10,6 +10,10 @@ import {
   SplitTransaction,
   BonusTransaction,
   AmortizationTransaction,
+  IncomeTransaction,
+  CashMovementTransaction,
+  ExpenseTransaction,
+  SubscriptionTransaction,
 } from '@atlas/domain';
 import {
   DeferredPortfolioEvent,
@@ -17,6 +21,10 @@ import {
   RealizedDisposal,
   RealizedResultStatus,
   AppliedCorporateAction,
+  IncomeEvent,
+  CashFlowEvent,
+  CashFlowDirection,
+  CashFlowCategory,
 } from './types';
 import {
   NegativePositionError,
@@ -30,6 +38,9 @@ import {
   AmortizationExceedsCostError,
   IncompleteAmortizationCostError,
   EmptyPositionCorporateActionError,
+  InvalidIncomeAmountError,
+  InvalidCashFlowAmountError,
+  SubscriptionCostBasisError,
 } from './errors';
 
 /**
@@ -55,6 +66,8 @@ export class ReplayContext {
   readonly deferredEvents: DeferredPortfolioEvent[] = [];
   readonly realizedDisposals: RealizedDisposal[] = [];
   readonly appliedCorporateActions: AppliedCorporateAction[] = [];
+  readonly incomeEvents: IncomeEvent[] = [];
+  readonly cashFlowEvents: CashFlowEvent[] = [];
 
   constructor(portfolioId: PortfolioId) {
     this.portfolioId = portfolioId;
@@ -75,6 +88,14 @@ export class ReplayContext {
 
   recordAppliedCorporateAction(ca: AppliedCorporateAction): void {
     this.appliedCorporateActions.push(ca);
+  }
+
+  recordIncomeEvent(income: IncomeEvent): void {
+    this.incomeEvents.push(income);
+  }
+
+  recordCashFlowEvent(cashFlow: CashFlowEvent): void {
+    this.cashFlowEvents.push(cashFlow);
   }
 }
 
@@ -675,29 +696,198 @@ const amortizationHandler: TransactionHandler<AmortizationTransaction> = {
       status,
     });
 
+    // 8. Record audit cash flow event (dual-dimension: capital return cash inflow)
+    ctx.recordCashFlowEvent(
+      Object.freeze({
+        transactionId: tx.id,
+        portfolioId: ctx.portfolioId,
+        accountId: tx.accountId,
+        tradeDate: tx.tradeDate,
+        type: 'AMORTIZATION',
+        direction: 'INFLOW',
+        category: 'CAPITAL_RETURN',
+        amount: tx.amount,
+        currency: tx.currency,
+        relatedAssetId: tx.assetId,
+      }),
+    );
+
+    ctx.appliedTransactions.push(tx);
+  },
+};
+
+const incomeHandler: TransactionHandler<IncomeTransaction> = {
+  handle(ctx, tx) {
+    // 1. Amount validation
+    if (!tx.amount.isPositive()) {
+      throw new InvalidIncomeAmountError(String(tx.id), tx.type, tx.amount.amount);
+    }
+    if (tx.amount.currency !== tx.currency) {
+      throw new CurrencyMismatchError(tx.currency, tx.amount.currency);
+    }
+
+    // 2. Ensure account existence is tracked
+    ctx.getOrCreateAccountAssets(String(tx.accountId));
+
+    // 3. Record income event
+    ctx.recordIncomeEvent(
+      Object.freeze({
+        transactionId: tx.id,
+        portfolioId: ctx.portfolioId,
+        accountId: tx.accountId,
+        assetId: tx.assetId,
+        tradeDate: tx.tradeDate,
+        type: tx.type,
+        amount: tx.amount,
+        grossAmount: tx.amount,
+        currency: tx.currency,
+        status: 'KNOWN',
+      }),
+    );
+
+    ctx.appliedTransactions.push(tx);
+  },
+};
+
+const cashMovementHandler: TransactionHandler<CashMovementTransaction> = {
+  handle(ctx, tx) {
+    // 1. Amount validation
+    if (!tx.amount.isPositive()) {
+      throw new InvalidCashFlowAmountError(String(tx.id), tx.type, tx.amount.amount);
+    }
+    if (tx.amount.currency !== tx.currency) {
+      throw new CurrencyMismatchError(tx.currency, tx.amount.currency);
+    }
+
+    // 2. Ensure account existence is tracked
+    ctx.getOrCreateAccountAssets(String(tx.accountId));
+
+    // 3. Classify direction and category
+    const isDeposit = tx.type === 'DEPOSIT';
+    const direction: CashFlowDirection = isDeposit ? 'INFLOW' : 'OUTFLOW';
+    const category: CashFlowCategory = isDeposit ? 'EXTERNAL_CONTRIBUTION' : 'EXTERNAL_WITHDRAWAL';
+
+    // 4. Record cash flow event
+    ctx.recordCashFlowEvent(
+      Object.freeze({
+        transactionId: tx.id,
+        portfolioId: ctx.portfolioId,
+        accountId: tx.accountId,
+        tradeDate: tx.tradeDate,
+        type: tx.type,
+        direction,
+        category,
+        amount: tx.amount,
+        currency: tx.currency,
+      }),
+    );
+
+    ctx.appliedTransactions.push(tx);
+  },
+};
+
+const expenseHandler: TransactionHandler<ExpenseTransaction> = {
+  handle(ctx, tx) {
+    // 1. Amount validation
+    if (!tx.amount.isPositive()) {
+      throw new InvalidCashFlowAmountError(String(tx.id), tx.type, tx.amount.amount);
+    }
+    if (tx.amount.currency !== tx.currency) {
+      throw new CurrencyMismatchError(tx.currency, tx.amount.currency);
+    }
+
+    // 2. Ensure account existence is tracked
+    ctx.getOrCreateAccountAssets(String(tx.accountId));
+
+    // 3. Classify category (direction is always OUTFLOW)
+    const category: CashFlowCategory = tx.type === 'FEE' ? 'OPERATIONAL_EXPENSE' : 'TAX_PAYMENT';
+
+    // 4. Record cash flow event
+    ctx.recordCashFlowEvent(
+      Object.freeze({
+        transactionId: tx.id,
+        portfolioId: ctx.portfolioId,
+        accountId: tx.accountId,
+        tradeDate: tx.tradeDate,
+        type: tx.type,
+        direction: 'OUTFLOW',
+        category,
+        amount: tx.amount,
+        currency: tx.currency,
+        relatedAssetId: tx.assetId,
+      }),
+    );
+
+    ctx.appliedTransactions.push(tx);
+  },
+};
+
+const subscriptionHandler: TransactionHandler<SubscriptionTransaction> = {
+  handle(ctx, tx) {
+    // 1. Quantity validation
+    if (!tx.quantity.isPositive()) {
+      throw new SubscriptionCostBasisError(
+        String(tx.id),
+        `SUBSCRIPTION transaction requires quantity > 0, received '${tx.quantity.value}'`,
+      );
+    }
+
+    // 2. UnitPrice validation
+    if (tx.unitPrice.isNegative()) {
+      throw new SubscriptionCostBasisError(
+        String(tx.id),
+        `SUBSCRIPTION transaction requires unitPrice >= 0, received '${tx.unitPrice.amount}'`,
+      );
+    }
+    if (tx.unitPrice.currency !== tx.currency) {
+      throw new CurrencyMismatchError(tx.currency, tx.unitPrice.currency);
+    }
+
+    const accountAssets = ctx.getOrCreateAccountAssets(String(tx.accountId));
+    const assetKey = String(tx.assetId);
+    const currentPos = accountAssets.get(assetKey);
+
+    // 3. Multi-currency safety
+    if (currentPos && currentPos.currency !== tx.currency) {
+      throw new CurrencyMismatchError(currentPos.currency, tx.currency);
+    }
+
+    // 4. Compute acquisition cost (unitPrice * quantity)
+    const acquisitionCost = tx.unitPrice.multiply(tx.quantity);
+
+    // 5. Update position state
+    if (!currentPos || currentPos.costBasisStatus === 'KNOWN') {
+      const prevTotalCost = currentPos?.totalCost ?? Money.zero(tx.currency);
+      const prevQuantity = currentPos?.quantity ?? Quantity.zero();
+
+      const newTotalCost = prevTotalCost.add(acquisitionCost);
+      const newQuantity = prevQuantity.add(tx.quantity);
+      const newAverageCost = newTotalCost.divide(newQuantity);
+
+      accountAssets.set(assetKey, {
+        quantity: newQuantity,
+        totalCost: newTotalCost,
+        averageCost: newAverageCost,
+        currency: tx.currency,
+        costBasisStatus: 'KNOWN',
+      });
+    } else {
+      // Incomplete cost basis remains INCOMPLETE upon subsequent subscriptions
+      const newQuantity = currentPos.quantity.add(tx.quantity);
+      accountAssets.set(assetKey, {
+        quantity: newQuantity,
+        currency: tx.currency,
+        costBasisStatus: 'INCOMPLETE',
+      });
+    }
+
     ctx.appliedTransactions.push(tx);
   },
 };
 
 /**
- * Registry of deferred transaction handlers with explicit rationale.
- */
-function recordDeferredEvent(ctx: ReplayContext, tx: Transaction, reason: string) {
-  ctx.deferredEvents.push({
-    transactionId: tx.id,
-    type: tx.type,
-    reason,
-    tradeDate: tx.tradeDate,
-    assetId: 'assetId' in tx ? tx.assetId : undefined,
-    amount: 'amount' in tx ? tx.amount : undefined,
-    quantity: 'quantity' in tx ? tx.quantity : undefined,
-  });
-  // Ensure account presence is registered even for deferred transactions
-  ctx.getOrCreateAccountAssets(String(tx.accountId));
-}
-
-/**
  * Dispatcher function evaluating a single transaction against the replay context.
+ * All 16 transaction types are now exhaustively handled.
  * Utilizes TypeScript exhaustiveness checks (`never`) to prevent unhandled transaction types.
  */
 export function dispatchTransaction(ctx: ReplayContext, tx: Transaction): void {
@@ -735,67 +925,23 @@ export function dispatchTransaction(ctx: ReplayContext, tx: Transaction): void {
       break;
 
     case 'DIVIDEND':
-      recordDeferredEvent(
-        ctx,
-        tx,
-        'Dividend payouts require cash ledger balance and tax rules, formally deferred to Phase 1E.',
-      );
-      break;
-
     case 'JCP':
-      recordDeferredEvent(
-        ctx,
-        tx,
-        'Interest on equity (JCP) requires withholding tax calculation, formally deferred to Phase 1E.',
-      );
-      break;
-
     case 'FII_INCOME':
-      recordDeferredEvent(
-        ctx,
-        tx,
-        'Real estate fund income requires monthly distribution processing, formally deferred to Phase 1E.',
-      );
+      incomeHandler.handle(ctx, tx as IncomeTransaction);
       break;
 
     case 'SUBSCRIPTION':
-      recordDeferredEvent(
-        ctx,
-        tx,
-        'Subscription rights execution requires cash outlay and entitlement semantics, formally deferred to Phase 1E.',
-      );
+      subscriptionHandler.handle(ctx, tx as SubscriptionTransaction);
       break;
 
     case 'DEPOSIT':
-      recordDeferredEvent(
-        ctx,
-        tx,
-        'Cash deposits require account cash balance tracking, formally deferred to Phase 1C.',
-      );
-      break;
-
     case 'WITHDRAWAL':
-      recordDeferredEvent(
-        ctx,
-        tx,
-        'Cash withdrawals require account cash balance tracking, formally deferred to Phase 1C.',
-      );
+      cashMovementHandler.handle(ctx, tx as CashMovementTransaction);
       break;
 
     case 'FEE':
-      recordDeferredEvent(
-        ctx,
-        tx,
-        'Custody and brokerage fees require cash balance deductions, formally deferred to Phase 1E.',
-      );
-      break;
-
     case 'TAX':
-      recordDeferredEvent(
-        ctx,
-        tx,
-        'Tax payments require tax engine settlement, formally deferred to Phase 1E.',
-      );
+      expenseHandler.handle(ctx, tx as ExpenseTransaction);
       break;
 
     default: {
