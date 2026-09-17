@@ -95,8 +95,10 @@ export class PortfolioScenarioBuilder {
   transferIn(props: {
     assetId?: AssetId | string;
     quantity: string | number;
+    currency?: string;
     tradeDate: string | LocalDate;
     accountId?: AccountId | string;
+    transferGroupId?: string;
     createdAt?: Date;
     id?: string;
   }): this {
@@ -107,8 +109,9 @@ export class PortfolioScenarioBuilder {
       assetId: String(props.assetId ?? ASSET_PETR4),
       type: 'TRANSFER_IN',
       quantity: props.quantity.toString(),
-      currency: 'BRL',
+      currency: props.currency ?? 'BRL',
       tradeDate: props.tradeDate,
+      transferGroupId: props.transferGroupId,
       createdAt: props.createdAt,
     });
     this.transactions.push(tx);
@@ -118,8 +121,10 @@ export class PortfolioScenarioBuilder {
   transferOut(props: {
     assetId?: AssetId | string;
     quantity: string | number;
+    currency?: string;
     tradeDate: string | LocalDate;
     accountId?: AccountId | string;
+    transferGroupId?: string;
     createdAt?: Date;
     id?: string;
   }): this {
@@ -130,11 +135,58 @@ export class PortfolioScenarioBuilder {
       assetId: String(props.assetId ?? ASSET_PETR4),
       type: 'TRANSFER_OUT',
       quantity: props.quantity.toString(),
-      currency: 'BRL',
+      currency: props.currency ?? 'BRL',
       tradeDate: props.tradeDate,
+      transferGroupId: props.transferGroupId,
       createdAt: props.createdAt,
     });
     this.transactions.push(tx);
+    return this;
+  }
+
+  transfer(props: {
+    fromAccountId: AccountId | string;
+    toAccountId: AccountId | string;
+    assetId?: AssetId | string;
+    quantity: string | number;
+    transferGroupId?: string;
+    tradeDate?: string | LocalDate;
+    outTradeDate?: string | LocalDate;
+    inTradeDate?: string | LocalDate;
+    currency?: string;
+    outCreatedAt?: Date;
+    inCreatedAt?: Date;
+    outId?: string;
+    inId?: string;
+  }): this {
+    const transferGroupId = props.transferGroupId ?? `grp-${nextTxId()}`;
+    const outTradeDate = props.outTradeDate ?? props.tradeDate ?? '2026-01-15';
+    const inTradeDate = props.inTradeDate ?? props.tradeDate ?? outTradeDate;
+    const currency = props.currency ?? 'BRL';
+    const assetId = props.assetId ?? ASSET_PETR4;
+
+    this.transferOut({
+      id: props.outId,
+      accountId: props.fromAccountId,
+      assetId,
+      quantity: props.quantity,
+      currency,
+      tradeDate: outTradeDate,
+      transferGroupId,
+      createdAt: props.outCreatedAt,
+    });
+
+    this.transferIn({
+      id: props.inId,
+      accountId: props.toAccountId,
+      assetId,
+      quantity: props.quantity,
+      currency,
+      tradeDate: inTradeDate,
+      transferGroupId,
+      createdAt: props.inCreatedAt,
+    });
+
     return this;
   }
 
@@ -427,6 +479,10 @@ export class PortfolioScenarioBuilder {
   }
 
   build(): Transaction[] {
+    return [...this.transactions];
+  }
+
+  buildTransactions(): Transaction[] {
     return [...this.transactions];
   }
 

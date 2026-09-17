@@ -188,6 +188,30 @@ export interface AssetState {
 }
 
 /**
+ * Reconciliation status of an applied custody transfer leg.
+ */
+export type TransferStatus = 'MATCHED' | 'UNMATCHED_IN' | 'UNMATCHED_OUT';
+
+/**
+ * Audit record of an applied custody transfer event in the Portfolio Engine.
+ * Emitted by TRANSFER_OUT and TRANSFER_IN transactions.
+ * Never creates realized gain, income, or external cash flows.
+ */
+export interface AppliedTransfer {
+  readonly transferGroupId?: string;
+  readonly type: 'TRANSFER_IN' | 'TRANSFER_OUT';
+  readonly status: TransferStatus;
+  readonly transactionId: TransactionId;
+  readonly accountId: AccountId;
+  readonly counterpartyAccountId?: AccountId;
+  readonly assetId: AssetId;
+  readonly tradeDate: LocalDate;
+  readonly quantity: Quantity;
+  readonly carriedCost?: Money;
+  readonly costBasisStatus: CostBasisStatus;
+}
+
+/**
  * Derived structural state for an account belonging to a portfolio.
  */
 export interface AccountState {
@@ -200,6 +224,7 @@ export interface AccountState {
   readonly incomeSummary: ReadonlyMap<Currency, IncomeSummary>;
   readonly cashFlowEvents: readonly CashFlowEvent[];
   readonly cashFlowSummary: ReadonlyMap<Currency, CashFlowSummary>;
+  readonly appliedTransfers: readonly AppliedTransfer[];
 }
 
 /**
@@ -217,6 +242,7 @@ export interface PortfolioState {
   readonly incomeSummary: ReadonlyMap<Currency, IncomeSummary>;
   readonly cashFlowEvents: readonly CashFlowEvent[];
   readonly cashFlowSummary: ReadonlyMap<Currency, CashFlowSummary>;
+  readonly appliedTransfers: readonly AppliedTransfer[];
   readonly processedTransactionCount: number;
   readonly appliedTransactionCount: number;
   readonly deferredTransactionCount: number;

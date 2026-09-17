@@ -8,6 +8,7 @@ import {
   Percentage,
   Currency,
   Transaction,
+  TransferTransaction,
 } from '@atlas/domain';
 import {
   PortfolioState,
@@ -25,8 +26,16 @@ import {
 } from './types';
 import { PORTFOLIO_ENGINE_VERSION } from './version';
 import { compareTransactionsChronologically } from './ordering';
-import { ReplayContext, dispatchTransaction } from './dispatcher';
-import { CrossPortfolioTransactionError, DuplicateTransactionError } from './errors';
+import { ReplayContext, dispatchTransaction, ResolvedTransferPair } from './dispatcher';
+import {
+  CrossPortfolioTransactionError,
+  DuplicateTransactionError,
+  TransferPairMismatchError,
+  DuplicateTransferLegError,
+  InvalidTransferGroupError,
+  CrossAssetTransferError,
+  TransferCurrencyMismatchError,
+} from './errors';
 
 /**
  * Pure, deterministic, stateless Portfolio Replay Engine.
@@ -84,8 +93,98 @@ export class PortfolioReplayEngine {
     // 3. Canonical Sorting: Sort copy according to the deterministic 3-tuple
     filtered.sort(compareTransactionsChronologically);
 
-    // 4. Execution: Dispatch each transaction to internal replay context
-    const ctx = new ReplayContext(portfolioId);
+    // 4. Transfer Preprocessing & Pre-Replay Validation
+    const transferGroupPairs = new Map<
+      string,
+      { outLeg?: TransferTransaction; inLeg?: TransferTransaction }
+    >();
+
+    for (const tx of filtered) {
+      if (tx.type === 'TRANSFER_OUT' || tx.type === 'TRANSFER_IN') {
+        const transferTx = tx as TransferTransaction;
+        if (transferTx.transferGroupId) {
+          const groupId = transferTx.transferGroupId;
+          let pair = transferGroupPairs.get(groupId);
+          if (!pair) {
+            pair = {};
+            transferGroupPairs.set(groupId, pair);
+          }
+
+          if (transferTx.type === 'TRANSFER_OUT') {
+            if (pair.outLeg) {
+              throw new DuplicateTransferLegError(
+                groupId,
+                'TRANSFER_OUT',
+                String(pair.outLeg.id),
+                String(transferTx.id),
+              );
+            }
+            pair.outLeg = transferTx;
+          } else {
+            if (pair.inLeg) {
+              throw new DuplicateTransferLegError(
+                groupId,
+                'TRANSFER_IN',
+                String(pair.inLeg.id),
+                String(transferTx.id),
+              );
+            }
+            pair.inLeg = transferTx;
+          }
+        }
+      }
+    }
+
+    // Validate matched transfer pairs
+    for (const [groupId, pair] of transferGroupPairs.entries()) {
+      if (pair.outLeg && pair.inLeg) {
+        const outLeg = pair.outLeg;
+        const inLeg = pair.inLeg;
+
+        // Origin and destination accounts must be distinct
+        if (String(outLeg.accountId) === String(inLeg.accountId)) {
+          throw new InvalidTransferGroupError(
+            groupId,
+            `Origin account and destination account must be distinct (both are '${outLeg.accountId}').`,
+          );
+        }
+
+        // Asset must match
+        if (String(outLeg.assetId) !== String(inLeg.assetId)) {
+          throw new CrossAssetTransferError(groupId, String(outLeg.assetId), String(inLeg.assetId));
+        }
+
+        // Currency must match
+        if (outLeg.currency !== inLeg.currency) {
+          throw new TransferCurrencyMismatchError(groupId, outLeg.currency, inLeg.currency);
+        }
+
+        // Quantity must match exactly
+        if (!outLeg.quantity.equals(inLeg.quantity)) {
+          throw new TransferPairMismatchError(groupId, outLeg.quantity.value, inLeg.quantity.value);
+        }
+
+        // Causal trade date ordering: destination cannot arrive before origin departure
+        if (inLeg.tradeDate.compare(outLeg.tradeDate) < 0) {
+          throw new InvalidTransferGroupError(
+            groupId,
+            `TRANSFER_IN tradeDate '${inLeg.tradeDate}' cannot precede TRANSFER_OUT tradeDate '${outLeg.tradeDate}'.`,
+          );
+        }
+      }
+    }
+
+    const resolvedPairs = new Map<string, ResolvedTransferPair>();
+    for (const [groupId, pair] of transferGroupPairs.entries()) {
+      resolvedPairs.set(groupId, {
+        transferGroupId: groupId,
+        outLeg: pair.outLeg,
+        inLeg: pair.inLeg,
+      });
+    }
+
+    // 5. Execution: Dispatch each transaction to internal replay context
+    const ctx = new ReplayContext(portfolioId, resolvedPairs);
     for (const tx of filtered) {
       dispatchTransaction(ctx, tx);
     }
@@ -161,6 +260,9 @@ export class PortfolioReplayEngine {
         ctx.cashFlowEvents.filter((e) => String(e.accountId) === accIdStr),
       );
       const accountCashFlowSummary = buildCashFlowSummaries(accountCashFlowEvents);
+      const accountTransfers = Object.freeze(
+        ctx.appliedTransfers.filter((t) => String(t.accountId) === accIdStr),
+      );
 
       const accountState: AccountState = Object.freeze({
         accountId: createAccountId(accIdStr),
@@ -172,6 +274,7 @@ export class PortfolioReplayEngine {
         incomeSummary: accountIncomeSummary,
         cashFlowEvents: accountCashFlowEvents,
         cashFlowSummary: accountCashFlowSummary,
+        appliedTransfers: accountTransfers,
       });
       accountsMap.set(accIdStr, accountState);
     }
@@ -206,6 +309,7 @@ export class PortfolioReplayEngine {
     const portfolioIncomeSummary = buildIncomeSummaries(portfolioIncomeEvents);
     const portfolioCashFlowEvents = Object.freeze([...ctx.cashFlowEvents]);
     const portfolioCashFlowSummary = buildCashFlowSummaries(portfolioCashFlowEvents);
+    const portfolioTransfers = Object.freeze([...ctx.appliedTransfers]);
 
     const portfolioState: PortfolioState = Object.freeze({
       portfolioId,
@@ -219,6 +323,7 @@ export class PortfolioReplayEngine {
       incomeSummary: portfolioIncomeSummary,
       cashFlowEvents: portfolioCashFlowEvents,
       cashFlowSummary: portfolioCashFlowSummary,
+      appliedTransfers: portfolioTransfers,
       processedTransactionCount: filtered.length,
       appliedTransactionCount: ctx.appliedTransactions.length,
       deferredTransactionCount: ctx.deferredEvents.length,

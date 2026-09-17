@@ -25,6 +25,8 @@ import {
   CashFlowEvent,
   CashFlowDirection,
   CashFlowCategory,
+  AppliedTransfer,
+  TransferStatus,
 } from './types';
 import {
   NegativePositionError,
@@ -44,6 +46,25 @@ import {
 } from './errors';
 
 /**
+ * Resolved metadata for a transfer pair within a replay execution.
+ */
+export interface ResolvedTransferPair {
+  readonly transferGroupId: string;
+  readonly outLeg?: TransferTransaction;
+  readonly inLeg?: TransferTransaction;
+}
+
+/**
+ * Internal state of a transfer group tracked dynamically as transactions are dispatched.
+ */
+export interface RuntimeTransferState {
+  carriedCost?: Money;
+  costBasisStatus: CostBasisStatus;
+  outProcessed: boolean;
+  inProcessed: boolean;
+}
+
+/**
  * Internal mutable position state tracked during replay.
  */
 export interface InternalPositionState {
@@ -60,6 +81,8 @@ export interface InternalPositionState {
  */
 export class ReplayContext {
   readonly portfolioId: PortfolioId;
+  readonly transferGroupPairs: ReadonlyMap<string, ResolvedTransferPair>;
+  readonly runtimeTransferState = new Map<string, RuntimeTransferState>();
   /** accountId -> (assetId -> InternalPositionState) */
   readonly accounts = new Map<string, Map<string, InternalPositionState>>();
   readonly appliedTransactions: Transaction[] = [];
@@ -68,9 +91,14 @@ export class ReplayContext {
   readonly appliedCorporateActions: AppliedCorporateAction[] = [];
   readonly incomeEvents: IncomeEvent[] = [];
   readonly cashFlowEvents: CashFlowEvent[] = [];
+  readonly appliedTransfers: AppliedTransfer[] = [];
 
-  constructor(portfolioId: PortfolioId) {
+  constructor(
+    portfolioId: PortfolioId,
+    transferGroupPairs: ReadonlyMap<string, ResolvedTransferPair> = new Map(),
+  ) {
     this.portfolioId = portfolioId;
+    this.transferGroupPairs = transferGroupPairs;
   }
 
   getOrCreateAccountAssets(accountId: string): Map<string, InternalPositionState> {
@@ -96,6 +124,10 @@ export class ReplayContext {
 
   recordCashFlowEvent(cashFlow: CashFlowEvent): void {
     this.cashFlowEvents.push(cashFlow);
+  }
+
+  recordAppliedTransfer(transfer: AppliedTransfer): void {
+    this.appliedTransfers.push(transfer);
   }
 }
 
@@ -325,19 +357,99 @@ const transferInHandler: TransactionHandler<TransferTransaction> = {
     const currentPos = accountAssets.get(assetKey);
     const currentQty = currentPos?.quantity ?? Quantity.zero();
 
-    // Check currency compatibility
+    // 1. Check currency compatibility with existing position
     if (currentPos && currentPos.currency !== tx.currency) {
       throw new CurrencyMismatchError(currentPos.currency, tx.currency);
     }
 
+    // 2. Check if linked to a matched pair in this replay
+    const pair = tx.transferGroupId ? ctx.transferGroupPairs.get(tx.transferGroupId) : undefined;
+    const isMatched = !!(pair && pair.outLeg && pair.inLeg);
+
+    let carriedCost: Money | undefined;
+    let transferCostStatus: CostBasisStatus = 'INCOMPLETE';
+
+    if (isMatched && tx.transferGroupId && pair?.outLeg) {
+      let runtimeState = ctx.runtimeTransferState.get(tx.transferGroupId);
+      if (!runtimeState) {
+        // IN executed before OUT (e.g. same tradeDate)!
+        // Resolve origin account's current position to derive carriedCost
+        const originAssets = ctx.getOrCreateAccountAssets(String(pair.outLeg.accountId));
+        const originPos = originAssets.get(assetKey);
+        if (
+          originPos &&
+          originPos.costBasisStatus === 'KNOWN' &&
+          originPos.averageCost &&
+          originPos.totalCost
+        ) {
+          carriedCost = originPos.averageCost.multiply(tx.quantity);
+          transferCostStatus = 'KNOWN';
+        } else {
+          carriedCost = undefined;
+          transferCostStatus = 'INCOMPLETE';
+        }
+        runtimeState = {
+          carriedCost,
+          costBasisStatus: transferCostStatus,
+          outProcessed: false,
+          inProcessed: true,
+        };
+        ctx.runtimeTransferState.set(tx.transferGroupId, runtimeState);
+      } else {
+        runtimeState.inProcessed = true;
+        carriedCost = runtimeState.carriedCost;
+        transferCostStatus = runtimeState.costBasisStatus;
+      }
+    }
+
+    // 3. Update destination account position
     const newQty = currentQty.add(tx.quantity);
 
-    // In Phase 1B, TRANSFER_IN without explicit cost basis sets costBasisStatus = 'INCOMPLETE' (ADR-043)
-    accountAssets.set(assetKey, {
-      quantity: newQty,
-      currency: tx.currency,
-      costBasisStatus: 'INCOMPLETE',
-    });
+    if (
+      isMatched &&
+      transferCostStatus === 'KNOWN' &&
+      carriedCost &&
+      (!currentPos || currentPos.costBasisStatus === 'KNOWN')
+    ) {
+      // Weighted merge into destination position (Section 28/1F)
+      const prevTotalCost = currentPos?.totalCost ?? Money.zero(tx.currency);
+      const newTotalCost = prevTotalCost.add(carriedCost);
+      const newAverageCost = newTotalCost.divide(newQty);
+
+      accountAssets.set(assetKey, {
+        quantity: newQty,
+        totalCost: newTotalCost,
+        averageCost: newAverageCost,
+        currency: tx.currency,
+        costBasisStatus: 'KNOWN',
+      });
+    } else {
+      // Unmatched IN or origin was INCOMPLETE or destination was already INCOMPLETE
+      // Cost basis becomes / remains INCOMPLETE. Do not fabricate cost.
+      accountAssets.set(assetKey, {
+        quantity: newQty,
+        currency: currentPos?.currency ?? tx.currency,
+        costBasisStatus: 'INCOMPLETE',
+      });
+    }
+
+    // 4. Emit AppliedTransfer audit record
+    const transferStatus: TransferStatus = isMatched ? 'MATCHED' : 'UNMATCHED_IN';
+    ctx.recordAppliedTransfer(
+      Object.freeze({
+        transferGroupId: tx.transferGroupId,
+        type: 'TRANSFER_IN',
+        status: transferStatus,
+        transactionId: tx.id,
+        accountId: tx.accountId,
+        counterpartyAccountId: pair?.outLeg?.accountId,
+        assetId: tx.assetId,
+        tradeDate: tx.tradeDate,
+        quantity: tx.quantity,
+        carriedCost: isMatched ? carriedCost : undefined,
+        costBasisStatus: isMatched ? transferCostStatus : 'INCOMPLETE',
+      }),
+    );
 
     ctx.appliedTransactions.push(tx);
   },
@@ -350,7 +462,7 @@ const transferOutHandler: TransactionHandler<TransferTransaction> = {
     const currentPos = accountAssets.get(assetKey);
     const currentQty = currentPos?.quantity ?? Quantity.zero();
 
-    // 1. Check long-only invariant
+    // 1. Check long-only invariant (Section 24/1F)
     if (tx.quantity.compare(currentQty) > 0) {
       const resultingQty = currentQty.subtract(tx.quantity);
       throw new NegativePositionError({
@@ -368,25 +480,39 @@ const transferOutHandler: TransactionHandler<TransferTransaction> = {
       throw new CurrencyMismatchError(currentPos.currency, tx.currency);
     }
 
-    // 3. Deduct quantity and proportional cost basis from source account
+    // 3. Determine if linked to a valid paired IN leg in this replay
+    const pair = tx.transferGroupId ? ctx.transferGroupPairs.get(tx.transferGroupId) : undefined;
+    const isMatched = !!(pair && pair.outLeg && pair.inLeg);
+
+    // 4. Compute carried cost from origin account
+    let carriedCost: Money | undefined;
+    let transferCostStatus: CostBasisStatus;
+
+    if (
+      currentPos &&
+      currentPos.costBasisStatus === 'KNOWN' &&
+      currentPos.averageCost &&
+      currentPos.totalCost
+    ) {
+      // Carried cost is currentAverageCost * transferQuantity
+      carriedCost = currentPos.averageCost.multiply(tx.quantity);
+      transferCostStatus = 'KNOWN';
+    } else {
+      carriedCost = undefined;
+      transferCostStatus = 'INCOMPLETE';
+    }
+
+    // 5. Deduct quantity and proportional cost basis from source account
     const newQty = currentQty.subtract(tx.quantity);
     if (newQty.isZero()) {
       accountAssets.delete(assetKey);
     } else {
-      if (
-        currentPos &&
-        currentPos.costBasisStatus === 'KNOWN' &&
-        currentPos.averageCost &&
-        currentPos.totalCost
-      ) {
-        const currentAvg = currentPos.averageCost;
-        const costRemoved = currentAvg.multiply(tx.quantity);
-        const newTotalCost = currentPos.totalCost.subtract(costRemoved);
-
+      if (transferCostStatus === 'KNOWN' && currentPos?.totalCost && carriedCost) {
+        const newTotalCost = currentPos.totalCost.subtract(carriedCost);
         accountAssets.set(assetKey, {
           quantity: newQty,
           totalCost: newTotalCost,
-          averageCost: currentAvg,
+          averageCost: currentPos.averageCost, // Average cost unchanged upon outbound transfer
           currency: currentPos.currency,
           costBasisStatus: 'KNOWN',
         });
@@ -398,6 +524,43 @@ const transferOutHandler: TransactionHandler<TransferTransaction> = {
         });
       }
     }
+
+    // 6. If matched, update or initialize runtimeTransferState
+    if (isMatched && tx.transferGroupId) {
+      const existingState = ctx.runtimeTransferState.get(tx.transferGroupId);
+      if (existingState) {
+        existingState.outProcessed = true;
+        if (existingState.carriedCost === undefined && carriedCost !== undefined) {
+          existingState.carriedCost = carriedCost;
+          existingState.costBasisStatus = transferCostStatus;
+        }
+      } else {
+        ctx.runtimeTransferState.set(tx.transferGroupId, {
+          carriedCost,
+          costBasisStatus: transferCostStatus,
+          outProcessed: true,
+          inProcessed: false,
+        });
+      }
+    }
+
+    // 7. Emit AppliedTransfer audit record
+    const transferStatus: TransferStatus = isMatched ? 'MATCHED' : 'UNMATCHED_OUT';
+    ctx.recordAppliedTransfer(
+      Object.freeze({
+        transferGroupId: tx.transferGroupId,
+        type: 'TRANSFER_OUT',
+        status: transferStatus,
+        transactionId: tx.id,
+        accountId: tx.accountId,
+        counterpartyAccountId: pair?.inLeg?.accountId,
+        assetId: tx.assetId,
+        tradeDate: tx.tradeDate,
+        quantity: tx.quantity,
+        carriedCost,
+        costBasisStatus: transferCostStatus,
+      }),
+    );
 
     ctx.appliedTransactions.push(tx);
   },
@@ -832,11 +995,11 @@ const subscriptionHandler: TransactionHandler<SubscriptionTransaction> = {
       );
     }
 
-    // 2. UnitPrice validation
-    if (tx.unitPrice.isNegative()) {
+    // 2. UnitPrice validation (Phase 1F hardening: unitPrice > 0 strictly enforced)
+    if (!tx.unitPrice.isPositive()) {
       throw new SubscriptionCostBasisError(
         String(tx.id),
-        `SUBSCRIPTION transaction requires unitPrice >= 0, received '${tx.unitPrice.amount}'`,
+        `SUBSCRIPTION transaction requires unitPrice > 0, received '${tx.unitPrice.amount}'`,
       );
     }
     if (tx.unitPrice.currency !== tx.currency) {

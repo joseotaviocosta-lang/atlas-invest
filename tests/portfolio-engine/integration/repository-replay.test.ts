@@ -349,4 +349,109 @@ describe('Portfolio Engine Integration: Repository Replay', () => {
     expect(cfSummary.totalCapitalReturns.amount).toBe('300');
     expect(cfSummary.totalFees.amount).toBe('25');
   });
+
+  it('should persist and replay linked custody transfers with subsequent SELL at destination', async () => {
+    // 1. Create a second account in the same portfolio
+    const account2 = await prisma.account.create({
+      data: {
+        portfolioId,
+        institutionId: (await prisma.institution.findFirst())!.id,
+        name: 'Secondary Broker Account',
+        currency: 'BRL',
+        status: 'ACTIVE',
+      },
+    });
+    const account2Id = account2.id;
+
+    // 2. Build transactions: BUY in account1, TRANSFER to account2, SELL in account2
+    const txBuy = TransactionFactory.createBuy({
+      portfolioId,
+      accountId,
+      assetId: assetPetr4Id,
+      quantity: '100',
+      unitPrice: '30.00',
+      currency: 'BRL',
+      tradeDate: '2026-01-10',
+    });
+
+    const transferGroupId = 'tg-repo-test-linked';
+
+    const txOut = TransactionFactory.createTransfer({
+      portfolioId,
+      accountId,
+      assetId: assetPetr4Id,
+      type: 'TRANSFER_OUT',
+      quantity: '40',
+      transferGroupId,
+      currency: 'BRL',
+      tradeDate: '2026-01-15',
+    });
+
+    const txIn = TransactionFactory.createTransfer({
+      portfolioId,
+      accountId: account2Id,
+      assetId: assetPetr4Id,
+      type: 'TRANSFER_IN',
+      quantity: '40',
+      transferGroupId,
+      currency: 'BRL',
+      tradeDate: '2026-01-15',
+    });
+
+    const txSell = TransactionFactory.createSell({
+      portfolioId,
+      accountId: account2Id,
+      assetId: assetPetr4Id,
+      quantity: '20',
+      unitPrice: '40.00',
+      currency: 'BRL',
+      tradeDate: '2026-01-20',
+    });
+
+    await txRepo.createMany([txBuy, txOut, txIn, txSell]);
+
+    // 3. Replay directly from database
+    const storedTxs = await txRepo.findByPortfolioId(portfolioId);
+    expect(storedTxs).toHaveLength(4);
+
+    const result = engine.replay({
+      portfolioId,
+      transactions: storedTxs,
+    });
+
+    // Check invariants
+    expect(result.appliedTransactions).toHaveLength(4);
+    expect(result.deferredEvents).toHaveLength(0);
+
+    // Account 1: 100 - 40 = 60 shares @ 30.00 (cost 1800)
+    const acc1Pos = result.state.accounts.get(accountId)!.assets.get(assetPetr4Id)!;
+    expect(acc1Pos.quantity.value).toBe('60');
+    expect(acc1Pos.totalCost?.amount).toBe('1800');
+    expect(acc1Pos.averageCost?.amount).toBe('30');
+
+    // Account 2: 40 - 20 = 20 shares @ 30.00 (cost 600)
+    const acc2Pos = result.state.accounts.get(account2Id)!.assets.get(assetPetr4Id)!;
+    expect(acc2Pos.quantity.value).toBe('20');
+    expect(acc2Pos.totalCost?.amount).toBe('600');
+    expect(acc2Pos.averageCost?.amount).toBe('30');
+
+    // Realized gain in Account 2 from SELL: 20 * 40 - 20 * 30 = 200
+    expect(result.state.realizedDisposals).toHaveLength(1);
+    const disposal = result.state.realizedDisposals[0];
+    expect(String(disposal.accountId)).toBe(account2Id);
+    expect(disposal.quantity.value).toBe('20');
+    expect(disposal.costBasisRemoved?.amount).toBe('600');
+    expect(disposal.realizedGainLoss?.amount).toBe('200');
+
+    // Applied transfers audit trail
+    expect(result.state.appliedTransfers).toHaveLength(2);
+    expect(result.state.appliedTransfers[0].status).toBe('MATCHED');
+    expect(result.state.appliedTransfers[1].status).toBe('MATCHED');
+
+    // Consolidated portfolio: 60 + 20 = 80 shares @ 30.00 (cost 2400)
+    const portPos = result.state.assets.get(assetPetr4Id)!;
+    expect(portPos.quantity.value).toBe('80');
+    expect(portPos.totalCost?.amount).toBe('2400');
+    expect(portPos.averageCost?.amount).toBe('30');
+  });
 });

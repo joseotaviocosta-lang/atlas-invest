@@ -345,3 +345,103 @@ export class SubscriptionCostBasisError extends PortfolioReplayError {
     this.reason = reason;
   }
 }
+
+/**
+ * Thrown when a linked transfer group contains mismatched quantities between OUT and IN legs.
+ */
+export class TransferPairMismatchError extends PortfolioReplayError {
+  readonly transferGroupId: string;
+  readonly outQuantity: string;
+  readonly inQuantity: string;
+
+  constructor(transferGroupId: string, outQuantity: string, inQuantity: string) {
+    super(
+      `Quantity mismatch in transfer group '${transferGroupId}': TRANSFER_OUT quantity '${outQuantity}' does not match TRANSFER_IN quantity '${inQuantity}'.`,
+      'PORTFOLIO_ENGINE.TRANSFER_PAIR_MISMATCH',
+    );
+    this.transferGroupId = transferGroupId;
+    this.outQuantity = outQuantity;
+    this.inQuantity = inQuantity;
+  }
+}
+
+/**
+ * Thrown when a transfer group contains duplicate legs of the same direction (e.g. multiple OUTs or multiple INs).
+ */
+export class DuplicateTransferLegError extends PortfolioReplayError {
+  readonly transferGroupId: string;
+  readonly legType: 'TRANSFER_OUT' | 'TRANSFER_IN';
+  readonly existingTransactionId: string;
+  readonly duplicateTransactionId: string;
+
+  constructor(
+    transferGroupId: string,
+    legType: 'TRANSFER_OUT' | 'TRANSFER_IN',
+    existingTransactionId: string,
+    duplicateTransactionId: string,
+  ) {
+    super(
+      `Duplicate ${legType} leg in transfer group '${transferGroupId}': transaction '${duplicateTransactionId}' duplicates existing leg '${existingTransactionId}'. Single pair required.`,
+      'PORTFOLIO_ENGINE.DUPLICATE_TRANSFER_LEG',
+    );
+    this.transferGroupId = transferGroupId;
+    this.legType = legType;
+    this.existingTransactionId = existingTransactionId;
+    this.duplicateTransactionId = duplicateTransactionId;
+  }
+}
+
+/**
+ * Thrown when a transfer group is semantically invalid (e.g. same origin and destination account, or causal inversion where IN tradeDate < OUT tradeDate).
+ */
+export class InvalidTransferGroupError extends PortfolioReplayError {
+  readonly transferGroupId: string;
+  readonly reason: string;
+
+  constructor(transferGroupId: string, reason: string) {
+    super(
+      `Invalid transfer group '${transferGroupId}': ${reason}`,
+      'PORTFOLIO_ENGINE.INVALID_TRANSFER_GROUP',
+    );
+    this.transferGroupId = transferGroupId;
+    this.reason = reason;
+  }
+}
+
+/**
+ * Thrown when a transfer group attempts to link legs with different asset IDs.
+ */
+export class CrossAssetTransferError extends PortfolioReplayError {
+  readonly transferGroupId: string;
+  readonly outAssetId: string;
+  readonly inAssetId: string;
+
+  constructor(transferGroupId: string, outAssetId: string, inAssetId: string) {
+    super(
+      `Cross-asset transfer rejected in group '${transferGroupId}': TRANSFER_OUT asset '${outAssetId}' does not match TRANSFER_IN asset '${inAssetId}'.`,
+      'PORTFOLIO_ENGINE.CROSS_ASSET_TRANSFER',
+    );
+    this.transferGroupId = transferGroupId;
+    this.outAssetId = outAssetId;
+    this.inAssetId = inAssetId;
+  }
+}
+
+/**
+ * Thrown when a transfer group attempts to link legs with incompatible currencies.
+ */
+export class TransferCurrencyMismatchError extends PortfolioReplayError {
+  readonly transferGroupId: string;
+  readonly outCurrency: string;
+  readonly inCurrency: string;
+
+  constructor(transferGroupId: string, outCurrency: string, inCurrency: string) {
+    super(
+      `Currency mismatch in transfer group '${transferGroupId}': TRANSFER_OUT currency '${outCurrency}' does not match TRANSFER_IN currency '${inCurrency}'.`,
+      'PORTFOLIO_ENGINE.TRANSFER_CURRENCY_MISMATCH',
+    );
+    this.transferGroupId = transferGroupId;
+    this.outCurrency = outCurrency;
+    this.inCurrency = inCurrency;
+  }
+}
