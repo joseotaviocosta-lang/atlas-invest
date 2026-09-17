@@ -387,8 +387,8 @@ O replay do motor garante propriedades matemáticas formais:
 
 ## 17. Escala, Hardening e Desempenho — ADR-061
 
-- **Aritmética Exata**: 100% livre de ponto flutuante, operando via `Quantity` (18 decimais) e `Money` (2 decimais).
-- **Benchmarks Validados**:
+- **Aritmética Exata**: Precisão decimal operacional de 40 dígitos e 18 casas decimais, sem deriva IEEE-754 nos cenários testados, operando via `Quantity` e `Money`.
+- **Benchmarks Observados em Desenvolvimento/Testes (observed development/test benchmark, não SLA de produção)**:
   - 1.000 transações: ~25ms
   - 10.000 transações: ~110ms
   - 50.000 transações: ~480ms (sub-segundo para carteiras ativas massivas multi-ativos e multi-contas).

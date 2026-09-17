@@ -34,6 +34,6 @@ Para que o sistema seja confiável em auditorias financeiras, geração de relat
 
 - **Positivas:**
   - Garantia formal de reprodutibilidade em 100% dos cenários de teste e auditoria.
-  - Segurança matemática absoluta para reconstrução retrospectiva de posições para cálculo de imposto e rentabilidade.
+  - Segurança matemática formal e sem deriva IEEE-754 nos cenários testados para reconstrução retrospectiva de posições para cálculo de imposto e rentabilidade.
 - **Negativas:**
   - Requer que toda e qualquer transação possua `tradeDate`, `createdAt` e `id` válidos.

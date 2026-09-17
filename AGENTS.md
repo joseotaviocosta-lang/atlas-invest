@@ -413,6 +413,6 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - **Permutation Invariance**: $\text{replay}(\pi(T)) \equiv \text{replay}(T)$. A ordenação é estritamente canônica (`tradeDate ASC`, `createdAt ASC`, `id ASC`), invariante à ordem de inserção do array de entrada.
 
 5. **HARDENING E ESCALA DE GRANDES LEDGERS (ADR-061):**
-   - Replay testado e validado em benchmarks sintéticos determinísticos com sementes fixas para 1.000, 10.000 e 50.000 transações multi-contas (5+) e multi-ativos (20+).
+   - Replay testado e validado em benchmarks sintéticos determinísticos com sementes fixas para 1.000, 10.000 e 50.000 transações multi-contas (5+) e multi-ativos (20+) (observed development/test benchmark, não SLA de produção).
    - Tempo de replay de 50.000 transações atinge desempenho sub-segundo (~480ms) com complexidade linear $\mathcal{O}(N \log N)$.
-   - Aritmética 100% de precisão arbitrária via Value Objects (`Quantity`, `Money`, `DecimalValue`), com zero desvio por ponto flutuante.
+   - Aritmética com precisão decimal operacional de 40 dígitos e 18 casas decimais via Value Objects (`Quantity`, `Money`, `DecimalValue`), sem deriva IEEE-754 nos cenários testados.

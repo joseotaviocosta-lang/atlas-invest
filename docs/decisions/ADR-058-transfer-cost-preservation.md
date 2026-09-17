@@ -8,7 +8,7 @@ Accepted
 
 Quando um investidor transfere ativos entre contas pertencentes ao mesmo portfólio, a operação representa mera mudança de custódia física/institucional.
 
-Não há evento de liquidação, alienação ou realização de capital. A base de custo do ativo deve ser transportada com precisão absoluta, preservando integralmente os invariantes patrimoniais consolidados do portfólio.
+Não há evento de liquidação, alienação ou realização de capital. A base de custo do ativo deve ser transportada com precisão decimal operacional de 40 dígitos e sem deriva IEEE-754 nos cenários testados, preservando integralmente os invariantes patrimoniais consolidados do portfólio.
 
 ## Decision
 

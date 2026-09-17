@@ -13,14 +13,14 @@ Em portfólios reais de investidores ativos ao longo de décadas, o livro-razão
 ## Decision
 
 1. **Aritmética de Ponto Fixo Sem Deriva por Ponto Flutuante**:
-   - Todas as operações utilizam exclusivamente os Value Objects de domínio: `Quantity` (18 casas decimais), `Money` (2 casas decimais) e `DecimalValue`.
+   - Todas as operações utilizam exclusivamente os Value Objects de domínio: `Quantity` (precisão decimal operacional de 40 dígitos e 18 casas decimais), `Money` (2 casas decimais) e `DecimalValue`.
    - Nenhuma variável do motor utiliza o tipo primitivo `number` do JavaScript para acumulação ou rateio financeiro.
-   - Mesmo sob dezenas de milhares de eventos interligados, o erro de arredondamento cumulativo é rigorosamente zero.
+   - Mesmo sob dezenas de milhares de eventos interligados, não há deriva IEEE-754 nos cenários testados.
 
 2. **Benchmark e Escala de Desempenho (50k Transações)**:
    - A suite de testes inclui gerador pseudo-aleatório com semente fixa (`prng`) para testes de estresse em ledgers sintéticos de 1.000, 10.000 e 50.000 transações.
    - Cenário com 5+ contas e 20+ ativos com eventos intercalados e transferências casadas.
-   - **Resultados Atingidos**:
+   - **Resultados Observados em Desenvolvimento/Testes (observed development/test benchmark, não SLA de produção)**:
      - 1.000 transações: ~25ms
      - 10.000 transações: ~110ms
      - 50.000 transações: ~480ms (sub-segundo em nó monothread)
