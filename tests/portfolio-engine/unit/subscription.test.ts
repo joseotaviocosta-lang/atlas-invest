@@ -55,25 +55,27 @@ describe('Phase 1E: Subscription Semantics (Exercised Acquisition)', () => {
     expect(pos.costBasisStatus).toBe('KNOWN');
   });
 
-  it('should handle zero-price SUBSCRIPTION (free entitlement exercise)', () => {
-    // 100 shares @ 10.00 = 1000.00
-    // 20 shares @ 0.00 = 0.00
-    // Total: 120 shares, total cost 1000.00, average cost 8.33333333333333333333
-    const result = scenario()
-      .buy({ assetId: ASSET_PETR4, quantity: '100', unitPrice: '10.00', tradeDate: '2026-01-10' })
-      .subscription({
-        assetId: ASSET_PETR4,
-        quantity: '20',
-        unitPrice: '0.00',
-        tradeDate: '2026-01-15',
-      })
-      .replay();
+  it('should reject zero subscription unitPrice (free allocations belong to BONUS)', () => {
+    const invalidTx = {
+      id: 'tx-sub-zero-price',
+      portfolioId: PORTFOLIO_DEFAULT,
+      accountId: ACCOUNT_XP,
+      assetId: ASSET_PETR4,
+      type: 'SUBSCRIPTION' as const,
+      quantity: Quantity.from('20'),
+      unitPrice: Money.from('0.00', 'BRL'),
+      currency: 'BRL' as const,
+      tradeDate: '2026-01-15',
+      source: 'MANUAL' as const,
+      createdAt: new Date(),
+    };
 
-    const pos = result.state.assets.get(String(ASSET_PETR4))!;
-    expect(pos.quantity.value).toBe('120');
-    expect(pos.totalCost?.amount).toBe('1000');
-    expect(pos.averageCost?.amount.startsWith('8.3333')).toBe(true);
-    expect(pos.costBasisStatus).toBe('KNOWN');
+    expect(() => {
+      replayPortfolio({
+        portfolioId: PORTFOLIO_DEFAULT,
+        transactions: [invalidTx as unknown as Transaction],
+      });
+    }).toThrow(SubscriptionCostBasisError);
   });
 
   it('should reject negative subscription unitPrice with SubscriptionCostBasisError', () => {

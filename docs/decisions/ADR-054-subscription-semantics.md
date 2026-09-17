@@ -32,8 +32,10 @@ Faz-se necessário formalizar a matemática patrimonial do exercício da subscri
    - A transação preserva seu tipo originário `type = 'SUBSCRIPTION'`.
    - Permite auditoria clara diferenciando compras em mercado secundário de subscrições primárias.
 
-3. **Subscrição com Preço Zero (Bonificação / Exercício Gratuito)**:
-   - Se $\text{unitPrice} = 0$, a subscrição aumenta a quantidade sem acrescentar custo financeiro, reduzindo o preço médio unitário por diluição proporcional.
+3. **Onerosidade Obrigatória (unitPrice > 0)**:
+   - O exercício de subscrição é estritamente oneroso ($\text{unitPrice} > 0$).
+   - Transações de subscrição com $\text{unitPrice} \le 0$ são rejeitadas.
+   - Eventos gratuitos de atribuição de ações/cotas sem desembolso financeiro pertencem exclusivamente à categoria `BONUS` (bonificação de ações/cotas), em conformidade com as práticas da B3 e regulação da CVM. Não se utiliza o conceito de "bonificação primária" em `SUBSCRIPTION`.
 
 4. **Tratamento de Posições com Custo Incompleto**:
    - Caso a posição já possua `costBasisStatus = 'INCOMPLETE'` (por exemplo, originada de `TRANSFER_IN` sem custo), o exercício de subscrição acresce a quantidade, mas o status permanece `INCOMPLETE`, com `totalCost` e `averageCost` indefinidos (`undefined`), pois não é possível sintetizar um custo total válido a partir de uma base pretérita desconhecida.
@@ -43,7 +45,7 @@ Faz-se necessário formalizar a matemática patrimonial do exercício da subscri
 
 6. **Validações de Domínio**:
    - Quantidade deve ser estritamente positiva ($\text{quantity} > 0$).
-   - Preço unitário não pode ser negativo ($\text{unitPrice} \ge 0$).
+   - Preço unitário deve ser estritamente positivo ($\text{unitPrice} > 0$).
    - A moeda da subscrição deve coincidir com a moeda da posição previamente existente.
    - Violações disparam `SubscriptionCostBasisError` ou `CurrencyMismatchError`.
 
