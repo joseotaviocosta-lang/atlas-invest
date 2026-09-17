@@ -220,19 +220,55 @@ describe('Domain: Transaction Ledger Invariants', () => {
       ).toThrow(InvalidTransactionError);
     });
 
-    it('TRANSFER requires quantity > 0', () => {
+    it('TRANSFER requires quantity > 0 and accepts optional transferGroupId', () => {
       const transferIn = TransactionFactory.createTransfer({
         ...common,
         type: 'TRANSFER_IN',
         quantity: '50',
+        transferGroupId: 'grp-123',
       });
       expect(transferIn.quantity.value).toBe('50');
+      expect(transferIn.transferGroupId).toBe('grp-123');
 
       expect(() =>
         TransactionFactory.createTransfer({
           ...common,
           type: 'TRANSFER_OUT',
           quantity: '-5',
+        }),
+      ).toThrow(InvalidTransactionError);
+    });
+
+    it('SUBSCRIPTION requires quantity > 0 and unitPrice > 0', () => {
+      const sub = TransactionFactory.createSubscription({
+        ...common,
+        quantity: '10',
+        unitPrice: '15.00',
+      });
+      expect(sub.quantity.value).toBe('10');
+      expect(sub.unitPrice.amount).toBe('15');
+
+      expect(() =>
+        TransactionFactory.createSubscription({
+          ...common,
+          quantity: '10',
+          unitPrice: '0.00',
+        }),
+      ).toThrow(InvalidTransactionError);
+
+      expect(() =>
+        TransactionFactory.createSubscription({
+          ...common,
+          quantity: '10',
+          unitPrice: '-1.00',
+        }),
+      ).toThrow(InvalidTransactionError);
+
+      expect(() =>
+        TransactionFactory.createSubscription({
+          ...common,
+          quantity: '0',
+          unitPrice: '10.00',
         }),
       ).toThrow(InvalidTransactionError);
     });

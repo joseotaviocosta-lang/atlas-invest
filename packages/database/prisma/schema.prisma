@@ -152,6 +152,7 @@ model Transaction {
   provider       String?   @db.VarChar(100)
   externalId     String?   @map("external_id") @db.VarChar(255)
   notes          String?   @db.Text
+  transferGroupId String?  @map("transfer_group_id") @db.VarChar(255)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -162,6 +163,7 @@ model Transaction {
   @@unique([portfolioId, provider, externalId], name: "portfolio_provider_external_id_unique")
   @@index([portfolioId, tradeDate, createdAt, id])
   @@index([portfolioId, accountId])
+  @@index([portfolioId, transferGroupId])
   @@index([assetId])
   @@map("transactions")
 }

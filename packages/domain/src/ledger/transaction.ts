@@ -75,6 +75,7 @@ export interface TransferTransaction extends BaseTransactionData {
   type: 'TRANSFER_IN' | 'TRANSFER_OUT';
   assetId: AssetId;
   quantity: Quantity;
+  transferGroupId?: string;
 }
 
 export interface CashMovementTransaction extends BaseTransactionData {
@@ -120,6 +121,7 @@ export interface TransactionJSON {
   amount?: MoneyJSON;
   factor?: string;
   assignedCost?: MoneyJSON;
+  transferGroupId?: string;
 }
 
 function validateSource(source: string): TransactionSource {
@@ -448,8 +450,8 @@ export class TransactionFactory {
     if (!quantity.isPositive()) {
       throw new InvalidTransactionError('SUBSCRIPTION requires quantity > 0');
     }
-    if (unitPrice.isNegative()) {
-      throw new InvalidTransactionError('SUBSCRIPTION requires unitPrice >= 0');
+    if (!unitPrice.isPositive()) {
+      throw new InvalidTransactionError('SUBSCRIPTION requires unitPrice > 0');
     }
 
     const tx: SubscriptionTransaction = {
@@ -503,6 +505,7 @@ export class TransactionFactory {
     quantity: string | Quantity;
     currency: string;
     tradeDate: string | LocalDate;
+    transferGroupId?: string;
     source?: string;
     provider?: string;
     externalId?: string;
@@ -525,6 +528,7 @@ export class TransactionFactory {
       type: props.type,
       assetId,
       quantity,
+      transferGroupId: props.transferGroupId,
     };
     return Object.freeze(tx);
   }
@@ -636,6 +640,9 @@ export function serializeTransaction(tx: Transaction): TransactionJSON {
   }
   if ('assignedCost' in tx && (tx as BonusTransaction).assignedCost) {
     json.assignedCost = (tx as BonusTransaction).assignedCost!.toJSON();
+  }
+  if ('transferGroupId' in tx && (tx as TransferTransaction).transferGroupId) {
+    json.transferGroupId = (tx as TransferTransaction).transferGroupId;
   }
 
   return json;

@@ -103,6 +103,7 @@ export class TransactionMapper {
           ...base,
           assetId: tx.assetId,
           quantity: DecimalConverter.toPersistence(tx.quantity.value),
+          transferGroupId: tx.transferGroupId ?? null,
         };
       }
       case 'DEPOSIT':
@@ -268,6 +269,7 @@ export class TransactionMapper {
           type: raw.type as 'TRANSFER_IN' | 'TRANSFER_OUT',
           assetId: raw.assetId,
           quantity,
+          transferGroupId: raw.transferGroupId ?? undefined,
         });
       }
       case 'DEPOSIT':

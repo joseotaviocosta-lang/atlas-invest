@@ -226,13 +226,14 @@ describe('Database Integration: 16 Transaction Types Ledger Round-Trip', () => {
     }
   });
 
-  it('11. TRANSFER_IN transaction round-trip', async () => {
+  it('11. TRANSFER_IN transaction round-trip with transferGroupId', async () => {
     const tx = TransactionFactory.createTransfer({
       portfolioId,
       accountId,
       assetId,
       type: 'TRANSFER_IN',
       quantity: '30',
+      transferGroupId: 'tg-roundtrip-123',
       currency: 'BRL',
       tradeDate: '2026-03-11',
     });
@@ -241,16 +242,18 @@ describe('Database Integration: 16 Transaction Types Ledger Round-Trip', () => {
     expect(r && r.type === 'TRANSFER_IN').toBe(true);
     if (r && r.type === 'TRANSFER_IN') {
       expect(r.quantity.value).toBe('30');
+      expect(r.transferGroupId).toBe('tg-roundtrip-123');
     }
   });
 
-  it('12. TRANSFER_OUT transaction round-trip', async () => {
+  it('12. TRANSFER_OUT transaction round-trip with transferGroupId', async () => {
     const tx = TransactionFactory.createTransfer({
       portfolioId,
       accountId,
       assetId,
       type: 'TRANSFER_OUT',
       quantity: '30',
+      transferGroupId: 'tg-roundtrip-123',
       currency: 'BRL',
       tradeDate: '2026-03-12',
     });
@@ -259,6 +262,7 @@ describe('Database Integration: 16 Transaction Types Ledger Round-Trip', () => {
     expect(r && r.type === 'TRANSFER_OUT').toBe(true);
     if (r && r.type === 'TRANSFER_OUT') {
       expect(r.quantity.value).toBe('30');
+      expect(r.transferGroupId).toBe('tg-roundtrip-123');
     }
   });
 

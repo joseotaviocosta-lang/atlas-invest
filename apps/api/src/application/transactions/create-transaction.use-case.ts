@@ -39,6 +39,7 @@ export interface CreateTransactionCommand {
   taxes?: string;
   amount?: string;
   factor?: string;
+  transferGroupId?: string;
   userId?: string;
 }
 
@@ -202,6 +203,7 @@ export class CreateTransactionUseCase {
           type: command.type,
           assetId: command.assetId,
           quantity: command.quantity,
+          transferGroupId: command.transferGroupId,
         });
       }
 
