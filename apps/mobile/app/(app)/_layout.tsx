@@ -14,6 +14,7 @@ export default function AppLayout() {
       />
       <Stack.Screen name="profile" options={{ headerShown: false }} />
       <Stack.Screen name="portfolio/[assetId]" options={{ headerShown: false }} />
+      <Stack.Screen name="portfolio/history" options={{ headerShown: false }} />
     </Stack>
   );
 }

@@ -32,9 +32,21 @@ export const portfoliosApi = {
 
   async getPortfolioHistory(
     portfolioId: string,
-    params?: { assetId?: string; limit?: number; cursor?: string | null },
+    params?: {
+      type?: 'realized' | 'income' | 'cash-flow' | 'corporate-action' | 'transfer';
+      from?: string;
+      to?: string;
+      accountId?: string;
+      assetId?: string;
+      limit?: number;
+      cursor?: string | null;
+    },
   ): Promise<{ data: PortfolioHistoryItemDto[]; meta: PortfolioHistoryPaginationMetaDto }> {
     const searchParams = new URLSearchParams();
+    if (params?.type) searchParams.append('type', params.type);
+    if (params?.from) searchParams.append('from', params.from);
+    if (params?.to) searchParams.append('to', params.to);
+    if (params?.accountId) searchParams.append('accountId', params.accountId);
     if (params?.assetId) searchParams.append('assetId', params.assetId);
     if (params?.limit) searchParams.append('limit', String(params.limit));
     if (params?.cursor) searchParams.append('cursor', params.cursor);

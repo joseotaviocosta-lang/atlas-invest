@@ -7,3 +7,5 @@ export * from './MobileCustodyBreakdown';
 export * from './MobileRealizedSection';
 export * from './MobileIncomeSection';
 export * from './MobileHistorySection';
+export * from './MobileHistoryFilters';
+export * from './MobileHistoryTimeline';

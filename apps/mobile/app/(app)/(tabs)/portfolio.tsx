@@ -185,8 +185,20 @@ export default function PortfolioScreen() {
                     <Text style={styles.carteiraLabel}>CARTEIRA ATIVA</Text>
                     <Text style={styles.carteiraName}>{activePortfolio.name}</Text>
                   </View>
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{activePortfolio.status}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>{activePortfolio.status}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.historyButton}
+                      onPress={() =>
+                        router.push(`/(app)/portfolio/history?portfolioId=${activePortfolio.id}`)
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel="Ver histórico de atividades da carteira"
+                    >
+                      <Text style={styles.historyButtonText}>Histórico</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -361,6 +373,22 @@ const styles = StyleSheet.create({
     color: themeTokens.colors.success,
     fontSize: 11,
     fontWeight: '700',
+  },
+  historyButton: {
+    backgroundColor: themeTokens.colors.surfaceElevated,
+    borderColor: themeTokens.colors.border,
+    borderWidth: 1,
+    borderRadius: themeTokens.borderRadius.sm,
+    paddingHorizontal: themeTokens.spacing.sm,
+    paddingVertical: 6,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  historyButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: themeTokens.colors.primary,
   },
   metaRow: {
     flexDirection: 'row',
