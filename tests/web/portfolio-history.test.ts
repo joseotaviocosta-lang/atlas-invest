@@ -153,7 +153,7 @@ describe('Web: Portfolio History & Activity Integration (Fase 2C)', () => {
 
     // Event 3: Deposit
     const item3 = vm.groups[1]!.items[0]!;
-    expect(item3.kindLabel).toBe('Aporte');
+    expect(item3.kindLabel).toBe('Depósito');
     expect(item3.amount).toBe('R$ 10.000,00');
     expect(item3.accountName).toBe('BTG Pactual');
     expect(item3.canNavigateToAsset).toBe(false);

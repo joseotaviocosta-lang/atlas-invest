@@ -165,4 +165,31 @@ describe('Architecture Gate: Layer Dependency Boundaries & Package Isolation', (
       }
     }
   });
+
+  it('Zero Client Financial Math: Shared UI view models must not perform financial division or arithmetic', () => {
+    const viewModelsDir = path.join(rootDir, 'packages/ui/src/view-models');
+    if (!fs.existsSync(viewModelsDir)) return;
+
+    const files = fs.readdirSync(viewModelsDir);
+    for (const file of files) {
+      if (file.endsWith('.ts')) {
+        const content = fs.readFileSync(path.join(viewModelsDir, file), 'utf8');
+
+        // Must not import math/decimal libraries
+        expect(content).not.toMatch(/from\s+['"]decimal\.js/);
+        expect(content).not.toMatch(/from\s+['"]bignumber\.js/);
+        expect(content).not.toMatch(/from\s+['"]big\.js/);
+
+        // Must not execute method-based financial divisions/multiplications
+        expect(content).not.toMatch(/\.div\(/);
+        expect(content).not.toMatch(/\.dividedBy\(/);
+        expect(content).not.toMatch(/\.times\(/);
+        expect(content).not.toMatch(/\.multipliedBy\(/);
+
+        // Must not calculate percentage share from total quantities
+        expect(content).not.toMatch(/\/.*totalQuantity/i);
+        expect(content).not.toMatch(/\/.*totalCost/i);
+      }
+    }
+  });
 });

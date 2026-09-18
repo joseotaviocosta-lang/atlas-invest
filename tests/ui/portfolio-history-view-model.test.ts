@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildPortfolioActivityViewModel,
   formatCivilDateHeader,
+  PORTFOLIO_HISTORY_KINDS,
   PortfolioHistoryItemDto,
   PortfolioHistoryPaginationMetaDto,
   PortfolioStateDto,
@@ -208,7 +209,7 @@ describe('Portfolio Activity View Model (Fase 2C)', () => {
     expect(items[0]!.amount).toBe('R$ 120,50');
     expect(items[1]!.kindLabel).toBe('JCP');
     expect(items[1]!.amount).toBe('R$ 80,00');
-    expect(items[2]!.kindLabel).toBe('Rendimento FII');
+    expect(items[2]!.kindLabel).toBe('Rendimento de FII');
     expect(items[2]!.amount).toBe('R$ 250,00');
   });
 
@@ -296,7 +297,7 @@ describe('Portfolio Activity View Model (Fase 2C)', () => {
     });
 
     const items = vm.groups[0]!.items;
-    expect(items[0]!.kindLabel).toBe('Aporte');
+    expect(items[0]!.kindLabel).toBe('Depósito');
     expect(items[0]!.badgeVariant).toBe('positive');
 
     expect(items[1]!.kindLabel).toBe('Retirada');
@@ -513,5 +514,176 @@ describe('Portfolio Activity View Model (Fase 2C)', () => {
     expect(items[0]!.currency).toBe('BRL');
     expect(items[1]!.amount).toBe('USD 500,00');
     expect(items[1]!.currency).toBe('USD');
+  });
+
+  describe('Hotfix 2C.1 Contract Audit & History Semantics Hardening', () => {
+    it('guarantees PORTFOLIO_HISTORY_KINDS matches exactly the 5 frozen API read model kinds', () => {
+      const expectedFrozenApiKinds = [
+        'REALIZED_DISPOSAL',
+        'INCOME',
+        'CASH_FLOW',
+        'CORPORATE_ACTION',
+        'TRANSFER',
+      ];
+      expect([...PORTFOLIO_HISTORY_KINDS].sort()).toEqual(expectedFrozenApiKinds.sort());
+      expect(PORTFOLIO_HISTORY_KINDS).toHaveLength(5);
+    });
+
+    it('guarantees NO invented client history kinds exist in the kind catalog', () => {
+      const prohibitedKinds = ['SPIN_OFF', 'MERGER', 'INTEREST', 'BONUS_SHARES', 'BUY'];
+      for (const prohibited of prohibitedKinds) {
+        expect(PORTFOLIO_HISTORY_KINDS).not.toContain(prohibited);
+      }
+    });
+
+    it('enforces exhaustiveness and throws at runtime when an uncataloged kind is encountered (no silent fallback)', () => {
+      const invalidItem = {
+        id: 'inv_1',
+        kind: 'INVENTED_KIND' as unknown as PortfolioHistoryItemDto['kind'],
+        transactionId: 'tx-inv',
+        tradeDate: '2026-09-18',
+        accountId: 'acc-1',
+        assetId: null,
+        currency: 'BRL',
+        details: {},
+      };
+
+      expect(() =>
+        buildPortfolioActivityViewModel({
+          portfolioId: 'port-1',
+          historyItems: [invalidItem],
+          pagination: defaultPagination,
+          portfolioState: mockPortfolioState,
+        }),
+      ).toThrowError(/Unhandled portfolio history event kind/);
+    });
+
+    it('verifies explicit presentation mappings for all exposed corporate actions and cash flows', () => {
+      const historyItems: PortfolioHistoryItemDto[] = [
+        {
+          id: 'ca_bonus',
+          kind: 'CORPORATE_ACTION',
+          transactionId: 'tx-bonus',
+          tradeDate: '2026-09-18',
+          accountId: 'acc-1',
+          assetId: 'asset-petr4',
+          currency: 'BRL',
+          details: { type: 'BONUS', beforeQuantity: '100', afterQuantity: '110' },
+        },
+        {
+          id: 'ca_reverse_split',
+          kind: 'CORPORATE_ACTION',
+          transactionId: 'tx-rs',
+          tradeDate: '2026-09-18',
+          accountId: 'acc-1',
+          assetId: 'asset-petr4',
+          currency: 'BRL',
+          details: { type: 'REVERSE_SPLIT', beforeQuantity: '100', afterQuantity: '10' },
+        },
+        {
+          id: 'ca_amort',
+          kind: 'CORPORATE_ACTION',
+          transactionId: 'tx-amort-ca',
+          tradeDate: '2026-09-18',
+          accountId: 'acc-1',
+          assetId: 'asset-petr4',
+          currency: 'BRL',
+          details: { type: 'AMORTIZATION', beforeQuantity: '100', afterQuantity: '100' },
+        },
+      ];
+
+      const vm = buildPortfolioActivityViewModel({
+        portfolioId: 'port-1',
+        historyItems,
+        pagination: defaultPagination,
+        portfolioState: mockPortfolioState,
+        accountsMeta,
+        assetsMeta,
+      });
+
+      const items = vm.groups[0]!.items;
+      // BONUS
+      expect(items[0]!.kindLabel).toBe('Bonificação');
+      expect(items[0]!.quantity).toBe('110');
+
+      // REVERSE_SPLIT
+      expect(items[1]!.kindLabel).toBe('Grupamento');
+      expect(items[1]!.quantity).toBe('10');
+
+      // AMORTIZATION
+      expect(items[2]!.kindLabel).toBe('Amortização');
+      expect(items[2]!.secondaryContext).toBe('Devolução de capital');
+    });
+
+    it('verifies strict semantic labels: TAX is "Tributo pago" (never "Imposto devido"), SUBSCRIPTION is distinct from BUY, SELL is "Venda"', () => {
+      const historyItems: PortfolioHistoryItemDto[] = [
+        {
+          id: 'rd_sell',
+          kind: 'REALIZED_DISPOSAL',
+          transactionId: 'tx-sell',
+          tradeDate: '2026-09-18',
+          accountId: 'acc-1',
+          assetId: 'asset-petr4',
+          currency: 'BRL',
+          details: { quantity: '10', netProceeds: { amount: '300.00', currency: 'BRL' } },
+        },
+        {
+          id: 'ca_sub',
+          kind: 'CORPORATE_ACTION',
+          transactionId: 'tx-sub',
+          tradeDate: '2026-09-18',
+          accountId: 'acc-1',
+          assetId: 'asset-petr4',
+          currency: 'BRL',
+          details: { type: 'SUBSCRIPTION', afterQuantity: '150' },
+        },
+        {
+          id: 'cf_tax',
+          kind: 'CASH_FLOW',
+          transactionId: 'tx-tax',
+          tradeDate: '2026-09-18',
+          accountId: 'acc-1',
+          assetId: null,
+          currency: 'BRL',
+          details: { type: 'TAX', amount: { amount: '12.50', currency: 'BRL' } },
+        },
+        {
+          id: 'tr_out',
+          kind: 'TRANSFER',
+          transactionId: 'tx-tr-out',
+          tradeDate: '2026-09-18',
+          accountId: 'acc-1',
+          assetId: 'asset-petr4',
+          currency: 'BRL',
+          details: { type: 'TRANSFER_OUT', quantity: '25' },
+        },
+      ];
+
+      const vm = buildPortfolioActivityViewModel({
+        portfolioId: 'port-1',
+        historyItems,
+        pagination: defaultPagination,
+        portfolioState: mockPortfolioState,
+        accountsMeta,
+        assetsMeta,
+      });
+
+      const items = vm.groups[0]!.items;
+      // SELL: must be "Venda" and not "Provento" or "Rendimento"
+      expect(items[0]!.kindLabel).toBe('Venda');
+      expect(items[0]!.kindLabel).not.toMatch(/provento|rendimento/i);
+
+      // SUBSCRIPTION: must be "Subscrição" and not "Compra"
+      expect(items[1]!.kindLabel).toBe('Subscrição');
+      expect(items[1]!.kindLabel).not.toBe('Compra');
+
+      // TAX: must be "Tributo pago" and NEVER contain "devido"
+      expect(items[2]!.kindLabel).toBe('Tributo pago');
+      expect(items[2]!.kindLabel).not.toContain('devido');
+
+      // TRANSFER: must be "Transferência de saída" and not external flow
+      expect(items[3]!.kindLabel).toBe('Transferência de saída');
+      expect(items[3]!.kindLabel).not.toMatch(/aporte|retirada/i);
+    });
   });
 });

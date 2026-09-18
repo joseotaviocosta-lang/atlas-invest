@@ -7,7 +7,19 @@ import {
 } from './asset-position-detail.view-model';
 
 export type PortfolioActivityKind =
-  'REALIZED_DISPOSAL' | 'INCOME' | 'CASH_FLOW' | 'CORPORATE_ACTION' | 'TRANSFER' | 'BUY';
+  'REALIZED_DISPOSAL' | 'INCOME' | 'CASH_FLOW' | 'CORPORATE_ACTION' | 'TRANSFER';
+
+export const PORTFOLIO_HISTORY_KINDS: readonly PortfolioActivityKind[] = [
+  'REALIZED_DISPOSAL',
+  'INCOME',
+  'CASH_FLOW',
+  'CORPORATE_ACTION',
+  'TRANSFER',
+] as const;
+
+export function assertNever(x: never): never {
+  throw new Error(`Unhandled portfolio history event kind: ${JSON.stringify(x)}`);
+}
 
 export type ActivityBadgeVariant = 'neutral' | 'positive' | 'negative' | 'warning' | 'info';
 
@@ -245,7 +257,7 @@ export function buildPortfolioActivityViewModel(
         let kindLabel = 'Rendimento';
         if (inc.type === 'DIVIDEND') kindLabel = 'Dividendo';
         else if (inc.type === 'JCP') kindLabel = 'JCP';
-        else if (inc.type === 'FII_INCOME') kindLabel = 'Rendimento FII';
+        else if (inc.type === 'FII_INCOME') kindLabel = 'Rendimento de FII';
 
         const amountMoney = inc.amount ?? inc.grossAmount ?? null;
         const formattedAmount = amountMoney
@@ -296,7 +308,7 @@ export function buildPortfolioActivityViewModel(
 
         switch (cf.type) {
           case 'DEPOSIT':
-            kindLabel = 'Aporte';
+            kindLabel = 'Depósito';
             badgeVariant = 'positive';
             break;
           case 'WITHDRAWAL':
@@ -480,40 +492,7 @@ export function buildPortfolioActivityViewModel(
       }
 
       default: {
-        // Safe fallback for BUY or any uncataloged kind
-        const isBuy = item.kind === 'BUY';
-        const rawQty = (details as { quantity?: string }).quantity ?? null;
-        const formattedQty = rawQty ? formatQuantity(rawQty) : null;
-        const amountMoney = (details as { amount?: MoneyDto }).amount ?? null;
-        const formattedAmount = amountMoney
-          ? formatCurrency(amountMoney.amount, amountMoney.currency)
-          : null;
-
-        return {
-          id: item.id,
-          transactionId: item.transactionId,
-          kind: item.kind,
-          kindLabel: isBuy ? 'Compra' : item.kind,
-          subType: null,
-          tradeDate: item.tradeDate,
-          formattedTradeDate,
-          accountId: item.accountId,
-          accountName,
-          assetId: item.assetId,
-          assetTicker,
-          assetName,
-          quantity: formattedQty,
-          rawQuantity: rawQty,
-          amount: formattedAmount,
-          currency: amountMoney?.currency ?? item.currency,
-          badgeVariant: isBuy ? 'positive' : 'neutral',
-          status: null,
-          statusBadgeLabel: null,
-          isCostBasisIncomplete: false,
-          canNavigateToAsset,
-          secondaryContext: null,
-          details,
-        };
+        return assertNever(item.kind as never);
       }
     }
   });

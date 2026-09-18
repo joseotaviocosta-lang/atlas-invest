@@ -557,3 +557,9 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 
 6. **SEGURANÇA DE NAVEGAÇÃO PARA POSIÇÕES ENCERRADAS (ADR-078):**
    - Eventos históricos vinculados a ativos cujas posições encontram-se encerradas (`quantity === '0'` ou sem posição aberta no estado atual) não devem fornecer links para a tela de detalhe de posição aberta, prevenindo erros de "posição não encontrada" ou redirecionamentos enganosos.
+
+7. **CONFORMIDADE DE CONTRATO E HARDENING DE HISTÓRICO (HOTFIX 2C.1):**
+   - **Exaustividade sobre o Enum Real:** A camada de apresentação do histórico deve ser estritamente exaustiva sobre o enum `PortfolioHistoryKind` congelado na API (`REALIZED_DISPOSAL`, `INCOME`, `CASH_FLOW`, `CORPORATE_ACTION`, `TRANSFER`).
+   - **Proibição de Kinds Inventados:** O cliente nunca deve inventar ou manter kinds ad-hoc de histórico (ex: `SPIN_OFF`, `MERGER`, `INTEREST`, `BONUS_SHARES`, `BUY`).
+   - **Proibição de Cálculo Client-Side de Percentual por Conta:** ViewModels no cliente não devem calcular percentuais de alocação ou participação por conta a partir de quantidades (`accountQuantity / totalQuantity`). A regra permanece estrita: cálculo econômico pertence ao Engine/API; apresentação pertence ao cliente.
+   - **Preservação de Cobertura dos Gates de Validação do RC:** Os scripts de validação do Portfolio Engine RC (`validate:portfolio-engine-rc`, `test:portfolio-engine`) devem preservar integralmente a cobertura de hardening da Fase 1H (53 arquivos de teste / 243 testes unitários e de integração).

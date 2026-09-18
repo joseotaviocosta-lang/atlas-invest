@@ -137,8 +137,8 @@ A Fase 2C entrega a visão cronológica unificada de **Portfolio History & Activ
   - Em caso de falha de conexão no carregamento de páginas adicionais, os eventos previamente carregados permanecem preservados e visíveis.
 - **Taxonomia Canônica de Eventos (ADR-080):**
   - Vendas (`REALIZED_DISPOSAL`): "Venda".
-  - Rendimentos (`INCOME`): "Dividendo", "JCP", "Rendimento FII".
-  - Caixa (`CASH_FLOW`): "Aporte", "Retirada", "Taxa", "Tributo pago" (nunca "Imposto devido"), "Amortização" ("Devolução de capital").
+  - Rendimentos (`INCOME`): "Dividendo", "JCP", "Rendimento de FII".
+  - Caixa (`CASH_FLOW`): "Depósito", "Retirada", "Taxa", "Tributo pago" (nunca "Imposto devido"), "Amortização" ("Devolução de capital").
   - Eventos Corporativos (`CORPORATE_ACTION`): "Desdobramento", "Grupamento", "Bonificação", "Subscrição", "Amortização".
   - Transferências (`TRANSFER`): "Transferência de entrada", "Transferência de saída" (badge "Transferência incompleta" se despareada).
 - **Segurança de Navegação para Posições Encerradas:**

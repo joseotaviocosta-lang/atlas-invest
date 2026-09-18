@@ -1,4 +1,4 @@
-﻿import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   mapToAssetPositionDetailViewModel,
   formatDatePtBr,
@@ -399,6 +399,79 @@ describe('UI View Model: Asset Position Detail (Phase 2B)', () => {
       expect(vm.primaryCard.quantity).toBe('0,12345678');
       expect(vm.primaryCard.totalCost).toBe('R$ 123.456.789,99');
       expect(vm.primaryCard.averageCost).toBe('R$ 1.000.000.000,00');
+    });
+
+    it('guarantees NO client-calculated account percentage share in accountsBreakdown', () => {
+      const state: PortfolioStateDto = {
+        portfolioId: samplePortfolioId,
+        asOfDate: null,
+        completeness: { costBasis: 'COMPLETE' },
+        positions: [
+          {
+            assetId: assetPetr4,
+            quantity: '100',
+            currency: 'BRL',
+            costBasisStatus: 'KNOWN',
+            totalCost: { amount: '3000.00', currency: 'BRL' },
+            averageCost: { amount: '30.00', currency: 'BRL' },
+          },
+        ],
+        accounts: [
+          {
+            accountId: sampleAccountId1,
+            positions: [
+              {
+                assetId: assetPetr4,
+                quantity: '60',
+                currency: 'BRL',
+                costBasisStatus: 'KNOWN',
+                totalCost: { amount: '1800.00', currency: 'BRL' },
+                averageCost: { amount: '30.00', currency: 'BRL' },
+              },
+            ],
+          },
+          {
+            accountId: sampleAccountId2,
+            positions: [
+              {
+                assetId: assetPetr4,
+                quantity: '40',
+                currency: 'BRL',
+                costBasisStatus: 'KNOWN',
+                totalCost: { amount: '1200.00', currency: 'BRL' },
+                averageCost: { amount: '30.00', currency: 'BRL' },
+              },
+            ],
+          },
+        ],
+        realizedSummaries: [],
+        incomeSummaries: [],
+        cashFlowSummaries: [],
+      };
+
+      const vm = mapToAssetPositionDetailViewModel({
+        assetId: assetPetr4,
+        state,
+        accountsMeta: [
+          { id: sampleAccountId1, name: 'Conta XP' },
+          { id: sampleAccountId2, name: 'Conta BTG' },
+        ],
+      });
+
+      expect(vm.accountsBreakdown).toHaveLength(2);
+      for (const item of vm.accountsBreakdown) {
+        // Assert absence of any client-side computed percentage share fields
+        expect((item as Record<string, unknown>).percentageShare).toBeUndefined();
+        expect((item as Record<string, unknown>).share).toBeUndefined();
+        expect((item as Record<string, unknown>).percentage).toBeUndefined();
+        expect((item as Record<string, unknown>).allocation).toBeUndefined();
+      }
+
+      // Explicit verification of presentation format: "Conta XP — 60 ações" equivalent
+      expect(vm.accountsBreakdown[0].accountName).toBe('Conta BTG');
+      expect(vm.accountsBreakdown[0].quantity).toBe('40');
+      expect(vm.accountsBreakdown[1].accountName).toBe('Conta XP');
+      expect(vm.accountsBreakdown[1].quantity).toBe('60');
     });
   });
 });
