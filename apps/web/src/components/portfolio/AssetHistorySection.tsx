@@ -35,7 +35,8 @@ export function AssetHistorySection({
           Histórico do Ativo
         </h2>
         <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
-          Extrato auditável cronológico reverso de eventos corporativos, alienações, rendimentos e transferências
+          Extrato auditável cronológico reverso de eventos corporativos, alienações, rendimentos e
+          transferências
         </span>
       </div>
 
@@ -71,7 +72,9 @@ export function AssetHistorySection({
               }}
             >
               {/* Left: Date & Event type badge */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '220px' }}>
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '220px' }}
+              >
                 <span
                   style={{
                     fontSize: '0.8125rem',
@@ -120,7 +123,9 @@ export function AssetHistorySection({
                   </span>
                 )}
                 {event.quantity && (
-                  <span style={{ fontSize: '0.75rem', color: colors.textSecondary, display: 'block' }}>
+                  <span
+                    style={{ fontSize: '0.75rem', color: colors.textSecondary, display: 'block' }}
+                  >
                     Qtd: {event.quantity}
                   </span>
                 )}
@@ -149,9 +154,7 @@ export function AssetHistorySection({
               </Button>
 
               {loadMoreError && (
-                <span style={{ fontSize: '0.75rem', color: colors.negative }}>
-                  {loadMoreError}
-                </span>
+                <span style={{ fontSize: '0.75rem', color: colors.negative }}>{loadMoreError}</span>
               )}
             </div>
           )}

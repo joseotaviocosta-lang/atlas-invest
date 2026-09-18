@@ -77,7 +77,9 @@ export function AssetRealizedSection({ disposals }: AssetRealizedSectionProps) {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontWeight: 600, color: colors.textPrimary, fontSize: '0.875rem' }}>
+                    <span
+                      style={{ fontWeight: 600, color: colors.textPrimary, fontSize: '0.875rem' }}
+                    >
                       {disp.formattedTradeDate}
                     </span>
                     <span style={{ color: colors.textMuted }}>•</span>
@@ -100,52 +102,74 @@ export function AssetRealizedSection({ disposals }: AssetRealizedSectionProps) {
                   }}
                 >
                   <div>
-                    <span style={{ fontSize: '0.6875rem', color: colors.textMuted, display: 'block' }}>
+                    <span
+                      style={{ fontSize: '0.6875rem', color: colors.textMuted, display: 'block' }}
+                    >
                       Quantidade vendida
                     </span>
-                    <span style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
+                    <span
+                      style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}
+                    >
                       {disp.quantity}
                     </span>
                   </div>
 
                   <div>
-                    <span style={{ fontSize: '0.6875rem', color: colors.textMuted, display: 'block' }}>
+                    <span
+                      style={{ fontSize: '0.6875rem', color: colors.textMuted, display: 'block' }}
+                    >
                       Valor bruto da venda
                     </span>
-                    <span style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
+                    <span
+                      style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}
+                    >
                       {disp.grossProceeds}
                     </span>
                   </div>
 
                   <div>
-                    <span style={{ fontSize: '0.6875rem', color: colors.textMuted, display: 'block' }}>
+                    <span
+                      style={{ fontSize: '0.6875rem', color: colors.textMuted, display: 'block' }}
+                    >
                       Custos de venda
                     </span>
-                    <span style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
+                    <span
+                      style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}
+                    >
                       {disp.sellingCosts}
                     </span>
                   </div>
 
                   <div>
-                    <span style={{ fontSize: '0.6875rem', color: colors.textMuted, display: 'block' }}>
+                    <span
+                      style={{ fontSize: '0.6875rem', color: colors.textMuted, display: 'block' }}
+                    >
                       Valor líquido da venda
                     </span>
-                    <span style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
+                    <span
+                      style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}
+                    >
                       {disp.netProceeds}
                     </span>
                   </div>
 
                   <div>
-                    <span style={{ fontSize: '0.6875rem', color: colors.textMuted, display: 'block' }}>
+                    <span
+                      style={{ fontSize: '0.6875rem', color: colors.textMuted, display: 'block' }}
+                    >
                       Custo removido
                     </span>
-                    <span style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
+                    <span
+                      style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}
+                    >
                       {disp.costBasisRemoved}
                     </span>
                   </div>
 
                   <div>
-                    <span style={{ fontSize: '0.6875rem', color: colors.textMuted, display: 'block' }}>
+                    <span
+                      style={{ fontSize: '0.6875rem', color: colors.textMuted, display: 'block' }}
+                    >
                       Resultado realizado
                     </span>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>

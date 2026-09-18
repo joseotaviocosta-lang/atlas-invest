@@ -68,8 +68,7 @@ export function AssetCustodyBreakdown({ accounts }: AssetCustodyBreakdownProps) 
                 display: 'grid',
                 gridTemplateColumns: 'minmax(180px, 2fr) 1fr 1fr 1fr',
                 padding: `${spacing.base}px`,
-                borderBottom:
-                  index < accounts.length - 1 ? `1px solid ${colors.border}` : 'none',
+                borderBottom: index < accounts.length - 1 ? `1px solid ${colors.border}` : 'none',
                 alignItems: 'center',
                 fontSize: '0.875rem',
               }}
@@ -78,9 +77,7 @@ export function AssetCustodyBreakdown({ accounts }: AssetCustodyBreakdownProps) 
                 <span style={{ fontWeight: 600, color: colors.textPrimary }}>
                   {acc.accountName}
                 </span>
-                {acc.isCostBasisIncomplete && (
-                  <Badge variant="warning">Custo incompleto</Badge>
-                )}
+                {acc.isCostBasisIncomplete && <Badge variant="warning">Custo incompleto</Badge>}
               </div>
               <div style={{ textAlign: 'right', fontWeight: 600, color: colors.textPrimary }}>
                 {acc.quantity}

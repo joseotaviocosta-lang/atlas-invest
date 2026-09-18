@@ -54,7 +54,8 @@ export function AssetIncomeSection({ events }: AssetIncomeSectionProps) {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'minmax(100px, 1fr) minmax(140px, 1.5fr) minmax(140px, 1.5fr) 1fr',
+              gridTemplateColumns:
+                'minmax(100px, 1fr) minmax(140px, 1.5fr) minmax(140px, 1.5fr) 1fr',
               padding: `${spacing.sm}px ${spacing.base}px`,
               borderBottom: `1px solid ${colors.border}`,
               backgroundColor: colors.surfaceElevated,
@@ -80,8 +81,7 @@ export function AssetIncomeSection({ events }: AssetIncomeSectionProps) {
                   gridTemplateColumns:
                     'minmax(100px, 1fr) minmax(140px, 1.5fr) minmax(140px, 1.5fr) 1fr',
                   padding: `${spacing.base}px`,
-                  borderBottom:
-                    index < events.length - 1 ? `1px solid ${colors.border}` : 'none',
+                  borderBottom: index < events.length - 1 ? `1px solid ${colors.border}` : 'none',
                   alignItems: 'center',
                   fontSize: '0.875rem',
                 }}

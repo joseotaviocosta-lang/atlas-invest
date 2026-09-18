@@ -1,8 +1,8 @@
-﻿'use client';
+'use client';
 
 import React from 'react';
 import Link from 'next/link';
-import { colors, spacing, borderRadius } from '@atlas/ui';
+import { colors, spacing } from '@atlas/ui';
 import { Badge } from '@/components/ui/Badge';
 
 export interface AssetPositionHeaderProps {
@@ -57,7 +57,14 @@ export function AssetPositionHeader({
         }}
       >
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px`, flexWrap: 'wrap' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: `${spacing.sm}px`,
+              flexWrap: 'wrap',
+            }}
+          >
             <h1
               style={{
                 fontSize: '2rem',

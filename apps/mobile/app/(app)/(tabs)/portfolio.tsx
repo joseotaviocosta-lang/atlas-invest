@@ -268,7 +268,11 @@ export default function PortfolioScreen() {
                 ) : (
                   <View style={styles.positionsList}>
                     {viewModel.positions.map((pos) => (
-                      <PositionCard key={pos.assetId} position={pos} />
+                      <PositionCard
+                        key={pos.assetId}
+                        position={pos}
+                        portfolioId={activePortfolio?.id}
+                      />
                     ))}
                   </View>
                 )}

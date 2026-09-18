@@ -64,7 +64,12 @@ describe('UI View Model: Asset Position Detail (Phase 2B)', () => {
       const vm = mapToAssetPositionDetailViewModel({
         assetId: assetPetr4,
         state,
-        portfolioMeta: { id: samplePortfolioId, name: 'Principal', type: 'PERSONAL', baseCurrency: 'BRL' },
+        portfolioMeta: {
+          id: samplePortfolioId,
+          name: 'Principal',
+          type: 'PERSONAL',
+          baseCurrency: 'BRL',
+        },
         accountsMeta: [{ id: sampleAccountId1, name: 'XP Investimentos' }],
         assetMeta: { id: assetPetr4, ticker: 'PETR4', name: 'Petrobras PN', type: 'EQUITY' },
       });
@@ -129,7 +134,12 @@ describe('UI View Model: Asset Position Detail (Phase 2B)', () => {
       const vm = mapToAssetPositionDetailViewModel({
         assetId: assetVale3,
         state,
-        portfolioMeta: { id: samplePortfolioId, name: 'Principal', type: 'PERSONAL', baseCurrency: 'BRL' },
+        portfolioMeta: {
+          id: samplePortfolioId,
+          name: 'Principal',
+          type: 'PERSONAL',
+          baseCurrency: 'BRL',
+        },
         accountsMeta: [{ id: sampleAccountId2, name: 'BTG Pactual' }],
         assetMeta: { id: assetVale3, ticker: 'VALE3', name: 'Vale ON', type: 'EQUITY' },
       });

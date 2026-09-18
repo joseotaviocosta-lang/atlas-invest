@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useMemo } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
@@ -34,10 +34,7 @@ export default function AssetPositionDetailPage() {
   const portfolioIdParam = searchParams.get('portfolioId');
 
   // 1. Fetch user portfolios to resolve portfolio context
-  const {
-    data: portfoliosData,
-    isLoading: isPortfoliosLoading,
-  } = useQuery({
+  const { data: portfoliosData, isLoading: isPortfoliosLoading } = useQuery({
     queryKey: ['portfolios'],
     queryFn: () => apiClient.get<{ data: PortfolioDto[] }>('/api/v1/portfolios'),
     staleTime: 60_000,
@@ -45,7 +42,8 @@ export default function AssetPositionDetailPage() {
 
   const portfolios = portfoliosData?.data || [];
   const activePortfolioId = portfolioIdParam || portfolios[0]?.id || '';
-  const activePortfolio = portfolios.find((p) => p.id === activePortfolioId) || portfolios[0] || null;
+  const activePortfolio =
+    portfolios.find((p) => p.id === activePortfolioId) || portfolios[0] || null;
 
   // 2. Fetch portfolio state
   const {
@@ -151,16 +149,28 @@ export default function AssetPositionDetailPage() {
 
   const isReplayFailed =
     stateError instanceof ApiError &&
-    (stateError.status === 422 || stateError.code === 'PORTFOLIO.REPLAY_FAILED');
+    (stateError.statusCode === 422 || stateError.code === 'PORTFOLIO.REPLAY_FAILED');
 
   // Loading Skeleton State
   if (isPortfoliosLoading || isStateLoading) {
     return (
-      <div style={{ maxWidth: '1000px', margin: '0 auto', padding: `${spacing.xl}px ${spacing.base}px` }}>
+      <div
+        style={{
+          maxWidth: '1000px',
+          margin: '0 auto',
+          padding: `${spacing.xl}px ${spacing.base}px`,
+        }}
+      >
         <Skeleton width="200px" height="24px" style={{ marginBottom: `${spacing.md}px` }} />
         <Skeleton width="320px" height="40px" style={{ marginBottom: `${spacing.lg}px` }} />
         <Card style={{ padding: `${spacing.xl}px`, marginBottom: `${spacing.xl}px` }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: `${spacing.lg}px` }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: `${spacing.lg}px`,
+            }}
+          >
             <Skeleton width="100%" height="60px" />
             <Skeleton width="100%" height="60px" />
             <Skeleton width="100%" height="60px" />
@@ -176,7 +186,13 @@ export default function AssetPositionDetailPage() {
   // Error State: Replay Failure (422) or State Error
   if (isStateError) {
     return (
-      <div style={{ maxWidth: '1000px', margin: '0 auto', padding: `${spacing.xl}px ${spacing.base}px` }}>
+      <div
+        style={{
+          maxWidth: '1000px',
+          margin: '0 auto',
+          padding: `${spacing.xl}px ${spacing.base}px`,
+        }}
+      >
         <Card style={{ padding: `${spacing.xxl}px` }}>
           <ErrorState
             title="Falha na leitura da carteira"
@@ -195,7 +211,13 @@ export default function AssetPositionDetailPage() {
   // Not Open / 404 Position State
   if (!viewModel || !viewModel.isOpenPosition) {
     return (
-      <div style={{ maxWidth: '1000px', margin: '0 auto', padding: `${spacing.xl}px ${spacing.base}px` }}>
+      <div
+        style={{
+          maxWidth: '1000px',
+          margin: '0 auto',
+          padding: `${spacing.xl}px ${spacing.base}px`,
+        }}
+      >
         <Card
           style={{
             padding: `${spacing.xxl}px`,
@@ -204,7 +226,14 @@ export default function AssetPositionDetailPage() {
             borderRadius: `${borderRadius.lg}px`,
           }}
         >
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: colors.textPrimary, margin: '0 0 8px 0' }}>
+          <h2
+            style={{
+              fontSize: '1.25rem',
+              fontWeight: 700,
+              color: colors.textPrimary,
+              margin: '0 0 8px 0',
+            }}
+          >
             Esta posição não está aberta nesta carteira.
           </h2>
           <p style={{ fontSize: '0.875rem', color: colors.textSecondary, margin: '0 0 24px 0' }}>
@@ -222,7 +251,9 @@ export default function AssetPositionDetailPage() {
   }
 
   return (
-    <div style={{ maxWidth: '1000px', margin: '0 auto', padding: `${spacing.xl}px ${spacing.base}px` }}>
+    <div
+      style={{ maxWidth: '1000px', margin: '0 auto', padding: `${spacing.xl}px ${spacing.base}px` }}
+    >
       {/* 1. Header with Breadcrumbs and Completeness Warning */}
       <AssetPositionHeader
         ticker={viewModel.header.ticker}
@@ -259,7 +290,9 @@ export default function AssetPositionDetailPage() {
         hasNextPage={hasNextPage}
         isFetchingNextPage={isFetchingNextPage}
         onLoadMore={() => fetchNextPage()}
-        loadMoreError={isHistoryError ? historyError?.message || 'Erro ao carregar mais eventos' : null}
+        loadMoreError={
+          isHistoryError ? historyError?.message || 'Erro ao carregar mais eventos' : null
+        }
       />
     </div>
   );

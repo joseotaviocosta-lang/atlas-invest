@@ -1,5 +1,4 @@
-﻿import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { apiClient, ApiError } from '@/api/client';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAuthStore } from '@/stores/auth.store';
 import {
   mapToAssetPositionDetailViewModel,
@@ -113,7 +112,12 @@ describe('Web: Asset Position Detail Integration & Replay (Phase 2B)', () => {
       state: mockState,
       historyItems: mockHistoryItems,
       historyMeta: mockHistoryMeta,
-      portfolioMeta: { id: portfolioId, name: 'Minha Carteira', type: 'PERSONAL', baseCurrency: 'BRL' },
+      portfolioMeta: {
+        id: portfolioId,
+        name: 'Minha Carteira',
+        type: 'PERSONAL',
+        baseCurrency: 'BRL',
+      },
       accountsMeta: [{ id: accountId1, name: 'XP Investimentos' }],
       assetMeta: { id: assetPetr4, ticker: 'PETR4', name: 'Petrobras PN', type: 'EQUITY' },
     });

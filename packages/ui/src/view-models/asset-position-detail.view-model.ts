@@ -184,8 +184,15 @@ export function mapToAssetPositionDetailViewModel(params: {
   readonly accountsMeta?: Record<string, AccountMeta> | readonly AccountMeta[] | null;
   readonly assetMeta?: AssetMeta | null;
 }): AssetPositionDetailViewModel {
-  const { assetId, state, historyItems = [], historyMeta, portfolioMeta, accountsMeta, assetMeta } =
-    params;
+  const {
+    assetId,
+    state,
+    historyItems = [],
+    historyMeta,
+    portfolioMeta,
+    accountsMeta,
+    assetMeta,
+  } = params;
 
   const portfolioId = state.portfolioId;
   const portfolioName = portfolioMeta?.name || 'Minha Carteira';
@@ -427,7 +434,8 @@ export function mapToAssetPositionDetailViewModel(params: {
           status?: 'MATCHED' | 'UNMATCHED_IN' | 'UNMATCHED_OUT';
           costBasisStatus?: 'KNOWN' | 'INCOMPLETE';
         };
-        kindLabel = tr.type === 'TRANSFER_IN' ? 'Transferência de Entrada' : 'Transferência de Saída';
+        kindLabel =
+          tr.type === 'TRANSFER_IN' ? 'Transferência de Entrada' : 'Transferência de Saída';
         quantity = tr.quantity ? formatQuantity(tr.quantity) : null;
         status = tr.status || null;
         isItemIncomplete = tr.costBasisStatus === 'INCOMPLETE';

@@ -460,7 +460,7 @@ export default function PortfolioPage() {
                               <PositionRow
                                 key={position.assetId}
                                 position={position}
-                                portfolioId={activePortfolioId}
+                                portfolioId={activePortfolio?.id}
                               />
                             ))}
                           </div>
