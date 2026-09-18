@@ -201,9 +201,7 @@ function TimelineEventCard({ item, portfolioId }: TimelineEventCardProps) {
           >
             <Badge variant={mapBadgeVariant(item.badgeVariant)}>{item.kindLabel}</Badge>
 
-            {item.statusBadgeLabel && (
-              <Badge variant="warning">{item.statusBadgeLabel}</Badge>
-            )}
+            {item.statusBadgeLabel && <Badge variant="warning">{item.statusBadgeLabel}</Badge>}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>

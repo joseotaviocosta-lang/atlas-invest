@@ -36,11 +36,7 @@ const PERIOD_OPTIONS: Array<{
   { id: 'year', label: 'Ano atual' },
 ];
 
-export function MobileHistoryFilters({
-  filters,
-  onChange,
-  accounts,
-}: MobileHistoryFiltersProps) {
+export function MobileHistoryFilters({ filters, onChange, accounts }: MobileHistoryFiltersProps) {
   const hasActiveFilters =
     filters.period !== 'all' || Boolean(filters.type) || Boolean(filters.accountId);
 

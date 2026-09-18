@@ -2,8 +2,8 @@
 
 Plataforma completa de gestão de investimentos para investidores brasileiros.
 
-> **Status Atual: Fase 2B — Asset Position Details (Concluída)**  
-> Esta fase implementa a visão analítica de detalhamento de ativo (Web e Mobile) alimentada diretamente pelo Portfolio Engine 1.0 Release Candidate (`@atlas/portfolio-engine` v1.0.0-rc.1) e pela Portfolio Read API v1 (`GET /state`, `GET /accounts`, `GET /history?assetId=...`). Apresenta posição consolidada, segregação de custódia por instituição, resultado realizado em alienações, rendimentos creditados e extrato auditável de eventos paginado por keyset cursor, mantendo estrita semântica de _zero client-side financial math_ e tratamento não-alarmista de custo incompleto (ADR-075 a ADR-077).
+> **Status Atual: Fase 2C — Portfolio History & Activity (Concluída)**  
+> Esta fase implementa a visão cronológica consolidada de histórico e atividades da carteira (Web e Mobile) alimentada diretamente pelo Portfolio Engine 1.0 Release Candidate (`@atlas/portfolio-engine` v1.0.0-rc.1) e pela Portfolio Read API v1 (`GET /api/v1/portfolios/:portfolioId/history`). Apresenta timeline auditável paginada por keyset cursor, filtros de período, tipo de evento, conta de custódia e ativo, agrupamento civil por data, prevenção estrita de links quebrados para posições encerradas e conformidade rigorosa com _zero client-side financial math_ (ADR-078 a ADR-080).
 
 ---
 

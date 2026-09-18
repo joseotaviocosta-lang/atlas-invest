@@ -114,3 +114,35 @@ A Fase 2B expande a Carteira MVP oferecendo a tela de **Asset Position Details**
 - **Invariantes e Zero Client Math:**
   - O cliente nunca calcula multiplicações de quantidade por preço médio nem realiza somas financeiras.
   - Posições encerradas (`quantity === '0'`) continuam acessíveis no detalhamento histórico com badge `POSIÇÃO ENCERRADA`.
+
+---
+
+## 8. Histórico e Atividade Consolidada da Carteira (Fase 2C)
+
+A Fase 2C entrega a visão cronológica unificada de **Portfolio History & Activity**, acessada via botão secundário "Histórico" na tela principal da Carteira:
+
+- **Rotas:**
+  - **Web:** `/portfolio/history?portfolioId=:portfolioId`
+  - **Mobile:** `/(app)/portfolio/history?portfolioId=:portfolioId`
+- **Contrato Oficial Consumido:**
+  - `GET /api/v1/portfolios/:portfolioId/history?type=&from=&to=&accountId=&assetId=&cursor=&limit=25`
+- **Filtros Oficiais Suportados:**
+  - **Período:** Presets rápidos (30 dias, 90 dias, ano atual, todo período) ou intervalo civil personalizado (`from`/`to` no formato `YYYY-MM-DD`).
+  - **Tipo de Evento:** Vendas (`realized`), Rendimentos (`income`), Movimentações de Caixa (`cash-flow`), Eventos Corporativos (`corporate-action`) e Transferências (`transfer`).
+  - **Conta de Custódia:** Filtro por instituição/corretora cadastrada na carteira (`accountId`).
+  - **Ativo:** Filtro por ativo custodiado na carteira (`assetId`).
+- **Paginação por Keyset Cursor:**
+  - Consome o cursor opaco `meta.nextCursor` fornecido pela API sem qualquer decodificação no cliente.
+  - Qualquer alteração nos filtros invalida o cursor e reseta a listagem para a primeira página.
+  - Em caso de falha de conexão no carregamento de páginas adicionais, os eventos previamente carregados permanecem preservados e visíveis.
+- **Taxonomia Canônica de Eventos (ADR-080):**
+  - Vendas (`REALIZED_DISPOSAL`): "Venda".
+  - Rendimentos (`INCOME`): "Dividendo", "JCP", "Rendimento FII".
+  - Caixa (`CASH_FLOW`): "Aporte", "Retirada", "Taxa", "Tributo pago" (nunca "Imposto devido"), "Amortização" ("Devolução de capital").
+  - Eventos Corporativos (`CORPORATE_ACTION`): "Desdobramento", "Grupamento", "Bonificação", "Subscrição", "Amortização".
+  - Transferências (`TRANSFER`): "Transferência de entrada", "Transferência de saída" (badge "Transferência incompleta" se despareada).
+- **Segurança de Navegação para Posições Encerradas:**
+  - O link para detalhes da posição (`/portfolio/assets/[assetId]`) é oferecido exclusivamente se o ativo possui posição em aberto no momento atual (`quantity > 0`). Posições encerradas exibem o identificador estático sem conduzir a telas enganosas.
+- **Anti-Escopo Mantido:**
+  - Proibidos cabeçalhos arbitrários de "Total movimentado" ou "Fluxo líquido consolidado".
+  - Proibida qualquer inferência tributária, apuração de DARF ou cálculo de rentabilidade/performance.

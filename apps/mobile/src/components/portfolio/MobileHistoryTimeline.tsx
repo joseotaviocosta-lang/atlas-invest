@@ -67,9 +67,7 @@ export function MobileHistoryTimeline({
                 portfolioId={portfolioId}
                 onPressAsset={() => {
                   if (item.canNavigateToAsset && item.assetId) {
-                    router.push(
-                      `/(app)/portfolio/${item.assetId}?portfolioId=${portfolioId}`,
-                    );
+                    router.push(`/(app)/portfolio/${item.assetId}?portfolioId=${portfolioId}`);
                   }
                 }}
               />
@@ -111,10 +109,7 @@ interface MobileTimelineEventCardProps {
   onPressAsset: () => void;
 }
 
-function MobileTimelineEventCard({
-  item,
-  onPressAsset,
-}: MobileTimelineEventCardProps) {
+function MobileTimelineEventCard({ item, onPressAsset }: MobileTimelineEventCardProps) {
   const isNegative = item.badgeVariant === 'negative';
   const isPositive = item.badgeVariant === 'positive';
   const amountColor = isNegative
@@ -144,8 +139,8 @@ function MobileTimelineEventCard({
       <View style={styles.cardBodyRow}>
         {/* Left: Asset / Account / Secondary */}
         <View style={styles.leftColumn}>
-          {item.assetTicker && (
-            item.canNavigateToAsset ? (
+          {item.assetTicker &&
+            (item.canNavigateToAsset ? (
               <TouchableOpacity
                 onPress={onPressAsset}
                 style={styles.assetLinkTouchTarget}
@@ -168,8 +163,7 @@ function MobileTimelineEventCard({
                   </Text>
                 )}
               </View>
-            )
-          )}
+            ))}
 
           <Text style={styles.accountText}>{item.accountName}</Text>
 
@@ -183,9 +177,7 @@ function MobileTimelineEventCard({
           {item.amount && (
             <Text style={[styles.amountText, { color: amountColor }]}>{item.amount}</Text>
           )}
-          {item.quantity && (
-            <Text style={styles.quantityText}>Qtd: {item.quantity}</Text>
-          )}
+          {item.quantity && <Text style={styles.quantityText}>Qtd: {item.quantity}</Text>}
         </View>
       </View>
     </Card>

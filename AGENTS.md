@@ -526,3 +526,34 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 
 5. **ANTI-ESCOPO ESTATUÁRIO:**
    - Mantém-se a proibição estrita de cotações em tempo real, valor de mercado, P&L não realizado, TWR/XIRR e cálculos fiscais (DARF/IRPF) antes da conclusão de seus respectivos engines especializados.
+
+---
+
+## 21. Regras de Interface, Histórico e Atividade da Carteira (Fase 2C)
+
+1. **CONSUMO EXCLUSIVO DO ENDPOINT CONGELADO DE HISTÓRICO:**
+   - O histórico da carteira deve consumir exclusivamente o endpoint oficial `GET /api/v1/portfolios/:portfolioId/history`.
+   - É terminantemente vedado acessar ou reconstituir transações do livro-razão bruto no cliente.
+
+2. **OPACIDADE E INTEGRIDADE DO CURSOR DE PAGINAÇÃO (ADR-079):**
+   - Os cursores de histórico (`meta.nextCursor`) são tratados como strings puramente opacas.
+   - O cliente **nunca** decodifica, compõe, modifica ou assume estrutura interna para os cursores.
+   - Qualquer alteração nos filtros da timeline invalida e redefine o cursor para a primeira página, sem misturar páginas obsoletas.
+
+3. **FILTRAGEM EXCLUSIVAMENTE VIA FILTROS OFICIAIS DO SERVIDOR:**
+   - O cliente não substitui filtros server-side suportados por filtragem manual client-side sobre um lote parcial de dados.
+   - Todos os filtros de período (`from`/`to`), tipo (`type`), conta de custódia (`accountId`) e ativo (`assetId`) são encaminhados como query parameters oficiais para a API.
+
+4. **ZERO CLIENT FINANCIAL MATH E PROIBIÇÃO DE TOTAIS ARBITRÁRIOS (ADR-077, ADR-080):**
+   - A interface e o ViewModel de atividade não realizam somas, subtrações ou agregações de fluxos de caixa, ganhos acumulados, saldos ou impostos.
+   - É expressamente vedado calcular ou exibir cabeçalhos agregados como "Total movimentado", "Fluxo líquido" ou "Rentabilidade do período".
+
+5. **TERMINOLOGIA CANÔNICA E CONFORMIDADE FISCAL (ADR-080):**
+   - Eventos de tributos (`TAX`) devem ser estritamente rotulados como **"Tributo pago"** (ou "Pagamento de tributo"), **nunca** como "Imposto devido".
+   - Eventos de subscrição corporativa (`SUBSCRIPTION`) são rotulados como **"Subscrição"**, nunca como compra em mercado comum.
+   - Eventos de transferência (`TRANSFER`) indicam movimentação de custódia e exibem o badge **"Transferência incompleta"** quando despareados (`UNMATCHED`).
+   - Eventos de amortização (`AMORTIZATION`) exibem o subtítulo contextual **"Devolução de capital"**.
+   - Eventos de alienação (`REALIZED_DISPOSAL`) são rotulados como **"Venda"**, nunca "Proventos da venda".
+
+6. **SEGURANÇA DE NAVEGAÇÃO PARA POSIÇÕES ENCERRADAS (ADR-078):**
+   - Eventos históricos vinculados a ativos cujas posições encontram-se encerradas (`quantity === '0'` ou sem posição aberta no estado atual) não devem fornecer links para a tela de detalhe de posição aberta, prevenindo erros de "posição não encontrada" ou redirecionamentos enganosos.

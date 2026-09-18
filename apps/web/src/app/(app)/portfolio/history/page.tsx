@@ -179,7 +179,15 @@ function PortfolioHistoryContent() {
       accountsMeta: accountsData,
       assetsMeta: assetsMetaMap,
     });
-  }, [activePortfolioId, activePortfolio?.name, historyItems, lastMeta, stateData, accountsData, assetsMetaMap]);
+  }, [
+    activePortfolioId,
+    activePortfolio?.name,
+    historyItems,
+    lastMeta,
+    stateData,
+    accountsData,
+    assetsMetaMap,
+  ]);
 
   const hasActiveFilters =
     filters.period !== 'all' ||
@@ -371,4 +379,3 @@ export default function PortfolioHistoryPage() {
     </React.Suspense>
   );
 }
-

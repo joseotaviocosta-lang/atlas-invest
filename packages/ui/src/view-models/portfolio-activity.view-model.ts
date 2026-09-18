@@ -1,9 +1,5 @@
 import { formatCurrency, formatQuantity, formatDate } from '../formatters';
-import {
-  PortfolioStateDto,
-  AccountMeta,
-  MoneyDto,
-} from './portfolio-overview.view-model';
+import { PortfolioStateDto, AccountMeta, MoneyDto } from './portfolio-overview.view-model';
 import {
   AssetMeta,
   PortfolioHistoryItemDto,
@@ -11,12 +7,7 @@ import {
 } from './asset-position-detail.view-model';
 
 export type PortfolioActivityKind =
-  | 'REALIZED_DISPOSAL'
-  | 'INCOME'
-  | 'CASH_FLOW'
-  | 'CORPORATE_ACTION'
-  | 'TRANSFER'
-  | 'BUY';
+  'REALIZED_DISPOSAL' | 'INCOME' | 'CASH_FLOW' | 'CORPORATE_ACTION' | 'TRANSFER' | 'BUY';
 
 export type ActivityBadgeVariant = 'neutral' | 'positive' | 'negative' | 'warning' | 'info';
 

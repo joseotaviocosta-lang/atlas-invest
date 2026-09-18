@@ -1,12 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  RefreshControl,
-  TouchableOpacity,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import {
@@ -18,11 +11,7 @@ import {
   PortfolioHistoryPaginationMetaDto,
   AssetMeta,
 } from '@atlas/ui';
-import {
-  Screen,
-  LoadingState,
-  ErrorState,
-} from '../../../src/components/ui';
+import { Screen, LoadingState, ErrorState } from '../../../src/components/ui';
 import {
   MobileHistoryFilters,
   MobileHistoryTimeline,
@@ -191,7 +180,15 @@ export default function MobilePortfolioHistoryScreen() {
       accountsMeta: accounts,
       assetsMeta: assetsMetaMap,
     });
-  }, [activePortfolioId, activePortfolio?.name, historyItems, lastMeta, stateData, accounts, assetsMetaMap]);
+  }, [
+    activePortfolioId,
+    activePortfolio?.name,
+    historyItems,
+    lastMeta,
+    stateData,
+    accounts,
+    assetsMetaMap,
+  ]);
 
   const hasActiveFilters =
     filters.period !== 'all' || Boolean(filters.type) || Boolean(filters.accountId);
@@ -231,11 +228,7 @@ export default function MobilePortfolioHistoryScreen() {
         </View>
 
         {/* Filter Chips Bar */}
-        <MobileHistoryFilters
-          filters={filters}
-          onChange={setFilters}
-          accounts={accounts}
-        />
+        <MobileHistoryFilters filters={filters} onChange={setFilters} accounts={accounts} />
 
         {/* Loading State */}
         {(isPortfoliosLoading || (isHistoryLoading && !historyPages)) && (
