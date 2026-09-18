@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, ApiError } from '@/api/client';
 import { PortfolioDto, PortfolioType } from '@/api/types';
@@ -351,9 +352,19 @@ export default function PortfolioPage() {
                               {overviewViewModel.header.name}
                             </h2>
                           </div>
-                          <Badge variant={getBadgeVariant(activePortfolio.type)}>
-                            {overviewViewModel.header.typeLabel}
-                          </Badge>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Badge variant={getBadgeVariant(activePortfolio.type)}>
+                              {overviewViewModel.header.typeLabel}
+                            </Badge>
+                            <Link
+                              href={`/portfolio/history?portfolioId=${activePortfolio.id}`}
+                              style={{ textDecoration: 'none' }}
+                            >
+                              <Button variant="secondary" size="sm">
+                                Histórico
+                              </Button>
+                            </Link>
+                          </div>
                         </div>
 
                         <div

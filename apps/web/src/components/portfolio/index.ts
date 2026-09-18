@@ -7,3 +7,5 @@ export * from './AssetCustodyBreakdown';
 export * from './AssetRealizedSection';
 export * from './AssetIncomeSection';
 export * from './AssetHistorySection';
+export * from './PortfolioHistoryFilters';
+export * from './PortfolioHistoryTimeline';

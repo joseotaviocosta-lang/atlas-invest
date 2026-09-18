@@ -93,7 +93,7 @@ export function formatCivilDateHeader(dateStr: string): string {
   if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     return formatDate(dateStr);
   }
-  const [yearStr, monthStr, dayStr] = dateStr.split('-');
+  const [yearStr = '', monthStr = '', dayStr = ''] = dateStr.split('-');
   const year = parseInt(yearStr, 10);
   const monthIdx = parseInt(monthStr, 10) - 1;
   const day = parseInt(dayStr, 10);
