@@ -369,6 +369,16 @@ test.describe('Product Shell & Canonical End-to-End Suite', () => {
     await page.locator('nav[aria-label="Navegação estrutural"] a:has-text("Carteira")').click();
     await expect(page).toHaveURL(/.*portfolio/);
 
+    // Portfolio History Drilldown (Phase 2C)
+    await page.locator('a[href*="/portfolio/history"]').first().click();
+    await expect(page).toHaveURL(/.*portfolio\/history/);
+    await expect(page.locator('h1')).toContainText('Histórico de Atividades');
+    await expect(page.locator('text=Filtros').first()).toBeVisible();
+
+    // Navigate back to Carteira
+    await page.locator('nav[aria-label="Breadcrumb"] a:has-text("Carteira")').click();
+    await expect(page).toHaveURL(/.*portfolio/);
+
     // Mercado
     await page.locator('nav a[href="/market"]:visible').click();
     await expect(page).toHaveURL(/.*market/);
