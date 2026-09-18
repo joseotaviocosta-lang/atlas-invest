@@ -114,13 +114,6 @@ export interface PortfolioOverviewPositionItem {
   readonly accounts: readonly PositionAccountBreakdownItem[];
 }
 
-export interface KnownCostCardItem {
-  readonly currency: string;
-  readonly formattedAmount: string;
-  readonly label: string;
-  readonly hasIncompletePositions: boolean;
-}
-
 export interface RealizedResultCardItem {
   readonly currency: string;
   readonly formattedAmount: string;
@@ -159,7 +152,6 @@ export interface PortfolioOverviewViewModel {
   };
   readonly summaryCards: {
     readonly openPositionsCount: number;
-    readonly knownTotalCost: readonly KnownCostCardItem[];
     readonly realizedResult: readonly RealizedResultCardItem[];
     readonly incomeReceived: readonly IncomeReceivedCardItem[];
   };
@@ -177,32 +169,6 @@ const TYPE_LABELS: Record<string, string> = {
   COMPANY: 'Empresa',
   SIMULATION: 'Simulação',
 };
-
-/**
- * Adds two decimal string amounts safely using BigInt without floating point loss.
- */
-function addDecimalStrings(a: string, b: string): string {
-  const [aInt = '0', aFrac = ''] = a.trim().split('.');
-  const [bInt = '0', bFrac = ''] = b.trim().split('.');
-
-  const maxFrac = Math.max(aFrac.length, bFrac.length);
-  const aPadded = aInt + aFrac.padEnd(maxFrac, '0');
-  const bPadded = bInt + bFrac.padEnd(maxFrac, '0');
-
-  const sumBig = BigInt(aPadded) + BigInt(bPadded);
-  const sumStr = sumBig.toString();
-
-  if (maxFrac === 0) {
-    return sumStr;
-  }
-
-  const paddedSum = sumStr.padStart(maxFrac + 1, '0');
-  const splitIdx = paddedSum.length - maxFrac;
-  const resInt = paddedSum.slice(0, splitIdx);
-  const resFrac = paddedSum.slice(splitIdx).replace(/0+$/, '');
-
-  return resFrac.length > 0 ? `${resInt}.${resFrac}` : resInt;
-}
 
 /**
  * Transforms a PortfolioStateDto into a pure, presentation-ready PortfolioOverviewViewModel.
@@ -298,42 +264,7 @@ export function mapToPortfolioOverviewViewModel(
   // Sort positions stably by displayIdentifier ASC
   positions.sort((a, b) => a.displayIdentifier.localeCompare(b.displayIdentifier));
 
-  // Summary Card 1: Known Total Cost per currency
-  // Group positions by currency and aggregate known totalCost.amount
-  const costByCurrency = new Map<string, { totalAmount: string; hasIncomplete: boolean }>();
-  for (const pos of state.positions) {
-    const currency = pos.currency || pos.totalCost?.currency || baseCurrency;
-    const current = costByCurrency.get(currency) || { totalAmount: '0', hasIncomplete: false };
-
-    if (pos.costBasisStatus === 'KNOWN' && pos.totalCost?.amount) {
-      current.totalAmount = addDecimalStrings(current.totalAmount, pos.totalCost.amount);
-    } else {
-      current.hasIncomplete = true;
-    }
-    costByCurrency.set(currency, current);
-  }
-
-  const knownTotalCost: KnownCostCardItem[] = [];
-  for (const [currency, data] of costByCurrency.entries()) {
-    knownTotalCost.push({
-      currency,
-      formattedAmount: formatCurrency(data.totalAmount, currency),
-      label: data.hasIncomplete ? 'Custo total conhecido' : 'Custo total',
-      hasIncompletePositions: data.hasIncomplete,
-    });
-  }
-  // If no positions, provide base currency with 0
-  if (knownTotalCost.length === 0) {
-    knownTotalCost.push({
-      currency: baseCurrency,
-      formattedAmount: formatCurrency('0', baseCurrency),
-      label: 'Custo total',
-      hasIncompletePositions: false,
-    });
-  }
-  knownTotalCost.sort((a, b) => a.currency.localeCompare(b.currency));
-
-  // Summary Card 2: Realized Result per currency
+  // Summary Card 1: Realized Result per currency (from official API summaries)
   const realizedResult: RealizedResultCardItem[] = state.realizedSummaries.map((summary) => {
     const amountStr = summary.realizedGainLoss?.amount ?? '0';
     const isNegative = amountStr.startsWith('-');
@@ -398,7 +329,6 @@ export function mapToPortfolioOverviewViewModel(
     completenessNotice,
     summaryCards: {
       openPositionsCount: positions.length,
-      knownTotalCost,
       realizedResult,
       incomeReceived,
     },

@@ -411,7 +411,6 @@ export default function PortfolioPage() {
                       {/* Summary Cards */}
                       <PortfolioSummaryCards
                         openPositionsCount={overviewViewModel.summaryCards.openPositionsCount}
-                        knownTotalCost={overviewViewModel.summaryCards.knownTotalCost}
                         realizedResult={overviewViewModel.summaryCards.realizedResult}
                         incomeReceived={overviewViewModel.summaryCards.incomeReceived}
                       />

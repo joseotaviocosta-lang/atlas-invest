@@ -2,18 +2,16 @@
 
 import React from 'react';
 import { colors, spacing, borderRadius } from '@atlas/ui';
-import { KnownCostCardItem, RealizedResultCardItem, IncomeReceivedCardItem } from '@atlas/ui';
+import { RealizedResultCardItem, IncomeReceivedCardItem } from '@atlas/ui';
 
 export interface PortfolioSummaryCardsProps {
   openPositionsCount: number;
-  knownTotalCost: readonly KnownCostCardItem[];
   realizedResult: readonly RealizedResultCardItem[];
   incomeReceived: readonly IncomeReceivedCardItem[];
 }
 
 export function PortfolioSummaryCards({
   openPositionsCount,
-  knownTotalCost,
   realizedResult,
   incomeReceived,
 }: PortfolioSummaryCardsProps) {
@@ -64,67 +62,7 @@ export function PortfolioSummaryCards({
         </span>
       </div>
 
-      {/* 2. Custo Total Conhecido */}
-      <div
-        style={{
-          backgroundColor: colors.surface,
-          border: `1px solid ${colors.border}`,
-          borderRadius: `${borderRadius.lg}px`,
-          padding: `${spacing.base}px`,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '6px',
-        }}
-      >
-        <span
-          style={{
-            fontSize: '0.8125rem',
-            fontWeight: 500,
-            color: colors.textSecondary,
-          }}
-        >
-          {knownTotalCost.some((c) => c.hasIncompletePositions)
-            ? 'Custo total conhecido'
-            : 'Custo total'}
-        </span>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          {knownTotalCost.map((cost) => (
-            <div
-              key={cost.currency}
-              style={{
-                display: 'flex',
-                alignItems: 'baseline',
-                justifyContent: 'space-between',
-              }}
-            >
-              <span
-                style={{
-                  fontSize: '1.5rem',
-                  fontWeight: 700,
-                  color: colors.textPrimary,
-                  letterSpacing: '-0.3px',
-                }}
-              >
-                {cost.formattedAmount}
-              </span>
-              <span
-                style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  color: colors.textMuted,
-                }}
-              >
-                {cost.currency}
-              </span>
-            </div>
-          ))}
-        </div>
-        <span style={{ fontSize: '0.75rem', color: colors.textMuted }}>
-          Capital alocado pelo custo de aquisição
-        </span>
-      </div>
-
-      {/* 3. Resultado Realizado */}
+      {/* 2. Resultado Realizado */}
       <div
         style={{
           backgroundColor: colors.surface,

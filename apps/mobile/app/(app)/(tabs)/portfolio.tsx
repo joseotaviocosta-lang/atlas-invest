@@ -237,7 +237,6 @@ export default function PortfolioScreen() {
                 {/* Summary Cards */}
                 <PortfolioSummaryCards
                   openPositionsCount={viewModel.summaryCards.openPositionsCount}
-                  knownTotalCost={viewModel.summaryCards.knownTotalCost}
                   realizedResult={viewModel.summaryCards.realizedResult}
                   incomeReceived={viewModel.summaryCards.incomeReceived}
                 />

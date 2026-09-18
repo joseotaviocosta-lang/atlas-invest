@@ -113,13 +113,12 @@ describe('UI View Model: Portfolio Overview (Phase 2A)', () => {
       expect(vm.completenessNotice.hasIncompletePositions).toBe(false);
       expect(vm.completenessNotice.message).toBeNull();
 
-      // Summary: Known Total Cost
-      expect(vm.summaryCards.knownTotalCost).toHaveLength(1);
-      expect(vm.summaryCards.knownTotalCost[0].currency).toBe('BRL');
-      expect(vm.summaryCards.knownTotalCost[0].formattedAmount).toBe('R$ 6.200,00');
-      expect(vm.summaryCards.knownTotalCost[0].label).toBe('Custo total');
+      // Summary cards (strictly from API summaries, zero client math)
+      expect(vm.summaryCards.openPositionsCount).toBe(2);
+      expect(vm.summaryCards.realizedResult).toHaveLength(0);
+      expect(vm.summaryCards.incomeReceived).toHaveLength(0);
 
-      // Positions
+      // Positions (carrying individual cost basis from engine)
       expect(vm.positions).toHaveLength(2);
       const petr4 = vm.positions.find((p) => p.assetId === assetPetr4)!;
       expect(petr4.quantity).toBe('100');
@@ -186,10 +185,6 @@ describe('UI View Model: Portfolio Overview (Phase 2A)', () => {
       expect(pos.totalCost).toBe('—');
       expect(pos.accounts[0].averageCost).toBe('—');
       expect(pos.accounts[0].totalCost).toBe('—');
-
-      // Summary label reflects incomplete knowledge
-      expect(vm.summaryCards.knownTotalCost[0].label).toBe('Custo total conhecido');
-      expect(vm.summaryCards.knownTotalCost[0].hasIncompletePositions).toBe(true);
     });
 
     it('segregates multi-currency positions (BRL and USD) without cross-converting', () => {
@@ -261,14 +256,7 @@ describe('UI View Model: Portfolio Overview (Phase 2A)', () => {
 
       const vm = mapToPortfolioOverviewViewModel(state, null, null);
 
-      // Known cost by currency
-      expect(vm.summaryCards.knownTotalCost).toHaveLength(2);
-      expect(vm.summaryCards.knownTotalCost[0].currency).toBe('BRL');
-      expect(vm.summaryCards.knownTotalCost[0].formattedAmount).toBe('R$ 3.000,00');
-      expect(vm.summaryCards.knownTotalCost[1].currency).toBe('USD');
-      expect(vm.summaryCards.knownTotalCost[1].formattedAmount).toBe('USD 1.500,00');
-
-      // Realized results by currency
+      // Realized results by currency (strictly from API summaries)
       expect(vm.summaryCards.realizedResult).toHaveLength(2);
       const brlRealized = vm.summaryCards.realizedResult.find((r) => r.currency === 'BRL')!;
       expect(brlRealized.formattedAmount).toBe('R$ 990,00');

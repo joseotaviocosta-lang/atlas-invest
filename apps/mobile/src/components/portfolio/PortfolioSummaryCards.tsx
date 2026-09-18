@@ -1,24 +1,20 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { themeTokens } from '@atlas/ui';
-import { KnownCostCardItem, RealizedResultCardItem, IncomeReceivedCardItem } from '@atlas/ui';
+import { RealizedResultCardItem, IncomeReceivedCardItem } from '@atlas/ui';
 import { Card } from '../ui/Card';
 
 export interface PortfolioSummaryCardsProps {
   openPositionsCount: number;
-  knownTotalCost: readonly KnownCostCardItem[];
   realizedResult: readonly RealizedResultCardItem[];
   incomeReceived: readonly IncomeReceivedCardItem[];
 }
 
 export function PortfolioSummaryCards({
   openPositionsCount,
-  knownTotalCost,
   realizedResult,
   incomeReceived,
 }: PortfolioSummaryCardsProps) {
-  const isCostIncomplete = knownTotalCost.some((c) => c.hasIncompletePositions);
-
   return (
     <View style={styles.container}>
       {/* 1. Posições Abertas */}
@@ -30,20 +26,6 @@ export function PortfolioSummaryCards({
             ? '1 ativo em custódia'
             : `${openPositionsCount} ativos em custódia`}
         </Text>
-      </Card>
-
-      {/* 2. Custo Total Conhecido */}
-      <Card style={styles.card}>
-        <Text style={styles.label}>
-          {isCostIncomplete ? 'Custo total conhecido' : 'Custo total'}
-        </Text>
-        {knownTotalCost.map((cost) => (
-          <View key={cost.currency} style={styles.currencyRow}>
-            <Text style={styles.mainValue}>{cost.formattedAmount}</Text>
-            <Text style={styles.currencyCode}>{cost.currency}</Text>
-          </View>
-        ))}
-        <Text style={styles.subText}>Capital alocado pelo custo</Text>
       </Card>
 
       {/* 3. Resultado Realizado */}

@@ -109,8 +109,7 @@ describe('Web: Portfolio Overview Integration & Replay Consumption (Phase 2A)', 
     expect(vm.header.openPositionsCount).toBe(1);
     expect(vm.completenessNotice.hasIncompletePositions).toBe(false);
 
-    // Summary cards
-    expect(vm.summaryCards.knownTotalCost[0].formattedAmount).toBe('R$ 3.200,00');
+    // Summary cards (strictly from API summaries)
     expect(vm.summaryCards.realizedResult[0].formattedAmount).toBe('R$ 295,00');
     expect(vm.summaryCards.incomeReceived[0].formattedAmount).toBe('R$ 100,00');
 
@@ -161,7 +160,6 @@ describe('Web: Portfolio Overview Integration & Replay Consumption (Phase 2A)', 
     expect(pos.costBasisStatus).toBe('INCOMPLETE');
     expect(pos.averageCost).toBe('—');
     expect(pos.totalCost).toBe('—');
-    expect(vm.summaryCards.knownTotalCost[0].label).toBe('Custo total conhecido');
   });
 
   it('handles 422 PORTFOLIO.REPLAY_FAILED error properly without exposing internal details', async () => {
