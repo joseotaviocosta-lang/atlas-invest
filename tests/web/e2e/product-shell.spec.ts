@@ -253,6 +253,59 @@ test.describe('Product Shell & Canonical End-to-End Suite', () => {
         }),
       });
     });
+
+    await page.route('**/api/v1/portfolios/*/history*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            {
+              id: 'hist-1',
+              kind: 'REALIZED_DISPOSAL',
+              transactionId: 'tx-disp-1',
+              tradeDate: '2026-02-15T14:30:00Z',
+              accountId: 'acc-1',
+              assetId: 'PETR4',
+              currency: 'BRL',
+              details: {
+                quantity: '50',
+                grossProceeds: { amount: '1500.00', currency: 'BRL' },
+                sellingCosts: { amount: '5.00', currency: 'BRL' },
+                netProceeds: { amount: '1495.00', currency: 'BRL' },
+                costBasisRemoved: { amount: '1200.00', currency: 'BRL' },
+                realizedGainLoss: { amount: '295.00', currency: 'BRL' },
+                realizedReturnPercentage: '24.58',
+                status: 'KNOWN',
+              },
+            },
+          ],
+          meta: {
+            limit: 20,
+            cursor: null,
+            nextCursor: null,
+            hasMore: false,
+            totalCount: 1,
+          },
+        }),
+      });
+    });
+
+    await page.route('**/api/v1/assets/*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 'PETR4',
+            ticker: 'PETR4',
+            name: 'Petróleo Brasileiro S.A.',
+            type: 'EQUITY',
+            currency: 'BRL',
+          },
+        }),
+      });
+    });
   });
 
   test('Complete Flow: Register -> Onboarding -> Today -> Tabs -> Logout', async ({ page }) => {
@@ -302,6 +355,19 @@ test.describe('Product Shell & Canonical End-to-End Suite', () => {
     await expect(page.locator('text=PETR4')).toBeVisible();
     await expect(page.locator('button[role="tab"]:has-text("Ativos")')).toBeVisible();
     await expect(page.locator('button[role="tab"]:has-text("Rentabilidade")')).toBeVisible();
+
+    // Asset Position Detail Drilldown (Phase 2B)
+    await page.locator('a:has-text("PETR4")').first().click();
+    await expect(page).toHaveURL(/.*portfolio\/assets\/PETR4/);
+    await expect(page.locator('h1')).toContainText('PETR4');
+    await expect(page.locator('text=Quantidade atual')).toBeVisible();
+    await expect(page.locator('text=Preço médio').first()).toBeVisible();
+    await expect(page.locator('text=Corretora XP').first()).toBeVisible();
+    await expect(page.locator('text=Histórico do Ativo')).toBeVisible();
+
+    // Navigate back via Breadcrumb
+    await page.locator('nav[aria-label="Navegação estrutural"] a:has-text("Carteira")').click();
+    await expect(page).toHaveURL(/.*portfolio/);
 
     // Mercado
     await page.locator('nav a[href="/market"]:visible').click();

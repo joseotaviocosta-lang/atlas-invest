@@ -34,13 +34,15 @@ export default function AssetPositionDetailPage() {
   const portfolioIdParam = searchParams.get('portfolioId');
 
   // 1. Fetch user portfolios to resolve portfolio context
-  const { data: portfoliosData, isLoading: isPortfoliosLoading } = useQuery({
+  const { data: portfolios = [], isLoading: isPortfoliosLoading } = useQuery({
     queryKey: ['portfolios'],
-    queryFn: () => apiClient.get<{ data: PortfolioDto[] }>('/api/v1/portfolios'),
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: PortfolioDto[] }>('/api/v1/portfolios');
+      return res.data;
+    },
     staleTime: 60_000,
   });
 
-  const portfolios = portfoliosData?.data || [];
   const activePortfolioId = portfolioIdParam || portfolios[0]?.id || '';
   const activePortfolio =
     portfolios.find((p) => p.id === activePortfolioId) || portfolios[0] || null;
@@ -54,27 +56,43 @@ export default function AssetPositionDetailPage() {
     refetch: refetchState,
   } = useQuery({
     queryKey: ['portfolio-state', activePortfolioId],
-    queryFn: () =>
-      apiClient.get<{ data: PortfolioStateDto }>(`/api/v1/portfolios/${activePortfolioId}/state`),
+    queryFn: async () => {
+      if (!activePortfolioId) return null;
+      const res = await apiClient.get<{ data: PortfolioStateDto }>(
+        `/api/v1/portfolios/${activePortfolioId}/state`,
+      );
+      return res.data;
+    },
     enabled: Boolean(activePortfolioId),
     staleTime: 30_000,
   });
 
   // 3. Fetch portfolio account metadata
-  const { data: accountsData } = useQuery({
+  const { data: accountsData = [] } = useQuery({
     queryKey: ['portfolio-accounts', activePortfolioId],
-    queryFn: () =>
-      apiClient.get<{ data: Array<{ id: string; name: string }> }>(
+    queryFn: async () => {
+      if (!activePortfolioId) return [];
+      const res = await apiClient.get<{ data: Array<{ id: string; name: string }> }>(
         `/api/v1/portfolios/${activePortfolioId}/accounts`,
-      ),
+      );
+      return res.data;
+    },
     enabled: Boolean(activePortfolioId),
     staleTime: 60_000,
   });
 
   // 4. Fetch asset metadata
-  const { data: assetData } = useQuery({
+  const { data: assetData = null } = useQuery({
     queryKey: ['asset-metadata', assetId],
-    queryFn: () => apiClient.get<{ data: AssetMeta }>(`/api/v1/assets/${assetId}`),
+    queryFn: async () => {
+      if (!assetId) return null;
+      try {
+        const res = await apiClient.get<{ data: AssetMeta }>(`/api/v1/assets/${assetId}`);
+        return res.data;
+      } catch {
+        return null;
+      }
+    },
     enabled: Boolean(assetId),
     staleTime: 5 * 60_000,
     retry: false,
@@ -127,15 +145,15 @@ export default function AssetPositionDetailPage() {
 
   // Build ViewModel
   const viewModel = useMemo(() => {
-    if (!stateData?.data) return null;
+    if (!stateData) return null;
     return mapToAssetPositionDetailViewModel({
       assetId,
-      state: stateData.data,
+      state: stateData,
       historyItems: allHistoryItems,
       historyMeta: lastHistoryMeta,
       portfolioMeta: activePortfolio,
-      accountsMeta: accountsData?.data,
-      assetMeta: assetData?.data,
+      accountsMeta: accountsData,
+      assetMeta: assetData,
     });
   }, [
     assetId,
