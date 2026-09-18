@@ -24,7 +24,7 @@
     "test:architecture": "vitest run --config vitest.architecture.config.ts",
     "test:web:e2e": "playwright test",
     "test:foundation": "vitest run --config vitest.foundation.config.ts",
-    "test:portfolio-mvp": "vitest run tests/ui/portfolio-overview-view-model.test.ts --config vitest.ui.config.ts && vitest run tests/web/portfolio-overview.test.ts --config vitest.web.config.ts && vitest run tests/mobile/portfolio-overview.test.ts --config vitest.mobile.config.ts",
+    "test:portfolio-mvp": "vitest run tests/ui/portfolio-overview-view-model.test.ts tests/ui/asset-position-detail-view-model.test.ts --config vitest.ui.config.ts && vitest run tests/web/portfolio-overview.test.ts tests/web/asset-detail.test.ts --config vitest.web.config.ts && vitest run tests/mobile/portfolio-overview.test.ts tests/mobile/asset-detail.test.ts --config vitest.mobile.config.ts",
     "validate:foundation": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm test:ui && pnpm test:portfolio-engine && pnpm test:security && pnpm test:architecture && pnpm test:web:e2e && pnpm build",
     "validate:portfolio-engine-rc": "pnpm test:portfolio-engine && pnpm test:api && pnpm validate:foundation",
     "db:generate": "pnpm --filter @atlas/database generate",
