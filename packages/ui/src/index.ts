@@ -10,6 +10,7 @@ export * from './navigation';
 export * from './formatters';
 export * from './contracts';
 export * from './view-models/portfolio-overview.view-model';
+export * from './view-models/asset-position-detail.view-model';
 
 import { colors } from './tokens/colors';
 import { spacing } from './tokens/spacing';
