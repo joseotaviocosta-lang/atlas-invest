@@ -2,8 +2,8 @@
 
 Plataforma completa de gestão de investimentos para investidores brasileiros.
 
-> **Status Atual: Fase 1H — Portfolio Engine 1.0 Final Hardening, Contract Freeze & Release Candidate (Concluída)**  
-> Esta fase consolida o congelamento formal dos contratos do Portfolio Engine (`@atlas/portfolio-engine` v1.0.0-rc.1) e da Portfolio Read API v1 (`GET /state`, `GET /positions`, `GET /history`), estabelecendo a matriz semântica imutável para os 16 tipos de transação do livro-razão, política estrita fail-closed contra ledgers corrompidos, serialização decimal de alta precisão (zero float, sem notação científica), validação de cursores de paginação com proteção IDOR e delimitação de complexidade $O(\text{posições})$ (ADR-067 a ADR-071).
+> **Status Atual: Fase 2B — Asset Position Details (Concluída)**  
+> Esta fase implementa a visão analítica de detalhamento de ativo (Web e Mobile) alimentada diretamente pelo Portfolio Engine 1.0 Release Candidate (`@atlas/portfolio-engine` v1.0.0-rc.1) e pela Portfolio Read API v1 (`GET /state`, `GET /accounts`, `GET /history?assetId=...`). Apresenta posição consolidada, segregação de custódia por instituição, resultado realizado em alienações, rendimentos creditados e extrato auditável de eventos paginado por keyset cursor, mantendo estrita semântica de _zero client-side financial math_ e tratamento não-alarmista de custo incompleto (ADR-075 a ADR-077).
 
 ---
 

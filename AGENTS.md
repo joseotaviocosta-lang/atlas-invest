@@ -497,3 +497,32 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 
 5. **SEGREGAÇÃO MULTIMOEDA:**
    - Valores monetários em moedas distintas (ex: `BRL` e `USD`) devem permanecer segregados por moeda em blocos/linhas distintas, sem conversão cambial implícita ou agregação cruzada.
+
+---
+
+## 20. Regras de Interface e Detalhamento da Posição do Ativo (Fase 2B)
+
+1. **NAVEGAÇÃO E ROTAS CANÔNICAS (ADR-075):**
+   - **Web:** Rota canônica `/portfolio/assets/[assetId]?portfolioId=...`, acessível via clique no ticker ou botão "Ver detalhe →" no overview da carteira. Retorno garantido por breadcrumb acessível (`← Carteira`).
+   - **Mobile:** Rota canônica `/(app)/portfolio/[assetId]?portfolioId=...`, acessível via toque no card ou botão com alvo touch $\ge 44\text{px}$ ("Ver detalhes do ativo →"). Retorno garantido pelo `Header` com `onBack`.
+
+2. **HIERARQUIA VISUAL E DETALHAMENTO INSTITUCIONAL:**
+   - O detalhamento do ativo decompõe a posição em:
+     1. Cabeçalho de identidade do ativo (ticker, nome empresarial, classe de ativo formatada, contexto da carteira e status da posição: `ABERTA` ou `ENCERRADA`).
+     2. Posição consolidada (quantidade total, preço médio ponderado, custo total de aquisição conhecido).
+     3. Distribuição por conta de custódia (instituições/corretoras com quantidade, preço médio e custo específico).
+     4. Resultado realizado (extrato de alienações com valor bruto, custos, valor líquido e ganho/perda apurado com percentual).
+     5. Rendimentos recebidos (dividendos, JCP, rendimentos de FII creditados especificamente para o ativo).
+     6. Histórico cronológico auditável de eventos do ativo.
+
+3. **PAGINAÇÃO POR KEYSET CURSOR AUDITÁVEL (ADR-076):**
+   - O extrato de movimentações do ativo utiliza o endpoint `/api/v1/portfolios/:portfolioId/history?assetId=...` com `useInfiniteQuery`.
+   - As páginas de histórico são achatadas e deduplicadas por `item.id` no cliente.
+   - O acionamento de carregamento de páginas adicionais possui alvo de toque mínimo de $44\text{px}$ na Web e no Mobile.
+
+4. **ZERO CLIENT FINANCIAL MATH E CUSTO INCOMPLETO (ADR-077):**
+   - É terminantemente vedado calcular ou recalcular grandezas financeiras na UI/ViewModel.
+   - Em caso de incompletude de custo (`INCOMPLETE`), o preço médio e o custo total são apresentados estritamente como travessão `—`, acompanhados de badge informativo não alarmista ("Dados de custo incompletos") e adaptação para "Custo total conhecido". Nunca renderizar `0` ou `R$ 0,00`.
+
+5. **ANTI-ESCOPO ESTATUÁRIO:**
+   - Mantém-se a proibição estrita de cotações em tempo real, valor de mercado, P&L não realizado, TWR/XIRR e cálculos fiscais (DARF/IRPF) antes da conclusão de seus respectivos engines especializados.

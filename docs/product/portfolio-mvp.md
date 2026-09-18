@@ -94,3 +94,23 @@ Se a carteira possuir ativos ou operações em múltiplas moedas (ex: `BRL` e `U
   - Carrossel / chips horizontais de seleção de carteira ativa.
   - Cards touch-friendly com área mínima de toque $\ge 44\text{px}$.
   - Suporte completo a pull-to-refresh e awareness de conexão offline.
+
+---
+
+## 7. Detalhamento da Posição do Ativo (Fase 2B)
+
+A Fase 2B expande a Carteira MVP oferecendo a tela de **Asset Position Details**, acessada ao clicar em qualquer ativo na listagem geral:
+
+- **Rotas:**
+  - **Web:** `/portfolio/assets/[assetId]?portfolioId=:portfolioId`
+  - **Mobile:** `/(app)/portfolio/[assetId]?portfolioId=:portfolioId`
+- **Seções Principais:**
+  1. **Cabeçalho:** Ticker do ativo, nome da empresa/fundo, tag de classe de ativo (`Ações`, `Fundo Imobiliário`, `BDR`, etc.), carteira de contexto e badge de status da posição (`ABERTA` ou `ENCERRADA`).
+  2. **Card Primário Consolidado:** Quantidade total de cotas/ações sob custódia, Preço médio ponderado e Custo total de aquisição conhecido. Se o custo for incompleto, exibe `—` e aviso contextual explicativo.
+  3. **Custódia por Conta:** Quadro discriminando em quais instituições (corretoras/bancos) as cotas estão custodiadas, seus respectivos custos médios e totais.
+  4. **Resultado Realizado:** Lista de operações de venda encerradas deste ativo, detalhando data, corretora, quantidade, preço bruto, custos de corretagem/emolumentos, valor líquido e ganho/perda obtido com percentual apurado.
+  5. **Rendimentos Recebidos:** Histórico dos proventos recebidos pelo ativo (dividendos, JCP e rendimentos), com valor líquido e bruto.
+  6. **Histórico do Ativo:** Extrato auditável cronológico reverso paginado via keyset cursor (`GET /api/v1/portfolios/:portfolioId/history?assetId=:assetId&limit=20&cursor=...`), com botão sob demanda com alvo de toque $\ge 44\text{px}$.
+- **Invariantes e Zero Client Math:**
+  - O cliente nunca calcula multiplicações de quantidade por preço médio nem realiza somas financeiras.
+  - Posições encerradas (`quantity === '0'`) continuam acessíveis no detalhamento histórico com badge `POSIÇÃO ENCERRADA`.
