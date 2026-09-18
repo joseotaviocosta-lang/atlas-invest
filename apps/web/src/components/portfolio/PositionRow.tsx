@@ -1,15 +1,17 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { colors, spacing, borderRadius } from '@atlas/ui';
 import { PortfolioOverviewPositionItem } from '@atlas/ui';
 import { Badge } from '@/components/ui/Badge';
 
 export interface PositionRowProps {
   position: PortfolioOverviewPositionItem;
+  portfolioId?: string;
 }
 
-export function PositionRow({ position }: PositionRowProps) {
+export function PositionRow({ position, portfolioId }: PositionRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const isIncomplete = position.costBasisStatus === 'INCOMPLETE';
 
@@ -46,16 +48,19 @@ export function PositionRow({ position }: PositionRowProps) {
         >
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.xs}px` }}>
-              <span
+              <Link
+                href={`/portfolio/assets/${position.assetId}${portfolioId ? `?portfolioId=${portfolioId}` : ''}`}
                 style={{
                   fontSize: '1.125rem',
                   fontWeight: 700,
-                  color: colors.textPrimary,
+                  color: colors.accent,
                   fontFamily: 'monospace',
+                  textDecoration: 'none',
                 }}
+                aria-label={`Ver detalhes de ${position.displayIdentifier}`}
               >
                 {position.displayIdentifier}
-              </span>
+              </Link>
               {isIncomplete && <Badge variant="warning">Dados incompletos</Badge>}
             </div>
             <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
@@ -104,32 +109,56 @@ export function PositionRow({ position }: PositionRowProps) {
             </span>
           </div>
 
-          {/* Toggle Account Breakdown Button */}
-          {position.accounts.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setIsExpanded(!isExpanded)}
-              aria-expanded={isExpanded}
-              aria-label={`Ver detalhamento por conta para ${position.displayIdentifier}`}
+          {/* Actions: View Details Link & Toggle Account Breakdown Button */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Link
+              href={`/portfolio/assets/${position.assetId}${portfolioId ? `?portfolioId=${portfolioId}` : ''}`}
               style={{
                 background: colors.surfaceElevated,
                 border: `1px solid ${colors.border}`,
                 borderRadius: `${borderRadius.md}px`,
-                color: colors.textSecondary,
+                color: colors.accent,
                 fontSize: '0.8125rem',
-                fontWeight: 500,
+                fontWeight: 600,
                 padding: '6px 12px',
-                cursor: 'pointer',
+                textDecoration: 'none',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '4px',
                 minHeight: '36px',
               }}
+              aria-label={`Ver detalhes da posição ${position.displayIdentifier}`}
             >
-              <span>{isExpanded ? 'Ocultar contas' : 'Ver contas'}</span>
-              <span aria-hidden="true">{isExpanded ? '▲' : '▼'}</span>
-            </button>
-          )}
+              <span>Ver detalhe</span>
+              <span aria-hidden="true">→</span>
+            </Link>
+
+            {position.accounts.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setIsExpanded(!isExpanded)}
+                aria-expanded={isExpanded}
+                aria-label={`Ver detalhamento por conta para ${position.displayIdentifier}`}
+                style={{
+                  background: colors.surfaceElevated,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: `${borderRadius.md}px`,
+                  color: colors.textSecondary,
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  padding: '6px 12px',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  minHeight: '36px',
+                }}
+              >
+                <span>{isExpanded ? 'Ocultar contas' : 'Ver contas'}</span>
+                <span aria-hidden="true">{isExpanded ? '▲' : '▼'}</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

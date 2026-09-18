@@ -457,7 +457,11 @@ export default function PortfolioPage() {
                           />
                           <div>
                             {overviewViewModel.positions.map((position) => (
-                              <PositionRow key={position.assetId} position={position} />
+                              <PositionRow
+                                key={position.assetId}
+                                position={position}
+                                portfolioId={activePortfolioId}
+                              />
                             ))}
                           </div>
                         </div>
