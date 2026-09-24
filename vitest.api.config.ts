@@ -18,6 +18,11 @@ export default defineConfig({
       '@atlas/portfolio-engine': path.resolve(__dirname, 'packages/portfolio-engine/src/index.ts'),
       '@atlas/market-data': path.resolve(__dirname, 'packages/market-data/src/index.ts'),
       '@atlas/valuation-engine': path.resolve(__dirname, 'packages/valuation-engine/src/index.ts'),
+      '@atlas/portfolio-intelligence': path.resolve(
+        __dirname,
+        'packages/portfolio-intelligence/src/index.ts',
+      ),
+      '@atlas/ai-engine': path.resolve(__dirname, 'packages/ai-engine/src/index.ts'),
       '@prisma/client': path.resolve(__dirname, 'packages/database/node_modules/@prisma/client'),
     },
   },

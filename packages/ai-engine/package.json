@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@atlas/domain": "workspace:*"
+    "@atlas/domain": "workspace:*",
+    "@atlas/portfolio-intelligence": "workspace:*"
   },
   "devDependencies": {
     "@atlas/config": "workspace:*"

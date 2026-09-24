@@ -233,6 +233,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@atlas/ai-engine':
+        specifier: workspace:*
+        version: link:../../packages/ai-engine
       '@atlas/benchmark-engine':
         specifier: workspace:*
         version: link:../../packages/benchmark-engine
@@ -458,6 +461,9 @@ importers:
       '@atlas/domain':
         specifier: workspace:*
         version: link:../domain
+      '@atlas/portfolio-intelligence':
+        specifier: workspace:*
+        version: link:../portfolio-intelligence
     devDependencies:
       '@atlas/config':
         specifier: workspace:*

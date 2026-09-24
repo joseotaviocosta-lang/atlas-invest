@@ -10,6 +10,7 @@ import { AccountsModule } from './modules/accounts/accounts.module';
 import { AssetsModule } from './modules/assets/assets.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { PerformanceModule } from './modules/performance/performance.module';
+import { AiModule } from './modules/ai/ai.module';
 import { RequestIdMiddleware } from './common/middleware';
 
 @Module({
@@ -29,6 +30,7 @@ import { RequestIdMiddleware } from './common/middleware';
     AssetsModule,
     TransactionsModule,
     PerformanceModule,
+    AiModule,
   ],
   providers: [
     {

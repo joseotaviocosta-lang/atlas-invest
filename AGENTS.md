@@ -1095,3 +1095,40 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
     - 3P não chama o AI Engine (ADR-172).
 
 ---
+
+## 39. AI Grounding Foundation (Fase 3Q)
+
+1. **AI GROUNDING MAY ONLY CONSUME APPROVED STRUCTURED READ MODELS.**
+   - O grounding context (`PortfolioAiGroundingContextV1`) é derivado exclusivamente do `PortfolioIntelligenceSummary` aprovado da 3P. É terminantemente proibido acessar ledgers brutos, tabelas do Prisma ou transações raw.
+
+2. **AI MUST NEVER BE THE SOURCE OF TRUTH FOR FINANCIAL METRICS.**
+   - O Atlas nunca permite que modelos de linguagem probabilísticos calculem, aproximem ou definam métricas patrimoniais ou de performance.
+
+3. **AI GROUNDING MUST NOT RECOMPUTE TWR, XIRR, BENCHMARK DIFFERENCES, RISK METRICS, TAIL RISK, OR SCENARIOS.**
+   - `@atlas/ai-engine` é puramente um transportador determinístico de fatos. É proibida qualquer recalculação de métricas financeiras ou uso de float.
+
+4. **EVERY GROUNDED FINANCIAL FACT MUST BE TRACEABLE TO A CANONICAL SOURCE PATH.**
+   - Todo fato carrega `source: { contract: 'PORTFOLIO_INTELLIGENCE_SUMMARY_V1', path: string }` correspondente a uma propriedade navegável e válida no summary de entrada. Citações e URLs externas inventadas são proibidas.
+
+5. **GROUNDING FACT IDS AND ORDERING MUST BE DETERMINISTIC.**
+   - Fact IDs são canônicos, estáveis e legíveis (ex.: `BRL.OVERVIEW.MARKET_VALUE`, `BRL.PERFORMANCE.TWR`). A ordenação é estritamente canônica por categoria (`OVERVIEW` -> `PERFORMANCE` -> `BENCHMARK` -> `RISK` -> `RISK_ADJUSTED` -> `RELATIVE_RISK` -> `ACTIVE_PERFORMANCE` -> `TAIL_RISK` -> `SCENARIO`), depois escopo de moeda ASC, depois factId ASC. Duplicatas disparam erro imediato (fail-closed).
+
+6. **MULTI-CURRENCY FACTS REMAIN SEGREGATED; NO IMPLICIT FX OR GLOBAL MONEY TOTAL.**
+   - Carteiras com mais de uma moeda segregam fatos por escopo (`scope: "BRL"`, `scope: "USD"`). Nunca emitir fato monetário total consolidado sem motor explícito de câmbio. Adicionar limitação `MULTI_CURRENCY_NO_FX`.
+
+7. **HISTORICAL, POINT-IN-TIME, AND HYPOTHETICAL FACTS MUST REMAIN EXPLICITLY DISTINGUISHABLE.**
+   - Todo fato declara explicitamente sua natureza temporal: `POINT_IN_TIME`, `PERIOD`, `HISTORICAL` ou `HYPOTHETICAL`. Simulações de estresse não podem ser confundidas com perdas passadas ou previsões futuras.
+
+8. **MODEL-FACING CONTEXT MUST EXCLUDE AUTHENTICATION DATA, SECRETS, PERSONAL IDENTIFIERS, AND RAW TRANSACTION LEDGERS.**
+   - O grounding context exclui senhas, tokens de autenticação (JWT/refresh), sessões, dados sensíveis (CPF, e-mail, endereço), dados bancários e o histórico bruto de transações (`Transaction[]`).
+
+9. **AI GROUNDING MUST REMAIN BOUNDED AND MUST NOT GROW WITH RAW TRANSACTION COUNT.**
+   - O número de fatos e o tamanho serializado do contexto são limitados a $O(\text{métricas} \times \text{moedas})$, permanecendo estritamente constantes seja com 10, 100 ou 1.000 posições.
+
+10. **PHASE 3Q DOES NOT INVOKE ANY MODEL PROVIDER.**
+    - A Fase 3Q termina na construção e transporte do contexto de grounding. Chamadas a OpenAI, Anthropic, Gemini, modelos locais, chatbots, RAG ou embeddings são terminantemente proibidas nesta fase.
+
+11. **AI RECOMMENDATION, PREDICTION, OPTIMIZATION, SCORING, OR TRADING ADVICE REMAIN OUTSIDE THE 3Q BOUNDARY.**
+    - As capacidades do contexto declaram explicitamente `canRecommendTrades: false`, `canPredictReturns: false` e `canCalculateNewMetrics: false`.
+
+---
