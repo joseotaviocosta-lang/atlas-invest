@@ -1,0 +1,16 @@
+{
+  "name": "@atlas/risk-engine",
+  "version": "0.6.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@atlas/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@atlas/config": "workspace:*"
+  }
+}

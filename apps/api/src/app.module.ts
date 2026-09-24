@@ -9,6 +9,7 @@ import { InstitutionsModule } from './modules/institutions/institutions.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { AssetsModule } from './modules/assets/assets.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
+import { PerformanceModule } from './modules/performance/performance.module';
 import { RequestIdMiddleware } from './common/middleware';
 
 @Module({
@@ -27,6 +28,7 @@ import { RequestIdMiddleware } from './common/middleware';
     AccountsModule,
     AssetsModule,
     TransactionsModule,
+    PerformanceModule,
   ],
   providers: [
     {

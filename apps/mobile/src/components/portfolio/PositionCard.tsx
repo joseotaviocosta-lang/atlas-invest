@@ -8,15 +8,20 @@ import { Card } from '../ui/Card';
 export interface PositionCardProps {
   position: PortfolioOverviewPositionItem;
   portfolioId?: string;
+  /** Historical snapshot `YYYY-MM-DD`; preserved in asset navigation. */
+  asOf?: string | null;
 }
 
-export function PositionCard({ position, portfolioId }: PositionCardProps) {
+export function PositionCard({ position, portfolioId, asOf }: PositionCardProps) {
   const router = useRouter();
   const [isExpanded, setIsExpanded] = useState(false);
   const isIncomplete = position.costBasisStatus === 'INCOMPLETE';
 
   const navigateToDetail = () => {
-    const query = portfolioId ? `?portfolioId=${encodeURIComponent(portfolioId)}` : '';
+    const params = new URLSearchParams();
+    if (portfolioId) params.set('portfolioId', portfolioId);
+    if (asOf) params.set('asOf', asOf);
+    const query = params.toString() ? `?${params.toString()}` : '';
     router.push(`/(app)/portfolio/${position.assetId}${query}`);
   };
 

@@ -121,6 +121,49 @@ A Fase 2B expande a Carteira MVP oferecendo a tela de **Asset Position Details**
 
 A Fase 2C entrega a visão cronológica unificada de **Portfolio History & Activity**, acessada via botão secundário "Histórico" na tela principal da Carteira:
 
+---
+
+## 9. Visualização de Rendimentos e Fluxos de Caixa (Fase 2D)
+
+A Fase 2D introduz duas novas visualizações na Carteira: **Rendimentos** e **Fluxos de Caixa**. Ambas consomem exclusivamente os endpoints congelados da Portfolio Read API v1 e não realizam nenhum cálculo financeiro do lado do cliente.
+
+### 9.1 Rendimentos (Income)
+
+Os rendimentos exibem eventos do tipo `DIVIDEND`, `JCP` e `FII_INCOME`, com server-side summaries por moeda.
+
+- **Tipos suportados:** `DIVIDEND` (Dividendo), `JCP` (Juros sobre Capital Próprio), `FII_INCOME` (Rendimento de FII)
+- **Terminologia:** Todos os tipos são rotulados segundo seus nomes nativos (Dividendo, JCP, Rendimento de FII)
+- **Server-side summaries:** Totais agregados por moeda (`Map<Currency, IncomeSummary>`), nunca calculados no cliente
+- **Multi-moeda:** Valores em moedas distintas permanecem segregados por moeda em blocos/linhas distintas, sem conversão cambial implícita
+- **Custo incompleto:** Posições com `costBasisStatus === 'INCOMPLETE'` renderizam preço médio e custo total como `—` (travessão), acompanhadas de badge informativo ("Dados de custo incompletos")
+- **Zero client math:** O cliente nunca multiplica quantidade por preço, nunca soma valores monetários, nunca calcula percentual de retorno a partir de fluxos de renda
+- **Terminologia canonical:** Os tipos de evento são estritamente `DIVIDEND`, `JCP`, `FII_INCOME` — o cliente nunca inventa kinds ad-hoc
+
+### 9.2 Fluxos de Caixa (Cash Flow)
+
+Os fluxos de caixa exibem eventos dos tipos `DEPOSIT`, `WITHDRAWAL`, `FEE`, `TAX` e `AMORTIZATION`, com server-side summaries por moeda e terminologia rigorosa.
+
+- **Tipos suportados:** `DEPOSIT` (Depósito), `WITHDRAWAL` (Retirada), `FEE` (Taxa), `TAX` (Tributo pago), `AMORTIZATION` (Amortização)
+- **Terminologia rigorosa:**
+  - `TAX` é sempre exibido como **"Tributo pago"** (nunca "Imposto devido" ou "Imposto a pagar")
+  - `AMORTIZATION` exibe o subtítulo contextual **"Devolução de capital"** ao lado do valor
+  - `DEPOSIT` direction é sempre "Entrada" (INFLOW)
+  - `WITHDRAWAL` direction é sempre "Saída" (OUTFLOW)
+- **Sem cash balance:** A interface **nunca** exibe "Saldo de caixa", "Total de fluxos" agregado ou "Fluxo líquido". Cada fluxo é exibido individualmente com seu respectivo valor e direção.
+- **Server-side summaries:** Totais agregados por moeda (`Map<Currency, CashFlowSummary>`), nunca calculados no cliente
+- **Zero client math:** O cliente nunca soma, subtrai ou agrega valores financeiros. Cada evento é renderizado individualmente com dados provenientes da API.
+- **Cash flow types never emit realized disposals:** `DEPOSIT`, `WITHDRAWAL`, `FEE`, `TAX` e `AMORTIZATION` nunca configuram alienação e não emitem `RealizedDisposal`
+
+### 9.3 Invariantes Compartilhados (Fase 2D)
+
+- **Server summaries = source of financial truth:** Os resumos fornecidos pela API são a única fonte de informações financeiras; o view model apenas os formata para apresentação
+- **Zero float math:** Todos os montantes são serializados como strings decimais exatas; nunca tipos numéricos IEEE-754 no cliente
+- **Semântica null vs zero:** Posições com custo `INCOMPLETE` serializam `totalCost` e `averageCost` como `null` (nunca `0` ou `"0"`)
+- **Semântica TAX = "Tributo pago":** O tipo `TAX` é rigorosamente rotulado como "Tributo pago", nunca como "Imposto devido" ou "Imposto a pagar"
+- **Semântica AMORTIZATION = "Devolução de capital":** O tipo `AMORTIZATION` exibe o subtítulo "Devolução de capital", nunca como mera "Amortização" sem contexto
+- **Não há cálculo client-side de percentual por conta:** ViewModels no cliente não calculam percentuais de alocação ou participação por conta a partir de quantidades
+- **Integração com Engine 1.0 RC:** As visualizações são compatíveis com a versão congelada do Portfolio Engine 1.0 Release Candidate (1.0.0-rc.1)
+
 - **Rotas:**
   - **Web:** `/portfolio/history?portfolioId=:portfolioId`
   - **Mobile:** `/(app)/portfolio/history?portfolioId=:portfolioId`
@@ -146,3 +189,15 @@ A Fase 2C entrega a visão cronológica unificada de **Portfolio History & Activ
 - **Anti-Escopo Mantido:**
   - Proibidos cabeçalhos arbitrários de "Total movimentado" ou "Fluxo líquido consolidado".
   - Proibida qualquer inferência tributária, apuração de DARF ou cálculo de rentabilidade/performance.
+
+## 10. Carteira Histórica — Time Travel por asOf (Fase 2F)
+
+A Fase 2F expõe a reconstrução histórica do servidor (`GET /state?asOf=YYYY-MM-DD`, `GET /positions?asOf=`) como modo "Carteira em DD/MM/YYYY", distinto do modo "Hoje":
+
+- **Projeção do replay oficial:** a UI envia `asOf` civil e apresenta o read model retornado com os mesmos mappers do modo atual. Nenhuma filtragem local de transações, nenhum recálculo de quantidade, preço médio, custo ou ganho.
+- **Banner persistente:** "Visualizando carteira em DD/MM/YYYY" + badge "Histórico" + ação "Voltar para hoje" (limpa o parâmetro) em overview, asset detail e account detail.
+- **Estado na URL (Web) / rota (Mobile):** `/portfolio?asOf=YYYY-MM-DD`; refresh, deep link e back/forward preservam o snapshot. Trocar de carteira limpa `asOf`.
+- **Datas:** exibição `DD/MM/YYYY`, tráfego `YYYY-MM-DD` (LocalDate civil, sem timezone); hoje normaliza para modo atual; futuro é recusado ("Escolha uma data de hoje ou anterior"); inválida mostra "Data inválida."; anterior à primeira transação rende "Nenhuma posição nesta data." (sucesso, não erro).
+- **Navegação com contexto:** asset/account detail aceitam `asOf`; segurança de navegação avalia o estado histórico (ativo fechado hoje mas aberto então continua acessível; ativo ausente então mostra "Este ativo não fazia parte da carteira nesta data."); conta sem posição histórica mostra "Esta conta não possuía posições abertas nesta data." sem afirmar lifecycle da entidade.
+- **Sem comparações:** proibido exibir deltas hoje × passado, percentuais, TWR/XIRR, market value, P&L, benchmarks, FX, DARF/IRPF, gráficos patrimoniais e saldos de caixa.
+- **Cache isolado:** chaves incluem `asOf ?? 'current'` por carteira/ativo/conta; sem N+1 nem colisão current × histórico.

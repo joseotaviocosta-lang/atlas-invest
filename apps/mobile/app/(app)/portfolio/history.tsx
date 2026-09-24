@@ -22,13 +22,16 @@ import { PortfolioDto } from '../../../src/api/types';
 
 export default function MobilePortfolioHistoryScreen() {
   const router = useRouter();
-  const { portfolioId: portfolioIdParam } = useLocalSearchParams<{ portfolioId?: string }>();
+  const { portfolioId: portfolioIdParam, accountId: accountIdParam } = useLocalSearchParams<{
+    portfolioId?: string;
+    accountId?: string;
+  }>();
 
-  // Filter State
+  // Filter State (accountId may arrive via deep-link from the account detail)
   const [filters, setFilters] = useState<MobileHistoryFilterState>({
     period: 'all',
     type: '',
-    accountId: '',
+    accountId: accountIdParam || '',
   });
 
   // Calculate from date if period is not 'all'

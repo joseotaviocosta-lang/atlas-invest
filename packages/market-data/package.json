@@ -11,6 +11,7 @@
     "@atlas/domain": "workspace:*"
   },
   "devDependencies": {
-    "@atlas/config": "workspace:*"
+    "@atlas/config": "workspace:*",
+    "@types/node": "^22.13.10"
   }
 }

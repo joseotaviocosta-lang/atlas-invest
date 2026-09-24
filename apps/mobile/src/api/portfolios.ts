@@ -1,5 +1,11 @@
 import { apiClient } from './client';
-import { PortfolioDto, CreatePortfolioRequest } from './types';
+import {
+  PortfolioDto,
+  CreatePortfolioRequest,
+  AccountDto,
+  InstitutionDto,
+  AssetDto,
+} from './types';
 import {
   PortfolioStateDto,
   PortfolioHistoryItemDto,
@@ -20,14 +26,11 @@ export const portfoliosApi = {
     return apiClient.post<{ data: PortfolioDto }>('/api/v1/portfolios', payload);
   },
 
-  async getPortfolioState(id: string): Promise<{ data: PortfolioStateDto }> {
-    return apiClient.get<{ data: PortfolioStateDto }>(`/api/v1/portfolios/${id}/state`);
-  },
-
-  async listAccounts(portfolioId: string): Promise<{ data: Array<{ id: string; name: string }> }> {
-    return apiClient.get<{ data: Array<{ id: string; name: string }> }>(
-      `/api/v1/portfolios/${portfolioId}/accounts`,
-    );
+  async getPortfolioState(id: string, asOf?: string | null): Promise<{ data: PortfolioStateDto }> {
+    const endpoint = asOf
+      ? `/api/v1/portfolios/${id}/state?asOf=${asOf}`
+      : `/api/v1/portfolios/${id}/state`;
+    return apiClient.get<{ data: PortfolioStateDto }>(endpoint);
   },
 
   async getPortfolioHistory(
@@ -60,5 +63,17 @@ export const portfoliosApi = {
 
   async getAsset(assetId: string): Promise<{ data: AssetMeta }> {
     return apiClient.get<{ data: AssetMeta }>(`/api/v1/assets/${assetId}`);
+  },
+
+  async listAccounts(portfolioId: string): Promise<{ data: AccountDto[] }> {
+    return apiClient.get<{ data: AccountDto[] }>(`/api/v1/portfolios/${portfolioId}/accounts`);
+  },
+
+  async listInstitutions(): Promise<{ data: InstitutionDto[] }> {
+    return apiClient.get<{ data: InstitutionDto[] }>('/api/v1/institutions');
+  },
+
+  async listAssets(): Promise<{ data: AssetDto[] }> {
+    return apiClient.get<{ data: AssetDto[] }>('/api/v1/assets');
   },
 };

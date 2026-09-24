@@ -563,3 +563,535 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - **Proibição de Kinds Inventados:** O cliente nunca deve inventar ou manter kinds ad-hoc de histórico (ex: `SPIN_OFF`, `MERGER`, `INTEREST`, `BONUS_SHARES`, `BUY`).
    - **Proibição de Cálculo Client-Side de Percentual por Conta:** ViewModels no cliente não devem calcular percentuais de alocação ou participação por conta a partir de quantidades (`accountQuantity / totalQuantity`). A regra permanece estrita: cálculo econômico pertence ao Engine/API; apresentação pertence ao cliente.
    - **Preservação de Cobertura dos Gates de Validação do RC:** Os scripts de validação do Portfolio Engine RC (`validate:portfolio-engine-rc`, `test:portfolio-engine`) devem preservar integralmente a cobertura de hardening da Fase 1H (53 arquivos de teste / 243 testes unitários e de integração).
+
+## 22. Regras de Carteira Histórica e Time Travel por asOf (Fase 2F)
+
+1. **ESTADO HISTÓRICO SEMPRE VEM DO REPLAY DO SERVIDOR VIA asOf (ADR-087, ADR-089):**
+   - Todo estado histórico de carteira (`Historical state`) deve ser obtido exclusivamente via `GET /api/v1/portfolios/:portfolioId/state?asOf=YYYY-MM-DD` (ou `GET /positions?asOf=`).
+   - O cliente **NUNCA** reconstrói posições históricas a partir do histórico de eventos/transações, nunca filtra o ledger por data localmente e nunca recalcula quantidade, preço médio, custo ou ganho.
+2. **asOf USA SEMÂNTICA CIVIL LocalDate, NÃO TIMESTAMPS COM TIMEZONE (ADR-088):**
+   - `asOf` trafega e é validado como string civil `YYYY-MM-DD` (regex estrita + calendário gregoriano real). É **proibido** usar `new Date(asOf)` para semântica econômica ou qualquer conversão que possa deslocar o dia.
+   - `asOf` igual a hoje normaliza para modo atual (sem parâmetro); `asOf` futuro é recusado na UI; `asOf` inválido exibe erro de data sem quebrar.
+3. **CACHE CURRENT E HISTÓRICO ISOLADOS (ADR-088):**
+   - Chaves de query incluem o corte (`asOf ?? 'current'`) por carteira/ativo/conta. Entradas current e históricas **nunca** compartilham cache.
+   - Trocar de carteira limpa `asOf`; nunca carregar snapshot histórico de outra carteira.
+4. **NAVEGAÇÃO HISTÓRICA PRESERVA CONTEXTO asOf (ADR-087):**
+   - Links overview → asset/account e voltas carregam `asOf`; regras de navegação segura avaliam o estado histórico, não o atual.
+   - É **proibido** comparar automaticamente valores hoje × passado (deltas, percentuais, TWR/XIRR, benchmarks) nesta fase.
+
+## 23. Market Data Foundation (Fase 3A)
+
+1. **Market prices do not belong to Portfolio Engine.**
+   - Preço de mercado é camada separada, independente do motor de replay.
+   - Portfolio Engine continua responsável por ledger, quantidade, custo, realized, income, cash flow, corporate actions, transfers e replay histórico.
+   - Market Data é responsabilidade exclusiva da camada externa de preço.
+
+2. **External provider types must never leak outside adapters.**
+   - Tipos como `YahooFinanceQuote`, `AlphaVantageQuote`, `StooqCsvRow` são implementação específica do adapter.
+   - Nunca devem ser expostos nos pacotes de domínio, API ou interfaces de aplicação.
+   - Apenas o contrato canônico `MarketQuote` e erros normalizados (`MarketDataError`) devem sair do adapter.
+
+3. **AssetId remains canonical identity.**
+   - Identidade exclusiva do ativo é `AssetId`, nunca ticker.
+   - Mesmo ticker em exchanges diferentes deve continuar distinguível por `exchange` e `providerSymbol`.
+   - `map[ticker]` nunca deve ser usado como identidade global.
+
+4. **Provider symbols are adapter-specific metadata.**
+   - `providerSymbol` é mapeamento específico do provedor (ex: `PETR4.SA` no Stooq).
+   - A mesma ação pode ter símbolos diferentes em provedores distintos.
+   - O símbolo nunca substitui `AssetId` como identificador canônico.
+
+5. **Market prices must use exact decimal primitives.**
+   - Preço deve sempre ser `Money` (ou `Quantity`) do `@atlas/domain`, nunca `number` ou float IEEE-754.
+   - Serialização JSON rigorosa: string decimal exata (`"37.52"`), nunca número JSON.
+   - Guard contra `parseFloat`, `Number(price)`, `+ price` em todos os caminhos financeiros.
+
+6. **Quote currency must always be explicit.**
+   - Toda cotação deve carregar `currency` explícita (ex: `BRL`, `USD`).
+   - Nunca assumir `BRL` implicitamente ou converter silenciosamente entre moedas.
+   - Se a cotação divergir da moeda esperada do instrumento: flag `error`, nunca conversão automática.
+
+7. **Stale quotes must never be presented as fresh.**
+   - Status `STALE` ou `freshness: 'STALE'` deve ser exibido explicitamente como dado desatualizado.
+   - A lógica de freshness não deve ficar espalhada na UI; deve ser decidida pelo serviço `MarketDataService`.
+
+8. **Tests must not depend on live external market-data APIs.**
+   - Unit e integration tests não podem chamar provedores reais de internet.
+   - Todos os testes devem usar provider mock determinístico (`InMemoryMarketDataProvider`) ou fakes.
+   - CI/CD deve usar mock provider exclusivamente.
+
+---
+
+## 24. Portfolio Valuation & Current Market Value (Fase 3B)
+
+1. **Market valuation must never be calculated client-side.**
+   - `quantity × price = marketValue`, somas por moeda e `unrealized` são calculados exclusivamente no servidor (`@atlas/valuation-engine` + `GET /api/v1/portfolios/:id/valuation`).
+   - UI (Web/Mobile) apenas renderiza `marketValue`, `unrealizedGainLoss`, `unrealizedGainLossPercent` já serializados como strings decimais via `@atlas/ui` (`formatCurrency`, `formatPercentage`), sem `parseFloat`/`Number`/`+`.
+
+2. **Market value must never mutate portfolio cost basis.**
+   - Valuation é camada de leitura derivada (`PortfolioState + MarketQuotes → PortfolioValuation`), com `valuation-engine@0.1.0` puro, sem I/O, `Object.freeze`.
+   - `Portfolio Engine 1.0.0-rc.1` permanece FROZEN (ledger, quantity, cost, realized, income, replay). Market price nunca entra no engine.
+
+3. **Unknown cost must never be treated as zero.**
+   - `costBasisStatus: 'INCOMPLETE'` → `totalCost=null`, `unrealized=null`, `percent=null`, nunca `"0"`. Status `COST_INCOMPLETE` com `marketValue` ainda valuado quando quote existe.
+   - `totalCost=0` conhecido → `unrealized=marketValue`, `percent=null` (sem divisão por zero).
+
+4. **Multi-currency valuation must remain segregated without FX.**
+   - `BRL` e `USD` nunca somados. `totalsByCurrency: { BRL: { marketValue, knownCost, unrealized }, USD: { ... } }`, `currencies: ['BRL','USD']`.
+   - `quote.currency !== position.currency` → `CURRENCY_MISMATCH`, `marketValue=null`, sem conversão.
+
+5. **Current valuation must not be shown as historical valuation.**
+   - Valuation é `current-only` (`GET /valuation` sem `asOf`). Quando `?asOf=YYYY-MM-DD` histórico ativo, **ocultar** valuation (não mostrar current como se fosse histórico). Preferência: `MobileValuationSection`/`PortfolioValuationSection` retornam `null` em `isHistorical`.
+
+6. **Quote freshness must remain visible in valuation UX.**
+   - `freshness: 'STALE'` ou `status: 'STALE'` → badge `Cotação desatualizada` (`QUOTE_STALE`), nunca mascarado como `FRESH`. `QUOTE_UNAVAILABLE` → `Preço atual —`, `CURRENCY_MISMATCH` → `Moeda divergente`.
+
+---
+
+## 25. Performance Engine Foundation (Fase 3C)
+
+1. **Performance must never be inferred from cost basis.**
+   - `cost basis` (ledger) nunca é `market value` histórico. `current quote` nunca reusado retroativamente. Sem `historical valuations` (observações), performance retorna `INSUFFICIENT_DATA`/`UNAVAILABLE` com `null`, nunca `0%` inventado.
+
+2. **Current quotes must never be reused as historical prices.**
+   - `GET /performance` com `period` usa apenas `PerformanceObservation` canônicos (`date`, `value`, `currency`); `valuation atual` não entra como histórico.
+
+3. **Deposits/withdrawals are external cash flows; buys/sells are not.**
+   - `DEPOSIT` (`INFLOW`) e `WITHDRAWAL` (`OUTFLOW`) são `external` e neutralizados em `TWR` e com sinal trocado em `XIRR` (`DEPOSIT` = outflow do investidor `-`). `BUY`, `SELL`, `DIVIDEND`, `JCP`, `FII_INCOME`, `FEE`, `TAX`, `TRANSFER` são internos e não entram como `external flow`.
+
+4. **Internal transfers must not affect consolidated performance.**
+   - `TRANSFER_IN/OUT` entre contas do mesmo portfolio net 0 consolidado; `TWR` consolidado não muda com transferências internas.
+
+5. **Performance remains segregated by currency without FX.**
+   - `BRL` e `USD` nunca somados. `currencies: { BRL: { twr, xirr }, USD: { ... } }`, `status` per moeda, sem conversão.
+
+6. **TWR and XIRR must be deterministic and auditable.**
+   - `performance-engine@0.2.0` puro, sem I/O, `Object.freeze`, `subperiods` com `R = (Ending - Beginning - NetFlow)/Beginning` (flows no fim do dia, documentado), chaining `(1+r1)...-1` exato, `XIRR` Newton+Bisection com `tolerance 1e-7`, `status CONVERGED|NO_SOLUTION|INSUFFICIENT_DATA|NUMERICAL_FAILURE`, nunca `parseFloat`/`Number` em TWR (só `Math.pow` documentado em XIRR).
+
+---
+
+## 26. Historical Market Prices & Performance Data Pipeline (Fase 3D)
+
+1. **Historical performance must use historical market prices.**
+   - `PerformanceObservation` vem de `replayPortfolio(asOf=date)` + `HistoricalMarketPrice` (`LocalDate`, `close` exato, `Money`), nunca de `cost basis` ou `current quote` retroativo.
+
+2. **Current quotes must never be backfilled into past dates.**
+   - `HistoricalMarketDataProvider.getDailyPrice` nunca retorna `priceDate > requestedDate` (no future leakage).
+
+3. **Historical price resolution must never use a future trading date.**
+   - `requested Sunday` → `Friday` (`PREVIOUS_TRADING_DAY`) dentro de `maxLookback` 7 dias; `Friday` faltando + `Monday` existe → `Friday` é `UNAVAILABLE`, não `Monday`.
+
+4. **Historical valuations must be computed server-side.**
+   - `HistoricalValuationBuilder` server-side, reuse `valuation-engine` (`quantity×close`), `partial` se preço faltar, `multi-currency` segregado, sem FX, sem client math.
+
+5. **Performance observations must preserve currency segregation.**
+   - `observationsByCurrency: { BRL: [...], USD: [...] }`, `TWR/XIRR` por moeda, nunca `BRL+USD`.
+
+6. **Partial historical valuation must never be labeled complete.**
+   - `valuedPositions < totalPositions` → `PARTIAL`/`PARTIAL_QUOTES`, nunca `COMPLETE` falsa. `PerformanceDataAvailability` `AVAILABLE|PARTIAL|UNAVAILABLE`.
+
+7. **Historical price provider types must stay inside adapters.**
+   - `StooqCsvRow`, `InMemoryHistoricalPrice` nunca vazam; só `HistoricalMarketPrice` canônico e `MarketDataError` normalizado.
+
+---
+
+## 27. Performance UX & Analytics Views (Fase 3E)
+
+1. **Client must never calculate TWR or XIRR.**
+   - `TWR`/`XIRR` vêm prontos de `GET /api/v1/portfolios/:id/performance` via `performance-engine@0.2.0` (semântica TWR/XIRR inalterada desde `0.1.0`; `0.2.0` adiciona apenas a série cumulativa). View-model só formata `formatPercentage`/`formatLocalDateDisplay`, nunca `Math.pow`/`parseFloat` para performance.
+
+2. **Partial performance must never be labeled complete.**
+   - `dataAvailability: PARTIAL` → banner `Dados parciais` (`Alguns preços históricos não estavam disponíveis...`), não `COMPLETE`. `PARTIAL` não usa vermelho alarmista.
+
+3. **Unavailable performance must never be displayed as 0%.**
+   - `twr: null`/`xirr: null` → `—`, nunca `0,00%`. `status: UNAVAILABLE` → `Performance indisponível para este período.`
+
+4. **Performance periods use civil LocalDate semantics.**
+   - `startDate`/`endDate` `YYYY-MM-DD` civil, `start <= end`, `end <= today`, sem timezone. `queryKey` `['portfolio-performance', id, start, end]` sem colisão; `URL state` `?period=1Y` ou `?startDate&endDate`.
+
+5. **Multi-currency performance must remain segregated without FX.**
+   - `currencies: { BRL: { twr, xirr }, USD: {...} }`, nunca `BRL+USD`. Sem `FX` conversion, sem `retorno consolidado` cross-currency.
+
+6. **TWR and XIRR must be explained as distinct concepts.**
+   - `TWR`: `Retorno da carteira desconsiderando o efeito de aportes e retiradas.` `XIRR`: `Retorno considerando quando os aportes e retiradas aconteceram.` `XIRR` já anualizado → `a.a.`, nunca inventar anualização.
+
+---
+
+## 28. Benchmark Foundation & Comparative Performance (Fase 3F)
+
+1. **BENCHMARK ENGINE PURO E ZERO I/O (ADR-112, ADR-113):**
+   - `@atlas/benchmark-engine` é determinístico, sem estado, sem I/O nos caminhos de cálculo.
+   - `portfolio-engine` **nunca** importa `benchmark-engine`.
+   - Somente adapters fazem `fetch`; DTOs externos (`YahooFinanceQuote`, `StooqCsvRow`) nunca vazam.
+
+2. **PRICE_INDEX NÃO É RATE_SERIES (ADR-114, ADR-117):**
+   - `PRICE_INDEX` (ex.: `IBOV`): `return = (endLevel / startLevel - 1) × 100`.
+   - `RATE_SERIES` (ex.: `CDI`): composição de fatores diários (ver seção 29).
+   - O engine recusa cruzamento de tipos com `UnsupportedBenchmarkTypeError`.
+
+3. **COMPARAÇÃO USA TWR, NUNCA XIRR (ADR-115):**
+   - `differencePercentagePoints = portfolioTwr - benchmarkReturn` em pontos percentuais, calculado no servidor.
+   - Proibido o termo "alpha"; XIRR permanece visível, porém separado.
+
+4. **MULTI-MOEDA SEM FX (ADR-116):**
+   - Comparação apenas `BRL`; moeda não `BRL` → `benchmark: null`, sem conversão cambial.
+
+5. **ESTADOS E HONESTIDADE VISUAL (ADR-116, ADR-121):**
+   - `AVAILABLE` / `PARTIAL` / `UNAVAILABLE`; `PARTIAL` nunca rotulado como completo.
+   - `UNAVAILABLE` nunca exibido como `0%`; usa-se `—` ou mensagem explícita.
+
+---
+
+## 29. CDI & Rate-Based Benchmarks (Fase 3G)
+
+1. **CDI MUST NEVER BE MODELED AS A PRICE INDEX (ADR-117).**
+   - `CDI` é `RATE_SERIES`; `IBOV` permanece `PRICE_INDEX`. Proibido `end / start - 1` sobre CDI.
+
+2. **RATE BENCHMARK UNITS MUST ALWAYS BE EXPLICIT (ADR-118, ADR-119).**
+   - Toda observação carrega `unit` (`DAILY_PERCENT` ou `DAILY_FACTOR`); nunca um número sem unidade.
+   - `ANNUAL_PERCENT` não é modelado; unidade desconhecida lança `UnsupportedRateUnitError`.
+
+3. **RATE COMPOUNDING MUST FOLLOW SOURCE SEMANTICS EXACTLY (ADR-119).**
+   - `dailyFactor = 1 + rate/100` (`DAILY_PERCENT`); `accumulatedFactor = ∏ dailyFactor`;
+     `return = (accumulatedFactor - 1) × 100`. `1% + 1% = 2.01%`.
+   - Aritmética decimal exata; proibido `parseFloat`, `Number`, `Math.pow` em caminhos financeiros.
+
+4. **MISSING RATE OBSERVATIONS MUST NEVER BE TREATED AS ZERO (ADR-121).**
+   - Fins de semana/feriados são ausências legítimas, não falhas; ausência nunca vira `0%`.
+   - Sem calendário oficial, o servidor não inventa gaps: `AVAILABLE` ou `UNAVAILABLE`.
+     `PARTIAL` é suportado via `expectedObservationDates` e por propagação de valuation parcial.
+
+5. **CLIENT MUST NEVER COMPOUND CDI OR CALCULATE RATE BENCHMARK RETURN (ADR-119, ADR-121).**
+   - Web/Mobile apenas renderizam strings decimais; zero matemática financeira no cliente.
+
+6. **PORTFOLIO BENCHMARK COMPARISON CONTINUES TO USE TWR (ADR-115).**
+   - CDI é comparado ao TWR `BRL` da carteira, em p.p., nunca ao XIRR.
+
+7. **CDI MAY ONLY COMPARE WITH BRL WITHOUT FX (ADR-116).**
+   - `USD`/`EUR` → não aplicável; nenhuma conversão cambial.
+
+8. **PROVIDER SERIES CODE MUST NEVER BECOME CANONICAL BENCHMARK IDENTITY (ADR-118).**
+   - A identidade é o `BenchmarkId` (`'IBOV' | 'CDI'`); `12` (SGS) é apenas `providerSeriesCode` (metadado).
+   - Metadados de fonte (`source`, `seriesCode`, `observationCount`) permanecem server-side.
+
+---
+
+## 30. Performance Series & Historical Chart Foundation (Fase 3H)
+
+1. **PERFORMANCE CHARTS MUST CONSUME SERVER-COMPUTED CUMULATIVE RETURNS.**
+   - O gráfico consome exclusivamente `GET /api/v1/portfolios/:id/performance/series` (`performance-engine@0.2.0`).
+   - `GET /performance` (summary TWR/XIRR) permanece intacto e congelado.
+
+2. **CLIENT MUST NEVER NORMALIZE PERFORMANCE OR BENCHMARK SERIES.**
+   - Web/Mobile nunca subtraem o primeiro ponto, dividem níveis, compõem taxas, encadeiam retornos ou neutralizam flows.
+
+3. **PORTFOLIO PERFORMANCE SERIES MUST USE TWR SEMANTICS, NOT RAW MARKET-VALUE RATIOS.**
+   - Cada ponto é TWR cumulativo `[start, D]` com chaining exato; `value(D)/value(start)-1` é proibido.
+
+4. **EXTERNAL CASH FLOWS MUST REMAIN NEUTRALIZED IN PERFORMANCE CHARTS.**
+   - `DEPOSIT`/`WITHDRAWAL` neutralizados; `BUY`/`SELL` internos; transferências internas com efeito zero consolidado.
+
+5. **BENCHMARK SERIES MUST PRESERVE THEIR NATIVE PRICE_INDEX OR RATE_SERIES SEMANTICS.**
+   - IBOV: `level(D)/startLevel-1`; CDI: produto de fatores diários em `(start, D]-1`. Sem mistura.
+
+6. **MISSING SERIES POINTS MUST NEVER BE REPRESENTED AS ZERO.**
+   - Ponto indisponível é `null` → gap no gráfico e `—` no tooltip; nunca linha reta 0%.
+
+7. **CALCULATION BOUNDARIES AND DISPLAY SAMPLING ARE DISTINCT CONCEPTS.**
+   - `calculation dates = display dates ∪ flow dates`; `AUTO`: ≤90d DAILY, 91–365d WEEKLY, >365d MONTHLY; `start`/`end` sempre incluídos; `≤400` pontos.
+
+8. **CROSS-CURRENCY BENCHMARK SERIES ARE FORBIDDEN WITHOUT FX.**
+   - `BRL` pode alinhar IBOV/CDI; `USD` é portfolio-only (`benchmark: null`).
+
+---
+
+## 31. Risk Metrics Foundation — Volatility & Drawdown (Fase 3I)
+
+1. **RISK METRICS MUST USE SERVER-SIDE FINANCIAL OBSERVATIONS, NEVER CHART DISPLAY SAMPLES.**
+   - `GET /api/v1/portfolios/:id/performance/risk` usa toda data civil em `[start, end]` ∪ flow dates (`risk-engine@0.1.0`); nunca pontos `AUTO/WEEKLY/MONTHLY` do gráfico 3H.
+
+2. **VOLATILITY MUST USE SUBPERIOD TWR RETURNS, NOT CUMULATIVE-RETURN LEVELS.**
+   - `RiskSubperiodReturn` vem de `calculateTWR(...).subperiods`; níveis cumulativos nunca entram no desvio padrão.
+
+3. **EXTERNAL CASH FLOWS MUST REMAIN NEUTRALIZED BEFORE RISK CALCULATION.**
+   - `DEPOSIT`/`WITHDRAWAL` neutralizados via TWR; transferências internas com efeito zero consolidado.
+
+4. **VOLATILITY METHODOLOGY MUST DECLARE FREQUENCY AND ANNUALIZATION FACTOR.**
+   - `frequency: 'DAILY'`, `annualizationFactor: '252'` (`dailyVol × sqrt(252)`); variância amostral `n−1`; `n < 2` → `UNAVAILABLE`.
+
+5. **DRAWDOWN MUST USE CUMULATIVE TWR WEALTH PATH, NOT RAW PORTFOLIO MARKET VALUE.**
+   - `wealthIndex = 1 + cumulativeReturn`; `drawdown = wealth/peak − 1` (sempre `≤ 0`); `peakDate`/`troughDate`/`recoveryDate` (`null` se aberto ou sem queda); `current` é `0` em novo máximo.
+
+6. **INSUFFICIENT OBSERVATIONS MUST PRODUCE UNAVAILABLE/NULL, NEVER ZERO.**
+   - `null` significa indisponível; `"0"` é 0% real (ex.: retornos constantes).
+
+7. **CLIENT MUST NEVER CALCULATE VOLATILITY, VARIANCE, ANNUALIZATION, DRAWDOWN, PEAKS, TROUGHS OR RECOVERIES.**
+   - `PortfolioRiskViewModel` só formata strings e datas; `Math.sqrt`/`Math.pow`/`variance`/`drawdown`/`runningPeak` proibidos no client.
+
+8. **RISK METRICS DESCRIBE HISTORICAL BEHAVIOR AND MUST NOT BE LABELED AS PREDICTIONS.**
+   - Linguagem canônica: `risco histórico` / `métricas históricas`; proibido `risco futuro`, scores e rótulos (`baixo/alto risco`).
+
+9. **CROSS-CURRENCY RISK AGGREGATION IS FORBIDDEN WITHOUT FX.**
+   - `BRL` e `USD` segregados, mesma metodologia, sem conversão.
+
+10. **RISK DAILY OBSERVATIONS ARE NOT CALENDAR-DAY OBSERVATIONS (ADR-132).**
+    - `frequency: DAILY` denota observações válidas de dias de mercado (preço `EXACT`), nunca 365 dias civis.
+11. **PREVIOUS-TRADING-DAY PRICE RESOLUTION MUST NOT CREATE ARTIFICIAL ZERO-RETURN RISK OBSERVATIONS.**
+    - Valuation resolvida via fallback é boundary TWR válido, mas nunca estatística de risco.
+12. **WEEKEND AND HOLIDAY DATES MUST NOT ENTER VOLATILITY SOLELY BECAUSE A VALUATION CAN BE RESOLVED FOR THEM.**
+    - Sem nova observação econômica (`EXACT`), sem retorno estatístico — nem `0%`.
+13. **TWR FLOW BOUNDARIES AND STATISTICAL RISK OBSERVATIONS ARE DISTINCT CONCEPTS.**
+    - Layer A neutraliza flows (inclusive em dias sem mercado); Layer B (`selectRiskStatisticalReturns`) filtra só datas econômicas.
+14. **SQRT(252) ANNUALIZATION REQUIRES COMPATIBLE DAILY OBSERVATION SEMANTICS.**
+    - Trocar 252 → 365 para preservar código calendar-day é proibido; corrija metodologia ou fator — nunca silenciosamente.
+
+---
+
+## 32. Risk-Adjusted Performance — Sharpe & Sortino (Fase 3J)
+
+1. **RISK-ADJUSTED METRICS MUST USE ECONOMIC RETURN OBSERVATIONS, NEVER CHART SAMPLES.**
+   - `GET /api/v1/portfolios/:id/performance/risk-adjusted` usa subperíodos TWR Layer B (`risk-engine@0.2.0`); nunca pontos `AUTO/WEEKLY/MONTHLY`, níveis cumulativos ou variações brutas de valor.
+
+2. **SHARPE AND SORTINO MUST USE ALIGNED PORTFOLIO AND REFERENCE OBSERVATIONS.**
+   - Interseção por data econômica (`alignRiskFreeObservations`); `excess_t = portfolio − riskFree` por observação; `n−1` amostral no Sharpe; downside `Σ min(excess,0)² / n` no Sortino; anualização `× sqrt(252)`; `n < 2` ou denominador zero → `UNAVAILABLE`/`null`, nunca `Infinity`/`NaN`.
+
+3. **CDI IS A BRL RISK-FREE PROXY, NOT A LITERAL GUARANTEE OF ZERO RISK.**
+   - `RiskFreeProxy = 'CDI'` canônico; UI diz `Referência usada: CDI`; sem taxa hardcoded, sem fallback para zero/IBOV, sem CDI em `USD`.
+
+4. **MISSING CDI OBSERVATIONS MUST NEVER BE TREATED AS ZERO.**
+   - Datas sem CDI estreitam a amostra (`PARTIAL`) ou inviabilizam (`UNAVAILABLE`); provedor indisponível → `UNAVAILABLE`.
+
+5. **SHARPE AND SORTINO ARE RATIOS, NOT PERCENTAGES.**
+   - Serialização string decimal (`"1.24"`); UI renderiza `1,24` via `formatRatio`, nunca `1,24%`.
+
+6. **ZERO DENOMINATOR MUST PRODUCE UNAVAILABLE/NULL, NEVER INFINITY.**
+   - `stddev = 0` ou downside `= 0` → `null` (UX usa mensagem unavailable, nunca `∞`).
+
+7. **CLIENT MUST NEVER CALCULATE EXCESS RETURNS, SHARPE, SORTINO OR DOWNSIDE DEVIATION.**
+   - `PortfolioRiskAdjustedViewModel` só formata; `sharpe`/`sortino`/`downsideDeviation`/`riskFreeReturn`/`Math.sqrt`/`Math.pow` proibidos no client.
+
+8. **CROSS-CURRENCY RISK-ADJUSTED METRICS ARE FORBIDDEN WITHOUT A COMPATIBLE REFERENCE.**
+   - `USD` → `riskFreeProxy: null`, `UNAVAILABLE`, `Indisponível sem referência compatível.`; sem FX.
+
+---
+
+## 33. Benchmark-Relative Risk — Beta, Correlation & Tracking Error (Fase 3K)
+
+1. **BENCHMARK-RELATIVE METRICS MUST USE RETURNS OVER IDENTICAL ECONOMIC INTERVALS.**
+   - `GET /api/v1/portfolios/:id/performance/relative-risk` usa intervalos econômicos TWR da carteira e do IBOV (`risk-engine@0.3.0`); nunca amostras de gráfico, variações brutas de valor ou retornos acumulados.
+
+2. **MATCHING ONLY BY RETURN END DATE IS FORBIDDEN.**
+   - Identidade de par é `(startDate, endDate)`, chave `startDate::endDate`; carteira `Fri→Tue` vs benchmark `Mon→Tue` → **0 pares** (ADR-139).
+
+3. **PREVIOUS-TRADING-DAY VALUATION FALLBACK MUST NOT CREATE BENCHMARK-RELATIVE STATISTICAL OBSERVATIONS.**
+   - Fins de semana/feriados e datas de fluxo são fronteiras TWR, nunca fronteiras de par; nenhum `0%` artificial.
+
+4. **BETA USES SAMPLE COVARIANCE DIVIDED BY BENCHMARK SAMPLE VARIANCE.**
+   - `beta = cov(Rp,Rb) / var(Rb)` (ambos `n−1`); `var(Rb) = 0` → `null`; ratio unitless, nunca `%`.
+
+5. **CORRELATION USES PAIRED RETURNS OVER IDENTICAL INTERVALS.**
+   - Pearson `cov / (stdRp × stdRb)`, limitada a `[-1,1]` com clamp só dentro de tolerância `1e-18`; `std = 0` → `null`.
+
+6. **TRACKING ERROR USES ANNUALIZED SAMPLE STANDARD DEVIATION OF ACTIVE RETURNS.**
+   - `active = Rp − Rb`; `daily = std(active)` (`n−1`); `annualized = daily × sqrt(252)`; percentage, nunca ratio.
+
+7. **IBOV IS THE ONLY BENCHMARK-RELATIVE MARKET BENCHMARK IN PHASE 3K.**
+   - `^BVSP` permanece metadado do adapter; nunca identidade canônica.
+
+8. **CDI MUST NOT BE USED AS A MARKET-RELATIVE BENCHMARK.**
+   - CDI é `RATE_SERIES` proxy livre de risco (3G/3J); `?benchmark=CDI` → `400 RELATIVE_RISK.UNSUPPORTED_BENCHMARK`.
+
+9. **MISSING BENCHMARK DATA MUST NEVER BE INTERPRETED AS ZERO.**
+   - Ausência estreita a amostra (`PARTIAL`) ou inviabiliza (`UNAVAILABLE`); provedor indisponível → `UNAVAILABLE`.
+
+10. **CLIENT MUST NEVER CALCULATE BETA, CORRELATION, COVARIANCE, ACTIVE RETURNS, TRACKING ERROR OR INTERVAL ALIGNMENT.**
+    - `PortfolioBenchmarkRelativeRiskViewModel` só formata; `Math.sqrt`/`Math.pow`/`parseFloat`/`covariance`/`activeReturn`/`alignBenchmarkRelativeReturns` proibidos no client.
+
+11. **HISTORICAL RELATIVE-RISK RELATIONSHIPS MUST NOT BE PRESENTED AS FORECASTS.**
+    - Linguagem canônica: `Valores históricos, não previsões.`; proibido `"se o Ibovespa subir..."` e rótulos qualitativos (`beta alto/baixo`, `agressivo/defensivo`).
+
+12. **CROSS-CURRENCY RELATIVE RISK IS FORBIDDEN WITHOUT FX.**
+    - `USD` → `UNAVAILABLE`, `Indisponível sem benchmark compatível.`; sem conversão cambial.
+
+---
+
+## 34. Active Performance — Alpha, Information Ratio & Treynor (Fase 3L)
+
+1. **ACTIVE PERFORMANCE METRICS MUST USE PERIOD-CONSISTENT INPUTS.**
+   - `GET /api/v1/portfolios/:id/performance/active` usa `effectiveStart`/`effectiveEnd` idênticos para `Rp`, `Rf`, `Rm` e Beta (`risk-engine@0.4.0`); nunca Beta de YTD com Alpha de 1Y.
+
+2. **JENSEN ALPHA USES PORTFOLIO RETURN, CDI PROXY, IBOV RETURN AND BETA FROM THE SAME PERIOD.**
+   - `alpha_period = Rp − [Rf + Beta×(Rm−Rf)]`; é o alpha DO PERÍODO, nunca anualizado automaticamente (ADR-144).
+
+3. **INFORMATION RATIO USES PAIRED ACTIVE RETURNS AND TRACKING ERROR FROM IDENTICAL INTERVALS.**
+   - `mean(active)/trackingError` sobre os mesmos pares diários econômicos da 3K; `dailyTrackingError` reutiliza exatamente a convenção `n−1` da 3K; anualização `×sqrt(252)` (ADR-145).
+
+4. **TREYNOR USES PORTFOLIO EXCESS RETURN OVER CDI DIVIDED BY BETA FROM THE SAME PERIOD.**
+   - `(Rp−Rf)/Beta`, unidade percentage-per-beta; `Beta = 0`/`null` → `null`; Beta negativo permitido (ADR-146).
+
+5. **CDI REMAINS A BRL RISK-FREE PROXY, NOT A MARKET BENCHMARK.**
+   - `riskFreeProxy='CDI'`; IBOV é o benchmark de mercado. Nunca intercambiar referências.
+
+6. **IBOV REMAINS THE BRL MARKET BENCHMARK.**
+   - `marketBenchmark='IBOV'`; `^BVSP` permanece metadado do adapter.
+
+7. **ZERO BETA OR ZERO TRACKING ERROR MUST PRODUCE UNAVAILABLE/NULL WHERE THEY ARE DENOMINATORS.**
+   - Nunca `Infinity`/`NaN`; ausência de dependência → `null` e `PARTIAL`/`UNAVAILABLE` com disponibilidade por métrica preservada (ADR-143).
+
+8. **CLIENT MUST NEVER CALCULATE ALPHA, INFORMATION RATIO, TREYNOR OR EXPECTED CAPM RETURN.**
+   - `PortfolioActivePerformanceViewModel` só formata; `Math.sqrt`/`Math.pow`/`parseFloat`/`expectedReturn`/`activeReturn`/divisões por beta ou tracking error proibidos no client.
+
+9. **ACTIVE PERFORMANCE METRICS ARE HISTORICAL AND MUST NOT BE PRESENTED AS FORECASTS.**
+   - Linguagem canônica: `Valores históricos, não previsões.`; proibido `"se o Ibovespa subir..."` e rótulos qualitativos (`alpha bom/ruim`, `Treynor alto`).
+
+10. **CROSS-CURRENCY ACTIVE PERFORMANCE IS UNAVAILABLE WITHOUT COMPATIBLE REFERENCES.**
+    - `USD` → `UNAVAILABLE`, `Indisponível sem referências compatíveis.`; sem FX.
+
+---
+
+## 35. Rolling Analytics — Volatility, Beta & Sharpe (Fase 3M)
+
+1. **ROLLING WINDOWS ARE COUNTED IN VALID ECONOMIC OBSERVATIONS, NEVER CALENDAR DAYS.**
+   - `window=20|60|120` significa 20/60/120 observações econômicas válidas; fim de semana, feriado, fallback `PREVIOUS_TRADING_DAY` e fronteira flow-only não contam (ADR-149).
+
+2. **ROLLING METRICS MUST REUSE CANONICAL SOURCE OBSERVATIONS FROM PRIOR PHASES.**
+   - Volatilidade = 3I Layer-B; Sharpe = 3J alinhado; Beta = 3K pareado. Nenhuma fórmula duplicada, nenhum alinhamento refeito (`risk-engine@0.5.0`).
+
+3. **ROLLING BETA MUST USE ALREADY-PAIRED 3K INTERVALS AND MUST NOT REALIGN BY END DATE.**
+   - Rejeição same-end/different-start e de sessão intermediária ausente permanece a montante (ADR-151).
+
+4. **ROLLING SHARPE MUST USE ALREADY-ALIGNED 3J PORTFOLIO/CDI OBSERVATIONS.**
+   - CDI nunca preenchido com zero; ausência de CDI apenas estreita a série (ADR-152).
+
+5. **MISSING CDI OR BENCHMARK DATA MUST NOT BE ZERO-FILLED.**
+   - Ausência não vira `0%`; janela com variância/desvio zero mantém o ponto com valor `null`.
+
+6. **PARTIAL WINDOWS ARE FORBIDDEN.**
+   - Sem expanding window: `points = max(0, n − W + 1)`; `n < W` → `UNAVAILABLE` com `points=[]`.
+
+7. **ROLLING POINTS BEGIN ONLY WHEN THE FULL CONFIGURED OBSERVATION WINDOW IS AVAILABLE.**
+   - Cada ponto é identificado por `windowStartDate` e `endDate`, ordenado `endDate ASC`, congelado.
+
+8. **FINANCIAL ROLLING CALCULATIONS ARE SERVER-SIDE ONLY.**
+   - `PortfolioRollingAnalyticsViewModel` só formata; `slice` de retornos, variância, covariância, beta, volatilidade, Sharpe e anualização proibidos no client.
+
+9. **A PROVIDER MUST NEVER BE CALLED ONCE PER ROLLING POINT.**
+   - 1 build de contexto, 1 range fetch IBOV, 1 range fetch CDI por request.
+
+10. **HISTORICAL ROLLING ANALYTICS MUST NOT BE PRESENTED AS FORECASTS.**
+    - Linguagem canônica: `Valores históricos, não previsões.`; proibido `tendência de alta`, `vai subir`, rótulos qualitativos.
+
+---
+
+## 36. Downside & Tail Risk — Downside, Semideviation, Historical VaR & CVaR (Fase 3N)
+
+1. **TAIL-RISK METRICS USE CANONICAL ECONOMIC TWR RETURNS, NEVER CHART SAMPLES OR CALENDAR-DAY ZEROS.**
+   - Downside/semideviação/VaR/CVaR usam Layer-B (`selectRiskStatisticalReturns`); fim de semana/feriado/fluxo não entram (ADR-132/ADR-153).
+
+2. **HISTORICAL VaR/CVaR ARE EMPIRICAL, NOT PARAMETRIC.**
+   - Sem normalidade/Gauss, Cornish-Fisher, Monte Carlo, EWMA ou GARCH.
+
+3. **VaR QUANTILE METHODOLOGY IS NEAREST-RANK AND MUST NOT DEPEND ON LIBRARY DEFAULTS.**
+   - `rank = ceil((1−c)×n)` (`95 → n/20`, `99 → n/100`), clamp `[1,n]`; `quantile = sorted[rank−1]` (ADR-156).
+
+4. **VaR/CVaR ARE DAILY HISTORICAL METRICS IN PHASE 3N; SQRT-TIME SCALING IS FORBIDDEN.**
+   - Sem VaR multi-dia, sem escalonamento por `sqrt(t)`, sem VaR monetário.
+
+5. **VaR/CVaR LOSS VALUES ARE NON-NEGATIVE MAGNITUDES; THRESHOLD RETURNS REMAIN SEPARATELY AUDITABLE.**
+   - `loss = max(0, −quantile)`; `quantileReturnPercentage` exposto para auditoria.
+
+6. **CVaR TAIL COUNT IS DETERMINISTIC AND MUST NOT EXPAND BECAUSE OF DUPLICATE THRESHOLD VALUES.**
+   - CVaR usa exatamente as primeiras `rank` observações ordenadas, nunca "todas ≤ threshold" (ADR-157).
+
+7. **VaR 95 REQUIRES AT LEAST 20 OBSERVATIONS; VaR 99 REQUIRES AT LEAST 100.**
+   - Abaixo do mínimo → `UNAVAILABLE`; downside/semideviação podem permanecer `AVAILABLE` (PARTIAL) (ADR-158).
+
+8. **TAIL-RISK METRICS REMAIN SEGREGATED BY CURRENCY; NO FX AGGREGATION.**
+   - BRL e USD calculados separadamente; nunca somados.
+
+9. **CLIENT MUST NEVER CALCULATE QUANTILES, DOWNSIDE STATISTICS, VaR OR CVaR.**
+   - `PortfolioTailRiskViewModel` só formata; `sort`, `quantile`, downside, VaR, CVaR e `Math.*` proibidos no client.
+
+10. **HISTORICAL TAIL-RISK METRICS MUST NOT BE DESCRIBED AS GUARANTEES OR FORECASTS.**
+    - Proibido `perda máxima`, `você não perderá`, `99% de certeza`, `garantia`; linguagem `histórico`/`observado`/`distribuição histórica`.
+
+---
+
+## 37. Scenario Analysis — Deterministic Stress Testing (Fase 3O)
+
+1. **SCENARIO ANALYSIS IS DETERMINISTIC WHAT-IF ANALYSIS, NEVER FORECAST OR PROBABILITY.**
+   - `POST /api/v1/portfolios/:id/performance/scenarios/run` aplica choques explícitos e reproduzíveis; sem probabilidade, likelihood, Monte Carlo ou previsão.
+
+2. **SCENARIO RUNS MUST NEVER MUTATE THE TRANSACTION LEDGER OR PORTFOLIO STATE.**
+   - Pure what-if; sem persistência, sem escrita no ledger, sem alterar posições, valuations ou inputs.
+
+3. **SCENARIO ENGINE IS SEPARATE FROM STATISTICAL RISK ENGINE.**
+   - `@atlas/scenario-engine@0.1.0` puro/zero I/O; `risk-engine` e `portfolio-engine` nunca importam o scenario-engine.
+
+4. **DIRECT EQUITY SHOCKS APPLY ONLY TO EXPLICITLY ELIGIBLE ASSET CLASSES.**
+   - `STOCK`, `FII`, `ETF`, `BDR`; demais classes inalteradas; impacto sobre market value, nunca cost basis.
+
+5. **BENCHMARK SHOCKS USE HISTORICAL PORTFOLIO BETA AND MUST BE LABELED AS ESTIMATES BASED ON HISTORICAL BETA.**
+   - `estimatedReturn% = Beta × shock%` (IBOV); reutiliza 3K; nível consolidado BRL, nunca per-asset.
+
+6. **BETA UNAVAILABLE MUST NEVER FALL BACK TO 1.**
+   - `Beta = null` → `UNAVAILABLE` (`SCENARIO.BETA_UNAVAILABLE`).
+
+7. **DIRECT EQUITY SHOCK AND BENCHMARK SHOCK MUST NOT DOUBLE-COUNT THE SAME EXPOSURE.**
+   - Equity + benchmark no mesmo cenário → `400 SCENARIO.CONFLICTING_SHOCKS` (ADR-164).
+
+8. **RATE SHOCKS REQUIRE EXPLICIT SENSITIVITY METADATA; MISSING DURATION MUST NEVER BE INFERRED OR FABRICATED.**
+   - Sem `modifiedDuration` canônico → `SCENARIO.UNSUPPORTED_RATE_SHOCK`; aproximação linear por duration só com duração explícita; sem convexity.
+
+9. **MULTI-CURRENCY SCENARIOS REMAIN SEGREGATED; NO FX AGGREGATION.**
+   - BRL e USD calculados separadamente; nunca somados.
+
+10. **MISSING VALUATION DATA MUST PRODUCE PARTIAL, NEVER IMPLICIT ZERO MARKET VALUE.**
+    - Posições sem quote são excluídas e contadas (`unvaluedPositionCount`); cobertura apenas em contagem, nunca percentual por valor.
+
+11. **CLIENT MUST NEVER CALCULATE STRESSED PRICES, BETA SHOCKS, DURATION IMPACTS, OR SCENARIO TOTALS.**
+    - `PortfolioScenarioViewModel` só formata; `stressedValue`, `shockFactor`, `beta *`, `duration *`, `Math.*` proibidos no client.
+
+12. **SCENARIO OUTPUTS MUST NOT BE DESCRIBED AS PREDICTIONS, PROBABILITIES, OR GUARANTEED OUTCOMES.**
+    - Linguagem canônica: `Impacto estimado no cenário`, `Hipótese`, `Simulação`; proibido `previsão`, `vai cair`, `perda esperada`, `probabilidade`, `garantia`.
+
+---
+
+## 38. Portfolio Intelligence Summary (Fase 3P)
+
+1. **PORTFOLIO INTELLIGENCE AGGREGATES CANONICAL READ MODELS; IT MUST NOT OWN OR DUPLICATE FINANCIAL FORMULAS.**
+   - `@atlas/portfolio-intelligence@0.1.0` puro/zero I/O recebe read models já calculados; nunca recalcula TWR/Sharpe/Beta/VaR.
+
+2. **A SUMMARY USES ONE SHARED EFFECTIVE ANALYSIS PERIOD ACROSS ALL PERIOD-BASED METRICS.**
+   - Default 1Y (`endDate = today`, `startDate = endDate − 365`), inception clamp; nenhum bloco usa período diferente (ADR-167).
+
+3. **OBJECTIVE OBSERVATIONS ARE FACTUAL STRUCTURED DATA, NEVER RECOMMENDATIONS OR QUALITATIVE JUDGMENTS.**
+   - `PortfolioObservation[]` determinístico, ordenado, sem duplicatas `code+scope`; valores copiados, nunca recomputados (ADR-168).
+
+4. **PORTFOLIO INTELLIGENCE MUST NOT CREATE SCORES, GRADES, RANKINGS, RATINGS, TRAFFIC LIGHTS, OR PORTFOLIO HEALTH CLASSIFICATIONS.**
+
+5. **DATA QUALITY MUST BE REPRESENTED THROUGH EXPLICIT STATUSES AND REASON CODES, NOT A NUMERIC SCORE.**
+   - `AVAILABLE | PARTIAL | UNAVAILABLE` + reason codes estáveis; `UNSUPPORTED` estrutural distinto de lacuna acidental (ADR-169).
+
+6. **MULTI-CURRENCY SUMMARIES REMAIN SEGREGATED; NO IMPLICIT FX OR GLOBAL PORTFOLIO TOTAL.**
+   - `currencies: { BRL, USD }`; sem total consolidado (ADR-171).
+
+7. **CURRENT VALUATION AND HISTORICAL PERIOD METRICS MUST REMAIN EXPLICITLY DISTINGUISHABLE.**
+   - Overview à `effectiveEnd` (point-in-time) vs blocos PERIOD.
+
+8. **SCENARIO DATA IN THE SUMMARY IS HYPOTHETICAL AND DETERMINISTIC, NEVER PREDICTIVE.**
+   - Apenas `EQUITY_DOWN_10`; sem benchmark/rate shock no summary.
+
+9. **TAIL-RISK DATA IS HISTORICAL, NEVER A GUARANTEE OF FUTURE LOSSES.**
+   - Confiança canônica 95% no summary.
+
+10. **CLIENTS MUST NOT CALCULATE FINANCIAL SUMMARY METRICS.**
+    - `PortfolioIntelligenceSummaryViewModel` só formata e aplica templates factuais.
+
+11. **PROVIDER/CONTEXT WORK MUST BE REUSED; SUMMARY CARDS MUST NOT TRIGGER INDEPENDENT DUPLICATE FETCH PIPELINES.**
+    - 1 replay, 1 contexto, ≤1 IBOV, ≤1 CDI, 1 pass de valuation atual reusado pelo cenário (ADR-170).
+
+12. **FUTURE AI MAY CONSUME PORTFOLIO INTELLIGENCE SUMMARY, BUT AI MUST NEVER BECOME THE SOURCE OF TRUTH FOR FINANCIAL METRICS.**
+    - 3P não chama o AI Engine (ADR-172).
+
+---

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors, borderRadius, spacing } from '@atlas/ui';
 import { Button, Input, Select, Card, useToast } from '@/components/ui';
-import { apiClient } from '@/api/client';
+import { apiClient, ApiError } from '@/api/client';
 import { useAuthStore } from '@/stores/auth.store';
 
 interface PortfolioItem {
@@ -43,7 +43,7 @@ export default function OnboardingPage() {
   const hasExistingPortfolios = portfolios.length > 0;
 
   const createPortfolioMutation = useMutation({
-    mutationFn: async (payload: { name: string; currency: string; type: string }) => {
+    mutationFn: async (payload: { name: string; baseCurrency: string; type: string }) => {
       const res = await apiClient.post<{ data: PortfolioItem }>('/api/v1/portfolios', payload);
       return res.data;
     },
@@ -53,6 +53,20 @@ export default function OnboardingPage() {
       setStep(3);
     },
     onError: (err: Error) => {
+      // Dev-only technical logging (validation paths only, no sensitive data).
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('[onboarding] create portfolio failed:', {
+          code: err instanceof ApiError ? err.code : undefined,
+          statusCode: err instanceof ApiError ? err.statusCode : undefined,
+          details: err instanceof ApiError ? err.details : undefined,
+        });
+      }
+      if (err instanceof ApiError && err.code === 'VALIDATION.INVALID_INPUT') {
+        setFormError(
+          'Verifique os dados da carteira: nome obrigatório, moeda BRL e um tipo válido (Pessoal, Familiar, PJ ou Simulação).',
+        );
+        return;
+      }
       setFormError(err.message || 'Falha ao criar carteira. Tente novamente.');
     },
   });
@@ -66,7 +80,7 @@ export default function OnboardingPage() {
     }
     createPortfolioMutation.mutate({
       name: portfolioName.trim(),
-      currency: 'BRL',
+      baseCurrency: 'BRL',
       type: portfolioType,
     });
   };

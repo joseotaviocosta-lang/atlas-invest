@@ -25,12 +25,13 @@ import { Card, Skeleton, ErrorState } from '@/components/ui';
 function PortfolioHistoryContent() {
   const searchParams = useSearchParams();
   const portfolioIdParam = searchParams.get('portfolioId');
+  const accountIdParam = searchParams.get('accountId');
 
-  // Filter State
+  // Filter State (accountId may arrive via deep-link from the account detail)
   const [filters, setFilters] = useState<HistoryFilterState>({
     period: 'all',
     type: '',
-    accountId: '',
+    accountId: accountIdParam || '',
     assetId: '',
     from: '',
     to: '',

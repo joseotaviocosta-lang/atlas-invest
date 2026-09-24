@@ -1,46 +1,1594 @@
-import { Asset, AssetId, LocalDate, Money } from '@atlas/domain';
+import {
+  Asset,
+  AssetId,
+  AssetType,
+  Currency,
+  DomainError,
+  Money,
+  LocalDate,
+  assertValidCurrency,
+  isValidUUID,
+} from '@atlas/domain';
 
 export const MARKET_DATA_VERSION = '0.1.0';
 
-export interface MarketQuote {
-  assetId: AssetId;
-  price: Money;
-  change: string;
-  timestamp: Date;
+// ---------------------------------------------------------------------------
+// Market data sources
+// ---------------------------------------------------------------------------
+
+export const MARKET_DATA_SOURCES = ['STOOQ', 'IN_MEMORY', 'MANUAL'] as const;
+export type MarketDataSource = (typeof MARKET_DATA_SOURCES)[number];
+
+export function assertValidMarketDataSource(value: string): MarketDataSource {
+  if ((MARKET_DATA_SOURCES as readonly string[]).includes(value)) {
+    return value as MarketDataSource;
+  }
+  throw new MarketDataError(
+    `Unsupported market data provider '${value}'. Supported: ${MARKET_DATA_SOURCES.join(', ')}`,
+    'MARKET_DATA.PROVIDER_UNAVAILABLE',
+    { retryable: false },
+  );
 }
 
-export interface HistoricalPrice {
-  date: LocalDate;
-  close: Money;
-  open?: Money;
-  high?: Money;
-  low?: Money;
-  volume?: string;
-}
+// ---------------------------------------------------------------------------
+// Quote status & freshness
+// ---------------------------------------------------------------------------
 
-export interface CorporateAction {
-  assetId: AssetId;
-  type: 'DIVIDEND' | 'JCP' | 'SPLIT' | 'BONUS';
-  approvalDate: LocalDate;
-  exDate: LocalDate;
-  paymentDate?: LocalDate;
-  value: string;
+export const QUOTE_STATUSES = ['LIVE', 'DELAYED', 'EOD', 'STALE', 'UNAVAILABLE'] as const;
+export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
+
+export const QUOTE_FRESHNESSES = ['FRESH', 'STALE', 'UNKNOWN'] as const;
+export type QuoteFreshness = (typeof QUOTE_FRESHNESSES)[number];
+
+// ---------------------------------------------------------------------------
+// Canonical error model
+// ---------------------------------------------------------------------------
+
+export const MARKET_DATA_ERROR_CODES = [
+  'MARKET_DATA.PROVIDER_UNAVAILABLE',
+  'MARKET_DATA.RATE_LIMITED',
+  'MARKET_DATA.SYMBOL_NOT_FOUND',
+  'MARKET_DATA.INVALID_RESPONSE',
+  'MARKET_DATA.TIMEOUT',
+  'MARKET_DATA.AUTHENTICATION_FAILED',
+  'MARKET_DATA.UNSUPPORTED_ASSET',
+  'MARKET_DATA.INVALID_PRICE',
+  'MARKET_DATA.INVALID_TIMESTAMP',
+  'MARKET_DATA.BATCH_LIMIT_EXCEEDED',
+  'MARKET_DATA.INVALID_ASSET_ID',
+] as const;
+export type MarketDataErrorCode = (typeof MARKET_DATA_ERROR_CODES)[number];
+
+/**
+ * Canonical market data error.
+ *
+ * Every provider-specific failure is normalized to one of the canonical
+ * codes above. Raw HTTP bodies, stack traces, API keys and any upstream
+ * payload are NEVER attached to this error and must never reach the API
+ * response or logs.
+ *
+ * Extends DomainError so the API GlobalExceptionFilter maps it to
+ * `400 Bad Request` without any filter change (frozen error envelope).
+ */
+export class MarketDataError extends DomainError {
+  override readonly code: MarketDataErrorCode;
+  readonly retryable: boolean;
+  readonly assetId?: string;
+
+  constructor(
+    message: string,
+    code: MarketDataErrorCode,
+    options: { retryable?: boolean; assetId?: string } = {},
+  ) {
+    super(message, code);
+    this.code = code;
+    this.name = this.constructor.name;
+    this.retryable = options.retryable ?? false;
+    this.assetId = options.assetId;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
 }
 
 /**
- * Future Market Data Provider contract (B3, Yahoo, AlphaVantage, etc.).
- * Pure interface contract - zero concrete SDK integrations in Phase 0B.
+ * Provider error -> canonical error mapping.
+ *
+ * Provider error                                     Canonical code                        Retryable?
+ * -------------------------------                    ------------------------------------  ---------
+ * timeout / aborted request                          MARKET_DATA.TIMEOUT                   true
+ * HTTP 429                                           MARKET_DATA.RATE_LIMITED              true
+ * network failure / HTTP 5xx / no response           MARKET_DATA.PROVIDER_UNAVAILABLE      true
+ * HTTP 401 / 403                                     MARKET_DATA.AUTHENTICATION_FAILED     false
+ * HTTP 404 / unknown symbol                          MARKET_DATA.SYMBOL_NOT_FOUND          false
+ * malformed payload / invalid price / bad timestamp  MARKET_DATA.INVALID_RESPONSE          false
+ */
+export function normalizeProviderError(
+  input: { httpStatus?: number; code?: string; timedOut?: boolean },
+  context: { provider: MarketDataSource; assetId?: string },
+): MarketDataError {
+  const assetId = context.assetId;
+  if (input.timedOut) {
+    return new MarketDataError(
+      `Market data provider '${context.provider}' timed out`,
+      'MARKET_DATA.TIMEOUT',
+      {
+        retryable: true,
+        assetId,
+      },
+    );
+  }
+  const status = input.httpStatus;
+  if (status === 429) {
+    return new MarketDataError(
+      `Market data provider '${context.provider}' rate limit exceeded`,
+      'MARKET_DATA.RATE_LIMITED',
+      { retryable: true, assetId },
+    );
+  }
+  if (status === 401 || status === 403) {
+    return new MarketDataError(
+      `Market data provider '${context.provider}' authentication failed`,
+      'MARKET_DATA.AUTHENTICATION_FAILED',
+      { retryable: false, assetId },
+    );
+  }
+  if (status === 404) {
+    return new MarketDataError(
+      `Symbol not found at provider '${context.provider}'`,
+      'MARKET_DATA.SYMBOL_NOT_FOUND',
+      {
+        retryable: false,
+        assetId,
+      },
+    );
+  }
+  if (status !== undefined && status >= 500) {
+    return new MarketDataError(
+      `Market data provider '${context.provider}' is unavailable`,
+      'MARKET_DATA.PROVIDER_UNAVAILABLE',
+      { retryable: true, assetId },
+    );
+  }
+  if (input.code === 'NETWORK_ERROR' || input.code === 'NO_RESPONSE') {
+    return new MarketDataError(
+      `Market data provider '${context.provider}' is unreachable`,
+      'MARKET_DATA.PROVIDER_UNAVAILABLE',
+      { retryable: true, assetId },
+    );
+  }
+  return new MarketDataError(
+    `Market data provider '${context.provider}' returned an invalid response`,
+    'MARKET_DATA.INVALID_RESPONSE',
+    { retryable: false, assetId },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Canonical quote
+// ---------------------------------------------------------------------------
+
+const DECIMAL_STRING_REGEX = /^-?\d+(\.\d+)?$/;
+
+/**
+ * Canonical market quote. Provider-independent.
+ *
+ * - `price` uses the exact-decimal `Money` primitive (never JS float).
+ * - `currency` is always explicit, never assumed.
+ * - Timestamps are technical/market temporality (ISO-8601 UTC instants),
+ *   NOT economic `LocalDate` ledger dates. `marketTime` is the exchange
+ *   timestamp when the provider supplies one; `receivedAt` is the
+ *   ingestion timestamp. `asOf` is the effective timestamp of the quote.
+ * - `freshness` is computed by the service/cache layer, never by the UI.
+ */
+export interface MarketQuote {
+  assetId: AssetId;
+  price: Money;
+  currency: Currency;
+  asOf: string;
+  marketTime?: string;
+  receivedAt: string;
+  source: MarketDataSource;
+  status: QuoteStatus;
+  freshness: QuoteFreshness;
+  providerSymbol: string;
+}
+
+/**
+ * JSON-serializable quote. The price travels strictly as an exact
+ * decimal string — never as a JSON number.
+ */
+export interface MarketQuoteJSON {
+  assetId: string;
+  price: string;
+  currency: Currency;
+  asOf: string;
+  marketTime?: string;
+  receivedAt: string;
+  source: MarketDataSource;
+  status: QuoteStatus;
+  freshness: QuoteFreshness;
+  providerSymbol: string;
+}
+
+function assertValidInstant(value: string, field: string): string {
+  if (typeof value !== 'string') {
+    throw new MarketDataError(
+      `Invalid ${field} timestamp '${String(value)}'`,
+      'MARKET_DATA.INVALID_TIMESTAMP',
+      { retryable: false },
+    );
+  }
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    throw new MarketDataError(
+      `Invalid ${field} timestamp '${String(value)}'`,
+      'MARKET_DATA.INVALID_TIMESTAMP',
+      { retryable: false },
+    );
+  }
+  const parsedMs = Date.parse(trimmed);
+  if (!Number.isFinite(parsedMs)) {
+    throw new MarketDataError(
+      `Invalid ${field} timestamp '${String(value)}'`,
+      'MARKET_DATA.INVALID_TIMESTAMP',
+      { retryable: false },
+    );
+  }
+  // Strict calendar validation: reject impossible civil dates that Date.parse rolls over
+  const dateMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!dateMatch) {
+    throw new MarketDataError(
+      `Invalid ${field} timestamp '${String(value)}'`,
+      'MARKET_DATA.INVALID_TIMESTAMP',
+      { retryable: false },
+    );
+  }
+  const y = Number(dateMatch[1]);
+  const m = Number(dateMatch[2]);
+  const d = Number(dateMatch[3]);
+  if (m < 1 || m > 12) {
+    throw new MarketDataError(
+      `Invalid ${field} timestamp '${String(value)}'`,
+      'MARKET_DATA.INVALID_TIMESTAMP',
+      { retryable: false },
+    );
+  }
+  const dim = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  if (d < 1 || d > dim) {
+    throw new MarketDataError(
+      `Invalid ${field} timestamp '${String(value)}'`,
+      'MARKET_DATA.INVALID_TIMESTAMP',
+      { retryable: false },
+    );
+  }
+  const timeMatch = trimmed.match(/[T ](\d{2}):(\d{2}):(\d{2})/);
+  if (timeMatch) {
+    const hh = Number(timeMatch[1]);
+    const mm = Number(timeMatch[2]);
+    const ss = Number(timeMatch[3]);
+    if (hh > 23 || mm > 59 || ss > 59) {
+      throw new MarketDataError(
+        `Invalid ${field} timestamp '${String(value)}'`,
+        'MARKET_DATA.INVALID_TIMESTAMP',
+        { retryable: false },
+      );
+    }
+  }
+  return trimmed;
+}
+
+function assertValidAssetId(value: string): AssetId {
+  if (!isValidUUID(value)) {
+    throw new MarketDataError(`Invalid asset id '${value}'`, 'MARKET_DATA.INVALID_ASSET_ID', {
+      retryable: false,
+    });
+  }
+  return value as AssetId;
+}
+
+export function createMarketQuote(input: {
+  assetId: string;
+  price: string;
+  currency: string;
+  asOf: string;
+  receivedAt: string;
+  marketTime?: string;
+  source: MarketDataSource;
+  status: QuoteStatus;
+  freshness?: QuoteFreshness;
+  providerSymbol: string;
+}): MarketQuote {
+  const assetId = assertValidAssetId(input.assetId);
+  const currency = assertValidCurrency(input.currency);
+  if (typeof input.price !== 'string' || !DECIMAL_STRING_REGEX.test(input.price.trim())) {
+    throw new MarketDataError(
+      `Invalid market price '${String(input.price)}'`,
+      'MARKET_DATA.INVALID_PRICE',
+      {
+        retryable: false,
+        assetId,
+      },
+    );
+  }
+  let price: Money;
+  try {
+    price = Money.from(input.price.trim(), currency);
+  } catch {
+    throw new MarketDataError(
+      `Invalid market price '${input.price}'`,
+      'MARKET_DATA.INVALID_PRICE',
+      {
+        retryable: false,
+        assetId,
+      },
+    );
+  }
+  if (price.isNegative() || price.isZero()) {
+    throw new MarketDataError(
+      `Invalid market price '${input.price}': must be strictly positive`,
+      'MARKET_DATA.INVALID_PRICE',
+      {
+        retryable: false,
+        assetId,
+      },
+    );
+  }
+  const asOf = assertValidInstant(input.asOf, 'asOf');
+  const receivedAt = assertValidInstant(input.receivedAt, 'receivedAt');
+  const marketTime =
+    input.marketTime !== undefined ? assertValidInstant(input.marketTime, 'marketTime') : undefined;
+  if (!(QUOTE_STATUSES as readonly string[]).includes(input.status)) {
+    throw new MarketDataError(
+      `Invalid quote status '${String(input.status)}'`,
+      'MARKET_DATA.INVALID_RESPONSE',
+      {
+        retryable: false,
+        assetId,
+      },
+    );
+  }
+  const freshness: QuoteFreshness =
+    input.freshness !== undefined &&
+    (QUOTE_FRESHNESSES as readonly string[]).includes(input.freshness)
+      ? input.freshness
+      : statusToFreshness(input.status);
+  const frozen: MarketQuote = {
+    assetId,
+    price,
+    currency,
+    asOf,
+    ...(marketTime ? { marketTime } : {}),
+    receivedAt,
+    source: input.source,
+    status: input.status,
+    freshness,
+    providerSymbol: input.providerSymbol,
+  };
+  return Object.freeze(frozen);
+}
+
+function statusToFreshness(status: QuoteStatus): QuoteFreshness {
+  if (status === 'STALE' || status === 'UNAVAILABLE') return 'STALE';
+  if (status === 'LIVE' || status === 'DELAYED' || status === 'EOD') return 'FRESH';
+  return 'UNKNOWN';
+}
+
+export function serializeMarketQuote(quote: MarketQuote): MarketQuoteJSON {
+  return {
+    assetId: quote.assetId,
+    price: quote.price.amount,
+    currency: quote.currency,
+    asOf: quote.asOf,
+    ...(quote.marketTime ? { marketTime: quote.marketTime } : {}),
+    receivedAt: quote.receivedAt,
+    source: quote.source,
+    status: quote.status,
+    freshness: quote.freshness,
+    providerSymbol: quote.providerSymbol,
+  };
+}
+
+/**
+ * Pure freshness computation. `ttlSeconds` comes from configuration.
+ * A quote older than the TTL is STALE; a future-dated quote is UNKNOWN.
+ * Stale quotes are never presented as fresh.
+ */
+export function getQuoteFreshness(
+  asOfIso: string,
+  nowMs: number,
+  ttlSeconds: number,
+): QuoteFreshness {
+  const asOfMs = Date.parse(asOfIso);
+  if (!Number.isFinite(asOfMs)) return 'UNKNOWN';
+  if (asOfMs > nowMs) return 'UNKNOWN';
+  return nowMs - asOfMs <= ttlSeconds * 1000 ? 'FRESH' : 'STALE';
+}
+
+// ---------------------------------------------------------------------------
+// Asset -> provider symbol resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Provider-agnostic asset reference used as input for symbol resolution
+ * and quote requests. Identity is ALWAYS `assetId`; `ticker` is display
+ * metadata only and never a global key.
+ */
+export interface MarketDataAssetRef {
+  assetId: AssetId;
+  ticker: string;
+  exchange: string;
+  currency: Currency;
+  assetType: AssetType;
+}
+
+/**
+ * Adapter-specific provider symbol. Scoped to a provider: the same asset
+ * maps to different symbols on different providers (e.g. `PETR4.SA` on
+ * Stooq vs `PETR4` on a B3-native API). Never replaces `AssetId`.
+ */
+export interface MarketDataSymbol {
+  provider: MarketDataSource;
+  providerSymbol: string;
+  assetId: AssetId;
+}
+
+const B3_EXCHANGES = ['B3', 'BVMF', 'B3SA', 'BMFBOVESPA'] as const;
+const US_EXCHANGES = ['NASDAQ', 'NYSE', 'NYSEARCA', 'AMEX', 'OTC'] as const;
+
+const SUPPORTED_QUOTE_ASSET_TYPES: readonly AssetType[] = ['STOCK', 'FII', 'ETF', 'BDR'];
+
+export function assetRefFromAsset(asset: Asset): MarketDataAssetRef {
+  return {
+    assetId: asset.id,
+    ticker: asset.ticker,
+    exchange: asset.exchange,
+    currency: asset.currency,
+    assetType: asset.type,
+  };
+}
+
+/**
+ * Resolves the provider-specific symbol for an asset.
+ *
+ * - B3-listed instruments map to `<TICKER>.SA` on suffix-style providers
+ *   (e.g. Stooq). The `.SA` suffix is adapter metadata and is never
+ *   stored as the canonical ticker.
+ * - US-listed instruments map to the bare ticker.
+ * - Fixed income and other unsupported types throw `UNSUPPORTED_ASSET`
+ *   instead of inventing a quotation.
+ * - Exchange-aware: identical tickers on different exchanges resolve
+ *   to distinct provider symbols.
+ */
+export function resolveMarketDataSymbol(
+  ref: MarketDataAssetRef,
+  provider: MarketDataSource,
+): MarketDataSymbol {
+  if (!SUPPORTED_QUOTE_ASSET_TYPES.includes(ref.assetType)) {
+    throw new MarketDataError(
+      `Asset type '${ref.assetType}' has no market quotation support`,
+      'MARKET_DATA.UNSUPPORTED_ASSET',
+      { retryable: false, assetId: ref.assetId },
+    );
+  }
+  const exchange = ref.exchange.trim().toUpperCase();
+  const ticker = ref.ticker.trim().toUpperCase();
+  if (ticker === '') {
+    throw new MarketDataError(
+      'Cannot resolve provider symbol for empty ticker',
+      'MARKET_DATA.UNSUPPORTED_ASSET',
+      {
+        retryable: false,
+        assetId: ref.assetId,
+      },
+    );
+  }
+  if ((B3_EXCHANGES as readonly string[]).includes(exchange)) {
+    const suffix = provider === 'STOOQ' ? '.SA' : '';
+    return { provider, providerSymbol: `${ticker}${suffix}`, assetId: ref.assetId };
+  }
+  if ((US_EXCHANGES as readonly string[]).includes(exchange)) {
+    return { provider, providerSymbol: ticker, assetId: ref.assetId };
+  }
+  return { provider, providerSymbol: `${ticker}.${exchange}`, assetId: ref.assetId };
+}
+
+/**
+ * Deterministic cache key. The provider is part of the key because the
+ * same asset maps to different symbols on different providers.
+ */
+export function buildMarketQuoteCacheKey(
+  provider: MarketDataSource,
+  providerSymbol: string,
+): string {
+  return `${provider}::${providerSymbol.trim().toUpperCase()}`;
+}
+
+// ---------------------------------------------------------------------------
+// Provider abstraction (batch-first)
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-asset unavailable entry for partial batch success.
+ */
+export interface UnavailableQuote {
+  assetId: string;
+  code: MarketDataErrorCode;
+  retryable: boolean;
+}
+
+/**
+ * Batch result with partial-success semantics: valid quotes plus
+ * per-asset unavailable entries. A batch NEVER fails as a whole
+ * because of a single unknown symbol.
+ */
+export interface BatchQuoteResult {
+  quotes: MarketQuote[];
+  unavailable: UnavailableQuote[];
+}
+
+export function createEmptyBatchResult(): BatchQuoteResult {
+  return { quotes: [], unavailable: [] };
+}
+
+/**
+ * Canonical provider contract. Every adapter (real or mock) implements
+ * this interface and NOTHING provider-specific may leak past it:
+ * no `YahooFinanceQuote`, `StooqRow`, `BrapiQuote` types outside the
+ * adapter module.
  */
 export interface MarketDataProvider {
-  getQuote(ticker: string, exchange: string): Promise<MarketQuote>;
-  getHistoricalPrices(
-    ticker: string,
-    exchange: string,
-    startDate: LocalDate,
-    endDate: LocalDate,
-  ): Promise<HistoricalPrice[]>;
-  getAsset(assetId: AssetId): Promise<Asset | null>;
-  searchAssets(query: string): Promise<Asset[]>;
-  getFundamentals(ticker: string, exchange: string): Promise<Record<string, string>>;
-  getCorporateActions(ticker: string, exchange: string): Promise<CorporateAction[]>;
+  readonly provider: MarketDataSource;
+  getQuote(ref: MarketDataAssetRef): Promise<MarketQuote>;
+  getQuotes(refs: readonly MarketDataAssetRef[]): Promise<BatchQuoteResult>;
+}
+
+// ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
+
+export const MARKET_DATA_DEFAULT_TIMEOUT_MS = 8000;
+export const MARKET_DATA_DEFAULT_CACHE_TTL_SECONDS = 60;
+export const MARKET_DATA_MAX_BATCH_SIZE = 100;
+
+export interface MarketDataConfig {
+  provider: MarketDataSource;
+  timeoutMs: number;
+  cacheTtlSeconds: number;
+  maxBatchSize: number;
+}
+
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === '') return fallback;
+  if (!/^\d+$/.test(raw.trim())) return fallback;
+  const parsed = parseInt(raw.trim(), 10);
+  return parsed > 0 ? parsed : fallback;
+}
+
+/**
+ * Reads provider configuration from the environment. No hardcoded
+ * TTLs, timeouts or provider names anywhere else in the codebase.
+ */
+export function readMarketDataConfigFromEnv(
+  env: Record<string, string | undefined>,
+): MarketDataConfig {
+  const providerRaw = (env.MARKET_DATA_PROVIDER ?? 'STOOQ').trim().toUpperCase();
+  const provider = assertValidMarketDataSource(providerRaw);
+  return {
+    provider,
+    timeoutMs: parsePositiveInt(env.MARKET_DATA_TIMEOUT_MS, MARKET_DATA_DEFAULT_TIMEOUT_MS),
+    cacheTtlSeconds: parsePositiveInt(
+      env.MARKET_DATA_CACHE_TTL_SECONDS,
+      MARKET_DATA_DEFAULT_CACHE_TTL_SECONDS,
+    ),
+    maxBatchSize: Math.min(
+      parsePositiveInt(env.MARKET_DATA_MAX_BATCH, MARKET_DATA_MAX_BATCH_SIZE),
+      MARKET_DATA_MAX_BATCH_SIZE,
+    ),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Quote cache
+// ---------------------------------------------------------------------------
+
+interface QuoteCacheEntry {
+  quote: MarketQuote;
+  expiresAtMs: number;
+  cachedAtMs: number;
+  hitCount: number;
+}
+
+export interface QuoteCacheStats {
+  hits: number;
+  misses: number;
+  size: number;
+}
+
+/**
+ * Minimal TTL quote cache: reduces external requests and protects the
+ * provider from N+1 fan-out. Keyed by `provider + providerSymbol`.
+ * Expired entries are served as STALE (explicitly marked) when
+ * `allowStale` is set, never masqueraded as fresh.
+ */
+export class InMemoryQuoteCache {
+  private readonly entries = new Map<string, QuoteCacheEntry>();
+  private hits = 0;
+  private misses = 0;
+  private readonly now: () => number;
+
+  constructor(now: () => number = () => Date.now()) {
+    this.now = now;
+  }
+
+  get(key: string, options: { allowStale?: boolean } = {}): MarketQuote | null {
+    const entry = this.entries.get(key);
+    if (!entry) {
+      this.misses += 1;
+      return null;
+    }
+    const nowMs = this.now();
+    if (nowMs <= entry.expiresAtMs) {
+      this.hits += 1;
+      entry.hitCount += 1;
+      return entry.quote;
+    }
+    if (options.allowStale) {
+      this.hits += 1;
+      entry.hitCount += 1;
+      const stale: MarketQuote = Object.freeze({
+        ...entry.quote,
+        freshness: 'STALE' as QuoteFreshness,
+        status: 'STALE' as QuoteStatus,
+      });
+      return stale;
+    }
+    this.entries.delete(key);
+    this.misses += 1;
+    return null;
+  }
+
+  set(key: string, quote: MarketQuote, ttlSeconds: number): void {
+    const nowMs = this.now();
+    this.entries.set(key, {
+      quote,
+      expiresAtMs: nowMs + ttlSeconds * 1000,
+      cachedAtMs: nowMs,
+      hitCount: 0,
+    });
+  }
+
+  clear(): void {
+    this.entries.clear();
+    this.hits = 0;
+    this.misses = 0;
+  }
+
+  stats(): QuoteCacheStats {
+    return { hits: this.hits, misses: this.misses, size: this.entries.size };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Market data service (orchestrator)
+// ---------------------------------------------------------------------------
+
+export interface MarketDataServiceStats {
+  cacheHits: number;
+  cacheMisses: number;
+  providerCalls: number;
+  providerErrors: number;
+  quotesRequested: number;
+}
+
+/**
+ * Orchestrator: resolves provider symbols, serves the cache, fans out
+ * batch requests, normalizes errors and returns canonical quotes.
+ * Knows NOTHING about portfolios, positions or valuation.
+ */
+export class MarketDataService {
+  private readonly provider: MarketDataProvider;
+  private readonly cache: InMemoryQuoteCache;
+  private readonly config: MarketDataConfig;
+  private readonly now: () => number;
+  private readonly stats: MarketDataServiceStats = {
+    cacheHits: 0,
+    cacheMisses: 0,
+    providerCalls: 0,
+    providerErrors: 0,
+    quotesRequested: 0,
+  };
+
+  constructor(options: {
+    provider: MarketDataProvider;
+    cache?: InMemoryQuoteCache;
+    config: MarketDataConfig;
+    now?: () => number;
+  }) {
+    this.provider = options.provider;
+    this.cache = options.cache ?? new InMemoryQuoteCache(options.now);
+    this.config = options.config;
+    this.now = options.now ?? (() => Date.now());
+  }
+
+  get providerName(): MarketDataSource {
+    return this.provider.provider;
+  }
+
+  getStats(): MarketDataServiceStats {
+    return { ...this.stats };
+  }
+
+  async getQuote(ref: MarketDataAssetRef): Promise<MarketQuote> {
+    const result = await this.getQuotes([ref]);
+    const quote = result.quotes.find((q) => q.assetId === ref.assetId);
+    if (!quote) {
+      const unavailable = result.unavailable.find((u) => u.assetId === ref.assetId);
+      throw new MarketDataError(
+        `Quote unavailable for asset '${ref.assetId}' (${unavailable?.code ?? 'MARKET_DATA.SYMBOL_NOT_FOUND'})`,
+        (unavailable?.code ?? 'MARKET_DATA.SYMBOL_NOT_FOUND') as MarketDataErrorCode,
+        { retryable: unavailable?.retryable ?? false, assetId: ref.assetId },
+      );
+    }
+    return quote;
+  }
+
+  async getQuotes(refs: readonly MarketDataAssetRef[]): Promise<BatchQuoteResult> {
+    if (refs.length === 0) {
+      return createEmptyBatchResult();
+    }
+    const seen = new Set<string>();
+    const deduped: MarketDataAssetRef[] = [];
+    for (const ref of refs) {
+      if (!seen.has(ref.assetId)) {
+        seen.add(ref.assetId);
+        deduped.push(ref);
+      }
+    }
+    if (deduped.length > this.config.maxBatchSize) {
+      throw new MarketDataError(
+        `Batch of ${deduped.length} assets exceeds the limit of ${this.config.maxBatchSize}`,
+        'MARKET_DATA.BATCH_LIMIT_EXCEEDED',
+        { retryable: false },
+      );
+    }
+    this.stats.quotesRequested += deduped.length;
+
+    const result: BatchQuoteResult = createEmptyBatchResult();
+    const misses: MarketDataAssetRef[] = [];
+
+    for (const ref of deduped) {
+      let symbol: MarketDataSymbol;
+      try {
+        symbol = resolveMarketDataSymbol(ref, this.provider.provider);
+      } catch (err) {
+        if (err instanceof MarketDataError) {
+          result.unavailable.push({
+            assetId: ref.assetId,
+            code: err.code,
+            retryable: err.retryable,
+          });
+          continue;
+        }
+        throw err;
+      }
+      const key = buildMarketQuoteCacheKey(this.provider.provider, symbol.providerSymbol);
+      const cached = this.cache.get(key);
+      if (cached) {
+        this.stats.cacheHits += 1;
+        result.quotes.push(refreshFreshness(cached, this.now(), this.config.cacheTtlSeconds));
+      } else {
+        this.stats.cacheMisses += 1;
+        misses.push(ref);
+      }
+    }
+
+    if (misses.length > 0) {
+      this.stats.providerCalls += 1;
+      let batch: BatchQuoteResult;
+      try {
+        batch = await this.provider.getQuotes(misses);
+      } catch (err) {
+        this.stats.providerErrors += 1;
+        if (err instanceof MarketDataError) {
+          for (const ref of misses) {
+            result.unavailable.push({
+              assetId: ref.assetId,
+              code: err.code,
+              retryable: err.retryable,
+            });
+          }
+          return sortBatchResult(result);
+        }
+        throw err;
+      }
+      for (const quote of batch.quotes) {
+        const fresh = refreshFreshness(quote, this.now(), this.config.cacheTtlSeconds);
+        result.quotes.push(fresh);
+        try {
+          const symbol = resolveMarketDataSymbol(
+            misses.find((m) => m.assetId === quote.assetId) ??
+              deduped.find((d) => d.assetId === quote.assetId)!,
+            this.provider.provider,
+          );
+          this.cache.set(
+            buildMarketQuoteCacheKey(this.provider.provider, symbol.providerSymbol),
+            fresh,
+            this.config.cacheTtlSeconds,
+          );
+        } catch {
+          // Resolution already validated above; defensive no-op.
+        }
+      }
+      for (const unavailable of batch.unavailable) {
+        result.unavailable.push(unavailable);
+      }
+    }
+
+    return sortBatchResult(result);
+  }
+}
+
+function refreshFreshness(quote: MarketQuote, nowMs: number, ttlSeconds: number): MarketQuote {
+  const freshness = getQuoteFreshness(quote.asOf, nowMs, ttlSeconds);
+  if (freshness === quote.freshness) return quote;
+  return Object.freeze({ ...quote, freshness });
+}
+
+function sortBatchResult(result: BatchQuoteResult): BatchQuoteResult {
+  const quotes = [...result.quotes].sort((a, b) =>
+    a.assetId < b.assetId ? -1 : a.assetId > b.assetId ? 1 : 0,
+  );
+  const unavailable = [...result.unavailable].sort((a, b) =>
+    a.assetId < b.assetId ? -1 : a.assetId > b.assetId ? 1 : 0,
+  );
+  return { quotes, unavailable };
+}
+
+// ---------------------------------------------------------------------------
+// Deterministic mock provider (tests only — never hits the network)
+// ---------------------------------------------------------------------------
+
+export interface MockSeedQuote {
+  providerSymbol: string;
+  price: string;
+  currency: string;
+  status?: QuoteStatus;
+  marketTime?: string;
+  asOf?: string;
+}
+
+export type MockFailureKind =
+  'TIMEOUT' | 'RATE_LIMITED' | 'AUTHENTICATION_FAILED' | 'PROVIDER_UNAVAILABLE';
+
+/**
+ * Deterministic in-memory provider for unit/integration tests and CI.
+ * Zero network, zero randomness: every quote is seeded explicitly and
+ * `receivedAt`/`asOf` derive from the injected clock.
+ */
+export class InMemoryMarketDataProvider implements MarketDataProvider {
+  readonly provider: MarketDataSource = 'IN_MEMORY';
+  private readonly seeds = new Map<string, MockSeedQuote>();
+  private readonly failures = new Map<string, MockFailureKind>();
+  private readonly now: () => number;
+  calls = 0;
+
+  constructor(now: () => number = () => Date.now()) {
+    this.now = now;
+  }
+
+  seed(quote: MockSeedQuote): void {
+    this.seeds.set(quote.providerSymbol.trim().toUpperCase(), quote);
+  }
+
+  failWith(providerSymbol: string, kind: MockFailureKind): void {
+    this.failures.set(providerSymbol.trim().toUpperCase(), kind);
+  }
+
+  clearFailure(providerSymbol: string): void {
+    this.failures.delete(providerSymbol.trim().toUpperCase());
+  }
+
+  private buildQuote(ref: MarketDataAssetRef, seed: MockSeedQuote): MarketQuote {
+    const nowIso = new Date(this.now()).toISOString();
+    return createMarketQuote({
+      assetId: ref.assetId,
+      price: seed.price,
+      currency: seed.currency,
+      asOf: seed.asOf ?? seed.marketTime ?? nowIso,
+      receivedAt: nowIso,
+      ...(seed.marketTime ? { marketTime: seed.marketTime } : {}),
+      source: 'IN_MEMORY',
+      status: seed.status ?? 'DELAYED',
+      providerSymbol: seed.providerSymbol,
+    });
+  }
+
+  private failureFor(symbol: string, assetId: string): MarketDataError | null {
+    const kind = this.failures.get(symbol.trim().toUpperCase());
+    if (!kind) return null;
+    switch (kind) {
+      case 'TIMEOUT':
+        return new MarketDataError(
+          `Mock provider timed out for '${symbol}'`,
+          'MARKET_DATA.TIMEOUT',
+          {
+            retryable: true,
+            assetId,
+          },
+        );
+      case 'RATE_LIMITED':
+        return new MarketDataError(
+          `Mock provider rate limited for '${symbol}'`,
+          'MARKET_DATA.RATE_LIMITED',
+          {
+            retryable: true,
+            assetId,
+          },
+        );
+      case 'AUTHENTICATION_FAILED':
+        return new MarketDataError(
+          'Mock provider authentication failed',
+          'MARKET_DATA.AUTHENTICATION_FAILED',
+          {
+            retryable: false,
+            assetId,
+          },
+        );
+      case 'PROVIDER_UNAVAILABLE':
+        return new MarketDataError(
+          'Mock provider unavailable',
+          'MARKET_DATA.PROVIDER_UNAVAILABLE',
+          {
+            retryable: true,
+            assetId,
+          },
+        );
+    }
+  }
+
+  async getQuote(ref: MarketDataAssetRef): Promise<MarketQuote> {
+    this.calls += 1;
+    const symbol = resolveMarketDataSymbol(ref, 'IN_MEMORY');
+    const key = symbol.providerSymbol.trim().toUpperCase();
+    const failure = this.failureFor(key, ref.assetId);
+    if (failure) throw failure;
+    const seed = this.seeds.get(key);
+    if (!seed) {
+      throw new MarketDataError(
+        `Symbol '${symbol.providerSymbol}' not found in mock provider`,
+        'MARKET_DATA.SYMBOL_NOT_FOUND',
+        {
+          retryable: false,
+          assetId: ref.assetId,
+        },
+      );
+    }
+    return this.buildQuote(ref, seed);
+  }
+
+  async getQuotes(refs: readonly MarketDataAssetRef[]): Promise<BatchQuoteResult> {
+    this.calls += 1;
+    const result = createEmptyBatchResult();
+    for (const ref of refs) {
+      let symbol: MarketDataSymbol;
+      try {
+        symbol = resolveMarketDataSymbol(ref, 'IN_MEMORY');
+      } catch (err) {
+        if (err instanceof MarketDataError) {
+          result.unavailable.push({
+            assetId: ref.assetId,
+            code: err.code,
+            retryable: err.retryable,
+          });
+          continue;
+        }
+        throw err;
+      }
+      const key = symbol.providerSymbol.trim().toUpperCase();
+      const failure = this.failureFor(key, ref.assetId);
+      if (failure) {
+        // Whole-batch transient failures short-circuit; per-symbol
+        // not-found stays partial.
+        if (
+          failure.code === 'MARKET_DATA.TIMEOUT' ||
+          failure.code === 'MARKET_DATA.PROVIDER_UNAVAILABLE'
+        ) {
+          throw failure;
+        }
+        result.unavailable.push({
+          assetId: ref.assetId,
+          code: failure.code,
+          retryable: failure.retryable,
+        });
+        continue;
+      }
+      const seed = this.seeds.get(key);
+      if (!seed) {
+        result.unavailable.push({
+          assetId: ref.assetId,
+          code: 'MARKET_DATA.SYMBOL_NOT_FOUND',
+          retryable: false,
+        });
+        continue;
+      }
+      try {
+        result.quotes.push(this.buildQuote(ref, seed));
+      } catch (err) {
+        if (err instanceof MarketDataError) {
+          result.unavailable.push({
+            assetId: ref.assetId,
+            code: err.code,
+            retryable: err.retryable,
+          });
+          continue;
+        }
+        throw err;
+      }
+    }
+    return sortBatchResult(result);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Stooq provider adapter (first real adapter)
+// ---------------------------------------------------------------------------
+
+const STOOQ_CSV_URL = 'https://stooq.com/q/l/';
+const STOOQ_PRICE_REGEX = /^-?\d+(\.\d+)?$/;
+
+/** Adapter-internal row. Deliberately NOT exported: provider-specific
+ * types must never leak outside the adapter. */
+type StooqCsvRow = {
+  symbol: string;
+  close: string;
+  date: string;
+  time: string;
+};
+
+function parseStooqCsv(csv: string): StooqCsvRow[] {
+  const lines = csv
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '');
+  if (lines.length < 2) return [];
+  const header = (lines[0] ?? '').split(',').map((h) => h.trim().toLowerCase());
+  const symbolIdx = header.indexOf('symbol');
+  const closeIdx = header.indexOf('close');
+  const dateIdx = header.indexOf('date');
+  const timeIdx = header.indexOf('time');
+  if (symbolIdx === -1 || closeIdx === -1) return [];
+  const rows: StooqCsvRow[] = [];
+  for (const line of lines.slice(1)) {
+    const cols = line.split(',');
+    rows.push({
+      symbol: (cols[symbolIdx] ?? '').trim(),
+      close: (cols[closeIdx] ?? '').trim(),
+      date: dateIdx === -1 ? '' : (cols[dateIdx] ?? '').trim(),
+      time: timeIdx === -1 ? '' : (cols[timeIdx] ?? '').trim(),
+    });
+  }
+  return rows;
+}
+
+function stooqRowToQuote(
+  ref: MarketDataAssetRef,
+  symbol: string,
+  row: StooqCsvRow,
+  receivedAtIso: string,
+): MarketQuote | null {
+  if (!STOOQ_PRICE_REGEX.test(row.close)) return null;
+  let marketTime: string | undefined;
+  if (row.date !== '' && /^\d{4}-\d{2}-\d{2}$/.test(row.date)) {
+    const timePart = /^\d{2}:\d{2}(:\d{2})?$/.test(row.time) ? row.time : '00:00:00';
+    const candidate = `${row.date}T${timePart.length === 5 ? `${timePart}:00` : timePart}Z`;
+    if (Number.isFinite(Date.parse(candidate))) {
+      marketTime = candidate;
+    }
+  }
+  try {
+    // Stooq free quotes are delayed/EOD by nature: never presented as LIVE.
+    return createMarketQuote({
+      assetId: ref.assetId,
+      price: row.close,
+      currency: ref.currency,
+      asOf: marketTime ?? receivedAtIso,
+      receivedAt: receivedAtIso,
+      ...(marketTime ? { marketTime } : {}),
+      source: 'STOOQ',
+      status: 'DELAYED',
+      providerSymbol: symbol,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * First real provider adapter: Stooq free CSV quotes.
+ *
+ * Why Stooq (ADR-091): Brazilian coverage (B3 via `.SA` suffix),
+ * equities/FIIs/ETFs/BDRs, native batch (comma-separated symbols),
+ * no API key for development, stable CSV contract. Free quotes are
+ * delayed — always surfaced as `DELAYED`, never `LIVE`.
+ *
+ * Currency note: the Stooq CSV carries no currency field, so the quote
+ * currency is the instrument's canonical currency from the asset
+ * catalog (`ref.currency`). No silent conversion is ever performed.
+ */
+export class StooqProviderAdapter implements MarketDataProvider {
+  readonly provider: MarketDataSource = 'STOOQ';
+  private readonly timeoutMs: number;
+  private readonly fetchFn: typeof fetch;
+
+  constructor(options: { timeoutMs?: number; fetchFn?: typeof fetch } = {}) {
+    this.timeoutMs = options.timeoutMs ?? MARKET_DATA_DEFAULT_TIMEOUT_MS;
+    this.fetchFn = options.fetchFn ?? fetch;
+  }
+
+  async getQuote(ref: MarketDataAssetRef): Promise<MarketQuote> {
+    const batch = await this.getQuotes([ref]);
+    const quote = batch.quotes.find((q) => q.assetId === ref.assetId);
+    if (!quote) {
+      const unavailable = batch.unavailable.find((u) => u.assetId === ref.assetId);
+      throw new MarketDataError(
+        `Quote unavailable for asset '${ref.assetId}' (${unavailable?.code ?? 'MARKET_DATA.SYMBOL_NOT_FOUND'})`,
+        (unavailable?.code ?? 'MARKET_DATA.SYMBOL_NOT_FOUND') as MarketDataErrorCode,
+        { retryable: unavailable?.retryable ?? false, assetId: ref.assetId },
+      );
+    }
+    return quote;
+  }
+
+  async getQuotes(refs: readonly MarketDataAssetRef[]): Promise<BatchQuoteResult> {
+    const result = createEmptyBatchResult();
+    const supported: Array<{ ref: MarketDataAssetRef; symbol: string }> = [];
+    for (const ref of refs) {
+      try {
+        const symbol = resolveMarketDataSymbol(ref, 'STOOQ');
+        supported.push({ ref, symbol: symbol.providerSymbol });
+      } catch (err) {
+        if (err instanceof MarketDataError) {
+          result.unavailable.push({
+            assetId: ref.assetId,
+            code: err.code,
+            retryable: err.retryable,
+          });
+          continue;
+        }
+        throw err;
+      }
+    }
+    if (supported.length === 0) return sortBatchResult(result);
+
+    const symbolsParam = supported.map((s) => s.symbol.toLowerCase()).join(',');
+    const url = `${STOOQ_CSV_URL}?s=${encodeURIComponent(symbolsParam)}&f=sd2t2ohlcv&h&e=csv`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    let response: Response;
+    try {
+      response = await this.fetchFn(url, { signal: controller.signal });
+    } catch (err) {
+      clearTimeout(timer);
+      const timedOut =
+        err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError');
+      throw normalizeProviderError(timedOut ? { timedOut: true } : { code: 'NETWORK_ERROR' }, {
+        provider: 'STOOQ',
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (!response.ok) {
+      throw normalizeProviderError({ httpStatus: response.status }, { provider: 'STOOQ' });
+    }
+    let csv: string;
+    try {
+      csv = await response.text();
+    } catch {
+      throw normalizeProviderError({}, { provider: 'STOOQ' });
+    }
+    const rows = parseStooqCsv(csv);
+    if (rows.length === 0) {
+      throw normalizeProviderError({}, { provider: 'STOOQ' });
+    }
+    const receivedAtIso = new Date().toISOString();
+    const bySymbol = new Map<string, StooqCsvRow>();
+    for (const row of rows) {
+      bySymbol.set(row.symbol.trim().toUpperCase(), row);
+    }
+    for (const { ref, symbol } of supported) {
+      const row = bySymbol.get(symbol.trim().toUpperCase());
+      if (
+        !row ||
+        row.close === '' ||
+        row.close.toUpperCase() === 'N/A' ||
+        row.close.toUpperCase() === 'NULL'
+      ) {
+        result.unavailable.push({
+          assetId: ref.assetId,
+          code: 'MARKET_DATA.SYMBOL_NOT_FOUND',
+          retryable: false,
+        });
+        continue;
+      }
+      const quote = stooqRowToQuote(ref, symbol, row, receivedAtIso);
+      if (!quote) {
+        result.unavailable.push({
+          assetId: ref.assetId,
+          code: 'MARKET_DATA.INVALID_RESPONSE',
+          retryable: false,
+        });
+        continue;
+      }
+      result.quotes.push(quote);
+    }
+    return sortBatchResult(result);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Historical Market Data (Phase 3D)
+// ---------------------------------------------------------------------------
+
+export const HISTORICAL_PRICE_STATUSES = ['EXACT', 'PREVIOUS_TRADING_DAY', 'UNAVAILABLE'] as const;
+export type HistoricalPriceStatus = (typeof HISTORICAL_PRICE_STATUSES)[number];
+
+export const HISTORICAL_ERROR_CODES = [
+  'HISTORICAL_PRICE_NOT_FOUND',
+  'HISTORICAL_PROVIDER_UNAVAILABLE',
+  'HISTORICAL_INVALID_RESPONSE',
+  'HISTORICAL_UNSUPPORTED_ASSET',
+  'HISTORICAL_RANGE_TOO_LARGE',
+] as const;
+export type HistoricalErrorCode = (typeof HISTORICAL_ERROR_CODES)[number];
+
+export interface HistoricalMarketPrice {
+  assetId: string;
+  date: LocalDate;
+  close: Money;
+  currency: Currency;
+  source: MarketDataSource;
+  status: HistoricalPriceStatus;
+}
+
+export interface ResolvedHistoricalPrice {
+  requestedDate: LocalDate;
+  priceDate: LocalDate;
+  price: HistoricalMarketPrice;
+  resolution: 'EXACT' | 'PREVIOUS_TRADING_DAY';
+}
+
+export interface HistoricalMarketDataProvider {
+  readonly provider: MarketDataSource;
+  getDailyPrice(assetRef: MarketDataAssetRef, date: LocalDate): Promise<HistoricalMarketPrice>;
+  getDailyPrices(
+    assetRef: MarketDataAssetRef,
+    from: LocalDate,
+    to: LocalDate,
+  ): Promise<HistoricalMarketPrice[]>;
+}
+
+export const HISTORICAL_DEFAULT_MAX_LOOKBACK_DAYS = 7;
+export const HISTORICAL_DEFAULT_MAX_RANGE_DAYS = 365 * 5; // 5 years
+
+export class InMemoryHistoricalMarketDataProvider implements HistoricalMarketDataProvider {
+  readonly provider: MarketDataSource = 'IN_MEMORY';
+  private readonly prices = new Map<string, Map<string, HistoricalMarketPrice>>();
+  private readonly maxLookbackDays: number;
+  calls = 0;
+
+  constructor(options: { maxLookbackDays?: number } = {}) {
+    this.maxLookbackDays = options.maxLookbackDays ?? HISTORICAL_DEFAULT_MAX_LOOKBACK_DAYS;
+  }
+
+  seed(price: {
+    assetId?: string;
+    ticker: string;
+    exchange: string;
+    date: string;
+    close: string;
+    currency: string;
+    source?: MarketDataSource;
+  }): void {
+    const assetKey = `${price.ticker.trim().toUpperCase()}::${price.exchange.trim().toUpperCase()}`;
+    let assetMap = this.prices.get(assetKey);
+    if (!assetMap) {
+      assetMap = new Map();
+      this.prices.set(assetKey, assetMap);
+    }
+    const date = LocalDate.from(price.date);
+    const close = Money.from(price.close, price.currency);
+    const hp: HistoricalMarketPrice = {
+      assetId: price.assetId ?? assetKey,
+      date,
+      close,
+      currency: close.currency,
+      source: price.source ?? 'IN_MEMORY',
+      status: 'EXACT',
+    };
+    assetMap.set(date.toString(), hp);
+  }
+
+  async getDailyPrice(
+    assetRef: MarketDataAssetRef,
+    date: LocalDate,
+  ): Promise<HistoricalMarketPrice> {
+    this.calls++;
+    const key = `${assetRef.ticker.trim().toUpperCase()}::${assetRef.exchange.trim().toUpperCase()}`;
+    const assetMap = this.prices.get(key);
+    if (!assetMap) {
+      throw new MarketDataError(
+        `Historical price not found for ${assetRef.ticker} on ${date.toString()}`,
+        'MARKET_DATA.SYMBOL_NOT_FOUND',
+        {
+          retryable: false,
+          assetId: assetRef.assetId,
+        },
+      );
+    }
+
+    // Exact match
+    const exact = assetMap.get(date.toString());
+    if (exact) {
+      return Object.freeze({ ...exact, status: 'EXACT' as HistoricalPriceStatus });
+    }
+
+    // Previous trading day within maxLookback, no future leakage
+    let current = date;
+    for (let i = 1; i <= this.maxLookbackDays; i++) {
+      const prev = addDays(current, -1);
+      // Check if prev is before the requested date's previous days, but not future
+      const candidate = assetMap.get(prev.toString());
+      if (candidate) {
+        return Object.freeze({
+          ...candidate,
+          date: prev,
+          status: 'PREVIOUS_TRADING_DAY' as HistoricalPriceStatus,
+        });
+      }
+      current = prev;
+    }
+
+    throw new MarketDataError(
+      `Historical price not found for ${assetRef.ticker} on ${date.toString()} within ${this.maxLookbackDays} days`,
+      'MARKET_DATA.SYMBOL_NOT_FOUND',
+      {
+        retryable: false,
+        assetId: assetRef.assetId,
+      },
+    );
+  }
+
+  async getDailyPrices(
+    assetRef: MarketDataAssetRef,
+    from: LocalDate,
+    to: LocalDate,
+  ): Promise<HistoricalMarketPrice[]> {
+    this.calls++;
+    if (from.compare(to) > 0) {
+      throw new MarketDataError('Invalid range: from > to', 'MARKET_DATA.INVALID_RESPONSE', {
+        retryable: false,
+      });
+    }
+    const days = daysBetweenLocalDates(from, to);
+    if (days > HISTORICAL_DEFAULT_MAX_RANGE_DAYS) {
+      throw new MarketDataError('Historical range too large', 'MARKET_DATA.INVALID_RESPONSE', {
+        retryable: false,
+      });
+    }
+    const result: HistoricalMarketPrice[] = [];
+    let current = from;
+    while (current.compare(to) <= 0) {
+      try {
+        const price = await this.getDailyPrice(assetRef, current);
+        // Only include EXACT matches for range, not previous day resolutions to avoid duplicates
+        if (price.status === 'EXACT') {
+          result.push(price);
+        }
+      } catch {
+        // Skip missing dates
+      }
+      current = addDays(current, 1);
+    }
+    return result.map((p) => Object.freeze(p));
+  }
+}
+
+export class StooqHistoricalMarketDataProvider implements HistoricalMarketDataProvider {
+  readonly provider: MarketDataSource = 'STOOQ';
+  private readonly timeoutMs: number;
+  private readonly fetchFn: typeof fetch;
+  private readonly maxLookbackDays: number;
+
+  constructor(
+    options: { timeoutMs?: number; fetchFn?: typeof fetch; maxLookbackDays?: number } = {},
+  ) {
+    this.timeoutMs = options.timeoutMs ?? 15000;
+    this.fetchFn = options.fetchFn ?? fetch;
+    this.maxLookbackDays = options.maxLookbackDays ?? HISTORICAL_DEFAULT_MAX_LOOKBACK_DAYS;
+  }
+
+  async getDailyPrice(
+    assetRef: MarketDataAssetRef,
+    date: LocalDate,
+  ): Promise<HistoricalMarketPrice> {
+    // Fetch a small window around the requested date to allow previous trading day resolution
+    // We fetch from (date - maxLookback) to date, then search backwards
+    const start = addDays(date, -this.maxLookbackDays);
+    const prices = await this.fetchHistory(assetRef, start, date);
+    // Search backwards from requestedDate
+    let current = date;
+    for (let i = 0; i <= this.maxLookbackDays; i++) {
+      const found = prices.get(current.toString());
+      if (found) {
+        const isExact = current.toString() === date.toString();
+        return Object.freeze({
+          ...found,
+          status: isExact
+            ? ('EXACT' as HistoricalPriceStatus)
+            : ('PREVIOUS_TRADING_DAY' as HistoricalPriceStatus),
+        });
+      }
+      current = addDays(current, -1);
+    }
+    throw new MarketDataError(
+      `Historical price not found for ${assetRef.ticker} on ${date.toString()} within ${this.maxLookbackDays} days`,
+      'MARKET_DATA.SYMBOL_NOT_FOUND',
+      { retryable: false, assetId: assetRef.assetId },
+    );
+  }
+
+  async getDailyPrices(
+    assetRef: MarketDataAssetRef,
+    from: LocalDate,
+    to: LocalDate,
+  ): Promise<HistoricalMarketPrice[]> {
+    if (from.compare(to) > 0) {
+      throw new MarketDataError('Invalid range: from > to', 'MARKET_DATA.INVALID_RESPONSE', {
+        retryable: false,
+      });
+    }
+    const days = daysBetweenLocalDates(from, to);
+    if (days > HISTORICAL_DEFAULT_MAX_RANGE_DAYS) {
+      throw new MarketDataError('Historical range too large', 'MARKET_DATA.INVALID_RESPONSE', {
+        retryable: false,
+      });
+    }
+    const prices = await this.fetchHistory(assetRef, from, to);
+    const result: HistoricalMarketPrice[] = [];
+    let current = from;
+    while (current.compare(to) <= 0) {
+      const found = prices.get(current.toString());
+      if (found) {
+        result.push(Object.freeze({ ...found, status: 'EXACT' as HistoricalPriceStatus }));
+      }
+      current = addDays(current, 1);
+    }
+    return result;
+  }
+
+  private async fetchHistory(
+    assetRef: MarketDataAssetRef,
+    from: LocalDate,
+    to: LocalDate,
+  ): Promise<Map<string, HistoricalMarketPrice>> {
+    const symbol = resolveMarketDataSymbol(assetRef, 'STOOQ').providerSymbol.toLowerCase();
+    // Stooq daily history: https://stooq.com/q/d/l/?s=petr4.sa&i=d
+    const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol)}&i=d`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    let response: Response;
+    try {
+      response = await this.fetchFn(url, { signal: controller.signal });
+    } catch (err) {
+      clearTimeout(timer);
+      const timedOut =
+        err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError');
+      throw normalizeProviderError(timedOut ? { timedOut: true } : { code: 'NETWORK_ERROR' }, {
+        provider: 'STOOQ',
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!response.ok) {
+      throw normalizeProviderError({ httpStatus: response.status }, { provider: 'STOOQ' });
+    }
+    let csv: string;
+    try {
+      csv = await response.text();
+    } catch {
+      throw normalizeProviderError({}, { provider: 'STOOQ' });
+    }
+    const rows = parseHistoricalStooqCsv(csv);
+    const map = new Map<string, HistoricalMarketPrice>();
+    for (const row of rows) {
+      // Only include rows within [from, to] for efficiency, but we need to allow lookback
+      // For getDailyPrice, we fetched from (date - lookback) to date, so include that range
+      // For getDailyPrices, from is already the start
+      const rowDate = LocalDate.from(row.date);
+      if (rowDate.compare(from) < 0 || rowDate.compare(to) > 0) continue;
+      if (!row.close || row.close.toUpperCase() === 'N/A' || row.close.toUpperCase() === 'NULL')
+        continue;
+      try {
+        const close = Money.from(row.close, assetRef.currency);
+        const hp: HistoricalMarketPrice = {
+          assetId: assetRef.assetId,
+          date: rowDate,
+          close,
+          currency: close.currency,
+          source: 'STOOQ',
+          status: 'EXACT',
+        };
+        map.set(rowDate.toString(), hp);
+      } catch {
+        // Skip malformed price
+      }
+    }
+    return map;
+  }
+}
+
+function parseHistoricalStooqCsv(csv: string): Array<{ date: string; close: string }> {
+  const lines = csv
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '');
+  if (lines.length < 2) return [];
+  const header = (lines[0] ?? '').split(',').map((h) => h.trim().toLowerCase());
+  const dateIdx = header.indexOf('date');
+  const closeIdx = header.indexOf('close');
+  if (dateIdx === -1 || closeIdx === -1) return [];
+  const rows: Array<{ date: string; close: string }> = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = (lines[i] ?? '').split(',').map((c) => c.trim());
+    const date = cols[dateIdx] ?? '';
+    const close = cols[closeIdx] ?? '';
+    if (!date || !close) continue;
+    // Validate date is YYYY-MM-DD and close is decimal
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    if (!/^-?\d+(\.\d+)?$/.test(close)) continue;
+    rows.push({ date, close });
+  }
+  return rows;
+}
+
+function addDays(date: LocalDate, days: number): LocalDate {
+  const d = new Date(Date.UTC(date.year, date.month - 1, date.day + days));
+  return LocalDate.fromParts(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+}
+
+function daysBetweenLocalDates(a: LocalDate, b: LocalDate): number {
+  const da = Date.UTC(a.year, a.month - 1, a.day);
+  const db = Date.UTC(b.year, b.month - 1, b.day);
+  return Math.round((db - da) / (1000 * 60 * 60 * 24));
+}
+
+export class InMemoryHistoricalPriceCache {
+  private readonly cache = new Map<string, HistoricalMarketPrice>();
+  hits = 0;
+  misses = 0;
+
+  private key(assetRef: MarketDataAssetRef, date: LocalDate): string {
+    return `${assetRef.ticker.toUpperCase()}::${assetRef.exchange.toUpperCase()}::${date.toString()}`;
+  }
+
+  get(assetRef: MarketDataAssetRef, date: LocalDate): HistoricalMarketPrice | null {
+    const k = this.key(assetRef, date);
+    const v = this.cache.get(k);
+    if (v) {
+      this.hits++;
+      return v;
+    }
+    this.misses++;
+    return null;
+  }
+
+  set(assetRef: MarketDataAssetRef, date: LocalDate, price: HistoricalMarketPrice): void {
+    this.cache.set(this.key(assetRef, date), price);
+  }
+
+  clear(): void {
+    this.cache.clear();
+    this.hits = 0;
+    this.misses = 0;
+  }
 }

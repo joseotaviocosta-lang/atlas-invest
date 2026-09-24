@@ -2,18 +2,41 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { colors, spacing, borderRadius } from '@atlas/ui';
-import { PortfolioOverviewPositionItem } from '@atlas/ui';
+import { colors, spacing, borderRadius, formatCurrency, formatPercentage } from '@atlas/ui';
+import { PortfolioOverviewPositionItem, appendAsOf } from '@atlas/ui';
 import { Badge } from '@/components/ui/Badge';
+
+export interface PositionValuationDisplay {
+  marketValue: { amount: string; currency: string } | null;
+  unrealizedGainLoss: { amount: string; currency: string } | null;
+  unrealizedGainLossPercent: string | null;
+  status: string;
+  quoteFreshness: string | null;
+  quote: { price: string; currency: string; freshness: string; status: string } | null;
+}
 
 export interface PositionRowProps {
   position: PortfolioOverviewPositionItem;
   portfolioId?: string;
+  /** Historical snapshot `YYYY-MM-DD`; preserved in asset navigation. */
+  asOf?: string | null;
+  valuation?: PositionValuationDisplay | null;
+  isHistorical?: boolean;
 }
 
-export function PositionRow({ position, portfolioId }: PositionRowProps) {
+export function PositionRow({
+  position,
+  portfolioId,
+  asOf,
+  valuation,
+  isHistorical,
+}: PositionRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const isIncomplete = position.costBasisStatus === 'INCOMPLETE';
+  const assetHref = appendAsOf(
+    `/portfolio/assets/${position.assetId}${portfolioId ? `?portfolioId=${portfolioId}` : ''}`,
+    asOf ?? null,
+  );
 
   return (
     <div
@@ -49,7 +72,7 @@ export function PositionRow({ position, portfolioId }: PositionRowProps) {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.xs}px` }}>
               <Link
-                href={`/portfolio/assets/${position.assetId}${portfolioId ? `?portfolioId=${portfolioId}` : ''}`}
+                href={assetHref}
                 style={{
                   fontSize: '1.125rem',
                   fontWeight: 700,
@@ -109,10 +132,66 @@ export function PositionRow({ position, portfolioId }: PositionRowProps) {
             </span>
           </div>
 
+          {!isHistorical && valuation && (
+            <>
+              <div style={{ textAlign: 'right', minWidth: '130px' }}>
+                <span style={{ fontSize: '0.75rem', color: colors.textMuted, display: 'block' }}>
+                  Valor de mercado
+                </span>
+                <span
+                  style={{
+                    fontSize: '1rem',
+                    fontWeight: 600,
+                    color: valuation.marketValue ? colors.textPrimary : colors.textMuted,
+                  }}
+                >
+                  {valuation.marketValue
+                    ? formatCurrency(valuation.marketValue.amount, valuation.marketValue.currency)
+                    : '—'}
+                </span>
+                {valuation.quoteFreshness === 'STALE' && (
+                  <Badge variant="warning">Cotação desatualizada</Badge>
+                )}
+                {valuation.status === 'QUOTE_UNAVAILABLE' && (
+                  <Badge variant="neutral">Cotação indisponível</Badge>
+                )}
+                {valuation.status === 'CURRENCY_MISMATCH' && (
+                  <Badge variant="danger">Moeda divergente</Badge>
+                )}
+              </div>
+              <div style={{ textAlign: 'right', minWidth: '130px' }}>
+                <span style={{ fontSize: '0.75rem', color: colors.textMuted, display: 'block' }}>
+                  Resultado não realizado
+                </span>
+                <span
+                  style={{
+                    fontSize: '1rem',
+                    fontWeight: 600,
+                    color: valuation.unrealizedGainLoss
+                      ? valuation.unrealizedGainLoss.amount.startsWith('-')
+                        ? colors.negative
+                        : colors.positive
+                      : colors.textMuted,
+                  }}
+                >
+                  {valuation.unrealizedGainLoss
+                    ? formatCurrency(
+                        valuation.unrealizedGainLoss.amount,
+                        valuation.unrealizedGainLoss.currency,
+                      )
+                    : '—'}
+                  {valuation.unrealizedGainLossPercent
+                    ? ` (${formatPercentage(valuation.unrealizedGainLossPercent)})`
+                    : ''}
+                </span>
+              </div>
+            </>
+          )}
+
           {/* Actions: View Details Link & Toggle Account Breakdown Button */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Link
-              href={`/portfolio/assets/${position.assetId}${portfolioId ? `?portfolioId=${portfolioId}` : ''}`}
+              href={assetHref}
               style={{
                 background: colors.surfaceElevated,
                 border: `1px solid ${colors.border}`,

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { apiClient, ApiError } from '@/api/client';
 import { PortfolioDto } from '@/api/types';
+import { useRouter } from 'next/navigation';
 import {
   colors,
   spacing,
@@ -15,6 +16,10 @@ import {
   PortfolioHistoryItemDto,
   PortfolioHistoryPaginationMetaDto,
   AssetMeta,
+  resolveTemporalContext,
+  getTodayCivilDateString,
+  assetStateQueryKey,
+  appendAsOf,
 } from '@atlas/ui';
 import {
   AssetPositionHeader,
@@ -23,15 +28,32 @@ import {
   AssetRealizedSection,
   AssetIncomeSection,
   AssetHistorySection,
+  PortfolioHistoricalBanner,
 } from '@/components/portfolio';
 import { Card, Button, Skeleton, ErrorState } from '@/components/ui';
 
-export default function AssetPositionDetailPage() {
+function AssetPositionDetailContent() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   const assetId = (params?.assetId as string) || '';
   const portfolioIdParam = searchParams.get('portfolioId');
+
+  // Temporal context (Fase 2F): historical snapshots come from server replay.
+  const today = React.useMemo(() => getTodayCivilDateString(), []);
+  const temporal = React.useMemo(
+    () => resolveTemporalContext({ rawAsOf: searchParams.get('asOf'), today }),
+    [searchParams, today],
+  );
+  const isHistorical = temporal.mode === 'HISTORICAL';
+
+  const clearAsOf = () => {
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete('asOf');
+    const qs = next.toString();
+    router.replace(`/portfolio/assets/${assetId}${qs ? `?${qs}` : ''}`);
+  };
 
   // 1. Fetch user portfolios to resolve portfolio context
   const { data: portfolios = [], isLoading: isPortfoliosLoading } = useQuery({
@@ -47,7 +69,7 @@ export default function AssetPositionDetailPage() {
   const activePortfolio =
     portfolios.find((p) => p.id === activePortfolioId) || portfolios[0] || null;
 
-  // 2. Fetch portfolio state
+  // 2. Fetch portfolio state (current or historical server replay via `asOf`)
   const {
     data: stateData,
     isLoading: isStateLoading,
@@ -55,12 +77,13 @@ export default function AssetPositionDetailPage() {
     error: stateError,
     refetch: refetchState,
   } = useQuery({
-    queryKey: ['portfolio-state', activePortfolioId],
+    queryKey: assetStateQueryKey(activePortfolioId, assetId, temporal.asOf),
     queryFn: async () => {
       if (!activePortfolioId) return null;
-      const res = await apiClient.get<{ data: PortfolioStateDto }>(
-        `/api/v1/portfolios/${activePortfolioId}/state`,
-      );
+      const endpoint = temporal.asOf
+        ? `/api/v1/portfolios/${activePortfolioId}/state?asOf=${temporal.asOf}`
+        : `/api/v1/portfolios/${activePortfolioId}/state`;
+      const res = await apiClient.get<{ data: PortfolioStateDto }>(endpoint);
       return res.data;
     },
     enabled: Boolean(activePortfolioId),
@@ -213,10 +236,16 @@ export default function AssetPositionDetailPage() {
       >
         <Card style={{ padding: `${spacing.xxl}px` }}>
           <ErrorState
-            title="Falha na leitura da carteira"
+            title={
+              isHistorical
+                ? 'Não foi possível reconstruir a carteira nesta data'
+                : 'Falha na leitura da carteira'
+            }
             message={
               isReplayFailed
-                ? 'O histórico de movimentações da carteira apresentou inconsistência de integridade. Corrija os registros ou tente novamente.'
+                ? isHistorical
+                  ? 'O servidor não conseguiu reconstruir o estado histórico. Tente outra data ou volte para hoje.'
+                  : 'O histórico de movimentações da carteira apresentou inconsistência de integridade. Corrija os registros ou tente novamente.'
                 : stateError?.message || 'Ocorreu um erro ao carregar os dados desta posição.'
             }
             onRetry={() => refetchState()}
@@ -226,7 +255,10 @@ export default function AssetPositionDetailPage() {
     );
   }
 
-  // Not Open / 404 Position State
+  // Not Open / 404 Position State.
+  // In historical mode the same check runs against the historical snapshot:
+  // an asset closed today but open then still renders (ADR-078 applied to
+  // the historical state, never to the current one).
   if (!viewModel || !viewModel.isOpenPosition) {
     return (
       <div
@@ -236,6 +268,9 @@ export default function AssetPositionDetailPage() {
           padding: `${spacing.xl}px ${spacing.base}px`,
         }}
       >
+        {isHistorical && temporal.bannerLabel && (
+          <PortfolioHistoricalBanner label={temporal.bannerLabel} onBackToToday={clearAsOf} />
+        )}
         <Card
           style={{
             padding: `${spacing.xxl}px`,
@@ -252,13 +287,20 @@ export default function AssetPositionDetailPage() {
               margin: '0 0 8px 0',
             }}
           >
-            Esta posição não está aberta nesta carteira.
+            {isHistorical && temporal.displayDate
+              ? 'Este ativo não fazia parte da carteira nesta data.'
+              : 'Esta posição não está aberta nesta carteira.'}
           </h2>
           <p style={{ fontSize: '0.875rem', color: colors.textSecondary, margin: '0 0 24px 0' }}>
-            O ativo selecionado não possui quantidade positiva em custódia na carteira informada.
+            {isHistorical && temporal.displayDate
+              ? `O ativo selecionado não possuía quantidade positiva em custódia em ${temporal.displayDate}.`
+              : 'O ativo selecionado não possui quantidade positiva em custódia na carteira informada.'}
           </p>
           <Link
-            href={`/portfolio${activePortfolioId ? `?portfolioId=${activePortfolioId}` : ''}`}
+            href={appendAsOf(
+              `/portfolio${activePortfolioId ? `?portfolioId=${activePortfolioId}` : ''}`,
+              temporal.asOf,
+            )}
             style={{ textDecoration: 'none' }}
           >
             <Button variant="primary">Voltar para Carteira</Button>
@@ -272,6 +314,9 @@ export default function AssetPositionDetailPage() {
     <div
       style={{ maxWidth: '1000px', margin: '0 auto', padding: `${spacing.xl}px ${spacing.base}px` }}
     >
+      {isHistorical && temporal.bannerLabel && (
+        <PortfolioHistoricalBanner label={temporal.bannerLabel} onBackToToday={clearAsOf} />
+      )}
       {/* 1. Header with Breadcrumbs and Completeness Warning */}
       <AssetPositionHeader
         ticker={viewModel.header.ticker}
@@ -281,6 +326,7 @@ export default function AssetPositionDetailPage() {
         portfolioName={viewModel.header.portfolioName}
         isCostBasisIncomplete={viewModel.header.isCostBasisIncomplete}
         completenessBadgeLabel={viewModel.header.completenessBadgeLabel}
+        asOf={temporal.asOf}
       />
 
       {/* 2. Primary Position Card (Quantity, Average Cost, Total Cost) */}
@@ -293,16 +339,23 @@ export default function AssetPositionDetailPage() {
         isCostBasisIncomplete={viewModel.primaryCard.isCostBasisIncomplete}
       />
 
-      {/* 3. Custody Breakdown by Account */}
+      {/* 3. Custody Breakdown by Account (historical snapshot when asOf) */}
       <AssetCustodyBreakdown accounts={viewModel.accountsBreakdown} />
 
-      {/* 4. Realized Results (Disposals) */}
-      <AssetRealizedSection disposals={viewModel.realizedResults.disposals} />
+      {/* 4-5. Realized Results & Income (lifetime aggregates: current mode only).
+          In historical mode they would mix lifetime totals with snapshot
+          positions, so they stay hidden by design (no performance analysis). */}
+      {!isHistorical && (
+        <>
+          {/* 4. Realized Results (Disposals) */}
+          <AssetRealizedSection disposals={viewModel.realizedResults.disposals} />
 
-      {/* 5. Income Received (Dividends, JCP, FII Income) */}
-      <AssetIncomeSection events={viewModel.incomeReceived.events} />
+          {/* 5. Income Received (Dividends, JCP, FII Income) */}
+          <AssetIncomeSection events={viewModel.incomeReceived.events} />
+        </>
+      )}
 
-      {/* 6. Paginated Reverse-Chronological History Feed */}
+      {/* 6. Paginated Reverse-Chronological History Feed (audit events, not a snapshot) */}
       <AssetHistorySection
         items={viewModel.history.items}
         hasNextPage={hasNextPage}
@@ -313,5 +366,15 @@ export default function AssetPositionDetailPage() {
         }
       />
     </div>
+  );
+}
+
+export default function AssetPositionDetailPage() {
+  return (
+    <React.Suspense
+      fallback={<div style={{ padding: `${spacing.xl}px` }}>Carregando posição...</div>}
+    >
+      <AssetPositionDetailContent />
+    </React.Suspense>
   );
 }

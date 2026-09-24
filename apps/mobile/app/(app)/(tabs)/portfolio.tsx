@@ -1,9 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { themeTokens } from '@atlas/ui';
-import { mapToPortfolioOverviewViewModel, PortfolioStateDto } from '@atlas/ui';
+import {
+  mapToPortfolioOverviewViewModel,
+  PortfolioStateDto,
+  resolveTemporalContext,
+  getTodayCivilDateString,
+  stateQueryKey,
+} from '@atlas/ui';
 import {
   Screen,
   Header,
@@ -18,14 +24,56 @@ import {
   PortfolioCompletenessBanner,
   PortfolioSummaryCards,
   PositionCard,
+  MobileDateSelector,
+  MobileHistoricalBanner,
 } from '../../../src/components/portfolio';
+import { MobileValuationSection } from '../../../src/components/portfolio/MobileValuation';
 import { portfoliosApi } from '../../../src/api/portfolios';
 import { ApiError } from '../../../src/api/client';
 import { PortfolioDto } from '../../../src/api/types';
 
 export default function PortfolioScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ asOf?: string }>();
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(null);
+
+  // Temporal context (Fase 2F): historical snapshots come from server replay.
+  const today = useMemo(() => getTodayCivilDateString(), []);
+  const temporal = useMemo(
+    () => resolveTemporalContext({ rawAsOf: params.asOf, today }),
+    [params.asOf, today],
+  );
+  const isHistorical = temporal.mode === 'HISTORICAL';
+
+  const clearAsOf = () => {
+    router.setParams({ asOf: undefined });
+  };
+
+  const handleSelectDate = (value: string | null) => {
+    if (!value) {
+      clearAsOf();
+      return;
+    }
+    const next = resolveTemporalContext({ rawAsOf: value, today });
+    if (next.mode === 'HISTORICAL' && next.asOf) {
+      router.setParams({ asOf: next.asOf });
+      return;
+    }
+    if (next.error) {
+      // Surface invalid/future input so the error renders.
+      router.setParams({ asOf: value });
+      return;
+    }
+    clearAsOf();
+  };
+
+  const handleSelectPortfolio = (id: string) => {
+    setSelectedPortfolioId(id);
+    // Never carry a historical snapshot across portfolios.
+    if (params.asOf) {
+      clearAsOf();
+    }
+  };
 
   // 1. Fetch Portfolios
   const {
@@ -44,7 +92,7 @@ export default function PortfolioScreen() {
   const activePortfolio: PortfolioDto | null =
     portfolios.find((p) => p.id === selectedPortfolioId) || portfolios[0] || null;
 
-  // 2. Fetch State for Active Portfolio
+  // 2. Fetch State for Active Portfolio (current or historical server replay)
   const {
     data: stateData,
     isLoading: isStateLoading,
@@ -53,10 +101,13 @@ export default function PortfolioScreen() {
     refetch: refetchState,
     isRefetching: isRefetchingState,
   } = useQuery({
-    queryKey: ['portfolio-state', activePortfolio?.id],
+    queryKey: stateQueryKey(activePortfolio?.id || '', temporal.asOf),
     queryFn: async () => {
       if (!activePortfolio?.id) return null;
-      const res = await portfoliosApi.getPortfolioState(activePortfolio.id);
+      const res = await portfoliosApi.getPortfolioState(
+        activePortfolio.id,
+        temporal.asOf ?? undefined,
+      );
       return res.data as PortfolioStateDto;
     },
     enabled: Boolean(activePortfolio?.id),
@@ -158,7 +209,7 @@ export default function PortfolioScreen() {
                   return (
                     <TouchableOpacity
                       key={p.id}
-                      onPress={() => setSelectedPortfolioId(p.id)}
+                      onPress={() => handleSelectPortfolio(p.id)}
                       style={[styles.selectorChip, isSelected && styles.selectorChipActive]}
                       accessibilityRole="button"
                       accessibilityLabel={`Selecionar carteira ${p.name}`}
@@ -190,9 +241,44 @@ export default function PortfolioScreen() {
                       <Text style={styles.badgeText}>{activePortfolio.status}</Text>
                     </View>
                     <TouchableOpacity
+                      style={{
+                        padding: 8,
+                        borderWidth: 1,
+                        borderColor: themeTokens.colors.border,
+                        borderRadius: 8,
+                        minWidth: 44,
+                        minHeight: 44,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                      onPress={() =>
+                        router.push(
+                          `/(app)/portfolio/performance?portfolioId=${activePortfolio.id}`,
+                        )
+                      }
+                      accessibilityLabel="Ver performance"
+                      accessibilityRole="button"
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '600' }}>Performance</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
                       style={styles.historyButton}
                       onPress={() =>
-                        router.push(`/(app)/portfolio/history?portfolioId=${activePortfolio.id}`)
+                        router.push(
+                          `/(app)/portfolio/accounts?portfolioId=${activePortfolio.id}${temporal.asOf ? `&asOf=${temporal.asOf}` : ''}`,
+                        )
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel="Ver contas de custódia da carteira"
+                    >
+                      <Text style={styles.historyButtonText}>Contas</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.historyButton}
+                      onPress={() =>
+                        router.push(
+                          `/(app)/portfolio/history?portfolioId=${activePortfolio.id}${temporal.asOf ? `&asOf=${temporal.asOf}` : ''}`,
+                        )
                       }
                       accessibilityRole="button"
                       accessibilityLabel="Ver histórico de atividades da carteira"
@@ -216,6 +302,17 @@ export default function PortfolioScreen() {
               </Card>
             )}
 
+            {/* Portfolio Date Selector (Fase 2F time travel entry point) */}
+            {activePortfolio && (
+              <Card style={styles.dateSelectorCard}>
+                <MobileDateSelector
+                  value={temporal.asOf}
+                  error={temporal.errorMessage}
+                  onChange={handleSelectDate}
+                />
+              </Card>
+            )}
+
             {/* Replay State Loading */}
             {isStateLoading && (
               <View style={styles.loadingContainer}>
@@ -229,7 +326,9 @@ export default function PortfolioScreen() {
                 <ErrorState
                   message={
                     isReplayFailed
-                      ? 'Não foi possível reconstruir os dados desta carteira. Tente novamente ou revise o histórico de movimentações.'
+                      ? isHistorical
+                        ? 'Não foi possível reconstruir a carteira nesta data. Tente outra data ou volte para hoje.'
+                        : 'Não foi possível reconstruir os dados desta carteira. Tente novamente ou revise o histórico de movimentações.'
                       : stateError?.message ||
                         'Ocorreu um erro ao carregar os dados desta carteira.'
                   }
@@ -241,6 +340,11 @@ export default function PortfolioScreen() {
             {/* Populated Overview */}
             {!isStateLoading && !isStateError && viewModel && (
               <View>
+                {/* Historical mode banner (persistent while asOf is active) */}
+                {isHistorical && temporal.bannerLabel && (
+                  <MobileHistoricalBanner label={temporal.bannerLabel} onBackToToday={clearAsOf} />
+                )}
+
                 {/* Incomplete Cost Basis Banner */}
                 {viewModel.completenessNotice.hasIncompletePositions && (
                   <PortfolioCompletenessBanner message={viewModel.completenessNotice.message} />
@@ -253,16 +357,32 @@ export default function PortfolioScreen() {
                   incomeReceived={viewModel.summaryCards.incomeReceived}
                 />
 
+                <MobileValuationSection
+                  portfolioId={activePortfolio?.id ?? null}
+                  isHistorical={isHistorical}
+                />
+
                 {/* Positions List Section */}
                 <View style={styles.sectionHeaderRow}>
-                  <Text style={styles.sectionTitle}>Posições em Aberto</Text>
+                  <Text style={styles.sectionTitle}>
+                    {isHistorical && temporal.headerSuffix
+                      ? `Posições ${temporal.headerSuffix}`
+                      : 'Posições em Aberto'}
+                  </Text>
                   <Text style={styles.sectionBadge}>
                     {viewModel.positions.length}{' '}
                     {viewModel.positions.length === 1 ? 'ativo' : 'ativos'}
                   </Text>
                 </View>
 
-                {viewModel.stateIndicators.isEmptyPortfolio ? (
+                {isHistorical && viewModel.positions.length === 0 ? (
+                  <Card style={styles.emptyContainer}>
+                    <EmptyState
+                      title="Nenhuma posição nesta data"
+                      description={`A carteira ainda não possuía posições em ${temporal.displayDate}.`}
+                    />
+                  </Card>
+                ) : viewModel.stateIndicators.isEmptyPortfolio ? (
                   <Card style={styles.emptyContainer}>
                     <EmptyState
                       title="Sua carteira ainda está vazia"
@@ -284,6 +404,7 @@ export default function PortfolioScreen() {
                         key={pos.assetId}
                         position={pos}
                         portfolioId={activePortfolio?.id}
+                        asOf={temporal.asOf}
                       />
                     ))}
                   </View>
@@ -342,6 +463,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   portfolioHeaderCard: {
+    marginBottom: themeTokens.spacing.md,
+    padding: themeTokens.spacing.md,
+  },
+  dateSelectorCard: {
     marginBottom: themeTokens.spacing.md,
     padding: themeTokens.spacing.md,
   },

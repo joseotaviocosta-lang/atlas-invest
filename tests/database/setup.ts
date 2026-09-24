@@ -1,4 +1,17 @@
+import * as path from 'path';
 import { PrismaClient } from '@prisma/client';
+
+// Deterministic test-env bootstrap (repo-native, no new deps — same pattern as
+// packages/database/prisma/seed.ts): Vitest/Vite injects .env into
+// import.meta.env, but Prisma/test clients read process.env. Load the root
+// .env only when neither var is already set, so CI-provided env always wins.
+if (!process.env.DATABASE_TEST_URL && !process.env.DATABASE_URL) {
+  try {
+    process.loadEnvFile(path.join(process.cwd(), '.env'));
+  } catch {
+    // Ignored — falls back to explicit env or default below.
+  }
+}
 
 export const TEST_DATABASE_URL =
   process.env.DATABASE_TEST_URL ||

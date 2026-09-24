@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../database';
+import { HistoricalMarketDataModule } from '../market-data/market-data.module';
 import {
   CreatePortfolioUseCase,
   GetPortfolioUseCase,
@@ -8,6 +9,17 @@ import {
   GetPortfolioPositionsUseCase,
   GetPortfolioHistoryUseCase,
 } from './portfolios';
+import { GetPortfolioValuationUseCase } from './valuation';
+import { GetPortfolioPerformanceUseCase } from './performance';
+import { GetPortfolioPerformanceSeriesUseCase } from './performance/get-portfolio-performance-series.use-case';
+import { GetPortfolioRiskMetricsUseCase } from './performance/get-portfolio-risk-metrics.use-case';
+import { GetPortfolioRiskAdjustedMetricsUseCase } from './performance/get-portfolio-risk-adjusted-metrics.use-case';
+import { GetPortfolioBenchmarkRelativeRiskUseCase } from './performance/get-portfolio-benchmark-relative-risk.use-case';
+import { GetPortfolioActivePerformanceUseCase } from './performance/get-portfolio-active-performance.use-case';
+import { GetPortfolioRollingAnalyticsUseCase } from './performance/get-portfolio-rolling-analytics.use-case';
+import { GetPortfolioTailRiskMetricsUseCase } from './performance/get-portfolio-tail-risk-metrics.use-case';
+import { RunPortfolioScenarioUseCase } from './performance/run-portfolio-scenario.use-case';
+import { GetPortfolioIntelligenceSummaryUseCase } from './performance/get-portfolio-intelligence-summary.use-case';
 import {
   CreateInstitutionUseCase,
   GetInstitutionUseCase,
@@ -28,6 +40,17 @@ const USE_CASES = [
   GetPortfolioStateUseCase,
   GetPortfolioPositionsUseCase,
   GetPortfolioHistoryUseCase,
+  GetPortfolioValuationUseCase,
+  GetPortfolioPerformanceUseCase,
+  GetPortfolioPerformanceSeriesUseCase,
+  GetPortfolioRiskMetricsUseCase,
+  GetPortfolioRiskAdjustedMetricsUseCase,
+  GetPortfolioBenchmarkRelativeRiskUseCase,
+  GetPortfolioActivePerformanceUseCase,
+  GetPortfolioRollingAnalyticsUseCase,
+  GetPortfolioTailRiskMetricsUseCase,
+  RunPortfolioScenarioUseCase,
+  GetPortfolioIntelligenceSummaryUseCase,
   CreateInstitutionUseCase,
   GetInstitutionUseCase,
   ListInstitutionsUseCase,
@@ -43,7 +66,7 @@ const USE_CASES = [
 ];
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, HistoricalMarketDataModule],
   providers: [...USE_CASES],
   exports: [...USE_CASES],
 })

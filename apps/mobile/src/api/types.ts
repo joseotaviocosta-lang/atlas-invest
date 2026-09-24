@@ -49,3 +49,23 @@ export interface CreatePortfolioRequest {
   description?: string;
   baseCurrency?: string;
 }
+
+export interface AccountDto {
+  id: string;
+  portfolioId: string;
+  institutionId: string;
+  name: string;
+  currency: string;
+  status: string;
+}
+
+export interface InstitutionDto {
+  id: string;
+  name: string;
+}
+
+export interface AssetDto {
+  id: string;
+  ticker: string;
+  name: string;
+}

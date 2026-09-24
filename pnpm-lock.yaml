@@ -215,6 +215,9 @@ importers:
       supertest:
         specifier: ^7.0.0
         version: 7.2.2(supports-color@8.1.1)
+      tsx:
+        specifier: ^4.23.13
+        version: 4.23.13
       turbo:
         specifier: ^2.4.4
         version: 2.10.13
@@ -230,6 +233,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@atlas/benchmark-engine':
+        specifier: workspace:*
+        version: link:../../packages/benchmark-engine
       '@atlas/database':
         specifier: workspace:*
         version: link:../../packages/database
@@ -239,12 +245,30 @@ importers:
       '@atlas/logger':
         specifier: workspace:*
         version: link:../../packages/logger
+      '@atlas/market-data':
+        specifier: workspace:*
+        version: link:../../packages/market-data
+      '@atlas/performance-engine':
+        specifier: workspace:*
+        version: link:../../packages/performance-engine
       '@atlas/portfolio-engine':
         specifier: workspace:*
         version: link:../../packages/portfolio-engine
+      '@atlas/portfolio-intelligence':
+        specifier: workspace:*
+        version: link:../../packages/portfolio-intelligence
+      '@atlas/risk-engine':
+        specifier: workspace:*
+        version: link:../../packages/risk-engine
+      '@atlas/scenario-engine':
+        specifier: workspace:*
+        version: link:../../packages/scenario-engine
       '@atlas/validation':
         specifier: workspace:*
         version: link:../../packages/validation
+      '@atlas/valuation-engine':
+        specifier: workspace:*
+        version: link:../../packages/valuation-engine
       '@nestjs/common':
         specifier: ^11.0.11
         version: 11.2.4(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1)
@@ -439,6 +463,16 @@ importers:
         specifier: workspace:*
         version: link:../config
 
+  packages/benchmark-engine:
+    dependencies:
+      '@atlas/domain':
+        specifier: workspace:*
+        version: link:../domain
+    devDependencies:
+      '@atlas/config':
+        specifier: workspace:*
+        version: link:../config
+
   packages/config: {}
 
   packages/database:
@@ -488,6 +522,9 @@ importers:
       '@atlas/config':
         specifier: workspace:*
         version: link:../config
+      '@types/node':
+        specifier: ^22.13.10
+        version: 22.20.2
 
   packages/news-data:
     dependencies:
@@ -510,6 +547,32 @@ importers:
         version: link:../config
 
   packages/portfolio-engine:
+    dependencies:
+      '@atlas/domain':
+        specifier: workspace:*
+        version: link:../domain
+    devDependencies:
+      '@atlas/config':
+        specifier: workspace:*
+        version: link:../config
+
+  packages/portfolio-intelligence:
+    devDependencies:
+      '@atlas/config':
+        specifier: workspace:*
+        version: link:../config
+
+  packages/risk-engine:
+    dependencies:
+      '@atlas/domain':
+        specifier: workspace:*
+        version: link:../domain
+    devDependencies:
+      '@atlas/config':
+        specifier: workspace:*
+        version: link:../config
+
+  packages/scenario-engine:
     dependencies:
       '@atlas/domain':
         specifier: workspace:*
@@ -553,6 +616,16 @@ importers:
       zod:
         specifier: ^3.24.2
         version: 3.25.76
+    devDependencies:
+      '@atlas/config':
+        specifier: workspace:*
+        version: link:../config
+
+  packages/valuation-engine:
+    dependencies:
+      '@atlas/domain':
+        specifier: workspace:*
+        version: link:../domain
     devDependencies:
       '@atlas/config':
         specifier: workspace:*

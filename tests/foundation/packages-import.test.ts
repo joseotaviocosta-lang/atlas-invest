@@ -4,6 +4,7 @@ import { DOMAIN_VERSION } from '../../packages/domain/src/index';
 import { DATABASE_VERSION } from '../../packages/database/src/index';
 import { PORTFOLIO_ENGINE_VERSION } from '../../packages/portfolio-engine/src/index';
 import { PERFORMANCE_ENGINE_VERSION } from '../../packages/performance-engine/src/index';
+import { RISK_ENGINE_VERSION } from '../../packages/risk-engine/src/index';
 import { TAX_ENGINE_VERSION } from '../../packages/tax-engine/src/index';
 import { MARKET_DATA_VERSION } from '../../packages/market-data/src/index';
 import { NEWS_DATA_VERSION } from '../../packages/news-data/src/index';
@@ -19,7 +20,8 @@ describe('Foundation: Packages Import & Version Contracts', () => {
     expect(DOMAIN_VERSION).toBe('0.1.0');
     expect(DATABASE_VERSION).toBe('0.1.0');
     expect(PORTFOLIO_ENGINE_VERSION).toBe('1.0.0-rc.1');
-    expect(PERFORMANCE_ENGINE_VERSION).toBe('0.1.0');
+    expect(PERFORMANCE_ENGINE_VERSION).toBe('0.2.0');
+    expect(RISK_ENGINE_VERSION).toBe('0.6.0');
     expect(TAX_ENGINE_VERSION).toBe('0.1.0');
     expect(MARKET_DATA_VERSION).toBe('0.1.0');
     expect(NEWS_DATA_VERSION).toBe('0.1.0');

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { colors, spacing } from '@atlas/ui';
+import { colors, spacing, appendAsOf } from '@atlas/ui';
 import { Badge } from '@/components/ui/Badge';
 
 export interface AssetPositionHeaderProps {
@@ -13,6 +13,8 @@ export interface AssetPositionHeaderProps {
   portfolioName: string;
   isCostBasisIncomplete: boolean;
   completenessBadgeLabel: string | null;
+  /** Historical snapshot `YYYY-MM-DD`; preserved when navigating back. */
+  asOf?: string | null;
 }
 
 export function AssetPositionHeader({
@@ -23,6 +25,7 @@ export function AssetPositionHeader({
   portfolioName,
   isCostBasisIncomplete,
   completenessBadgeLabel,
+  asOf,
 }: AssetPositionHeaderProps) {
   return (
     <div style={{ marginBottom: `${spacing.xl}px` }}>
@@ -30,7 +33,10 @@ export function AssetPositionHeader({
       <nav aria-label="Navegação estrutural" style={{ marginBottom: `${spacing.sm}px` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.875rem' }}>
           <Link
-            href={`/portfolio${portfolioId ? `?portfolioId=${portfolioId}` : ''}`}
+            href={appendAsOf(
+              `/portfolio${portfolioId ? `?portfolioId=${portfolioId}` : ''}`,
+              asOf ?? null,
+            )}
             style={{
               color: colors.accent,
               textDecoration: 'none',

@@ -9,3 +9,5 @@ export * from './MobileIncomeSection';
 export * from './MobileHistorySection';
 export * from './MobileHistoryFilters';
 export * from './MobileHistoryTimeline';
+export * from './MobileDateSelector';
+export * from './MobileHistoricalBanner';

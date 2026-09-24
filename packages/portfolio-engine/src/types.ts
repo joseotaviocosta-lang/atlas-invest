@@ -281,3 +281,32 @@ export interface ReplayOptions {
   readonly transactions: readonly Transaction[];
   readonly asOfDate?: LocalDate | string;
 }
+
+/**
+ * Input arguments for a multi-date timeline replay (additive 3P capability).
+ * The ledger is validated, sorted and processed ONCE in canonical order;
+ * immutable state is materialized at each requested asOf date.
+ */
+export interface PortfolioTimelineOptions {
+  readonly portfolioId: PortfolioId | string;
+  readonly transactions: readonly Transaction[];
+  readonly asOfDates: readonly (LocalDate | string)[];
+}
+
+/**
+ * Immutable portfolio state materialized at one requested asOf date.
+ * Exactly equivalent to replayPortfolio(ledger, { asOfDate }) for valid
+ * ledgers: transfer pairs are resolved temporally from the cumulative
+ * dispatched subset (never future knowledge), an in-leg that completes a pair
+ * observes the out-leg's historical carried cost, and the out-leg audit is
+ * promoted to MATCHED exactly when replay(asOf) would record it so.
+ */
+export interface PortfolioTimelineSnapshot {
+  readonly asOfDate: LocalDate;
+  readonly state: PortfolioState;
+}
+
+export interface PortfolioTimelineResult {
+  readonly engineVersion: string;
+  readonly snapshots: readonly PortfolioTimelineSnapshot[];
+}

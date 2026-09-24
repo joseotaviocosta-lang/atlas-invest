@@ -194,6 +194,34 @@ export function formatPercentage(
 }
 
 /**
+ * Formats an exact decimal ratio string (e.g. Sharpe/Sortino) into localized
+ * Brazilian number format WITHOUT a percent sign. Ratios are unitless —
+ * rendering "1,24", never "1,24%".
+ *
+ * E.g.
+ * - "1.24" -> "1,24"
+ * - "-0.5" -> "-0,50"
+ * - "0" -> "0,00"
+ * - null / undefined / "" -> "—"
+ */
+export function formatRatio(value: string | number | null | undefined, decimalPlaces = 2): string {
+  if (value === null || value === undefined || value === '') {
+    return '—';
+  }
+  const result = roundAndFormatDecimal(value, decimalPlaces);
+  if (!result) {
+    return '—';
+  }
+  const { integerPart, fractionalPart, isNegative } = result;
+  const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const sign = isNegative ? '-' : '';
+  if (decimalPlaces === 0) {
+    return `${sign}${formattedInteger}`;
+  }
+  return `${sign}${formattedInteger},${fractionalPart}`;
+}
+
+/**
  * Formats an ISO date string or Date object into Brazilian format (DD/MM/YYYY).
  */
 export function formatDate(date: string | Date | null | undefined): string {

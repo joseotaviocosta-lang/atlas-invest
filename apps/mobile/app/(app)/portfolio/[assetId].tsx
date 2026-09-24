@@ -8,6 +8,9 @@ import {
   PortfolioStateDto,
   PortfolioHistoryItemDto,
   AssetMeta,
+  resolveTemporalContext,
+  getTodayCivilDateString,
+  assetStateQueryKey,
 } from '@atlas/ui';
 import {
   Screen,
@@ -24,6 +27,7 @@ import {
   MobileRealizedSection,
   MobileIncomeSection,
   MobileHistorySection,
+  MobileHistoricalBanner,
 } from '../../../src/components/portfolio';
 import { portfoliosApi } from '../../../src/api/portfolios';
 import { ApiError } from '../../../src/api/client';
@@ -31,9 +35,21 @@ import { PortfolioDto } from '../../../src/api/types';
 
 export default function MobileAssetDetailPage() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ assetId: string; portfolioId?: string }>();
+  const params = useLocalSearchParams<{ assetId: string; portfolioId?: string; asOf?: string }>();
   const assetId = params.assetId || '';
   const portfolioIdParam = params.portfolioId;
+
+  // Temporal context (Fase 2F): historical snapshots come from server replay.
+  const today = useMemo(() => getTodayCivilDateString(), []);
+  const temporal = useMemo(
+    () => resolveTemporalContext({ rawAsOf: params.asOf, today }),
+    [params.asOf, today],
+  );
+  const isHistorical = temporal.mode === 'HISTORICAL';
+
+  const clearAsOf = () => {
+    router.setParams({ asOf: undefined });
+  };
 
   // 1. Fetch user portfolios to resolve portfolio context
   const { data: portfoliosData, isLoading: isPortfoliosLoading } = useQuery({
@@ -55,10 +71,13 @@ export default function MobileAssetDetailPage() {
     refetch: refetchState,
     isRefetching: isRefetchingState,
   } = useQuery({
-    queryKey: ['portfolio-state', activePortfolioId],
+    queryKey: assetStateQueryKey(activePortfolioId, assetId, temporal.asOf),
     queryFn: async () => {
       if (!activePortfolioId) return null;
-      const res = await portfoliosApi.getPortfolioState(activePortfolioId);
+      const res = await portfoliosApi.getPortfolioState(
+        activePortfolioId,
+        temporal.asOf ?? undefined,
+      );
       return res.data as PortfolioStateDto;
     },
     enabled: Boolean(activePortfolioId),
@@ -196,7 +215,14 @@ export default function MobileAssetDetailPage() {
         ) : isStateError ? (
           <View style={styles.centerContainer}>
             <ErrorState
-              message={stateError?.message || 'Falha ao carregar posição do ativo.'}
+              message={
+                stateError instanceof ApiError &&
+                (stateError.statusCode === 422 || stateError.code === 'PORTFOLIO.REPLAY_FAILED')
+                  ? isHistorical
+                    ? 'Não foi possível reconstruir a carteira nesta data. Tente outra data ou volte para hoje.'
+                    : 'Falha ao carregar posição do ativo.'
+                  : stateError?.message || 'Falha ao carregar posição do ativo.'
+              }
               onRetry={() => refetchState()}
             />
           </View>
@@ -206,6 +232,22 @@ export default function MobileAssetDetailPage() {
               title="Ativo não encontrado"
               description="Não encontramos registros desta posição na carteira selecionada."
               actionTitle="Voltar para a Carteira"
+              onAction={() => router.back()}
+            />
+          </View>
+        ) : isHistorical && !viewModel.isOpenPosition ? (
+          <View style={styles.centerContainer}>
+            {temporal.bannerLabel && (
+              <MobileHistoricalBanner label={temporal.bannerLabel} onBackToToday={clearAsOf} />
+            )}
+            <EmptyState
+              title="Este ativo não fazia parte da carteira nesta data"
+              description={
+                temporal.displayDate
+                  ? `O ativo selecionado não possuía quantidade positiva em custódia em ${temporal.displayDate}.`
+                  : 'O ativo selecionado não possuía quantidade positiva em custódia nesta data.'
+              }
+              actionTitle="Voltar"
               onAction={() => router.back()}
             />
           </View>
@@ -220,6 +262,10 @@ export default function MobileAssetDetailPage() {
               />
             }
           >
+            {isHistorical && temporal.bannerLabel && (
+              <MobileHistoricalBanner label={temporal.bannerLabel} onBackToToday={clearAsOf} />
+            )}
+
             {/* Header / Identity Card */}
             <MobileAssetHeader
               ticker={viewModel.header.ticker}
@@ -244,14 +290,21 @@ export default function MobileAssetDetailPage() {
               }
             />
 
-            {/* Custody Breakdown by Account */}
+            {/* Custody Breakdown by Account (historical snapshot when asOf) */}
             <MobileCustodyBreakdown accounts={viewModel.accountsBreakdown} />
 
-            {/* Realized Sales Outcomes */}
-            <MobileRealizedSection disposals={viewModel.realizedResults.disposals} />
+            {/* Realized & Income are lifetime aggregates: current mode only.
+                In historical mode they would mix lifetime totals with snapshot
+                positions, so they stay hidden by design. */}
+            {!isHistorical && (
+              <>
+                {/* Realized Sales Outcomes */}
+                <MobileRealizedSection disposals={viewModel.realizedResults.disposals} />
 
-            {/* Income Received */}
-            <MobileIncomeSection events={viewModel.incomeReceived.events} />
+                {/* Income Received */}
+                <MobileIncomeSection events={viewModel.incomeReceived.events} />
+              </>
+            )}
 
             {/* Paginated History */}
             <MobileHistorySection

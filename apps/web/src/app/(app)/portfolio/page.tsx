@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, ApiError } from '@/api/client';
 import { PortfolioDto, PortfolioType } from '@/api/types';
@@ -22,11 +23,22 @@ import {
   useToast,
 } from '@/components/ui';
 import { colors, spacing, borderRadius } from '@atlas/ui';
-import { mapToPortfolioOverviewViewModel, PortfolioStateDto } from '@atlas/ui';
+import {
+  mapToPortfolioOverviewViewModel,
+  PortfolioStateDto,
+  resolveTemporalContext,
+  getTodayCivilDateString,
+  stateQueryKey,
+  appendAsOf,
+} from '@atlas/ui';
 import {
   PortfolioCompletenessBanner,
   PortfolioSummaryCards,
   PositionRow,
+  PortfolioDateSelector,
+  PortfolioHistoricalBanner,
+  PortfolioValuationSection,
+  valuationQueryKey,
 } from '@/components/portfolio';
 
 const PORTFOLIO_TYPE_LABELS: Record<PortfolioType, string> = {
@@ -52,9 +64,64 @@ const CARTEIRA_TABS = [
   { id: 'operations', label: 'Operações' },
 ];
 
-export default function PortfolioPage() {
+function PortfolioPageContent() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Temporal context (Fase 2F): `asOf` comes exclusively from the URL as a
+  // civil `YYYY-MM-DD` string. The server replay produces the snapshot.
+  const today = useMemo(() => getTodayCivilDateString(), []);
+  const temporal = useMemo(
+    () => resolveTemporalContext({ rawAsOf: searchParams.get('asOf'), today }),
+    [searchParams, today],
+  );
+  const isHistorical = temporal.mode === 'HISTORICAL';
+
+  const navigateWithParams = (params: URLSearchParams) => {
+    const qs = params.toString();
+    router.replace(`/portfolio${qs ? `?${qs}` : ''}`);
+  };
+
+  const clearAsOf = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('asOf');
+    navigateWithParams(params);
+  };
+
+  const handleSelectDate = (value: string | null) => {
+    if (!value) {
+      clearAsOf();
+      return;
+    }
+    const next = resolveTemporalContext({ rawAsOf: value, today });
+    if (next.mode === 'HISTORICAL' && next.asOf) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('asOf', next.asOf);
+      navigateWithParams(params);
+      return;
+    }
+    if (next.error) {
+      // Surface invalid/future input through the URL so the error renders.
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('asOf', value);
+      navigateWithParams(params);
+      return;
+    }
+    // Today normalization: no `asOf` param in current mode.
+    clearAsOf();
+  };
+
+  const handleSelectPortfolio = (id: string) => {
+    setSelectedPortfolioId(id);
+    // Never carry a historical snapshot across portfolios (§39).
+    if (searchParams.get('asOf')) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('asOf');
+      navigateWithParams(params);
+    }
+  };
 
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(null);
@@ -84,7 +151,7 @@ export default function PortfolioPage() {
   const activePortfolio =
     portfolios.find((p) => p.id === selectedPortfolioId) || portfolios[0] || null;
 
-  // Fetch Current Portfolio State
+  // Fetch Portfolio State (current or historical server replay via `asOf`)
   const {
     data: stateData,
     isLoading: isStateLoading,
@@ -92,17 +159,86 @@ export default function PortfolioPage() {
     error: stateError,
     refetch: refetchState,
   } = useQuery<PortfolioStateDto | null, ApiError>({
-    queryKey: ['portfolio-state', activePortfolio?.id],
+    queryKey: stateQueryKey(activePortfolio?.id || '', temporal.asOf),
     queryFn: async () => {
       if (!activePortfolio?.id) return null;
-      const res = await apiClient.get<{ data: PortfolioStateDto }>(
-        `/api/v1/portfolios/${activePortfolio.id}/state`,
-      );
+      const endpoint = temporal.asOf
+        ? `/api/v1/portfolios/${activePortfolio.id}/state?asOf=${temporal.asOf}`
+        : `/api/v1/portfolios/${activePortfolio.id}/state`;
+      const res = await apiClient.get<{ data: PortfolioStateDto }>(endpoint);
       return res.data;
     },
     enabled: Boolean(activePortfolio?.id),
     staleTime: 30000,
   });
+
+  // Fetch Valuation (current only, hidden in historical mode)
+  const { data: valuationData } = useQuery<
+    {
+      data: {
+        positions: Array<{
+          assetId: string;
+          marketValue: { amount: string; currency: string } | null;
+          unrealizedGainLoss: { amount: string; currency: string } | null;
+          unrealizedGainLossPercent: string | null;
+          status: string;
+          quoteFreshness: string | null;
+          quote: unknown | null;
+        }>;
+      };
+    },
+    ApiError
+  >({
+    queryKey: activePortfolio?.id
+      ? valuationQueryKey(activePortfolio.id)
+      : ['portfolio-valuation', 'none'],
+    queryFn: async () => {
+      if (!activePortfolio?.id) return { data: { positions: [] } } as never;
+      return apiClient.get<{
+        data: {
+          positions: Array<{
+            assetId: string;
+            marketValue: { amount: string; currency: string } | null;
+            unrealizedGainLoss: { amount: string; currency: string } | null;
+            unrealizedGainLossPercent: string | null;
+            status: string;
+            quoteFreshness: string | null;
+            quote: unknown | null;
+          }>;
+        };
+      }>(`/api/v1/portfolios/${activePortfolio.id}/valuation`);
+    },
+    enabled: Boolean(activePortfolio?.id) && !isHistorical,
+    staleTime: 30000,
+  });
+
+  const valuationMap = useMemo(() => {
+    const m = new Map<
+      string,
+      {
+        marketValue: { amount: string; currency: string } | null;
+        unrealizedGainLoss: { amount: string; currency: string } | null;
+        unrealizedGainLossPercent: string | null;
+        status: string;
+        quoteFreshness: string | null;
+        quote: { price: string; currency: string; freshness: string; status: string } | null;
+      }
+    >();
+    for (const p of (valuationData?.data?.positions as
+      | Array<{
+          assetId: string;
+          marketValue: { amount: string; currency: string } | null;
+          unrealizedGainLoss: { amount: string; currency: string } | null;
+          unrealizedGainLossPercent: string | null;
+          status: string;
+          quoteFreshness: string | null;
+          quote: { price: string; currency: string; freshness: string; status: string } | null;
+        }>
+      | undefined) ?? []) {
+      m.set(p.assetId, p as never);
+    }
+    return m;
+  }, [valuationData]);
 
   // Fetch Accounts for name resolution
   const { data: accountsData = [] } = useQuery<Array<{ id: string; name: string }>, ApiError>({
@@ -193,7 +329,7 @@ export default function PortfolioPage() {
               <PortfolioSwitcher
                 portfolios={portfolios}
                 selectedPortfolioId={activePortfolio?.id || null}
-                onSelectPortfolio={(id) => setSelectedPortfolioId(id)}
+                onSelectPortfolio={handleSelectPortfolio}
                 onCreatePortfolio={() => setIsModalOpen(true)}
               />
             )}
@@ -248,6 +384,23 @@ export default function PortfolioPage() {
           {/* TAB 1: VISÃO GERAL */}
           {activeTab === 'overview' && (
             <div>
+              {/* Historical mode banner (persistent while asOf is active) */}
+              {isHistorical && temporal.bannerLabel && (
+                <PortfolioHistoricalBanner label={temporal.bannerLabel} onBackToToday={clearAsOf} />
+              )}
+
+              {/* Portfolio date selector */}
+              {activePortfolio && (
+                <Card style={{ marginBottom: `${spacing.base}px`, padding: `${spacing.base}px` }}>
+                  <PortfolioDateSelector
+                    value={temporal.asOf}
+                    today={today}
+                    error={temporal.errorMessage}
+                    onChange={handleSelectDate}
+                  />
+                </Card>
+              )}
+
               {/* ACTIVE PORTFOLIO OVERVIEW */}
               {activePortfolio && (
                 <div>
@@ -297,8 +450,16 @@ export default function PortfolioPage() {
                       {stateError?.statusCode === 422 ||
                       stateError?.code === 'PORTFOLIO.REPLAY_FAILED' ? (
                         <ErrorState
-                          title="Inconsistência na Reconstituição da Carteira"
-                          message="Não foi possível reconstruir os dados desta carteira. Tente novamente ou revise o histórico de movimentações."
+                          title={
+                            isHistorical
+                              ? 'Não foi possível reconstruir a carteira nesta data'
+                              : 'Inconsistência na Reconstituição da Carteira'
+                          }
+                          message={
+                            isHistorical
+                              ? 'O servidor não conseguiu reconstruir o estado histórico. Tente outra data ou volte para hoje.'
+                              : 'Não foi possível reconstruir os dados desta carteira. Tente novamente ou revise o histórico de movimentações.'
+                          }
                           onRetry={() => refetchState()}
                         />
                       ) : (
@@ -357,11 +518,33 @@ export default function PortfolioPage() {
                               {overviewViewModel.header.typeLabel}
                             </Badge>
                             <Link
-                              href={`/portfolio/history?portfolioId=${activePortfolio.id}`}
+                              href={appendAsOf(
+                                `/portfolio/accounts?portfolioId=${activePortfolio.id}`,
+                                temporal.asOf,
+                              )}
+                              style={{ textDecoration: 'none' }}
+                            >
+                              <Button variant="secondary" size="sm">
+                                Contas
+                              </Button>
+                            </Link>
+                            <Link
+                              href={appendAsOf(
+                                `/portfolio/history?portfolioId=${activePortfolio.id}`,
+                                temporal.asOf,
+                              )}
                               style={{ textDecoration: 'none' }}
                             >
                               <Button variant="secondary" size="sm">
                                 Histórico
+                              </Button>
+                            </Link>
+                            <Link
+                              href={`/portfolio/performance?portfolioId=${activePortfolio.id}`}
+                              style={{ textDecoration: 'none' }}
+                            >
+                              <Button variant="secondary" size="sm">
+                                Ver performance
                               </Button>
                             </Link>
                           </div>
@@ -426,8 +609,25 @@ export default function PortfolioPage() {
                         incomeReceived={overviewViewModel.summaryCards.incomeReceived}
                       />
 
+                      {/* Current Valuation (hidden in historical mode) */}
+                      <div style={{ marginBottom: `${spacing.xl}px` }}>
+                        <PortfolioValuationSection
+                          portfolioId={activePortfolio.id}
+                          isHistorical={isHistorical}
+                        />
+                      </div>
+
                       {/* Positions Section */}
-                      {overviewViewModel.stateIndicators.isEmptyPortfolio ? (
+                      {isHistorical && overviewViewModel.positions.length === 0 ? (
+                        <Card
+                          style={{ padding: `${spacing.xl}px`, marginBottom: `${spacing.xl}px` }}
+                        >
+                          <EmptyState
+                            title="Nenhuma posição nesta data"
+                            description={`A carteira ainda não possuía posições em ${temporal.displayDate}.`}
+                          />
+                        </Card>
+                      ) : overviewViewModel.stateIndicators.isEmptyPortfolio ? (
                         <Card
                           style={{ padding: `${spacing.xl}px`, marginBottom: `${spacing.xl}px` }}
                         >
@@ -463,8 +663,12 @@ export default function PortfolioPage() {
                       ) : (
                         <div style={{ marginBottom: `${spacing.xl}px` }}>
                           <SectionHeader
-                            title="Posições"
-                            description="Ativos atualmente em custódia com custo carregado e preço médio"
+                            title={isHistorical ? `Posições ${temporal.headerSuffix}` : 'Posições'}
+                            description={
+                              isHistorical && temporal.displayDate
+                                ? `Ativos em custódia em ${temporal.displayDate} com custo carregado e preço médio`
+                                : 'Ativos atualmente em custódia com custo carregado e preço médio'
+                            }
                           />
                           <div>
                             {overviewViewModel.positions.map((position) => (
@@ -472,6 +676,9 @@ export default function PortfolioPage() {
                                 key={position.assetId}
                                 position={position}
                                 portfolioId={activePortfolio?.id}
+                                asOf={temporal.asOf}
+                                valuation={valuationMap.get(position.assetId) ?? null}
+                                isHistorical={isHistorical}
                               />
                             ))}
                           </div>
@@ -558,7 +765,7 @@ export default function PortfolioPage() {
                           <Button
                             size="sm"
                             variant="secondary"
-                            onClick={() => setSelectedPortfolioId(portfolio.id)}
+                            onClick={() => handleSelectPortfolio(portfolio.id)}
                           >
                             Selecionar
                           </Button>
@@ -692,5 +899,15 @@ export default function PortfolioPage() {
         </form>
       </Modal>
     </div>
+  );
+}
+
+export default function PortfolioPage() {
+  return (
+    <React.Suspense
+      fallback={<div style={{ padding: `${spacing.xl}px` }}>Carregando carteira...</div>}
+    >
+      <PortfolioPageContent />
+    </React.Suspense>
   );
 }

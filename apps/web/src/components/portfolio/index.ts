@@ -9,3 +9,6 @@ export * from './AssetIncomeSection';
 export * from './AssetHistorySection';
 export * from './PortfolioHistoryFilters';
 export * from './PortfolioHistoryTimeline';
+export * from './PortfolioDateSelector';
+export * from './PortfolioHistoricalBanner';
+export * from './PortfolioValuation';
