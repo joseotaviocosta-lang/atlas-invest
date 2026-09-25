@@ -151,3 +151,86 @@ export interface IPasswordResetTokenRepository {
   markAsUsed(id: string): Promise<void>;
   markAsUsedIfUnused(id: string): Promise<boolean>;
 }
+
+export interface AiConversationRecord {
+  id: string;
+  userId: string;
+  portfolioId: string;
+  title: string | null;
+  archivedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface AiConversationMessageRecord {
+  id: string;
+  conversationId: string;
+  role: 'USER' | 'ASSISTANT';
+  content: string;
+  status: 'ANSWERED' | 'UNSUPPORTED' | 'PROVIDER_ERROR';
+  intent: string | null;
+  evidenceSnapshot: unknown | null;
+  limitations: string[];
+  provider: string | null;
+  model: string | null;
+  providerRequestId: string | null;
+  createdAt: Date;
+}
+
+export interface CreateAiConversationData {
+  userId: string;
+  portfolioId: string;
+  title?: string;
+}
+
+export interface CreateAiConversationMessageData {
+  role: 'USER' | 'ASSISTANT';
+  content: string;
+  status?: 'ANSWERED' | 'UNSUPPORTED' | 'PROVIDER_ERROR';
+  intent?: string | null;
+  evidenceSnapshot?: unknown | null;
+  limitations?: string[];
+  provider?: string | null;
+  model?: string | null;
+  providerRequestId?: string | null;
+}
+
+export interface IAiConversationRepository {
+  createConversation(data: CreateAiConversationData): Promise<AiConversationRecord>;
+  findConversationById(
+    id: string,
+    portfolioId: string,
+    userId: string,
+  ): Promise<AiConversationRecord | null>;
+  listConversations(
+    portfolioId: string,
+    userId: string,
+    options?: { limit?: number; cursor?: string; includeArchived?: boolean },
+  ): Promise<{ items: AiConversationRecord[]; nextCursor?: string; hasMore: boolean }>;
+  archiveConversation(id: string, portfolioId: string, userId: string): Promise<boolean>;
+  listMessages(
+    conversationId: string,
+    options?: { limit?: number; cursor?: string; order?: 'asc' | 'desc' },
+  ): Promise<{ items: AiConversationMessageRecord[]; nextCursor?: string; hasMore: boolean }>;
+  appendMessage(
+    conversationId: string,
+    data: CreateAiConversationMessageData,
+  ): Promise<AiConversationMessageRecord>;
+  appendTurn(
+    conversationId: string,
+    userMessage: { content: string },
+    assistantMessage: {
+      content: string;
+      status?: 'ANSWERED' | 'UNSUPPORTED' | 'PROVIDER_ERROR';
+      intent?: string | null;
+      evidenceSnapshot?: unknown | null;
+      limitations?: string[];
+      provider?: string | null;
+      model?: string | null;
+      providerRequestId?: string | null;
+    },
+  ): Promise<{
+    userMessage: AiConversationMessageRecord;
+    assistantMessage: AiConversationMessageRecord;
+  }>;
+}

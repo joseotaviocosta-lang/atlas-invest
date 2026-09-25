@@ -1193,3 +1193,37 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 
 15. **NO AUTONOMOUS TOOL USE, RAG, EMBEDDINGS, OR AGENTS IN 3R.**
     - Ferramentas do provedor desabilitadas, sem web browsing/search, sem invocação de ferramentas pelo modelo (resposta com tool-call é `AI.INVALID_MODEL_RESPONSE`).
+
+---
+
+## 41. Regras da Fundamentação de Conversação de IA (Fase 3S)
+
+1. **O HISTÓRICO CONVERSACIONAL NUNCA É FONTE DE VERDADE FINANCEIRA:**
+   - O histórico de mensagens anteriores é contexto textual delimitado para compreensão linguística de anáforas e elipses; nunca fonte de dados ou evidência financeira.
+   - Mensagens anteriores do assistente não substituem nem complementam fatos do grounding atual.
+
+2. **FRESH GROUNDING POR TURNO SUPORTADO:**
+   - Toda rodada conversacional suportada reconstrói um `PortfolioAiGroundingContextV1` completamente atualizado (fresh grounding) através de exatamente 1 chamada ao caso de uso canônico.
+
+3. **CITAÇÃO E VALIDAÇÃO DE EVIDÊNCIAS CONTRA O GROUNDING ATUAL:**
+   - Respostas do modelo no novo turno devem citar `factId`s estritamente pertencentes ao grounding ATUAL. Fatos inexistentes no contexto corrente disparam compulsoriamente `422 AI.INVALID_MODEL_RESPONSE`.
+
+4. **ESTABILIDADE E AUDITORIA DA EVIDÊNCIA HISTÓRICA:**
+   - Cada resposta persistida do assistente armazena um snapshot minimalista contendo estritamente os fatos canônicos citados naquela resposta (`MinimalEvidenceSnapshotFact`).
+   - Evidências de respostas históricas nunca são atualizadas silenciosamente com os valores correntes do dia de hoje.
+
+5. **HISTÓRICO DELIMITADO DETERMINÍSTICO (BOUNDED HISTORY):**
+   - O histórico enviado ao provedor LLM é estritamente limitado por contagem (máximo 10 mensagens) e orçamento de caracteres (máximo 14.000 caracteres), descartando mensagens mais antigas primeiro (FIFO).
+   - O grounding atual e a política do sistema têm prioridade absoluta sobre o histórico conversacional.
+   - É proibido o uso de agentes ou LLMs secundários para sumarização de conversas na Fase 3S.
+
+6. **GATE DE INTENÇÃO E RECUSA UPSTREAM (ZERO CALLS):**
+   - Tentativas de obter recomendações de compra/venda, projeções futuras, cálculos arbitrários, consultoria fiscal ou prompt injections são interceptadas pelo gate determinístico antes de qualquer chamada ao modelo ou grounding (0 chamadas de grounding, 0 chamadas de modelo).
+
+7. **PERSISTÊNCIA SEGURA E ISOLAMENTO MULTITENANT:**
+   - Conversas pertencem exclusivamente a um usuário e a uma carteira (`userId`, `portfolioId`).
+   - Acesso não autorizado ou cross-portfolio retorna invariavelmente `404 Not Found` (anti-enumeração).
+   - É terminantemente proibido persistir chaves de API, tokens de autenticação, o livro de transações bruto (ledger), o contexto de grounding completo ou a requisição bruta do provedor.
+
+8. **ANTI-ESCOPO DA FASE 3S:**
+   - Proibido implementar RAG, embeddings, bancos vetoriais, agentes autônomos, chamadas de ferramentas (tool calling), navegação na web ou streaming de tokens (SSE/WebSocket).

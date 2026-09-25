@@ -22,6 +22,7 @@ model User {
   portfolios          Portfolio[]
   sessions            Session[]
   passwordResetTokens PasswordResetToken[]
+  aiConversations     AiConversation[]
 
   @@map("users")
 }
@@ -88,9 +89,10 @@ model Portfolio {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accounts     Account[]
-  transactions Transaction[]
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts        Account[]
+  transactions    Transaction[]
+  aiConversations AiConversation[]
 
   @@index([userId])
   @@map("portfolios")
@@ -166,4 +168,43 @@ model Transaction {
   @@index([portfolioId, transferGroupId])
   @@index([assetId])
   @@map("transactions")
+}
+
+model AiConversation {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  portfolioId String    @map("portfolio_id") @db.Uuid
+  title       String?   @db.VarChar(255)
+  archivedAt  DateTime? @map("archived_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  portfolio   Portfolio              @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  messages    AiConversationMessage[]
+
+  @@index([userId])
+  @@index([portfolioId])
+  @@index([portfolioId, updatedAt])
+  @@map("ai_conversations")
+}
+
+model AiConversationMessage {
+  id                String    @id @default(uuid()) @db.Uuid
+  conversationId    String    @map("conversation_id") @db.Uuid
+  role              String    @db.VarChar(20)
+  content           String    @db.Text
+  status            String    @default("ANSWERED") @db.VarChar(50)
+  intent            String?   @db.VarChar(100)
+  evidenceSnapshot  Json?     @map("evidence_snapshot") @db.JsonB
+  limitations       String[]  @default([]) @map("limitations")
+  provider          String?   @db.VarChar(100)
+  model             String?   @db.VarChar(100)
+  providerRequestId String?   @map("provider_request_id") @db.VarChar(255)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  conversation      AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt, id])
+  @@map("ai_conversation_messages")
 }

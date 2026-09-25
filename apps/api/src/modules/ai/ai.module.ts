@@ -2,6 +2,10 @@ import { Module } from '@nestjs/common';
 import { ApplicationModule } from '../../application/application.module';
 import { AiController } from './ai.controller';
 import { ExplainPortfolioWithAiUseCase } from '../../application/ai/explain-portfolio-with-ai.use-case';
+import { CreateAiConversationUseCase } from '../../application/ai/create-ai-conversation.use-case';
+import { ListAiConversationsUseCase } from '../../application/ai/list-ai-conversations.use-case';
+import { GetAiConversationUseCase } from '../../application/ai/get-ai-conversation.use-case';
+import { SendAiConversationMessageUseCase } from '../../application/ai/send-ai-conversation-message.use-case';
 import { AI_PROVIDER_TOKEN, OpenAiProvider } from '../../infrastructure/ai/openai-ai.provider';
 import { FakeAiProvider } from '@atlas/ai-engine';
 
@@ -10,6 +14,10 @@ import { FakeAiProvider } from '@atlas/ai-engine';
   controllers: [AiController],
   providers: [
     ExplainPortfolioWithAiUseCase,
+    CreateAiConversationUseCase,
+    ListAiConversationsUseCase,
+    GetAiConversationUseCase,
+    SendAiConversationMessageUseCase,
     {
       provide: AI_PROVIDER_TOKEN,
       useFactory: () => {
@@ -20,6 +28,13 @@ import { FakeAiProvider } from '@atlas/ai-engine';
       },
     },
   ],
-  exports: [ExplainPortfolioWithAiUseCase, AI_PROVIDER_TOKEN],
+  exports: [
+    ExplainPortfolioWithAiUseCase,
+    CreateAiConversationUseCase,
+    ListAiConversationsUseCase,
+    GetAiConversationUseCase,
+    SendAiConversationMessageUseCase,
+    AI_PROVIDER_TOKEN,
+  ],
 })
 export class AiModule {}

@@ -37,7 +37,7 @@ export function getTestPrismaClient(): PrismaClient {
 export async function cleanDatabase(): Promise<void> {
   const prisma = getTestPrismaClient();
   await prisma.$executeRawUnsafe(`
-    TRUNCATE TABLE "password_reset_tokens", "sessions", "transactions", "accounts", "portfolios", "assets", "institutions", "users" CASCADE;
+    TRUNCATE TABLE "ai_conversation_messages", "ai_conversations", "password_reset_tokens", "sessions", "transactions", "accounts", "portfolios", "assets", "institutions", "users" CASCADE;
   `);
 }
 

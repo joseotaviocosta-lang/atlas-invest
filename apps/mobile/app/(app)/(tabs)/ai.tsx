@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,13 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   themeTokens,
-  mapToPortfolioAiExplanationVM,
-  PortfolioAiExplanationVM,
-  GroundedExplanationDto,
+  colors,
+  mapToAiConversationDetailVM,
+  mapToAiConversationListItemVM,
+  AiConversationDetailVM,
 } from '@atlas/ui';
 import { Screen, Header, Card, Button } from '../../../src/components/ui';
 import { portfoliosApi } from '../../../src/api/portfolios';
@@ -29,10 +30,13 @@ const STARTER_QUESTIONS = [
 
 export default function AIScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [question, setQuestion] = useState('');
-  const [explanation, setExplanation] = useState<PortfolioAiExplanationVM | null>(null);
   const [selectedPortfolioId, _setSelectedPortfolioId] = useState<string | null>(null);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
 
+  // Load portfolios
   const { data: portfoliosData, isLoading: isLoadingPortfolios } = useQuery({
     queryKey: ['portfolios'],
     queryFn: () => portfoliosApi.listPortfolios(),
@@ -46,162 +50,284 @@ export default function AIScreen() {
     return null;
   }, [selectedPortfolioId, portfoliosData]);
 
-  const explainMutation = useMutation({
-    mutationFn: async (q: string) => {
+  // Load conversations
+  const { data: conversationsData, isLoading: isLoadingConversations } = useQuery({
+    queryKey: ['ai-conversations', activePortfolioId],
+    queryFn: () => portfoliosApi.listAiConversations(activePortfolioId!),
+    enabled: !!activePortfolioId,
+  });
+
+  const conversations = useMemo(() => {
+    return (conversationsData?.data || []).map(mapToAiConversationListItemVM);
+  }, [conversationsData]);
+
+  // Auto-select latest conversation
+  React.useEffect(() => {
+    if (!activeConversationId && conversations.length > 0 && conversations[0]) {
+      setActiveConversationId(conversations[0].id);
+    }
+  }, [conversations, activeConversationId]);
+
+  // Load active conversation messages
+  const { data: activeConversationData, isLoading: isLoadingMessages } = useQuery({
+    queryKey: ['ai-conversation', activePortfolioId, activeConversationId],
+    queryFn: () => portfoliosApi.getAiConversation(activePortfolioId!, activeConversationId!),
+    enabled: !!activePortfolioId && !!activeConversationId,
+  });
+
+  const conversationDetail: AiConversationDetailVM | null = useMemo(() => {
+    if (!activeConversationData?.data) return null;
+    return mapToAiConversationDetailVM(
+      activeConversationData.data,
+      activeConversationData.data.messages || [],
+    );
+  }, [activeConversationData]);
+
+  // Create conversation mutation
+  const createConversationMutation = useMutation({
+    mutationFn: async (title?: string) => {
       if (!activePortfolioId) throw new Error('Selecione uma carteira');
-      const response = await portfoliosApi.explainPortfolio(activePortfolioId, q);
+      const response = await portfoliosApi.createAiConversation(activePortfolioId, title);
       return response.data;
     },
-    onSuccess: (dto) => {
-      setExplanation(mapToPortfolioAiExplanationVM(dto as unknown as GroundedExplanationDto));
+    onSuccess: (newConv) => {
+      queryClient.invalidateQueries({ queryKey: ['ai-conversations', activePortfolioId] });
+      setActiveConversationId(newConv.id);
     },
   });
 
-  const handleSelectPrompt = (prompt: string) => {
-    setQuestion(prompt);
-    if (activePortfolioId) {
-      explainMutation.mutate(prompt);
+  // Send message mutation
+  const sendMessageMutation = useMutation({
+    mutationFn: async ({ conversationId, q }: { conversationId: string; q: string }) => {
+      if (!activePortfolioId) throw new Error('Selecione uma carteira');
+      const response = await portfoliosApi.sendAiConversationMessage(
+        activePortfolioId,
+        conversationId,
+        q,
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      setQuestion('');
+      queryClient.invalidateQueries({
+        queryKey: ['ai-conversation', activePortfolioId, activeConversationId],
+      });
+      queryClient.invalidateQueries({ queryKey: ['ai-conversations', activePortfolioId] });
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 150);
+    },
+  });
+
+  const handleStartNewConversation = () => {
+    createConversationMutation.mutate(undefined);
+  };
+
+  const handleSelectPrompt = async (prompt: string) => {
+    if (!activePortfolioId) return;
+
+    let targetConvId = activeConversationId;
+    if (!targetConvId) {
+      const created = await createConversationMutation.mutateAsync(prompt.slice(0, 50));
+      targetConvId = created.id;
+    }
+
+    if (targetConvId) {
+      sendMessageMutation.mutate({
+        conversationId: targetConvId,
+        q: prompt,
+      });
     }
   };
 
-  const handleSend = () => {
-    if (!question.trim() || !activePortfolioId) return;
-    explainMutation.mutate(question.trim());
+  const handleSend = async () => {
+    const q = question.trim();
+    if (!q || !activePortfolioId) return;
+
+    let targetConvId = activeConversationId;
+    if (!targetConvId) {
+      const created = await createConversationMutation.mutateAsync(q.slice(0, 50));
+      targetConvId = created.id;
+    }
+
+    if (targetConvId) {
+      sendMessageMutation.mutate({
+        conversationId: targetConvId,
+        q,
+      });
+    }
   };
 
   return (
     <Screen>
       <Header
         title="Atlas IA"
-        subtitle="Explicações factuais ancoradas no ledger (Fase 3R)"
+        subtitle="Diálogos explicativos fundamentados no ledger (Fase 3S)"
         rightAction={{
           title: 'Perfil',
           onPress: () => router.push('/(app)/profile'),
         }}
       />
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        {/* Results Area */}
-        {isLoadingPortfolios ? (
+      <View style={styles.topActionsRow}>
+        <Button
+          title="+ Nova conversa"
+          variant="secondary"
+          onPress={handleStartNewConversation}
+          disabled={createConversationMutation.isPending || !activePortfolioId}
+        />
+        {conversations.length > 1 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.conversationChipsContainer}
+          >
+            {conversations.map((conv) => {
+              const isSelected = conv.id === activeConversationId;
+              return (
+                <TouchableOpacity
+                  key={conv.id}
+                  style={[styles.convChip, isSelected && styles.convChipActive]}
+                  onPress={() => setActiveConversationId(conv.id)}
+                >
+                  <Text
+                    style={[styles.convChipText, isSelected && styles.convChipTextActive]}
+                    numberOfLines={1}
+                  >
+                    {conv.title}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
+      </View>
+
+      <ScrollView
+        ref={scrollViewRef}
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+      >
+        {isLoadingPortfolios || isLoadingConversations ? (
           <ActivityIndicator color={themeTokens.colors.primary} style={{ marginTop: 24 }} />
-        ) : explainMutation.isPending ? (
-          <Card>
-            <ActivityIndicator color={themeTokens.colors.primary} style={{ marginVertical: 16 }} />
-            <Text style={styles.loadingText}>
-              Consultando fatos comprovados no motor analítico...
-            </Text>
-          </Card>
-        ) : explainMutation.isError ? (
-          <Card style={styles.errorCard}>
-            <Text style={styles.errorTitle}>Indisponível</Text>
-            <Text style={styles.errorText}>
-              Não foi possível gerar a explicação agora. Tente novamente mais tarde.
-            </Text>
-          </Card>
-        ) : explanation ? (
-          <View style={styles.resultContainer}>
-            {/* Answer Card */}
+        ) : (!conversationDetail || !conversationDetail.hasMessages) && !isLoadingMessages ? (
+          <View style={styles.emptyContainer}>
             <Card>
-              <View style={styles.answerHeader}>
-                <Text style={styles.assistantBadge}>✨ Atlas Copilot</Text>
-                {explanation.isUnsupported && (
+              <Text style={styles.emptyTitle}>Como posso ajudar hoje?</Text>
+              <Text style={styles.emptySubtitle}>
+                Pergunte sobre rentabilidade, benchmarks, risco histórico, estresse ou dados
+                incompletos.
+              </Text>
+              <View style={styles.starterChipsContainer}>
+                {STARTER_QUESTIONS.map((q) => (
+                  <TouchableOpacity
+                    key={q}
+                    style={styles.starterChip}
+                    onPress={() => handleSelectPrompt(q)}
+                    disabled={sendMessageMutation.isPending}
+                  >
+                    <Text style={styles.starterChipText}>{q}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </Card>
+          </View>
+        ) : (
+          <View style={styles.messagesContainer}>
+            {conversationDetail?.messages.map((msg) => (
+              <View
+                key={msg.id}
+                style={[
+                  styles.messageBubble,
+                  msg.isUser ? styles.userBubble : styles.assistantBubble,
+                ]}
+              >
+                <Text style={msg.isUser ? styles.userSenderText : styles.assistantSenderText}>
+                  {msg.isUser ? 'Você' : 'Atlas IA'}
+                </Text>
+                <Text style={styles.messageContentText}>{msg.content}</Text>
+
+                {msg.isUnsupported && (
                   <View style={styles.unsupportedBadge}>
-                    <Text style={styles.unsupportedBadgeText}>Não suportado</Text>
+                    <Text style={styles.unsupportedBadgeText}>
+                      ℹ️ Não suportado: fora do escopo analítico aprovado
+                    </Text>
+                  </View>
+                )}
+
+                {msg.hasEvidence && (
+                  <View style={styles.evidenceContainer}>
+                    <Text style={styles.evidenceSectionTitle}>Dados usados nesta resposta:</Text>
+                    {msg.evidence.map((ev) => (
+                      <View key={ev.factId} style={styles.evidenceRow}>
+                        <View style={styles.evidenceLabelCol}>
+                          <Text style={styles.evidenceLabelText}>{ev.label}</Text>
+                          <View style={styles.badgeRow}>
+                            <Text style={styles.scopeText}>({ev.scope})</Text>
+                            {ev.natureBadge === 'HIPOTESE' && (
+                              <View style={styles.badgeHypo}>
+                                <Text style={styles.badgeHypoText}>Hipótese</Text>
+                              </View>
+                            )}
+                            {ev.natureBadge === 'HISTORICO' && (
+                              <View style={styles.badgeHist}>
+                                <Text style={styles.badgeHistText}>Histórico</Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                        <Text style={styles.evidenceValueText}>{ev.valueFormatted}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {msg.hasLimitations && (
+                  <View style={styles.limitationsContainer}>
+                    <Text style={styles.limitationsTitle}>Limitações dos dados:</Text>
+                    {msg.limitations.map((lim, idx) => (
+                      <Text key={idx} style={styles.limitationItem}>
+                        • {lim}
+                      </Text>
+                    ))}
                   </View>
                 )}
               </View>
-              <Text style={styles.answerText}>{explanation.answer}</Text>
-            </Card>
-
-            {/* Evidence Section */}
-            {explanation.hasEvidence && (
-              <Card>
-                <Text style={styles.sectionTitle}>Dados usados nesta resposta</Text>
-                {explanation.evidence.map((ev) => (
-                  <View key={ev.factId} style={styles.evidenceRow}>
-                    <View style={styles.evidenceLabelCol}>
-                      <Text style={styles.evidenceLabel}>{ev.label}</Text>
-                      <View style={styles.badgeRow}>
-                        <Text style={styles.scopeText}>({ev.scope})</Text>
-                        {ev.natureBadge === 'HIPOTESE' && (
-                          <View style={styles.badgeHypo}>
-                            <Text style={styles.badgeHypoText}>Hipótese</Text>
-                          </View>
-                        )}
-                        {ev.natureBadge === 'HISTORICO' && (
-                          <View style={styles.badgeHist}>
-                            <Text style={styles.badgeHistText}>Histórico</Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                    <Text style={styles.evidenceValue}>{ev.valueFormatted}</Text>
-                  </View>
-                ))}
-              </Card>
-            )}
-
-            {/* Limitations Section */}
-            {explanation.hasLimitations && (
-              <Card style={styles.limitationsCard}>
-                <Text style={styles.limitationsTitle}>Limitações dos dados:</Text>
-                {explanation.limitations.map((lim, idx) => (
-                  <Text key={idx} style={styles.limitationText}>
-                    • {lim}
-                  </Text>
-                ))}
-              </Card>
-            )}
-          </View>
-        ) : (
-          /* Welcome Card */
-          <Card>
-            <Text style={styles.cardTitle}>Pergunte sobre sua carteira</Text>
-            <Text style={styles.cardText}>
-              Olá! Sou o assistente factual do Project Atlas. Posso explicar o desempenho, risco
-              histórico, comparações com benchmarks e cenários da sua carteira com base
-              exclusivamente nos fatos comprovados do ledger.
-            </Text>
-          </Card>
-        )}
-
-        {/* Starter Questions */}
-        <View style={styles.starterContainer}>
-          <Text style={styles.starterTitle}>Sugestões de perguntas:</Text>
-          <View style={styles.chipGrid}>
-            {STARTER_QUESTIONS.map((q) => (
-              <TouchableOpacity
-                key={q}
-                style={styles.chip}
-                onPress={() => handleSelectPrompt(q)}
-                disabled={explainMutation.isPending}
-              >
-                <Text style={styles.chipText}>{q}</Text>
-              </TouchableOpacity>
             ))}
+
+            {sendMessageMutation.isPending && (
+              <Card style={{ marginVertical: 8 }}>
+                <ActivityIndicator color={themeTokens.colors.primary} />
+                <Text style={styles.loadingText}>Analisando fatos comprovados...</Text>
+              </Card>
+            )}
+
+            {sendMessageMutation.isError && (
+              <Card style={{ marginVertical: 8, borderColor: themeTokens.colors.danger }}>
+                <Text style={{ color: themeTokens.colors.danger, fontSize: 12 }}>
+                  Não foi possível gerar a explicação agora.
+                </Text>
+              </Card>
+            )}
           </View>
-        </View>
-
-        {/* Input Form */}
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            placeholder="Pergunte sobre rentabilidade ou risco..."
-            placeholderTextColor={themeTokens.colors.textMuted}
-            value={question}
-            onChangeText={setQuestion}
-            editable={!explainMutation.isPending}
-          />
-          <Button
-            title={explainMutation.isPending ? 'Enviando...' : 'Enviar'}
-            onPress={handleSend}
-            disabled={explainMutation.isPending || !question.trim() || !activePortfolioId}
-          />
-        </View>
-
-        <Text style={styles.footerNote}>
-          Respostas estritamente ancoradas em fatos do ledger. Sem recomendações ou previsões.
-        </Text>
+        )}
       </ScrollView>
+
+      {/* Composer */}
+      <View style={styles.composerContainer}>
+        <TextInput
+          style={styles.textInput}
+          placeholder="Pergunte sobre sua carteira..."
+          placeholderTextColor={colors.textMuted}
+          value={question}
+          onChangeText={setQuestion}
+          multiline
+          maxLength={2000}
+          editable={!sendMessageMutation.isPending && !!activePortfolioId}
+        />
+        <Button
+          title={sendMessageMutation.isPending ? '...' : 'Enviar'}
+          onPress={handleSend}
+          disabled={sendMessageMutation.isPending || !question.trim() || !activePortfolioId}
+        />
+      </View>
     </Screen>
   );
 }
@@ -209,192 +335,227 @@ export default function AIScreen() {
 const styles = StyleSheet.create({
   container: {
     padding: themeTokens.spacing.md,
-    gap: themeTokens.spacing.md,
+    paddingBottom: 24,
   },
-  cardTitle: {
-    color: themeTokens.colors.text,
-    fontSize: 16,
+  topActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: themeTokens.spacing.md,
+    paddingVertical: themeTokens.spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: themeTokens.colors.border,
+    gap: 8,
+  },
+  conversationChipsContainer: {
+    gap: 6,
+    paddingRight: 16,
+  },
+  convChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: themeTokens.colors.border,
+    backgroundColor: themeTokens.colors.surface,
+  },
+  convChipActive: {
+    borderColor: themeTokens.colors.primary,
+    backgroundColor: themeTokens.colors.surfaceElevated,
+  },
+  convChipText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    maxWidth: 140,
+  },
+  convChipTextActive: {
+    color: themeTokens.colors.primary,
     fontWeight: '600',
-    marginBottom: 8,
   },
-  cardText: {
-    color: themeTokens.colors.textMuted,
-    fontSize: 13,
+  emptyContainer: {
+    marginVertical: 24,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 16,
     lineHeight: 18,
   },
-  loadingText: {
-    color: themeTokens.colors.textMuted,
-    fontSize: 13,
-    textAlign: 'center',
-    marginBottom: 8,
+  starterChipsContainer: {
+    gap: 8,
   },
-  errorCard: {
-    backgroundColor: '#381E1E',
-    borderColor: '#9E3A3A',
+  starterChip: {
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: themeTokens.colors.border,
+    backgroundColor: themeTokens.colors.surfaceElevated,
   },
-  errorTitle: {
-    color: '#F87171',
+  starterChipText: {
+    fontSize: 12,
+    color: colors.textPrimary,
+  },
+  messagesContainer: {
+    gap: 12,
+  },
+  messageBubble: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  userBubble: {
+    alignSelf: 'flex-end',
+    backgroundColor: themeTokens.colors.surfaceElevated,
+    borderColor: themeTokens.colors.primary,
+    maxWidth: '85%',
+  },
+  assistantBubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: themeTokens.colors.surface,
+    borderColor: themeTokens.colors.border,
+    maxWidth: '92%',
+  },
+  userSenderText: {
+    fontSize: 11,
     fontWeight: '600',
-    fontSize: 14,
+    color: themeTokens.colors.primary,
     marginBottom: 4,
   },
-  errorText: {
-    color: '#FCA5A5',
-    fontSize: 12,
-  },
-  resultContainer: {
-    gap: themeTokens.spacing.sm,
-  },
-  answerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  assistantBadge: {
-    color: themeTokens.colors.primary,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  unsupportedBadge: {
-    backgroundColor: '#4D3800',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  unsupportedBadgeText: {
-    color: '#FCD34D',
+  assistantSenderText: {
     fontSize: 11,
     fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 4,
   },
-  answerText: {
-    color: themeTokens.colors.text,
+  messageContentText: {
     fontSize: 14,
+    color: colors.textPrimary,
     lineHeight: 20,
   },
-  sectionTitle: {
-    color: themeTokens.colors.textMuted,
+  unsupportedBadge: {
+    marginTop: 8,
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: 'rgba(234, 179, 8, 0.1)',
+  },
+  unsupportedBadgeText: {
+    fontSize: 11,
+    color: '#eab308',
+  },
+  evidenceContainer: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: themeTokens.colors.border,
+  },
+  evidenceSectionTitle: {
     fontSize: 11,
     fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 10,
+    color: colors.textSecondary,
+    marginBottom: 6,
   },
   evidenceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 6,
-    borderBottomWidth: 1,
+    paddingVertical: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: themeTokens.colors.border,
   },
   evidenceLabelCol: {
     flex: 1,
     marginRight: 8,
   },
-  evidenceLabel: {
-    color: themeTokens.colors.text,
-    fontSize: 13,
-    fontWeight: '500',
+  evidenceLabelText: {
+    fontSize: 11,
+    color: colors.textPrimary,
   },
   badgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
     marginTop: 2,
   },
   scopeText: {
-    color: themeTokens.colors.textMuted,
-    fontSize: 11,
+    fontSize: 10,
+    color: colors.textMuted,
   },
   badgeHypo: {
-    backgroundColor: '#1E293B',
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
     paddingVertical: 1,
     borderRadius: 4,
+    backgroundColor: 'rgba(234, 179, 8, 0.15)',
   },
   badgeHypoText: {
-    color: '#38BDF8',
-    fontSize: 10,
+    fontSize: 9,
+    color: '#eab308',
     fontWeight: '600',
   },
   badgeHist: {
-    backgroundColor: '#27272A',
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
     paddingVertical: 1,
     borderRadius: 4,
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
   },
   badgeHistText: {
-    color: '#A1A1AA',
-    fontSize: 10,
+    fontSize: 9,
+    color: '#3b82f6',
     fontWeight: '600',
   },
-  evidenceValue: {
-    color: themeTokens.colors.text,
-    fontSize: 13,
-    fontWeight: '700',
+  evidenceValueText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textPrimary,
   },
-  limitationsCard: {
-    backgroundColor: '#1E293B',
+  limitationsContainer: {
+    marginTop: 8,
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: themeTokens.colors.surfaceElevated,
   },
   limitationsTitle: {
-    color: '#38BDF8',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '600',
-    marginBottom: 4,
+    color: colors.textSecondary,
+    marginBottom: 2,
   },
-  limitationText: {
-    color: '#94A3B8',
+  limitationItem: {
+    fontSize: 10,
+    color: colors.textMuted,
+  },
+  loadingText: {
     fontSize: 12,
-    lineHeight: 16,
-  },
-  starterContainer: {
+    color: colors.textSecondary,
+    textAlign: 'center',
     marginTop: 8,
   },
-  starterTitle: {
-    color: themeTokens.colors.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  chipGrid: {
+  composerContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
+    padding: themeTokens.spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: themeTokens.colors.border,
+    backgroundColor: themeTokens.colors.surface,
     gap: 8,
   },
-  chip: {
+  textInput: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 100,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: themeTokens.colors.border,
     backgroundColor: themeTokens.colors.surfaceElevated,
+    color: colors.textPrimary,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: themeTokens.colors.border,
-  },
-  chipText: {
-    color: themeTokens.colors.text,
-    fontSize: 12,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: themeTokens.colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: themeTokens.colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: themeTokens.colors.text,
     fontSize: 13,
-  },
-  footerNote: {
-    color: themeTokens.colors.textMuted,
-    fontSize: 11,
-    textAlign: 'center',
-    marginVertical: 8,
   },
 });

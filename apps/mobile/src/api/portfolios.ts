@@ -12,6 +12,8 @@ import {
   PortfolioHistoryPaginationMetaDto,
   AssetMeta,
   GroundedExplanationDto,
+  AiConversationListItemDto,
+  AiConversationMessageDto,
 } from '@atlas/ui';
 
 export const portfoliosApi = {
@@ -85,6 +87,64 @@ export const portfoliosApi = {
     return apiClient.post<{ data: GroundedExplanationDto }>(
       `/api/v1/portfolios/${portfolioId}/ai/explain`,
       { question },
+    );
+  },
+
+  async createAiConversation(
+    portfolioId: string,
+    title?: string,
+  ): Promise<{ data: AiConversationListItemDto }> {
+    return apiClient.post<{ data: AiConversationListItemDto }>(
+      `/api/v1/portfolios/${portfolioId}/ai/conversations`,
+      { title },
+    );
+  },
+
+  async listAiConversations(
+    portfolioId: string,
+    limit?: number,
+    cursor?: string,
+  ): Promise<{
+    data: AiConversationListItemDto[];
+    meta: { limit: number; cursor?: string; nextCursor?: string; hasMore: boolean };
+  }> {
+    const params = new URLSearchParams();
+    if (limit) params.set('limit', String(limit));
+    if (cursor) params.set('cursor', cursor);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return apiClient.get(`/api/v1/portfolios/${portfolioId}/ai/conversations${qs}`);
+  },
+
+  async getAiConversation(
+    portfolioId: string,
+    conversationId: string,
+    limit?: number,
+    cursor?: string,
+  ): Promise<{
+    data: AiConversationListItemDto & { messages: AiConversationMessageDto[] };
+    meta: { limit: number; cursor?: string; nextCursor?: string; hasMore: boolean };
+  }> {
+    const params = new URLSearchParams();
+    if (limit) params.set('limit', String(limit));
+    if (cursor) params.set('cursor', cursor);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return apiClient.get(
+      `/api/v1/portfolios/${portfolioId}/ai/conversations/${conversationId}${qs}`,
+    );
+  },
+
+  async sendAiConversationMessage(
+    portfolioId: string,
+    conversationId: string,
+    question: string,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<{
+    data: GroundedExplanationDto & { userMessageId?: string; assistantMessageId?: string };
+  }> {
+    return apiClient.post(
+      `/api/v1/portfolios/${portfolioId}/ai/conversations/${conversationId}/messages`,
+      { question, startDate, endDate },
     );
   },
 };
