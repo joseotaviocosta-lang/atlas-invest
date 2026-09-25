@@ -8,6 +8,10 @@ import { GetAiConversationUseCase } from '../../application/ai/get-ai-conversati
 import { SendAiConversationMessageUseCase } from '../../application/ai/send-ai-conversation-message.use-case';
 import { StreamAiConversationMessageUseCase } from '../../application/ai/stream-ai-conversation-message.use-case';
 import { AI_PROVIDER_TOKEN, OpenAiProvider } from '../../infrastructure/ai/openai-ai.provider';
+import {
+  AI_TELEMETRY_SINK_TOKEN,
+  LoggingAiTelemetrySink,
+} from '../../infrastructure/ai/ai-telemetry.sink';
 import { FakeAiProvider } from '@atlas/ai-engine';
 
 @Module({
@@ -20,6 +24,10 @@ import { FakeAiProvider } from '@atlas/ai-engine';
     GetAiConversationUseCase,
     SendAiConversationMessageUseCase,
     StreamAiConversationMessageUseCase,
+    {
+      provide: AI_TELEMETRY_SINK_TOKEN,
+      useClass: LoggingAiTelemetrySink,
+    },
     {
       provide: AI_PROVIDER_TOKEN,
       useFactory: () => {
@@ -38,6 +46,7 @@ import { FakeAiProvider } from '@atlas/ai-engine';
     SendAiConversationMessageUseCase,
     StreamAiConversationMessageUseCase,
     AI_PROVIDER_TOKEN,
+    AI_TELEMETRY_SINK_TOKEN,
   ],
 })
 export class AiModule {}

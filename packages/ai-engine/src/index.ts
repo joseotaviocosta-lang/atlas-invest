@@ -18,10 +18,17 @@ export interface AITool {
   execute(args: Record<string, unknown>): Promise<unknown>;
 }
 
+export interface AICompletionUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+}
+
 export interface AIMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
   toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
+  usage?: AICompletionUsage;
 }
 
 export interface AICompletionOptions {
@@ -1244,12 +1251,14 @@ export class FakeAiProvider implements AIProvider {
   private shouldFailWithNetworkError = false;
   private shouldReturnMalformedJson = false;
   private delayMs = 0;
+  private usage?: AICompletionUsage;
 
   constructor(options?: {
     customResponse?: RawModelExplanationOutput;
     shouldFailWithNetworkError?: boolean;
     shouldReturnMalformedJson?: boolean;
     delayMs?: number;
+    usage?: AICompletionUsage;
   }) {
     if (options?.customResponse) this.customResponse = options.customResponse;
     if (options?.shouldFailWithNetworkError) {
@@ -1260,6 +1269,9 @@ export class FakeAiProvider implements AIProvider {
     }
     if (options?.delayMs) {
       this.delayMs = options.delayMs;
+    }
+    if (options?.usage) {
+      this.usage = options.usage;
     }
   }
 
@@ -1298,6 +1310,7 @@ export class FakeAiProvider implements AIProvider {
       return {
         role: 'assistant',
         content: JSON.stringify(this.customResponse),
+        usage: this.usage,
       };
     }
 
@@ -1331,6 +1344,7 @@ export class FakeAiProvider implements AIProvider {
         evidenceFactIds: ['BRL.PERFORMANCE.TWR'],
         limitations: [],
       }),
+      usage: this.usage,
     };
   }
 
@@ -2361,4 +2375,329 @@ export class GroundedAiStreamEmitter {
     this.writeChunk(formatSseEvent(event));
     return event;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3V: AI Reliability, Observability & Usage Governance (ADR-204–ADR-209)
+// ---------------------------------------------------------------------------
+
+export const TELEMETRY_SCHEMA_VERSION = '1' as const;
+
+export const AI_OPERATIONS = ['EXPLAIN', 'CONVERSATION_MESSAGE', 'CONVERSATION_STREAM'] as const;
+export type AiOperationType = (typeof AI_OPERATIONS)[number];
+
+export const AI_DELIVERY_MODES = ['SYNC', 'STREAM'] as const;
+export type AiDeliveryMode = (typeof AI_DELIVERY_MODES)[number];
+
+export const AI_EXECUTION_STATUSES = [
+  'ANSWERED',
+  'UNSUPPORTED',
+  'PROVIDER_ERROR',
+  'VALIDATION_ERROR',
+  'PERSISTENCE_ERROR',
+  'ABORTED',
+  'RATE_LIMITED',
+  'AUTHORIZATION_REJECTED',
+  'INVALID_INPUT',
+  'CONTEXT_BUDGET_EXCEEDED',
+] as const;
+export type AiExecutionStatus = (typeof AI_EXECUTION_STATUSES)[number];
+
+export const AI_TOKEN_USAGE_SOURCES = ['PROVIDER', 'UNAVAILABLE', 'NOT_APPLICABLE'] as const;
+export type AiTokenUsageSource = (typeof AI_TOKEN_USAGE_SOURCES)[number];
+
+export interface AiTokenUsageV1 {
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
+  readonly totalTokens: number | null;
+  readonly source: AiTokenUsageSource;
+}
+
+export interface AiExecutionDurationsV1 {
+  readonly totalMs: number;
+  readonly intentGateMs?: number;
+  readonly ownershipMs?: number;
+  readonly historyLoadMs?: number;
+  readonly groundingMs?: number;
+  readonly promptBuildMs?: number;
+  readonly providerMs?: number;
+  readonly claimValidationMs?: number;
+  readonly renderMs?: number;
+  readonly persistenceMs?: number;
+  readonly timeToFirstEventMs?: number;
+}
+
+export interface AiExecutionCountsV1 {
+  readonly groundingCallCount: number;
+  readonly providerCallCount: number;
+  readonly claimValidationCount: number;
+  readonly rendererCount: number;
+  readonly streamEventCount?: number;
+  readonly claimCount?: number;
+  readonly evidenceCount?: number;
+  readonly questionLength: number;
+  readonly historyMessageCount?: number;
+  readonly historyChars?: number;
+  readonly groundingFactCount?: number;
+  readonly groundingSerializedBytes?: number;
+}
+
+export interface AiExecutionTelemetryV1 {
+  readonly schemaVersion: typeof TELEMETRY_SCHEMA_VERSION;
+  readonly requestId: string;
+  readonly operation: AiOperationType;
+  readonly deliveryMode: AiDeliveryMode;
+  readonly intent: string;
+  readonly status: AiExecutionStatus;
+  readonly provider: string;
+  readonly model: string;
+  readonly startedAt: string;
+  readonly completedAt: string;
+  readonly durations: AiExecutionDurationsV1;
+  readonly usage: AiTokenUsageV1;
+  readonly counts: AiExecutionCountsV1;
+  readonly portfolioId?: string;
+  readonly conversationId?: string;
+  readonly errorCode?: string;
+  readonly retryable?: boolean;
+}
+
+export const AI_METRIC_NAMES = {
+  REQUESTS_TOTAL: 'atlas.ai.requests.total',
+  REQUESTS_DURATION_MS: 'atlas.ai.requests.duration_ms',
+  PROVIDER_DURATION_MS: 'atlas.ai.provider.duration_ms',
+  TOKENS_INPUT: 'atlas.ai.tokens.input',
+  TOKENS_OUTPUT: 'atlas.ai.tokens.output',
+  TOKENS_TOTAL: 'atlas.ai.tokens.total',
+  ERRORS_TOTAL: 'atlas.ai.errors.total',
+  UNSUPPORTED_TOTAL: 'atlas.ai.unsupported.total',
+  VALIDATION_ERRORS_TOTAL: 'atlas.ai.validation_errors.total',
+  CONTEXT_BUDGET_EXCEEDED_TOTAL: 'atlas.ai.context_budget_exceeded.total',
+  STREAM_EVENTS_TOTAL: 'atlas.ai.stream.events.total',
+} as const;
+
+/**
+ * Strict low-cardinality metric label extractor (ADR-209).
+ * Guarantees that high-cardinality IDs (userId, portfolioId, conversationId, requestId)
+ * are NEVER introduced as metric labels.
+ */
+export function extractSafeMetricLabels(telemetry: AiExecutionTelemetryV1): Record<string, string> {
+  const labels: Record<string, string> = {
+    operation: telemetry.operation,
+    deliveryMode: telemetry.deliveryMode,
+    intent: telemetry.intent,
+    status: telemetry.status,
+    provider: telemetry.provider,
+    model: telemetry.model,
+  };
+
+  if (telemetry.errorCode) {
+    labels.errorCode = telemetry.errorCode;
+  }
+
+  return Object.freeze(labels);
+}
+
+/**
+ * Context Budget Governance (ADR-207).
+ * Default bound: 32KB (32,768 bytes), comfortably accommodating 14KB bounded history +
+ * grounding facts and prompt template, while preventing unbounded provider request payload explosion.
+ */
+export const AI_DEFAULT_MAX_CONTEXT_BYTES = 32768;
+
+export function validateContextBudget(
+  serializedBytes: number,
+  maxBytes: number = AI_DEFAULT_MAX_CONTEXT_BYTES,
+): { ok: boolean; sizeBytes: number; maxBytes: number } {
+  return {
+    ok: serializedBytes <= maxBytes,
+    sizeBytes: Math.max(0, Math.floor(serializedBytes)),
+    maxBytes: Math.max(0, Math.floor(maxBytes)),
+  };
+}
+
+export interface BuildAiExecutionTelemetryParams {
+  requestId: string;
+  operation: AiOperationType;
+  deliveryMode: AiDeliveryMode;
+  intent: string;
+  status: AiExecutionStatus;
+  provider: string;
+  model: string;
+  startedAt: string;
+  completedAt: string;
+  durations: {
+    totalMs: number;
+    intentGateMs?: number;
+    ownershipMs?: number;
+    historyLoadMs?: number;
+    groundingMs?: number;
+    promptBuildMs?: number;
+    providerMs?: number;
+    claimValidationMs?: number;
+    renderMs?: number;
+    persistenceMs?: number;
+    timeToFirstEventMs?: number;
+  };
+  usage: {
+    inputTokens?: number | null;
+    outputTokens?: number | null;
+    totalTokens?: number | null;
+    source?: AiTokenUsageSource;
+  };
+  counts: {
+    groundingCallCount: number;
+    providerCallCount: number;
+    claimValidationCount: number;
+    rendererCount: number;
+    streamEventCount?: number;
+    claimCount?: number;
+    evidenceCount?: number;
+    questionLength: number;
+    historyMessageCount?: number;
+    historyChars?: number;
+    groundingFactCount?: number;
+    groundingSerializedBytes?: number;
+  };
+  portfolioId?: string;
+  conversationId?: string;
+  errorCode?: string;
+  retryable?: boolean;
+}
+
+/**
+ * Pure deterministic builder for AiExecutionTelemetryV1 (ADR-204, ADR-205).
+ * Validates integer token counts, ensures non-negative numbers, and deeply freezes output.
+ */
+export function buildAiExecutionTelemetry(
+  params: BuildAiExecutionTelemetryParams,
+): AiExecutionTelemetryV1 {
+  const sanitizeInt = (val: number | null | undefined): number | null => {
+    if (val === null || val === undefined || isNaN(val)) return null;
+    return Math.max(0, Math.floor(val));
+  };
+
+  const sanitizeNonNegativeMs = (val: number | undefined): number | undefined => {
+    if (val === undefined || isNaN(val)) return undefined;
+    return Math.max(0, Math.round(val * 100) / 100);
+  };
+
+  let usageSource: AiTokenUsageSource = params.usage.source ?? 'UNAVAILABLE';
+  let inputTokens = sanitizeInt(params.usage.inputTokens);
+  let outputTokens = sanitizeInt(params.usage.outputTokens);
+  let totalTokens = sanitizeInt(params.usage.totalTokens);
+
+  if (params.status === 'UNSUPPORTED' || params.status === 'CONTEXT_BUDGET_EXCEEDED') {
+    usageSource = 'NOT_APPLICABLE';
+    inputTokens = 0;
+    outputTokens = 0;
+    totalTokens = 0;
+  } else if (inputTokens === null && outputTokens === null && totalTokens === null) {
+    usageSource = 'UNAVAILABLE';
+  } else if (usageSource !== 'PROVIDER') {
+    usageSource = 'PROVIDER';
+  }
+
+  const normalizedDurations: AiExecutionDurationsV1 = Object.freeze({
+    totalMs: Math.max(0, Math.round(params.durations.totalMs * 100) / 100),
+    ...(params.durations.intentGateMs !== undefined
+      ? { intentGateMs: sanitizeNonNegativeMs(params.durations.intentGateMs) }
+      : {}),
+    ...(params.durations.ownershipMs !== undefined
+      ? { ownershipMs: sanitizeNonNegativeMs(params.durations.ownershipMs) }
+      : {}),
+    ...(params.durations.historyLoadMs !== undefined
+      ? { historyLoadMs: sanitizeNonNegativeMs(params.durations.historyLoadMs) }
+      : {}),
+    ...(params.durations.groundingMs !== undefined
+      ? { groundingMs: sanitizeNonNegativeMs(params.durations.groundingMs) }
+      : {}),
+    ...(params.durations.promptBuildMs !== undefined
+      ? { promptBuildMs: sanitizeNonNegativeMs(params.durations.promptBuildMs) }
+      : {}),
+    ...(params.durations.providerMs !== undefined
+      ? { providerMs: sanitizeNonNegativeMs(params.durations.providerMs) }
+      : {}),
+    ...(params.durations.claimValidationMs !== undefined
+      ? { claimValidationMs: sanitizeNonNegativeMs(params.durations.claimValidationMs) }
+      : {}),
+    ...(params.durations.renderMs !== undefined
+      ? { renderMs: sanitizeNonNegativeMs(params.durations.renderMs) }
+      : {}),
+    ...(params.durations.persistenceMs !== undefined
+      ? { persistenceMs: sanitizeNonNegativeMs(params.durations.persistenceMs) }
+      : {}),
+    ...(params.durations.timeToFirstEventMs !== undefined
+      ? { timeToFirstEventMs: sanitizeNonNegativeMs(params.durations.timeToFirstEventMs) }
+      : {}),
+  });
+
+  const normalizedUsage: AiTokenUsageV1 = Object.freeze({
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    source: usageSource,
+  });
+
+  const normalizedCounts: AiExecutionCountsV1 = Object.freeze({
+    groundingCallCount: Math.max(0, Math.floor(params.counts.groundingCallCount)),
+    providerCallCount: Math.max(0, Math.floor(params.counts.providerCallCount)),
+    claimValidationCount: Math.max(0, Math.floor(params.counts.claimValidationCount)),
+    rendererCount: Math.max(0, Math.floor(params.counts.rendererCount)),
+    questionLength: Math.max(0, Math.floor(params.counts.questionLength)),
+    ...(params.counts.streamEventCount !== undefined
+      ? { streamEventCount: Math.max(0, Math.floor(params.counts.streamEventCount)) }
+      : {}),
+    ...(params.counts.claimCount !== undefined
+      ? { claimCount: Math.max(0, Math.floor(params.counts.claimCount)) }
+      : {}),
+    ...(params.counts.evidenceCount !== undefined
+      ? { evidenceCount: Math.max(0, Math.floor(params.counts.evidenceCount)) }
+      : {}),
+    ...(params.counts.historyMessageCount !== undefined
+      ? { historyMessageCount: Math.max(0, Math.floor(params.counts.historyMessageCount)) }
+      : {}),
+    ...(params.counts.historyChars !== undefined
+      ? { historyChars: Math.max(0, Math.floor(params.counts.historyChars)) }
+      : {}),
+    ...(params.counts.groundingFactCount !== undefined
+      ? { groundingFactCount: Math.max(0, Math.floor(params.counts.groundingFactCount)) }
+      : {}),
+    ...(params.counts.groundingSerializedBytes !== undefined
+      ? {
+          groundingSerializedBytes: Math.max(0, Math.floor(params.counts.groundingSerializedBytes)),
+        }
+      : {}),
+  });
+
+  return Object.freeze({
+    schemaVersion: TELEMETRY_SCHEMA_VERSION,
+    requestId: params.requestId,
+    operation: params.operation,
+    deliveryMode: params.deliveryMode,
+    intent: params.intent,
+    status: params.status,
+    provider: params.provider,
+    model: params.model,
+    startedAt: params.startedAt,
+    completedAt: params.completedAt,
+    durations: normalizedDurations,
+    usage: normalizedUsage,
+    counts: normalizedCounts,
+    ...(params.portfolioId ? { portfolioId: params.portfolioId } : {}),
+    ...(params.conversationId ? { conversationId: params.conversationId } : {}),
+    ...(params.errorCode ? { errorCode: params.errorCode } : {}),
+    ...(params.retryable !== undefined ? { retryable: params.retryable } : {}),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3V: Deterministic AI Evaluation Harness (ADR-208)
+// ---------------------------------------------------------------------------
+
+export interface AiEvaluationResultV1 {
+  readonly caseId: string;
+  readonly passed: boolean;
+  readonly checks: readonly string[];
+  readonly failureCodes: readonly string[];
 }

@@ -225,7 +225,14 @@ export class AiController {
     @Body(new ZodValidationPipe(SendAiConversationMessageBodySchema))
     body: SendAiConversationMessageBody,
     @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Req() req: Request,
   ) {
+    const rawRequestId = req.headers['x-request-id'];
+    const requestId =
+      typeof rawRequestId === 'string' && rawRequestId.trim() !== ''
+        ? rawRequestId.trim()
+        : undefined;
+
     const data = await this.sendAiConversationMessageUseCase.execute({
       portfolioId,
       conversationId,
@@ -233,6 +240,7 @@ export class AiController {
       question: body.question,
       startDate: body.startDate,
       endDate: body.endDate,
+      requestId,
     });
     return { data };
   }
@@ -265,6 +273,12 @@ export class AiController {
       conversationId,
       userId: principal.userId,
     });
+
+    const rawRequestId = req.headers['x-request-id'];
+    const requestId =
+      typeof rawRequestId === 'string' && rawRequestId.trim() !== ''
+        ? rawRequestId.trim()
+        : undefined;
 
     // 2. Set SSE transport headers
     res.setHeader('Content-Type', 'text/event-stream');
@@ -301,6 +315,7 @@ export class AiController {
           question: body.question,
           startDate: body.startDate,
           endDate: body.endDate,
+          requestId,
         },
         (chunk: string) => {
           if (!res.writableEnded) {

@@ -111,6 +111,11 @@ export class OpenAiProvider implements AIProvider {
       const data = (await response.json()) as {
         id?: string;
         choices?: Array<{ message?: { content?: string } }>;
+        usage?: {
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          total_tokens?: number;
+        };
       };
 
       const content = data.choices?.[0]?.message?.content;
@@ -124,9 +129,18 @@ export class OpenAiProvider implements AIProvider {
         );
       }
 
+      const usage = data.usage
+        ? {
+            promptTokens: data.usage.prompt_tokens,
+            completionTokens: data.usage.completion_tokens,
+            totalTokens: data.usage.total_tokens,
+          }
+        : undefined;
+
       return {
         role: 'assistant',
         content: content.trim(),
+        usage,
       };
     } catch (error: unknown) {
       if (error instanceof HttpException) {

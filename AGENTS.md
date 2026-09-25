@@ -1301,3 +1301,42 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 
 8. **ANTI-ESCOPO DA FASE 3U:**
    - Proibido implementar RAG, embeddings, bancos vetoriais, agentes autônomos, busca na web, recomendações de investimento ou recálculo financeiro.
+
+---
+
+## 44. Regras de Confiabilidade, Observabilidade e Governança de Uso de IA (Fase 3V)
+
+1. **MINIMIZAÇÃO DE DADOS E PRIVACIDADE EM TELEMETRIA (ADR-205):**
+   - Registros de telemetria de IA **NUNCA** devem armazenar por padrão a pergunta bruta do usuário, o prompt construído (system/user), a resposta do modelo ou fatos de grounding.
+   - Valores financeiros, quantias monetárias, cotas ou patrimônio **NUNCA** devem constar na telemetria genérica de observabilidade.
+   - Senhas, chaves de API (`OPENAI_API_KEY`), tokens de autenticação (JWT), e-mails ou CPF são terminantemente proibidos na telemetria.
+   - O rastreamento utiliza contagens seguras (`questionLength`, `historyMessageCount`, `historyChars`, `groundingFactCount`, `claimCount`).
+
+2. **CONTABILIDADE FIDEDIGNA DE TOKENS (ADR-206):**
+   - O uso de tokens reportado pelo provedor (`prompt_tokens`, `completion_tokens`, `total_tokens`) é a contabilidade canônica operacional de recursos.
+   - Se o provedor não reportar uso, os tokens devem ser gravados como `null` com `source: 'UNAVAILABLE'`, **NUNCA** reportando silenciosamente zero.
+   - Requisições não suportadas ou orçamentos excedidos registram tokens `0` com `source: 'NOT_APPLICABLE'`.
+   - Sem tabelas de precificação monetária fictícia na Fase 3V.
+
+3. **BAIXA CARDINALIDADE EM MÉTRICAS (ADR-209):**
+   - As dimensões/tags de métricas agregadas devem ser estritamente de baixa cardinalidade (`operation`, `deliveryMode`, `intent`, `status`, `provider`, `model`, `errorCode`).
+   - Identificadores de alta cardinalidade (`requestId`, `portfolioId`, `conversationId`, `userId`) pertencem exclusivamente a logs e traces estruturados, sendo **expressamente proibidos** em dimensões de métricas.
+
+4. **TELEMETRIA FAIL-OPEN (ADR-204):**
+   - Falhas no registro de telemetria (ex: sink de logs indisponível) **NUNCA** devem quebrar ou impedir o retorno de respostas de IA válidas para o usuário.
+
+5. **GOVERNANÇA DE ORÇAMENTO DE CONTEXTO PRÉ-PROVEDOR (ADR-207):**
+   - O payload de contexto serializado é validado deterministicamente contra o orçamento (`AI_DEFAULT_MAX_CONTEXT_BYTES = 32,768`).
+   - Se exceder o orçamento, a requisição é rejeitada imediatamente (`AI.CONTEXT_BUDGET_EXCEEDED`) com **zero** chamadas ao provedor de IA (`providerCallCount = 0`).
+
+6. **AVALIAÇÃO DETERMINÍSTICA OFFLINE (NO LLM JUDGE) (ADR-208):**
+   - A esteira de avaliação (`pnpm test:ai-evals`) é 100% determinística, rodando offline em CI sem chamadas pagas externas.
+   - Proibido o uso de juiz modelo (LLM-as-a-judge), modelos de reparo automático ou notas de qualidade arbitrárias (ex: 85/100). Cada invariante recebe avaliação binária PASS ou FAIL.
+   - As fixtures canônicas douradas (`AI-EVAL-001` a `AI-EVAL-016`) atuam como barreiras de regressão do sistema.
+
+7. **LIMITAÇÃO ESTRITA DE CHAMADAS A PROVEDORES:**
+   - Requisições suportadas realizam no máximo 1 chamada ao provedor de IA (`providerCallCount <= 1`).
+   - Requisições não suportadas realizam rigorosamente 0 chamadas (`providerCallCount = 0`).
+
+8. **ANTI-ESCOPO DA FASE 3V:**
+   - A Fase 3V não adiciona RAG, embeddings, bancos vetoriais, agentes autônomos, busca na web, recomendações ou previsões de investimento.
