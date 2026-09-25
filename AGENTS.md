@@ -1227,3 +1227,38 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 
 8. **ANTI-ESCOPO DA FASE 3S:**
    - Proibido implementar RAG, embeddings, bancos vetoriais, agentes autônomos, chamadas de ferramentas (tool calling), navegação na web ou streaming de tokens (SSE/WebSocket).
+
+---
+
+## 42. Validação de Afirmações e Integridade de Citações de IA (Fase 3T)
+
+1. **AUTORIDADE SERVIDORA SOBRE VALORES FINANCEIROS (SERVER AUTHORITY):**
+   - Todo número ou valor financeiro apresentado ao investidor em explicações ou diálogos de IA é renderizado deterministicamente no servidor através de segmentos do tipo `FACT_VALUE`.
+   - É terminantemente proibido confiar em números financeiros gerados pelo LLM ou permitir que literais de ponto flutuante/moeda inseridos pelo modelo cheguem ao usuário final.
+   - Segmentos do tipo `TEXT` são proibidos de conter grandezas monetárias (`R$`, `US$`) ou percentuais literais (`%`).
+
+2. **TAXONOMIA FECHADA DE AFIRMAÇÕES (`GROUNDED_CLAIM_TYPES`):**
+   - As respostas são estruturadas em até 10 afirmações discretas (`GroundedClaimV1`), pertencentes exclusivamente aos 7 tipos canônicos:
+     `FACTUAL_METRIC`, `BENCHMARK_COMPARISON`, `RISK_EXPLANATION`, `SCENARIO_EXPLANATION`, `DATA_QUALITY`, `LIMITATION`, `CONTEXTUAL_EXPLANATION`.
+   - Cada afirmação é composta por até 10 segmentos sequenciais (`TEXT`, `FACT_VALUE`, `FACT_LABEL`).
+
+3. **VALIDAÇÃO DETERMINÍSTICA FAIL-CLOSED (`validateGroundedClaims`):**
+   - A validação de afirmações é uma função pura em `@atlas/ai-engine`, sem dependências de I/O ou bibliotecas de UI, com execução em complexidade linear O(N).
+   - Qualquer violação semântica, estrutural ou de política invalida a resposta inteira (`isValid: false`), resultando compulsoriamente em HTTP 422 `AI.INVALID_MODEL_RESPONSE` na camada de API.
+   - Respostas que falham na validação jamais são persistidas no banco de dados.
+
+4. **COMPATIBILIDADE DE CATEGORIA E NATUREZA TEMPORAL/HIPOTÉTICA:**
+   - Tipos de afirmação devem respeitar estritamente o mapa de categorias compatíveis (`CLAIM_CATEGORY_COMPATIBILITY`).
+   - Fatos da categoria `SCENARIO_ANALYSIS` representam simulações estritamente hipotéticas e só podem ser citados sob `SCENARIO_EXPLANATION`; jamais sob `FACTUAL_METRIC` ou como rentabilidade garantida/futura.
+   - Fatos de cauda (`TAIL_RISK`) são métricas históricas observadas e jamais podem ser apresentados como cenários hipotéticos.
+
+5. **FORMATAÇÃO DECIMAL NATIVA (ZERO FLOATS IEEE 754):**
+   - A formatação de valores e rótulos (`formatFactValueForDisplay`, `formatFactLabelForDisplay`) é executada nativamente em `@atlas/ai-engine` através de manipulação estrita de strings decimais canônicas.
+   - Moedas recebem prefixo monetário (`R$`, `US$`), percentuais recebem `%`, pontos percentuais recebem `p.p.` com sinal explícito quando positivo, índices/ratios permanecem sem unidade, e contagens são formatadas como inteiros.
+   - Fatos indisponíveis (`isAvailable: false`) são renderizados invariavelmente como travessão (`—`).
+
+6. **ISOLAMENTO CAMBIAL POR AFIRMAÇÃO:**
+   - Uma afirmação factual não pode misturar fatos monetários de moedas distintas sem contexto ou conversão explícita aprovada (Zero Implicit FX).
+
+7. **ANTI-ESCOPO DA FASE 3T:**
+   - Proibido implementar RAG, embeddings, bancos vetoriais, agentes autônomos, busca na web, streaming (SSE/WebSocket), recomendações de investimento ou recálculo financeiro pelo modelo.

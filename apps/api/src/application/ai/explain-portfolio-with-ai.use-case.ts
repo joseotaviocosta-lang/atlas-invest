@@ -4,9 +4,12 @@ import {
   classifyExplanationIntent,
   buildExplanationPrompt,
   validateExplanationEvidence,
+  validateGroundedClaims,
+  renderValidatedClaims,
   INTENT_REFUSAL_MESSAGES,
   GroundedAiExplanationResponseV1,
   AIProvider,
+  GroundedClaimV1,
 } from '@atlas/ai-engine';
 import { GetPortfolioAiGroundingContextUseCase } from './get-portfolio-ai-grounding-context.use-case';
 import { AI_PROVIDER_TOKEN } from '../../infrastructure/ai/openai-ai.provider';
@@ -35,8 +38,40 @@ export const ExplainPortfolioInputSchema = ExplainPortfolioBodySchema.extend({
 
 export type ExplainPortfolioInput = z.infer<typeof ExplainPortfolioInputSchema>;
 
+const ClaimSegmentSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('TEXT'),
+    text: z.string().max(2000),
+  }),
+  z.object({
+    type: z.literal('FACT_VALUE'),
+    factId: z.string().min(1),
+    role: z.enum(['PRIMARY', 'BENCHMARK', 'THRESHOLD', 'REFERENCE']).optional(),
+  }),
+  z.object({
+    type: z.literal('FACT_LABEL'),
+    factId: z.string().min(1),
+  }),
+]);
+
+const ClaimInputSchema = z.object({
+  claimId: z.string().optional(),
+  type: z.enum([
+    'FACTUAL_METRIC',
+    'BENCHMARK_COMPARISON',
+    'RISK_EXPLANATION',
+    'SCENARIO_EXPLANATION',
+    'DATA_QUALITY',
+    'LIMITATION',
+    'CONTEXTUAL_EXPLANATION',
+  ]),
+  segments: z.array(ClaimSegmentSchema).min(1).max(20),
+  factIds: z.array(z.string()).optional(),
+});
+
 const ModelOutputSchema = z.object({
-  answer: z.string().min(1, { message: 'Model answer cannot be empty' }),
+  answer: z.string().optional(),
+  claims: z.array(ClaimInputSchema).min(1).max(25).optional(),
   evidenceFactIds: z.array(z.string()),
   limitations: z.array(z.string()).default([]),
 });
@@ -147,9 +182,26 @@ export class ExplainPortfolioWithAiUseCase {
       );
     }
 
-    const { answer, evidenceFactIds, limitations } = parseResult.data;
+    const { claims, evidenceFactIds, limitations } = parseResult.data;
 
-    // 6. Validate evidence citations against canonical grounding facts
+    // 6. Validate claims against canonical grounding facts (fail-closed if provided)
+    let validatedClaims: GroundedClaimV1[] | undefined;
+    if (claims && claims.length > 0) {
+      const claimValidation = validateGroundedClaims(claims, context);
+      if (!claimValidation.valid) {
+        throw new HttpException(
+          {
+            message: `Model claims validation failed: ${claimValidation.invalidReasons.join('; ')}`,
+            code: 'AI.INVALID_MODEL_RESPONSE',
+            details: { invalidReasons: claimValidation.invalidReasons },
+          },
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+      validatedClaims = claimValidation.validatedClaims as GroundedClaimV1[];
+    }
+
+    // 7. Validate evidence citations against canonical grounding facts
     const validation = validateExplanationEvidence(evidenceFactIds, context);
     if (!validation.valid) {
       throw new HttpException(
@@ -172,12 +224,17 @@ export class ExplainPortfolioWithAiUseCase {
       );
     }
 
-    // 7. Return safe structured explanation
+    // 8. Render authoritative server-validated answer from claims if present
+    const serverRenderedAnswer =
+      validatedClaims && validatedClaims.length > 0 ? renderValidatedClaims(validatedClaims) : '';
+
+    // 9. Return safe structured explanation
     return {
       schemaVersion: '1',
       status: 'ANSWERED',
       intent,
-      answer,
+      answer: serverRenderedAnswer || parseResult.data.answer || '',
+      claims: validatedClaims,
       evidence: validation.resolvedEvidence,
       limitations:
         limitations.length > 0 ? limitations : context.limitations.map((l) => l.description),

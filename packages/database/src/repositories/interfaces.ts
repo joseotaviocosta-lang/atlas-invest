@@ -170,6 +170,7 @@ export interface AiConversationMessageRecord {
   status: 'ANSWERED' | 'UNSUPPORTED' | 'PROVIDER_ERROR';
   intent: string | null;
   evidenceSnapshot: unknown | null;
+  claims?: unknown | null;
   limitations: string[];
   provider: string | null;
   model: string | null;
@@ -189,6 +190,7 @@ export interface CreateAiConversationMessageData {
   status?: 'ANSWERED' | 'UNSUPPORTED' | 'PROVIDER_ERROR';
   intent?: string | null;
   evidenceSnapshot?: unknown | null;
+  claims?: unknown | null;
   limitations?: string[];
   provider?: string | null;
   model?: string | null;
@@ -224,6 +226,7 @@ export interface IAiConversationRepository {
       status?: 'ANSWERED' | 'UNSUPPORTED' | 'PROVIDER_ERROR';
       intent?: string | null;
       evidenceSnapshot?: unknown | null;
+      claims?: unknown | null;
       limitations?: string[];
       provider?: string | null;
       model?: string | null;

@@ -197,6 +197,7 @@ model AiConversationMessage {
   status            String    @default("ANSWERED") @db.VarChar(50)
   intent            String?   @db.VarChar(100)
   evidenceSnapshot  Json?     @map("evidence_snapshot") @db.JsonB
+  claims            Json?     @map("claims") @db.JsonB
   limitations       String[]  @default([]) @map("limitations")
   provider          String?   @db.VarChar(100)
   model             String?   @db.VarChar(100)

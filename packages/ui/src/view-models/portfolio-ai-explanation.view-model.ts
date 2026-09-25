@@ -36,6 +36,7 @@ export interface PortfolioAiExplanationVM {
   limitations: string[];
   hasEvidence: boolean;
   hasLimitations: boolean;
+  claims?: unknown;
   providerInfo?: {
     provider: string;
     model: string;
@@ -48,6 +49,7 @@ export interface GroundedExplanationDto {
   intent: string;
   reason?: string;
   answer: string;
+  claims?: unknown;
   evidence: Array<{
     factId: string;
     category: string;
@@ -146,6 +148,7 @@ export function mapToPortfolioAiExplanationVM(
     reason: dto.reason,
     answer: dto.answer,
     evidence,
+    claims: dto.claims,
     limitations: dto.limitations || [],
     hasEvidence: evidence.length > 0,
     hasLimitations: (dto.limitations || []).length > 0,

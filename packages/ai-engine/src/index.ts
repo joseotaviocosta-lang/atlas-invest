@@ -1083,7 +1083,8 @@ export function classifyExplanationIntent(question: string): {
 }
 
 export interface RawModelExplanationOutput {
-  answer: string;
+  answer?: string;
+  claims?: GroundedClaimInput[];
   evidenceFactIds: string[];
   limitations: string[];
 }
@@ -1108,6 +1109,7 @@ export interface GroundedAiExplanationResponseV1 {
   reason?: string;
   answer: string;
   evidence: ResolvedEvidenceFact[];
+  claims?: GroundedClaimV1[];
   limitations: string[];
   model?: {
     provider: string;
@@ -1278,7 +1280,28 @@ export class FakeAiProvider implements AIProvider {
       role: 'assistant',
       content: JSON.stringify({
         answer:
-          'No período analisado, a rentabilidade da carteira foi apurada conforme os fatos do ledger.',
+          'No período analisado, a rentabilidade da carteira apurada no ledger foi de 10,00%.',
+        claims: [
+          {
+            claimId: 'claim-1',
+            type: 'FACTUAL_METRIC',
+            factIds: ['BRL.PERFORMANCE.TWR'],
+            segments: [
+              {
+                type: 'TEXT',
+                text: 'No período analisado, a rentabilidade da carteira apurada no ledger foi de ',
+              },
+              {
+                type: 'FACT_VALUE',
+                factId: 'BRL.PERFORMANCE.TWR',
+              },
+              {
+                type: 'TEXT',
+                text: '.',
+              },
+            ],
+          },
+        ],
         evidenceFactIds: ['BRL.PERFORMANCE.TWR'],
         limitations: [],
       }),
@@ -1559,4 +1582,587 @@ export function buildMinimalEvidenceSnapshot(
       }),
     ),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3T: Grounded Claim Validation & Citation Integrity (ADR-193–ADR-198)
+// ---------------------------------------------------------------------------
+
+export const CLAIM_SCHEMA_VERSION = '1' as const;
+export const CLAIM_POLICY_VERSION = '1' as const;
+
+export const GROUNDED_CLAIM_TYPES = [
+  'FACTUAL_METRIC',
+  'BENCHMARK_COMPARISON',
+  'RISK_EXPLANATION',
+  'SCENARIO_EXPLANATION',
+  'DATA_QUALITY',
+  'LIMITATION',
+  'CONTEXTUAL_EXPLANATION',
+] as const;
+export type GroundedClaimType = (typeof GROUNDED_CLAIM_TYPES)[number];
+
+export type ClaimSegmentRole = 'PRIMARY' | 'BENCHMARK' | 'THRESHOLD' | 'REFERENCE';
+
+export type ClaimSegment =
+  | { readonly type: 'TEXT'; readonly text: string }
+  | { readonly type: 'FACT_VALUE'; readonly factId: string; readonly role?: ClaimSegmentRole }
+  | { readonly type: 'FACT_LABEL'; readonly factId: string };
+
+export interface GroundedClaimInput {
+  readonly claimId?: string;
+  readonly type: GroundedClaimType;
+  readonly segments: readonly ClaimSegment[];
+  readonly factIds?: readonly string[];
+}
+
+export interface GroundedClaimV1 {
+  readonly claimId: string;
+  readonly type: GroundedClaimType;
+  readonly segments: readonly ClaimSegment[];
+  readonly factIds: readonly string[];
+  readonly renderedText: string;
+  readonly status: 'VALID' | 'INVALID';
+  readonly failureReason?: string;
+}
+
+export const CLAIM_CATEGORY_COMPATIBILITY: Readonly<
+  Record<GroundedClaimType, readonly GroundedFactCategory[]>
+> = Object.freeze({
+  FACTUAL_METRIC: Object.freeze([
+    'OVERVIEW',
+    'PERFORMANCE',
+    'BENCHMARK',
+    'RISK',
+    'RISK_ADJUSTED',
+    'RELATIVE_RISK',
+    'ACTIVE_PERFORMANCE',
+    'TAIL_RISK',
+    'SCENARIO',
+  ] as const),
+  BENCHMARK_COMPARISON: Object.freeze([
+    'BENCHMARK',
+    'RELATIVE_RISK',
+    'ACTIVE_PERFORMANCE',
+    'PERFORMANCE',
+  ] as const),
+  RISK_EXPLANATION: Object.freeze(['RISK', 'RISK_ADJUSTED', 'RELATIVE_RISK', 'TAIL_RISK'] as const),
+  SCENARIO_EXPLANATION: Object.freeze(['SCENARIO'] as const),
+  DATA_QUALITY: Object.freeze(['OVERVIEW'] as const),
+  LIMITATION: Object.freeze([
+    'OVERVIEW',
+    'PERFORMANCE',
+    'BENCHMARK',
+    'RISK',
+    'RISK_ADJUSTED',
+    'RELATIVE_RISK',
+    'ACTIVE_PERFORMANCE',
+    'TAIL_RISK',
+    'SCENARIO',
+  ] as const),
+  CONTEXTUAL_EXPLANATION: Object.freeze([
+    'OVERVIEW',
+    'PERFORMANCE',
+    'BENCHMARK',
+    'RISK',
+    'RISK_ADJUSTED',
+    'RELATIVE_RISK',
+    'ACTIVE_PERFORMANCE',
+    'TAIL_RISK',
+    'SCENARIO',
+  ] as const),
+});
+
+const CANONICAL_METRIC_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  CURRENT_MARKET_VALUE: 'Patrimônio Atual',
+  TOTAL_COST: 'Custo Total',
+  TOTAL_PROFIT_LOSS: 'Lucro/Prejuízo Total',
+  POSITION_COUNT: 'Total de Ativos',
+  VALUED_POSITION_COUNT: 'Ativos Valorizados',
+  TWR: 'Rentabilidade (TWR)',
+  XIRR: 'Taxa Interna de Retorno (XIRR)',
+  VOLATILITY: 'Volatilidade Anualizada',
+  MAX_DRAWDOWN: 'Drawdown Máximo',
+  CURRENT_DRAWDOWN: 'Drawdown Atual',
+  SHARPE_RATIO: 'Índice de Sharpe',
+  SORTINO_RATIO: 'Índice de Sortino',
+  VAR_95: 'Value at Risk (95%)',
+  CVAR_95: 'Conditional VaR (95%)',
+  BETA: 'Beta',
+  CORRELATION: 'Correlação',
+  TRACKING_ERROR: 'Tracking Error',
+  ALPHA: 'Alfa de Jensen',
+  INFORMATION_RATIO: 'Information Ratio',
+  TREYNOR_RATIO: 'Índice de Treynor',
+  RETURN: 'Retorno do Benchmark',
+  RELATIVE_RETURN: 'Retorno Relativo',
+  DIFFERENCE: 'Diferença',
+  STRESSED_VALUE: 'Valor Estressado',
+  ESTIMATED_IMPACT: 'Impacto Estimado',
+});
+
+/**
+ * Pure, exact decimal string formatter for visual display (pt-BR).
+ * Avoids JS float IEEE 754 precision loss.
+ */
+function formatExactDecimalString(valueStr: string, decimalPlaces = 2): string {
+  const trimmed = valueStr.trim();
+  if (trimmed === '') return '—';
+
+  const isNeg = trimmed.startsWith('-');
+  const clean = isNeg ? trimmed.slice(1) : trimmed;
+  if (!/^\d+(\.\d+)?$/.test(clean)) {
+    return trimmed;
+  }
+
+  const [intPart = '0', fracPart = ''] = clean.split('.');
+  const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+  if (decimalPlaces === 0) {
+    return `${isNeg ? '-' : ''}${formattedInt}`;
+  }
+
+  const formattedFrac =
+    fracPart.length >= decimalPlaces
+      ? fracPart.slice(0, decimalPlaces)
+      : fracPart.padEnd(decimalPlaces, '0');
+
+  return `${isNeg ? '-' : ''}${formattedInt},${formattedFrac}`;
+}
+
+/**
+ * Formats a canonical GroundedFinancialFact (or snapshot fact) value for display (ADR-195).
+ * - Exact string decimals (pt-BR)
+ * - MONEY: currency prefix + formatted amount (e.g. "BRL 12.345,68")
+ * - PERCENTAGE: formatted amount + "%" (e.g. "12,50%")
+ * - PERCENTAGE_POINTS: formatted amount with sign + " p.p." (e.g. "+4,25 p.p.", "-2,10 p.p.", NEVER "%")
+ * - RATIO: formatted unitless decimal (e.g. "-0,12", "1,45", NEVER "%")
+ * - COUNT: integer string
+ * - Unavailable or null: "—"
+ */
+export function formatFactValueForDisplay(
+  fact: GroundedFinancialFact | MinimalEvidenceSnapshotFact,
+): string {
+  if (fact.value === null || fact.status === 'UNAVAILABLE') {
+    return '—';
+  }
+
+  switch (fact.unit) {
+    case 'MONEY': {
+      const formatted = formatExactDecimalString(fact.value, 2);
+      const currency = 'currency' in fact && fact.currency ? fact.currency : fact.scope;
+      return `${currency} ${formatted}`;
+    }
+    case 'PERCENTAGE': {
+      const formatted = formatExactDecimalString(fact.value, 2);
+      return `${formatted}%`;
+    }
+    case 'PERCENTAGE_POINTS': {
+      const isNeg = fact.value.startsWith('-');
+      const isZero = fact.value === '0' || /^0+(\.0+)?$/.test(fact.value);
+      const sign = isNeg ? '' : isZero ? '' : '+';
+      const formatted = formatExactDecimalString(fact.value, 2);
+      return `${sign}${formatted} p.p.`;
+    }
+    case 'RATIO': {
+      return formatExactDecimalString(fact.value, 2);
+    }
+    case 'COUNT': {
+      return formatExactDecimalString(fact.value, 0);
+    }
+    case 'DATE':
+    case 'STATUS':
+    case 'TEXT_ENUM':
+    default:
+      return fact.value;
+  }
+}
+
+/**
+ * Returns a human-friendly pt-BR label for a fact's metric.
+ */
+export function formatFactLabelForDisplay(
+  fact: GroundedFinancialFact | MinimalEvidenceSnapshotFact,
+): string {
+  return CANONICAL_METRIC_LABELS[fact.metric] || fact.metric;
+}
+
+export const PORTFOLIO_AI_CLAIM_POLICY_V1 = `Você é o assistente analítico e factual do Project Atlas, plataforma de inteligência de investimentos.
+Sua missão é produzir respostas explicativas estritamente factuais e estruturadas em alegações ("claims") auditáveis, vinculadas diretamente aos fatos comprovados (grounding).
+
+DIRETRIZES INEGOCIÁVEIS:
+1. VALIDAÇÃO ESTRUTURAL DE CLAIMS (VALOR CANÔNICO VEM DO SERVIDOR):
+   - Você NÃO deve calcular nem digitar valores numéricos de métricas ou carteira nas partes de texto.
+   - Todo valor financeiro (porcentagens de retorno, valores monetários, índices) DEVE ser referenciado através de segmentos do tipo FACT_VALUE com o 'factId' correspondente. O servidor do Atlas injetará e formatará os valores exatos calculados pelo motor de replay.
+   - NUNCA inclua números financeiros literais em segmentos TEXT (ex: proibido "rendeu 15%"). Em vez disso, use:
+     [{"type": "TEXT", "text": "A rentabilidade apurada no período foi de "}, {"type": "FACT_VALUE", "factId": "BRL.PERFORMANCE.TWR"}, {"type": "TEXT", "text": "."}]
+2. EVIDÊNCIA ESTREITA E OBRIGATÓRIA: Toda alegação factual DEVE citar fatos válidos do 'groundingContext' atual.
+3. ZERO RECOMENDAÇÃO: Proibido indicar compra, venda, alocação, rebalanceamento ou classificar ativos como bom/ruim.
+4. ZERO PREVISÃO: Proibido projetar retornos futuros ou metas de preço.
+5. ZERO RECÁLCULO: Proibido calcular novas métricas não presentes no grounding.
+6. ISOLAMENTO CAMBIAL: Não misture moedas em uma mesma alegação.
+7. COMPATIBILIDADE TEMPORAL: Risco é estritamente HISTÓRICO; cenários de estresse são HIPOTÉTICOS.
+
+FORMATO DE RESPOSTA OBRIGATÓRIO (JSON PURO):
+{
+  "claims": [
+    {
+      "claimId": "claim-1",
+      "type": "FACTUAL_METRIC",
+      "factIds": ["ID_DO_FATO_1"],
+      "segments": [
+        { "type": "TEXT", "text": "Texto inicial sem números " },
+        { "type": "FACT_VALUE", "factId": "ID_DO_FATO_1" },
+        { "type": "TEXT", "text": "." }
+      ]
+    }
+  ],
+  "evidenceFactIds": ["ID_DO_FATO_1"],
+  "limitations": []
+}`;
+
+export interface GroundedClaimValidationResult {
+  readonly valid: boolean;
+  readonly validatedClaims: readonly GroundedClaimV1[];
+  readonly invalidReasons: readonly string[];
+  readonly citedFactIds: readonly string[];
+}
+
+/**
+ * Deterministic validator of grounded claims against canonical grounding context (ADR-193–ADR-198).
+ * Pure function: zero I/O, zero network, O(N) lookup.
+ * Fails closed if any claim violates structural, semantic, numeric, or safety invariants.
+ */
+export function validateGroundedClaims(
+  claimsInput: readonly GroundedClaimInput[],
+  context:
+    | PortfolioAiGroundingContextV1
+    | { readonly facts: readonly (GroundedFinancialFact | MinimalEvidenceSnapshotFact)[] },
+): GroundedClaimValidationResult {
+  if (!claimsInput || claimsInput.length === 0) {
+    return Object.freeze({
+      valid: false,
+      validatedClaims: Object.freeze([]),
+      invalidReasons: Object.freeze(['MISSING_CLAIMS: response must contain at least one claim']),
+      citedFactIds: Object.freeze([]),
+    });
+  }
+
+  if (claimsInput.length > 25) {
+    return Object.freeze({
+      valid: false,
+      validatedClaims: Object.freeze([]),
+      invalidReasons: Object.freeze([
+        'EXCESSIVE_CLAIMS: response exceeds maximum allowed claims (25)',
+      ]),
+      citedFactIds: Object.freeze([]),
+    });
+  }
+
+  // Build O(1) fact lookup map
+  const factMap = new Map<string, GroundedFinancialFact | MinimalEvidenceSnapshotFact>();
+  for (const f of context.facts) {
+    factMap.set(f.factId, f);
+  }
+
+  const validatedClaims: GroundedClaimV1[] = [];
+  const invalidReasons: string[] = [];
+  const allCitedFactIds = new Set<string>();
+
+  // Check unique claim IDs
+  const seenClaimIds = new Set<string>();
+
+  for (let cIdx = 0; cIdx < claimsInput.length; cIdx++) {
+    const claim = claimsInput[cIdx]!;
+    const claimId = claim.claimId?.trim() || `claim-${cIdx + 1}`;
+
+    if (seenClaimIds.has(claimId)) {
+      invalidReasons.push(`DUPLICATE_CLAIM_ID: duplicate claimId '${claimId}'`);
+    }
+    seenClaimIds.add(claimId);
+
+    // Validate type
+    if (!GROUNDED_CLAIM_TYPES.includes(claim.type)) {
+      invalidReasons.push(
+        `INVALID_CLAIM_TYPE: unrecognized claim type '${claim.type}' in ${claimId}`,
+      );
+      validatedClaims.push({
+        claimId,
+        type: claim.type,
+        segments: claim.segments,
+        factIds: claim.factIds ?? [],
+        renderedText: '',
+        status: 'INVALID',
+        failureReason: `INVALID_CLAIM_TYPE: unrecognized claim type '${claim.type}'`,
+      });
+      continue;
+    }
+
+    // Validate segments
+    if (!claim.segments || claim.segments.length === 0) {
+      invalidReasons.push(`EMPTY_SEGMENTS: claim '${claimId}' has no segments`);
+      validatedClaims.push({
+        claimId,
+        type: claim.type,
+        segments: [],
+        factIds: claim.factIds ?? [],
+        renderedText: '',
+        status: 'INVALID',
+        failureReason: 'EMPTY_SEGMENTS: claim has no segments',
+      });
+      continue;
+    }
+
+    if (claim.segments.length > 20) {
+      invalidReasons.push(`EXCESSIVE_SEGMENTS: claim '${claimId}' exceeds 20 segments limit`);
+      validatedClaims.push({
+        claimId,
+        type: claim.type,
+        segments: claim.segments,
+        factIds: claim.factIds ?? [],
+        renderedText: '',
+        status: 'INVALID',
+        failureReason: 'EXCESSIVE_SEGMENTS: claim exceeds 20 segments',
+      });
+      continue;
+    }
+
+    let claimValid = true;
+    let claimFailureReason: string | undefined;
+
+    // Collect facts cited in this claim
+    const claimFactIds = new Set<string>(claim.factIds ?? []);
+    let hasFactValueSegment = false;
+    const currenciesInClaim = new Set<string>();
+
+    // Inspect segments
+    const renderedParts: string[] = [];
+
+    for (const seg of claim.segments) {
+      if (seg.type === 'TEXT') {
+        const text = seg.text;
+        const normalizedText = text
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase();
+
+        // 1. Prohibited advice keywords
+        if (
+          /\b(compre|comprar|venda|vender|recomendo|recomendacao|recomenda-se|rebalancear|rebalanceamento|alocar|alocacao ideal|melhor acao|pior acao|melhor ativo|pior ativo|melhor investimento|pior investimento)\b/i.test(
+            normalizedText,
+          )
+        ) {
+          claimValid = false;
+          claimFailureReason = `PROHIBITED_ADVICE: text segment in '${claimId}' contains investment recommendation language`;
+          break;
+        }
+
+        // 2. Prohibited prediction keywords
+        if (
+          /\b(vai subir|vai cair|projecao de retorno|previsao de|meta de preco|espera-se que atinja|rentabilidade futura|vai render)\b/i.test(
+            normalizedText,
+          )
+        ) {
+          claimValid = false;
+          claimFailureReason = `PROHIBITED_PREDICTION: text segment in '${claimId}' contains prediction/projection language`;
+          break;
+        }
+
+        // 3. Prevent raw embedded financial numbers in TEXT (must be in FACT_VALUE)
+        // Check for percentage numbers, allowing only neutral statistical confidence levels "95%" or "99%"
+        const percentMatches = text.match(/[-+]?\d+([.,]\d+)?\s*%/g);
+        if (percentMatches) {
+          const hasIllegalPercent = percentMatches.some((m) => {
+            const trimmed = m.replace(/\s+/g, '');
+            return trimmed !== '95%' && trimmed !== '99%';
+          });
+          if (hasIllegalPercent) {
+            claimValid = false;
+            claimFailureReason = `EMBEDDED_FINANCIAL_LITERAL: text segment in '${claimId}' contains raw percentage literal ('${percentMatches.join(
+              ', ',
+            )}'). Financial values must use FACT_VALUE segments.`;
+            break;
+          }
+        }
+
+        // Check for raw monetary numbers in text (e.g. "R$ 100", "USD 50", "100 reais", "50 dólares")
+        if (
+          /\b(R\$|USD|BRL|EUR)\s*[-+]?\d+/i.test(text) ||
+          /\b\d+([.,]\d+)?\s*(reais|dolares|cents)\b/i.test(text)
+        ) {
+          claimValid = false;
+          claimFailureReason = `EMBEDDED_MONEY_LITERAL: text segment in '${claimId}' contains raw monetary literal. Financial values must use FACT_VALUE segments.`;
+          break;
+        }
+
+        renderedParts.push(text);
+      } else if (seg.type === 'FACT_VALUE' || seg.type === 'FACT_LABEL') {
+        const factId = seg.factId;
+        claimFactIds.add(factId);
+        allCitedFactIds.add(factId);
+
+        const fact = factMap.get(factId);
+        if (!fact) {
+          claimValid = false;
+          claimFailureReason = `UNKNOWN_FACT_ID: factId '${factId}' cited in '${claimId}' does not exist in grounding context`;
+          break;
+        }
+
+        if (seg.type === 'FACT_VALUE') {
+          hasFactValueSegment = true;
+
+          // Check if fact is unavailable
+          if (fact.status === 'UNAVAILABLE' || fact.value === null) {
+            claimValid = false;
+            claimFailureReason = `UNAVAILABLE_FACT_VALUE: factId '${factId}' in '${claimId}' has status UNAVAILABLE / null value and cannot be presented as factual metric`;
+            break;
+          }
+
+          // Format value
+          renderedParts.push(formatFactValueForDisplay(fact));
+        } else {
+          // FACT_LABEL
+          renderedParts.push(formatFactLabelForDisplay(fact));
+        }
+
+        // Track currency for isolation
+        const curr =
+          'currency' in fact && fact.currency
+            ? fact.currency
+            : fact.unit === 'MONEY'
+              ? fact.scope
+              : undefined;
+        if (curr) {
+          currenciesInClaim.add(curr);
+        }
+      } else {
+        claimValid = false;
+        claimFailureReason = `INVALID_SEGMENT_TYPE: unknown segment type in '${claimId}'`;
+        break;
+      }
+    }
+
+    if (!claimValid) {
+      invalidReasons.push(claimFailureReason!);
+      validatedClaims.push({
+        claimId,
+        type: claim.type,
+        segments: claim.segments,
+        factIds: Array.from(claimFactIds),
+        renderedText: '',
+        status: 'INVALID',
+        failureReason: claimFailureReason,
+      });
+      continue;
+    }
+
+    // Currency isolation: claim must not mix facts with distinct currencies
+    if (currenciesInClaim.size > 1) {
+      const reason = `CROSS_CURRENCY_CLAIM_PROHIBITED: claim '${claimId}' mixes facts from multiple currencies (${Array.from(
+        currenciesInClaim,
+      ).join(', ')})`;
+      invalidReasons.push(reason);
+      validatedClaims.push({
+        claimId,
+        type: claim.type,
+        segments: claim.segments,
+        factIds: Array.from(claimFactIds),
+        renderedText: '',
+        status: 'INVALID',
+        failureReason: reason,
+      });
+      continue;
+    }
+
+    // Validate fact category compatibility
+    const allowedCategories = CLAIM_CATEGORY_COMPATIBILITY[claim.type];
+    for (const fId of claimFactIds) {
+      const fact = factMap.get(fId);
+      if (fact && allowedCategories && !allowedCategories.includes(fact.category)) {
+        claimValid = false;
+        claimFailureReason = `INCOMPATIBLE_FACT_CATEGORY: fact '${fId}' (${fact.category}) is incompatible with claim type '${claim.type}' in '${claimId}'`;
+        break;
+      }
+
+      // Temporal / Nature checks
+      if (fact) {
+        if (claim.type === 'SCENARIO_EXPLANATION' && fact.nature !== 'HYPOTHETICAL') {
+          claimValid = false;
+          claimFailureReason = `NATURE_MISMATCH: scenario claim '${claimId}' must reference HYPOTHETICAL facts, but '${fId}' has nature '${fact.nature}'`;
+          break;
+        }
+        if (fact.category === 'TAIL_RISK' && fact.nature !== 'HISTORICAL') {
+          claimValid = false;
+          claimFailureReason = `NATURE_MISMATCH: tail risk fact '${fId}' in '${claimId}' must have HISTORICAL nature, but found '${fact.nature}'`;
+          break;
+        }
+      }
+    }
+
+    if (!claimValid) {
+      invalidReasons.push(claimFailureReason!);
+      validatedClaims.push({
+        claimId,
+        type: claim.type,
+        segments: claim.segments,
+        factIds: Array.from(claimFactIds),
+        renderedText: '',
+        status: 'INVALID',
+        failureReason: claimFailureReason,
+      });
+      continue;
+    }
+
+    // Factual claims require at least one FACT_VALUE segment
+    const requiresFactValue =
+      claim.type === 'FACTUAL_METRIC' ||
+      claim.type === 'BENCHMARK_COMPARISON' ||
+      claim.type === 'RISK_EXPLANATION' ||
+      claim.type === 'SCENARIO_EXPLANATION';
+
+    if (requiresFactValue && !hasFactValueSegment) {
+      const reason = `MISSING_FACT_VALUE: factual claim '${claimId}' of type '${claim.type}' must contain at least one FACT_VALUE segment`;
+      invalidReasons.push(reason);
+      validatedClaims.push({
+        claimId,
+        type: claim.type,
+        segments: claim.segments,
+        factIds: Array.from(claimFactIds),
+        renderedText: '',
+        status: 'INVALID',
+        failureReason: reason,
+      });
+      continue;
+    }
+
+    // Claim is valid
+    validatedClaims.push({
+      claimId,
+      type: claim.type,
+      segments: claim.segments,
+      factIds: Array.from(claimFactIds),
+      renderedText: renderedParts.join(''),
+      status: 'VALID',
+    });
+  }
+
+  const valid = invalidReasons.length === 0;
+
+  return Object.freeze({
+    valid,
+    validatedClaims: Object.freeze(validatedClaims),
+    invalidReasons: Object.freeze(invalidReasons),
+    citedFactIds: Object.freeze(Array.from(allCitedFactIds)),
+  });
+}
+
+/**
+ * Pure deterministic server-side answer renderer (ADR-194).
+ * Combines validated claim texts into an authoritative presentation string.
+ */
+export function renderValidatedClaims(claims: readonly GroundedClaimV1[]): string {
+  return claims
+    .filter((c) => c.status === 'VALID' && c.renderedText.trim().length > 0)
+    .map((c) => c.renderedText.trim())
+    .join(' ');
 }

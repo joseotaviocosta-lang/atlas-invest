@@ -27,6 +27,7 @@
     "test:ai-grounding": "vitest run --config vitest.ai-grounding.config.ts",
     "test:ai-explanation": "vitest run --config vitest.ai-explanation.config.ts",
     "test:ai-conversation": "vitest run --config vitest.ai-conversation.config.ts",
+    "test:ai-claims": "vitest run --config vitest.ai-claims.config.ts",
     "test:performance-ui": "vitest run --config vitest.performance-ui.config.ts",
     "test:historical-market-data": "vitest run --config vitest.historical-market-data.config.ts",
     "test:benchmark": "vitest run --config vitest.benchmark.config.ts",

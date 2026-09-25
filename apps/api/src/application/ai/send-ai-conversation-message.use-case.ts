@@ -6,11 +6,14 @@ import {
   validateExplanationEvidence,
   buildMinimalEvidenceSnapshot,
   selectConversationHistory,
+  validateGroundedClaims,
+  renderValidatedClaims,
   INTENT_REFUSAL_MESSAGES,
   AIProvider,
   GroundedAiExplanationResponseV1,
   ConversationHistoryMessage,
   ExplanationIntent,
+  GroundedClaimV1,
 } from '@atlas/ai-engine';
 import { IAiConversationRepository } from '@atlas/database';
 import { GetPortfolioAiGroundingContextUseCase } from './get-portfolio-ai-grounding-context.use-case';
@@ -43,8 +46,40 @@ export const SendAiConversationMessageInputSchema = SendAiConversationMessageBod
 
 export type SendAiConversationMessageInput = z.infer<typeof SendAiConversationMessageInputSchema>;
 
+const ClaimSegmentSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('TEXT'),
+    text: z.string().max(2000),
+  }),
+  z.object({
+    type: z.literal('FACT_VALUE'),
+    factId: z.string().min(1),
+    role: z.enum(['PRIMARY', 'BENCHMARK', 'THRESHOLD', 'REFERENCE']).optional(),
+  }),
+  z.object({
+    type: z.literal('FACT_LABEL'),
+    factId: z.string().min(1),
+  }),
+]);
+
+const ClaimInputSchema = z.object({
+  claimId: z.string().optional(),
+  type: z.enum([
+    'FACTUAL_METRIC',
+    'BENCHMARK_COMPARISON',
+    'RISK_EXPLANATION',
+    'SCENARIO_EXPLANATION',
+    'DATA_QUALITY',
+    'LIMITATION',
+    'CONTEXTUAL_EXPLANATION',
+  ]),
+  segments: z.array(ClaimSegmentSchema).min(1).max(20),
+  factIds: z.array(z.string()).optional(),
+});
+
 const ModelOutputSchema = z.object({
-  answer: z.string().min(1, { message: 'Model answer cannot be empty' }),
+  answer: z.string().optional(),
+  claims: z.array(ClaimInputSchema).min(1).max(25).optional(),
   evidenceFactIds: z.array(z.string()),
   limitations: z.array(z.string()).default([]),
 });
@@ -226,9 +261,26 @@ export class SendAiConversationMessageUseCase {
       );
     }
 
-    const { answer, evidenceFactIds, limitations } = parseResult.data;
+    const { claims, evidenceFactIds, limitations } = parseResult.data;
 
-    // 8. Strict evidence validation against CURRENT grounding context
+    // 8. Validate claims against canonical grounding facts (fail-closed if provided)
+    let validatedClaims: GroundedClaimV1[] | undefined;
+    if (claims && claims.length > 0) {
+      const claimValidation = validateGroundedClaims(claims, context);
+      if (!claimValidation.valid) {
+        throw new HttpException(
+          {
+            message: `Model claims validation failed: ${claimValidation.invalidReasons.join('; ')}`,
+            code: 'AI.INVALID_MODEL_RESPONSE',
+            details: { invalidReasons: claimValidation.invalidReasons },
+          },
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+      validatedClaims = claimValidation.validatedClaims as GroundedClaimV1[];
+    }
+
+    // 9. Strict evidence validation against CURRENT grounding context
     const validation = validateExplanationEvidence(evidenceFactIds, context);
     if (!validation.valid) {
       throw new HttpException(
@@ -251,32 +303,38 @@ export class SendAiConversationMessageUseCase {
       );
     }
 
-    // 9. Build minimal exact-decimal evidence audit snapshot
+    // 10. Render authoritative server-validated answer from claims if present
+    const serverRenderedAnswer =
+      validatedClaims && validatedClaims.length > 0 ? renderValidatedClaims(validatedClaims) : '';
+
+    // 11. Build minimal exact-decimal evidence audit snapshot
     const minimalSnapshot = buildMinimalEvidenceSnapshot(validation.resolvedEvidence);
     const resolvedLimitations =
       limitations.length > 0 ? limitations : context.limitations.map((l) => l.description);
 
-    // 10. Persist safe turn atomically in database
+    // 12. Persist safe turn atomically in database with claims
     const turn = await this.conversationRepository.appendTurn(
       validatedInput.conversationId,
       { content: validatedInput.question },
       {
-        content: answer,
+        content: serverRenderedAnswer || parseResult.data.answer || '',
         status: 'ANSWERED',
         intent,
         evidenceSnapshot: minimalSnapshot,
+        claims: validatedClaims,
         limitations: resolvedLimitations,
         provider: process.env.AI_PROVIDER || 'openai',
         model: process.env.AI_MODEL || 'gpt-4o-mini',
       },
     );
 
-    // 11. Return safe structured conversation turn response
+    // 13. Return safe structured conversation turn response
     return {
       schemaVersion: '1',
       status: 'ANSWERED',
       intent,
-      answer,
+      answer: serverRenderedAnswer || parseResult.data.answer || '',
+      claims: validatedClaims,
       evidence: validation.resolvedEvidence,
       limitations: resolvedLimitations,
       model: {
