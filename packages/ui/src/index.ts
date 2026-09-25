@@ -26,6 +26,7 @@ export * from './view-models/portfolio-rolling-analytics.view-model';
 export * from './view-models/portfolio-tail-risk.view-model';
 export * from './view-models/portfolio-scenario.view-model';
 export * from './view-models/portfolio-intelligence.view-model';
+export * from './view-models/portfolio-ai-explanation.view-model';
 
 import { colors } from './tokens/colors';
 import { spacing } from './tokens/spacing';

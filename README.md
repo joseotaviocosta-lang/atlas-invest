@@ -191,6 +191,9 @@ pnpm test:architecture
 # Suite de AI Grounding Foundation (fatos estruturados, limites, rastreabilidade, boundary de IA)
 pnpm test:ai-grounding
 
+# Suite de Grounded AI Explanation (intenções, citações estruturadas, fail-closed, boundary de IA)
+pnpm test:ai-explanation
+
 # Suite de Testes End-to-End (Playwright em navegador real: Desktop, Tablet, Mobile)
 pnpm test:web:e2e
 
@@ -223,4 +226,7 @@ pnpm build
 - [Documentação do Design System](file:///c:/Projetos/atlas-invest/docs/design-system/README.md)
 - [Especificação de AI Grounding Foundation v1](file:///c:/Projetos/atlas-invest/docs/contracts/portfolio-ai-grounding-v1.md)
 - [Especificação da API de AI Grounding](file:///c:/Projetos/atlas-invest/docs/contracts/portfolio-ai-grounding-api-v1.md)
-- [Registros de Decisões Arquiteturais (ADRs 001-178)](file:///c:/Projetos/atlas-invest/docs/decisions/)
+- [Especificação de Grounded AI Explanation v1](file:///c:/Projetos/atlas-invest/docs/contracts/portfolio-ai-explanation-v1.md)
+- [Especificação da API de Grounded AI Explanation](file:///c:/Projetos/atlas-invest/docs/contracts/portfolio-ai-explanation-api-v1.md)
+- [Política de AI Explanation v1](file:///c:/Projetos/atlas-invest/docs/contracts/portfolio-ai-explanation-policy-v1.md)
+- [Registros de Decisões Arquiteturais (ADRs 001-185)](file:///c:/Projetos/atlas-invest/docs/decisions/)

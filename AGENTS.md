@@ -1132,3 +1132,64 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
     - As capacidades do contexto declaram explicitamente `canRecommendTrades: false`, `canPredictReturns: false` e `canCalculateNewMetrics: false`.
 
 ---
+
+## 40. Grounded AI Explanation Foundation (Fase 3R)
+
+1. **AI EXPLANATION BOUNDARY STRICTLY BOUND TO GROUNDING CONTEXT.**
+   - Explicações geradas por modelos de linguagem são estritamente limitadas aos fatos presentes no `PortfolioAiGroundingContextV1` (Fase 3Q). O modelo nunca pode afirmar métricas, números ou históricos ausentes do contexto de grounding.
+
+2. **AI MODEL IS EXPLAINER, NEVER A FINANCIAL CALCULATOR.**
+   - O `@atlas/ai-engine` e qualquer modelo de linguagem atuam exclusivamente na tradução didática e descritiva dos fatos. É terminantemente proibido delegar ao modelo cálculos de retorno, volatilidade, conversões cambiais ou projeções tributárias.
+
+3. **DETERMINISTIC UPSTREAM CAPABILITY & INTENT GATE.**
+   - Antes de invocar o grounding ou qualquer modelo, a consulta é classificada deterministicamente via `classifyExplanationIntent(question)`.
+   - Pedidos de recomendação de compra/venda (`UNSUPPORTED_RECOMMENDATION`), projeções de mercado (`UNSUPPORTED_PREDICTION`), novos cálculos personalizados (`UNSUPPORTED_CUSTOM_CALCULATION`) ou conselhos fiscais (`UNSUPPORTED_TAX_ADVICE`) são recusados imediatamente:
+     - Disparam **0 chamadas de grounding**.
+     - Disparam **0 chamadas de modelo/provedor**.
+     - Retornam status `UNSUPPORTED` com resposta explicativa padronizada.
+
+4. **FAIL-CLOSED EVIDENCE VALIDATION AND STRUCTURED CITATIONS.**
+   - O modelo deve citar os `factId`s exatos dos fatos utilizados no campo `evidenceFactIds`.
+   - Todas as citações são validadas no backend contra `context.facts` (`validateExplanationEvidence`). Identificadores inexistentes rejeitam a resposta com `422 AI.INVALID_MODEL_RESPONSE`.
+   - Se 0 evidências válidas forem retornadas em uma resposta suportada, o sistema falha fechado com `422 AI.INVALID_MODEL_RESPONSE`.
+   - Os valores de evidência exibidos ao usuário vêm exclusivamente dos fatos de grounding, nunca da prosa do modelo.
+
+5. **SERVER-SIDE KEY ISOLATION & ADAPTER ABSTRACTION.**
+   - Provedores reais de modelo (`OpenAiProvider`) residem estritamente no backend (`apps/api`). Chaves de API (`OPENAI_API_KEY`) nunca são enviadas ao cliente web ou mobile nem incluídas em bundles.
+   - Repositórios e use-cases dependem exclusivamente da abstração `AI_PROVIDER_TOKEN`.
+   - Testes e desenvolvimento local utilizam compulsoriamente `FakeAiProvider`, garantindo execução 100% determinística e sem dependência de rede externa.
+
+6. **TRANSIENT SINGLE-TURN EXPLANATION (NO PERSISTENCE / NO RAG).**
+   - A explicação é efêmera e sem estado: não são criadas tabelas de mensagens de chat, histórico de conversas, embeddings ou bancos vetoriais.
+
+7. **SEGREGATED MULTI-CURRENCY CONTEXTS PRESERVED.**
+   - Carteiras com múltiplas moedas (`BRL`, `USD`) mantêm fatos estritamente segregados por escopo. O modelo é instruído e proibido de realizar somas ou médias sintéticas entre moedas distintas sem taxa explícita de câmbio.
+
+8. **PROMPT INJECTION DEMARCATION AND STRICT JSON SCHEMA.**
+   - Consultas de usuários são dados não-confiáveis e nunca instruções de sistema; respeitam a política `PORTFOLIO_AI_EXPLANATION_POLICY_V1`.
+   - A saída do modelo deve validar estritamente o schema JSON esperado. Respostas inválidas retornam `422 AI.INVALID_MODEL_RESPONSE`.
+
+9. **HTTP 200 REFUSAL SEMANTICS & API PROTECTION.**
+   - O endpoint `POST /api/v1/portfolios/:portfolioId/ai/explain` retorna `200 OK` tanto para `ANSWERED` quanto para `UNSUPPORTED` (recusas por intenção não são erros HTTP).
+   - Invariante anti-enumeração: carteiras não pertencentes ao usuário autenticado retornam `404 Not Found`.
+   - Endpoint protegido por rate limit `@Throttle({ default: { limit: 20, ttl: 60000 } })`.
+
+10. **AI MUST NOT ACCESS RAW LEDGERS, PRISMA, MARKET PROVIDERS, OR FINANCIAL ENGINES DIRECTLY.**
+    - `ExplainPortfolioWithAiUseCase` consome exclusivamente `PortfolioAiGroundingContextV1` via `GetPortfolioAiGroundingContextUseCase` (1 chamada por request suportado).
+    - É proibido importar Prisma, repositórios de portfólio, market providers ou engines financeiros no use-case de explicação.
+
+11. **HISTORICAL METRICS MUST REMAIN EXPLICITLY HISTORICAL.**
+    - Volatilidade, drawdown, Sharpe, Sortino, VaR/CVaR são medidas históricas do período; nunca previsões ou garantias futuras.
+
+12. **SCENARIO RESULTS MUST REMAIN EXPLICITLY HYPOTHETICAL.**
+    - Cenários (`EQUITY_DOWN_10`) são choques determinísticos hipotéticos; nunca previsões, probabilidades ou perdas esperadas.
+
+13. **PROVIDER FAILURES MUST NOT BE MISLABELED AS FINANCIAL-DATA FAILURES.**
+    - Timeout/5xx/rate-limit retornam `AI.PROVIDER_UNAVAILABLE` / `AI.PROVIDER_TIMEOUT` / `AI.PROVIDER_RATE_LIMIT` (`503`/`504`/`429`); nunca "dados financeiros indisponíveis".
+
+14. **3R IS STATELESS; ONE MODEL CALL MAXIMUM PER SUPPORTED REQUEST.**
+    - Sem persistência de conversas, sem cache Redis, sem `conversationId`/`messages[]`.
+    - Request suportado: no máximo 1 chamada de modelo. Request não-suportado: 0 chamadas.
+
+15. **NO AUTONOMOUS TOOL USE, RAG, EMBEDDINGS, OR AGENTS IN 3R.**
+    - Ferramentas do provedor desabilitadas, sem web browsing/search, sem invocação de ferramentas pelo modelo (resposta com tool-call é `AI.INVALID_MODEL_RESPONSE`).

@@ -11,6 +11,7 @@ import {
   PortfolioHistoryItemDto,
   PortfolioHistoryPaginationMetaDto,
   AssetMeta,
+  GroundedExplanationDto,
 } from '@atlas/ui';
 
 export const portfoliosApi = {
@@ -75,5 +76,15 @@ export const portfoliosApi = {
 
   async listAssets(): Promise<{ data: AssetDto[] }> {
     return apiClient.get<{ data: AssetDto[] }>('/api/v1/assets');
+  },
+
+  async explainPortfolio(
+    portfolioId: string,
+    question: string,
+  ): Promise<{ data: GroundedExplanationDto }> {
+    return apiClient.post<{ data: GroundedExplanationDto }>(
+      `/api/v1/portfolios/${portfolioId}/ai/explain`,
+      { question },
+    );
   },
 };

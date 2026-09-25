@@ -25,6 +25,7 @@
     "test:scenario": "vitest run --config vitest.scenario.config.ts",
     "test:portfolio-intelligence": "vitest run --config vitest.portfolio-intelligence.config.ts",
     "test:ai-grounding": "vitest run --config vitest.ai-grounding.config.ts",
+    "test:ai-explanation": "vitest run --config vitest.ai-explanation.config.ts",
     "test:performance-ui": "vitest run --config vitest.performance-ui.config.ts",
     "test:historical-market-data": "vitest run --config vitest.historical-market-data.config.ts",
     "test:benchmark": "vitest run --config vitest.benchmark.config.ts",
