@@ -3,7 +3,7 @@
 **Route:** `POST /api/v1/portfolios/:portfolioId/ai/conversations/:conversationId/messages/stream`  
 **Protocol:** HTTP/1.1 or HTTP/2 Server-Sent Events (SSE)  
 **Status:** ACTIVE  
-**Package:** `apps/api`  
+**Package:** `apps/api`
 
 ---
 
@@ -18,11 +18,13 @@ O endpoint opera de forma aditiva e complementar ao endpoint síncrono existente
 ## 2. Cabeçalhos HTTP
 
 ### Requisição
+
 - `Authorization: Bearer <access_token>` (Mandatório)
 - `Content-Type: application/json` (Mandatório)
 - `Accept: text/event-stream` (Recomendado)
 
 ### Resposta
+
 - `Content-Type: text/event-stream; charset=utf-8`
 - `Cache-Control: no-cache, no-transform`
 - `Connection: keep-alive`
@@ -68,6 +70,7 @@ data: <JSON_STRINGIFIED_PAYLOAD>
 ```
 
 ### Sequência Canônica de Eventos
+
 1. `STARTED`: Identifica o início da requisição.
 2. `PROGRESS` (`CLASSIFYING`): Classificação semântica da pergunta.
 3. `PROGRESS` (`GROUNDING`): Extração de fatos auditados no ledger.
@@ -77,4 +80,3 @@ data: <JSON_STRINGIFIED_PAYLOAD>
 7. `FINAL`: Resposta validada, snapshot de evidências e turno persistido.
 
 Em caso de falha irrecuperável ou cancelamento, um evento `ERROR` é emitido e o fluxo é encerrado imediatamente.
-

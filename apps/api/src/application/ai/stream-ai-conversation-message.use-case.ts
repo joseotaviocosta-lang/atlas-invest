@@ -90,11 +90,7 @@ export class StreamAiConversationMessageUseCase {
    * Verify ownership before streaming response headers are committed.
    * Throws hidden 404 if conversation or portfolio does not belong to user.
    */
-  async verifyOwnership(params: {
-    portfolioId: string;
-    conversationId: string;
-    userId: string;
-  }) {
+  async verifyOwnership(params: { portfolioId: string; conversationId: string; userId: string }) {
     const conversation = await this.conversationRepository.findConversationById(
       params.conversationId,
       params.portfolioId,

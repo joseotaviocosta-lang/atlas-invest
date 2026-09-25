@@ -29,9 +29,7 @@ describe('Architecture: Grounded AI Streaming Boundaries (Phase 3U, ADR-199–AD
 
     for (const file of coreEngines) {
       const content = read(file);
-      expect(content, `${file} must not import @atlas/ai-engine`).not.toMatch(
-        /@atlas\/ai-engine/i,
-      );
+      expect(content, `${file} must not import @atlas/ai-engine`).not.toMatch(/@atlas\/ai-engine/i);
     }
   });
 

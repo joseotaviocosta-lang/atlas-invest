@@ -62,9 +62,7 @@ describe('AI Engine: Grounded AI Streaming & Resilient Delivery (Phase 3U)', () 
       };
 
       const formatted = formatSseEvent(event);
-      expect(formatted).toBe(
-        `event: STARTED\ndata: ${JSON.stringify(event)}\n\n`,
-      );
+      expect(formatted).toBe(`event: STARTED\ndata: ${JSON.stringify(event)}\n\n`);
     });
 
     it('parses raw SSE chunks back into typed stream events', () => {
@@ -335,9 +333,7 @@ describe('AI Engine: Grounded AI Streaming & Resilient Delivery (Phase 3U)', () 
       const finalEvent = emitted.find((e) => e.type === 'FINAL');
       expect(finalEvent).toBeDefined();
       if (finalEvent && finalEvent.type === 'FINAL') {
-        expect(finalEvent.data.answer).toBe(
-          'A rentabilidade apurada foi de 12,50%.',
-        );
+        expect(finalEvent.data.answer).toBe('A rentabilidade apurada foi de 12,50%.');
         expect(finalEvent.data.claims).toHaveLength(1);
         expect(finalEvent.data.claims[0]!.renderedText).toBe(
           'A rentabilidade apurada foi de 12,50%.',

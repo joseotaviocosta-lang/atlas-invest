@@ -2,7 +2,7 @@
 
 **Schema Version:** `1`  
 **Status:** ACTIVE  
-**Package:** `@atlas/ai-engine`  
+**Package:** `@atlas/ai-engine`
 
 ---
 
@@ -26,12 +26,12 @@ O objetivo é fornecer ao investidor feedback de progresso determinístico e res
 
 O protocolo define exatamente quatro tipos canônicos de eventos:
 
-| Tipo | Semântica | Carga Útil (`data`) |
-| :--- | :--- | :--- |
-| `STARTED` | Notificação de início de processamento da mensagem | `conversationId`, `portfolioId` |
-| `PROGRESS` | Transição de estágio determinístico da esteira analítica | `stage` (`CLASSIFYING`, `GROUNDING`, `GENERATING`, `VALIDATING`, `RENDERING`), `message` |
-| `FINAL` | Entrega terminal da resposta validada e persistida | `messageId`, `turnIndex`, `status`, `intent`, `answer`, `evidence`, `claims`, `limitations` |
-| `ERROR` | Falha fatal com término do fluxo e rollback limpo | `code`, `message` |
+| Tipo       | Semântica                                                | Carga Útil (`data`)                                                                         |
+| :--------- | :------------------------------------------------------- | :------------------------------------------------------------------------------------------ |
+| `STARTED`  | Notificação de início de processamento da mensagem       | `conversationId`, `portfolioId`                                                             |
+| `PROGRESS` | Transição de estágio determinístico da esteira analítica | `stage` (`CLASSIFYING`, `GROUNDING`, `GENERATING`, `VALIDATING`, `RENDERING`), `message`    |
+| `FINAL`    | Entrega terminal da resposta validada e persistida       | `messageId`, `turnIndex`, `status`, `intent`, `answer`, `evidence`, `claims`, `limitations` |
+| `ERROR`    | Falha fatal com término do fluxo e rollback limpo        | `code`, `message`                                                                           |
 
 ---
 
@@ -46,6 +46,7 @@ A esteira de geração em streaming percorre sequencialmente os seguintes estág
 5. `RENDERING`: Montagem da resposta canônica através de formatação exata de strings decimais.
 
 ### Mensagens Canônicas de Progresso (`CANONICAL_PROGRESS_MESSAGES`)
+
 - `CLASSIFYING`: "Analisando sua pergunta e intenção analítica..."
 - `GROUNDING`: "Obtendo fatos comprovados da carteira no ledger..."
 - `GENERATING`: "Estruturando explicação analítica factual..."
@@ -62,4 +63,3 @@ Todas as mensagens canônicas são estritamente livres de algarismos numéricos 
 - **Limite Superior de Eventos:** O fluxo transmite no máximo **8 eventos** por mensagem.
 - **Travamento Terminal:** Uma vez emitido um evento `FINAL` ou `ERROR`, a emissão de qualquer outro evento é expressamente bloqueada pelo `GroundedAiStreamEmitter`.
 - **Persistência Atômica Antes do FINAL (ADR-203):** O registro do turno no banco de dados é gravado e confirmado antes da transmissão do evento `FINAL`. Em caso de erro técnico ou cancelamento prévio, nenhum turno de assistente respondido com sucesso é persistido.
-
