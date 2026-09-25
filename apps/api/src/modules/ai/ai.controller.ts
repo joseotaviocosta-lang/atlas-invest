@@ -8,7 +8,10 @@ import {
   Inject,
   HttpCode,
   HttpStatus,
+  Res,
+  Req,
 } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { GetPortfolioAiGroundingContextUseCase } from '../../application/ai/get-portfolio-ai-grounding-context.use-case';
@@ -29,6 +32,7 @@ import {
   SendAiConversationMessageBodySchema,
   SendAiConversationMessageBody,
 } from '../../application/ai/send-ai-conversation-message.use-case';
+import { StreamAiConversationMessageUseCase } from '../../application/ai/stream-ai-conversation-message.use-case';
 import { UUIDParamPipe, ZodValidationPipe } from '../../common/pipes';
 import { CurrentPrincipal, AuthenticatedPrincipal } from '../../auth';
 
@@ -49,6 +53,8 @@ export class AiController {
     private readonly getAiConversationUseCase: GetAiConversationUseCase,
     @Inject(SendAiConversationMessageUseCase)
     private readonly sendAiConversationMessageUseCase: SendAiConversationMessageUseCase,
+    @Inject(StreamAiConversationMessageUseCase)
+    private readonly streamAiConversationMessageUseCase: StreamAiConversationMessageUseCase,
   ) {}
 
   @Get(':portfolioId/ai/grounding')
@@ -229,5 +235,84 @@ export class AiController {
       endDate: body.endDate,
     });
     return { data };
+  }
+
+  @Post(':portfolioId/ai/conversations/:conversationId/messages/stream')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @ApiOperation({
+    summary:
+      'Stream a message in an AI conversation with SSE, bounded history, and server-validated claims (Phase 3U)',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiParam({ name: 'conversationId', description: 'UUID of the conversation' })
+  @ApiResponse({ status: 200, description: 'Server-Sent Events stream of conversation turn' })
+  @ApiResponse({ status: 400, description: 'Invalid input' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Conversation or portfolio not found' })
+  async streamMessage(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Param('conversationId', UUIDParamPipe) conversationId: string,
+    @Body(new ZodValidationPipe(SendAiConversationMessageBodySchema))
+    body: SendAiConversationMessageBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res() res: Response,
+    @Req() req: Request,
+  ) {
+    // 1. Verify ownership BEFORE streaming headers are committed (throws hidden 404)
+    await this.streamAiConversationMessageUseCase.verifyOwnership({
+      portfolioId,
+      conversationId,
+      userId: principal.userId,
+    });
+
+    // 2. Set SSE transport headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    // 3. Setup client abort handling
+    const abortController = new AbortController();
+    const reqWithSignal = req as unknown as { signal?: AbortSignal };
+    if (reqWithSignal.signal) {
+      if (reqWithSignal.signal.aborted) {
+        abortController.abort();
+      } else {
+        reqWithSignal.signal.addEventListener('abort', () => abortController.abort(), {
+          once: true,
+        });
+      }
+    }
+    req.on('close', () => {
+      if (!res.writableEnded) {
+        abortController.abort();
+      }
+    });
+
+    // 4. Execute streaming delivery
+    try {
+      await this.streamAiConversationMessageUseCase.executeStream(
+        {
+          portfolioId,
+          conversationId,
+          userId: principal.userId,
+          question: body.question,
+          startDate: body.startDate,
+          endDate: body.endDate,
+        },
+        (chunk: string) => {
+          if (!res.writableEnded) {
+            res.write(chunk);
+          }
+        },
+        abortController.signal,
+      );
+    } finally {
+      if (!res.writableEnded) {
+        res.end();
+      }
+    }
   }
 }

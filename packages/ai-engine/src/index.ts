@@ -28,6 +28,7 @@ export interface AICompletionOptions {
   temperature?: number;
   maxTokens?: number;
   tools?: AITool[];
+  signal?: AbortSignal;
 }
 
 /**
@@ -1242,11 +1243,13 @@ export class FakeAiProvider implements AIProvider {
   private customResponse?: RawModelExplanationOutput;
   private shouldFailWithNetworkError = false;
   private shouldReturnMalformedJson = false;
+  private delayMs = 0;
 
   constructor(options?: {
     customResponse?: RawModelExplanationOutput;
     shouldFailWithNetworkError?: boolean;
     shouldReturnMalformedJson?: boolean;
+    delayMs?: number;
   }) {
     if (options?.customResponse) this.customResponse = options.customResponse;
     if (options?.shouldFailWithNetworkError) {
@@ -1255,9 +1258,32 @@ export class FakeAiProvider implements AIProvider {
     if (options?.shouldReturnMalformedJson) {
       this.shouldReturnMalformedJson = options.shouldReturnMalformedJson;
     }
+    if (options?.delayMs) {
+      this.delayMs = options.delayMs;
+    }
   }
 
-  async complete(messages: AIMessage[], _options?: AICompletionOptions): Promise<AIMessage> {
+  async complete(messages: AIMessage[], options?: AICompletionOptions): Promise<AIMessage> {
+    if (options?.signal?.aborted) {
+      throw new Error('FakeAiProvider: request aborted');
+    }
+
+    if (this.delayMs > 0) {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => resolve(), this.delayMs);
+        if (options?.signal) {
+          options.signal.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(timer);
+              reject(new Error('FakeAiProvider: request aborted'));
+            },
+            { once: true },
+          );
+        }
+      });
+    }
+
     this.completedMessages.push(messages);
 
     if (this.shouldFailWithNetworkError) {
@@ -2165,4 +2191,174 @@ export function renderValidatedClaims(claims: readonly GroundedClaimV1[]): strin
     .filter((c) => c.status === 'VALID' && c.renderedText.trim().length > 0)
     .map((c) => c.renderedText.trim())
     .join(' ');
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3U: Grounded AI Streaming & Resilient Delivery (ADR-199–ADR-203)
+// Server-streamed delivery mode with deterministic progress states,
+// strict server-authoritative claim validation before FINAL event,
+// persist-before-FINAL, and client abort / cancellation support.
+// ---------------------------------------------------------------------------
+
+export const STREAM_SCHEMA_VERSION = '1' as const;
+
+export const STREAM_PROGRESS_STAGES = [
+  'CLASSIFYING',
+  'GROUNDING',
+  'GENERATING',
+  'VALIDATING',
+  'RENDERING',
+] as const;
+export type GroundedAiStreamProgressStage = (typeof STREAM_PROGRESS_STAGES)[number];
+
+export const STREAM_EVENT_TYPES = ['STARTED', 'PROGRESS', 'FINAL', 'ERROR'] as const;
+export type GroundedAiStreamEventType = (typeof STREAM_EVENT_TYPES)[number];
+
+export interface GroundedAiStreamStartedData {
+  readonly conversationId: string;
+}
+
+export interface GroundedAiStreamProgressData {
+  readonly stage: GroundedAiStreamProgressStage;
+  readonly message: string;
+}
+
+export interface GroundedAiStreamFinalData extends GroundedAiExplanationResponseV1 {
+  readonly userMessageId?: string;
+  readonly assistantMessageId?: string;
+}
+
+export interface GroundedAiStreamErrorData {
+  readonly code: string;
+  readonly message: string;
+}
+
+export type GroundedAiStreamEventData =
+  | GroundedAiStreamStartedData
+  | GroundedAiStreamProgressData
+  | GroundedAiStreamFinalData
+  | GroundedAiStreamErrorData;
+
+export interface GroundedAiStreamEventV1 {
+  readonly schemaVersion: '1';
+  readonly type: GroundedAiStreamEventType;
+  readonly sequence: number;
+  readonly timestamp: string;
+  readonly data: GroundedAiStreamEventData;
+}
+
+export const CANONICAL_PROGRESS_MESSAGES: Readonly<Record<GroundedAiStreamProgressStage, string>> =
+  Object.freeze({
+    CLASSIFYING: 'Analisando sua pergunta e intenção analítica...',
+    GROUNDING: 'Obtendo fatos comprovados da carteira no ledger...',
+    GENERATING: 'Estruturando explicação analítica factual...',
+    VALIDATING: 'Validando alegações e evidências financeiras no servidor...',
+    RENDERING: 'Formatando resposta final autoritativa...',
+  });
+
+/**
+ * Pure SSE serializer for a single GroundedAiStreamEventV1 event.
+ */
+export function formatSseEvent(event: GroundedAiStreamEventV1): string {
+  return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+}
+
+/**
+ * Parser for raw SSE text into typed GroundedAiStreamEventV1 array.
+ */
+export function parseSseStream(rawText: string): GroundedAiStreamEventV1[] {
+  const events: GroundedAiStreamEventV1[] = [];
+  const rawBlocks = rawText.split(/\r?\n\r?\n/);
+
+  for (const block of rawBlocks) {
+    const trimmed = block.trim();
+    if (!trimmed) continue;
+
+    const lines = trimmed.split(/\r?\n/);
+    let dataStr = '';
+
+    for (const line of lines) {
+      if (line.startsWith('data:')) {
+        dataStr += line.slice(5).trim();
+      }
+    }
+
+    if (dataStr) {
+      try {
+        const parsed = JSON.parse(dataStr) as GroundedAiStreamEventV1;
+        if (parsed.schemaVersion === '1' && parsed.type && typeof parsed.sequence === 'number') {
+          events.push(parsed);
+        }
+      } catch {
+        // Skip unparseable lines
+      }
+    }
+  }
+
+  return events;
+}
+
+/**
+ * Deterministic SSE stream emitter with monotonic sequence and terminal event enforcement (ADR-199).
+ */
+export class GroundedAiStreamEmitter {
+  private currentSequence = 0;
+  private isTerminal = false;
+
+  constructor(private readonly writeChunk: (chunk: string) => void) {}
+
+  get sequence(): number {
+    return this.currentSequence;
+  }
+
+  get completed(): boolean {
+    return this.isTerminal;
+  }
+
+  emitStarted(conversationId: string): GroundedAiStreamEventV1 {
+    return this.emit('STARTED', { conversationId });
+  }
+
+  emitProgress(
+    stage: GroundedAiStreamProgressStage,
+    customMessage?: string,
+  ): GroundedAiStreamEventV1 {
+    const message = customMessage ?? CANONICAL_PROGRESS_MESSAGES[stage];
+    return this.emit('PROGRESS', { stage, message });
+  }
+
+  emitFinal(data: GroundedAiStreamFinalData): GroundedAiStreamEventV1 {
+    return this.emit('FINAL', data);
+  }
+
+  emitError(code: string, message: string): GroundedAiStreamEventV1 {
+    return this.emit('ERROR', { code, message });
+  }
+
+  private emit(
+    type: GroundedAiStreamEventType,
+    data: GroundedAiStreamEventData,
+  ): GroundedAiStreamEventV1 {
+    if (this.isTerminal) {
+      throw new Error(
+        `GroundedAiStreamEmitter: Cannot emit event '${type}' after terminal event has already been emitted`,
+      );
+    }
+
+    this.currentSequence += 1;
+    const event: GroundedAiStreamEventV1 = Object.freeze({
+      schemaVersion: STREAM_SCHEMA_VERSION,
+      type,
+      sequence: this.currentSequence,
+      timestamp: new Date().toISOString(),
+      data: Object.freeze(data) as GroundedAiStreamEventData,
+    });
+
+    if (type === 'FINAL' || type === 'ERROR') {
+      this.isTerminal = true;
+    }
+
+    this.writeChunk(formatSseEvent(event));
+    return event;
+  }
 }

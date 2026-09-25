@@ -84,6 +84,16 @@ export interface AiConversationDetailVM {
   hasMessages: boolean;
 }
 
+export type AiStreamProgressStage =
+  'CLASSIFYING' | 'GROUNDING' | 'GENERATING' | 'VALIDATING' | 'RENDERING';
+
+export interface AiStreamStateVM {
+  isStreaming: boolean;
+  stage: AiStreamProgressStage | null;
+  stageMessage: string | null;
+  error: string | null;
+}
+
 const METRIC_LABELS: Record<string, string> = {
   CURRENT_MARKET_VALUE: 'Patrimônio Atual',
   TOTAL_COST: 'Custo Total',

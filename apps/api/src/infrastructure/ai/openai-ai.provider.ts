@@ -52,6 +52,14 @@ export class OpenAiProvider implements AIProvider {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
 
+    if (options?.signal) {
+      if (options.signal.aborted) {
+        controller.abort();
+      } else {
+        options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+      }
+    }
+
     try {
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
@@ -128,6 +136,15 @@ export class OpenAiProvider implements AIProvider {
         error instanceof Error &&
         (error.name === 'AbortError' || error.message.includes('aborted'))
       ) {
+        if (options?.signal?.aborted) {
+          throw new HttpException(
+            {
+              message: 'AI request was aborted by client',
+              code: 'AI.CLIENT_ABORTED',
+            },
+            HttpStatus.BAD_REQUEST,
+          );
+        }
         throw new HttpException(
           {
             message: 'AI provider request timed out',

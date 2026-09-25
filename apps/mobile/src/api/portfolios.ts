@@ -147,4 +147,27 @@ export const portfoliosApi = {
       { question, startDate, endDate },
     );
   },
+
+  async streamAiConversationMessage<TEvent = unknown>(
+    portfolioId: string,
+    conversationId: string,
+    question: string,
+    onEvent: (event: TEvent) => void,
+    options?: {
+      startDate?: string;
+      endDate?: string;
+      signal?: AbortSignal;
+    },
+  ): Promise<void> {
+    return apiClient.stream(
+      `/api/v1/portfolios/${portfolioId}/ai/conversations/${conversationId}/messages/stream`,
+      {
+        question,
+        startDate: options?.startDate,
+        endDate: options?.endDate,
+      },
+      onEvent,
+      { signal: options?.signal },
+    );
+  },
 };

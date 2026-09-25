@@ -96,7 +96,26 @@ export default function AIScreen() {
     },
   });
 
-  // Send message mutation
+  const [streamState, setStreamState] = useState<{
+    isStreaming: boolean;
+    stage: string | null;
+    message: string | null;
+    error: string | null;
+  }>({
+    isStreaming: false,
+    stage: null,
+    message: null,
+    error: null,
+  });
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
+  // Send message mutation (fallback)
   const sendMessageMutation = useMutation({
     mutationFn: async ({ conversationId, q }: { conversationId: string; q: string }) => {
       if (!activePortfolioId) throw new Error('Selecione uma carteira');
@@ -117,12 +136,79 @@ export default function AIScreen() {
     },
   });
 
+  const handleSendMessageStream = async (targetConvId: string, q: string) => {
+    if (!activePortfolioId) return;
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setStreamState({
+      isStreaming: true,
+      stage: 'CLASSIFYING',
+      message: 'Processando requisição...',
+      error: null,
+    });
+    setQuestion('');
+
+    try {
+      await portfoliosApi.streamAiConversationMessage<{
+        type: string;
+        data?: { stage?: string; message?: string };
+      }>(
+        activePortfolioId,
+        targetConvId,
+        q,
+        (event) => {
+          if (event.type === 'PROGRESS') {
+            setStreamState({
+              isStreaming: true,
+              stage: event.data?.stage ?? null,
+              message: event.data?.message ?? null,
+              error: null,
+            });
+          } else if (event.type === 'FINAL') {
+            setStreamState({
+              isStreaming: false,
+              stage: null,
+              message: null,
+              error: null,
+            });
+            queryClient.invalidateQueries({
+              queryKey: ['ai-conversation', activePortfolioId, targetConvId],
+            });
+            queryClient.invalidateQueries({ queryKey: ['ai-conversations', activePortfolioId] });
+            setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 150);
+          } else if (event.type === 'ERROR') {
+            setStreamState({
+              isStreaming: false,
+              stage: null,
+              message: null,
+              error: event.data?.message ?? 'Erro no processamento.',
+            });
+          }
+        },
+        { signal: controller.signal },
+      );
+    } catch {
+      if (controller.signal.aborted) {
+        setStreamState({ isStreaming: false, stage: null, message: null, error: null });
+        return;
+      }
+      setStreamState({
+        isStreaming: false,
+        stage: null,
+        message: null,
+        error: 'Não foi possível gerar a explicação agora.',
+      });
+    }
+  };
+
   const handleStartNewConversation = () => {
     createConversationMutation.mutate(undefined);
   };
 
   const handleSelectPrompt = async (prompt: string) => {
-    if (!activePortfolioId) return;
+    if (!activePortfolioId || streamState.isStreaming) return;
 
     let targetConvId = activeConversationId;
     if (!targetConvId) {
@@ -131,16 +217,13 @@ export default function AIScreen() {
     }
 
     if (targetConvId) {
-      sendMessageMutation.mutate({
-        conversationId: targetConvId,
-        q: prompt,
-      });
+      await handleSendMessageStream(targetConvId, prompt);
     }
   };
 
   const handleSend = async () => {
     const q = question.trim();
-    if (!q || !activePortfolioId) return;
+    if (!q || !activePortfolioId || streamState.isStreaming) return;
 
     let targetConvId = activeConversationId;
     if (!targetConvId) {
@@ -149,10 +232,7 @@ export default function AIScreen() {
     }
 
     if (targetConvId) {
-      sendMessageMutation.mutate({
-        conversationId: targetConvId,
-        q,
-      });
+      await handleSendMessageStream(targetConvId, q);
     }
   };
 
@@ -221,7 +301,7 @@ export default function AIScreen() {
                     key={q}
                     style={styles.starterChip}
                     onPress={() => handleSelectPrompt(q)}
-                    disabled={sendMessageMutation.isPending}
+                    disabled={sendMessageMutation.isPending || streamState.isStreaming}
                   >
                     <Text style={styles.starterChipText}>{q}</Text>
                   </TouchableOpacity>
@@ -292,17 +372,19 @@ export default function AIScreen() {
               </View>
             ))}
 
-            {sendMessageMutation.isPending && (
+            {(sendMessageMutation.isPending || streamState.isStreaming) && (
               <Card style={{ marginVertical: 8 }}>
                 <ActivityIndicator color={themeTokens.colors.primary} />
-                <Text style={styles.loadingText}>Analisando fatos comprovados...</Text>
+                <Text style={styles.loadingText}>
+                  {streamState.message || 'Analisando fatos comprovados...'}
+                </Text>
               </Card>
             )}
 
-            {sendMessageMutation.isError && (
+            {(sendMessageMutation.isError || streamState.error) && (
               <Card style={{ marginVertical: 8, borderColor: themeTokens.colors.danger }}>
                 <Text style={{ color: themeTokens.colors.danger, fontSize: 12 }}>
-                  Não foi possível gerar a explicação agora.
+                  {streamState.error || 'Não foi possível gerar a explicação agora.'}
                 </Text>
               </Card>
             )}
@@ -320,12 +402,19 @@ export default function AIScreen() {
           onChangeText={setQuestion}
           multiline
           maxLength={2000}
-          editable={!sendMessageMutation.isPending && !!activePortfolioId}
+          editable={
+            !sendMessageMutation.isPending && !streamState.isStreaming && !!activePortfolioId
+          }
         />
         <Button
-          title={sendMessageMutation.isPending ? '...' : 'Enviar'}
+          title={sendMessageMutation.isPending || streamState.isStreaming ? '...' : 'Enviar'}
           onPress={handleSend}
-          disabled={sendMessageMutation.isPending || !question.trim() || !activePortfolioId}
+          disabled={
+            sendMessageMutation.isPending ||
+            streamState.isStreaming ||
+            !question.trim() ||
+            !activePortfolioId
+          }
         />
       </View>
     </Screen>

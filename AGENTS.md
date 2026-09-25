@@ -1262,3 +1262,42 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 
 7. **ANTI-ESCOPO DA FASE 3T:**
    - Proibido implementar RAG, embeddings, bancos vetoriais, agentes autônomos, busca na web, streaming (SSE/WebSocket), recomendações de investimento ou recálculo financeiro pelo modelo.
+
+---
+
+## 43. Regras de Streaming de IA e Entrega Resiliente (Fase 3U)
+
+1. **PROIBIÇÃO DE AUTORIDADE FINANCEIRA PARCIAL (ADR-200):**
+   - Texto parcial ou intermediário do provedor de IA **NUNCA** é resposta financeira nem autoridade patrimonial.
+   - É terminantemente proibido transmitir números, moedas, cotações ou percentuais literais gerados pelo modelo nos eventos de progresso (`PROGRESS`).
+   - A resposta financeira autoritativa e suas evidências comprovadas só são emitidas no evento terminal `FINAL`, após validação completa de claims no servidor.
+
+2. **BUFFER OBRIGATÓRIO NO SERVIDOR E VALIDAÇÃO PRÉ-FINAL (ADR-200):**
+   - Toda resposta bruta do provedor de IA é integralmente retida em buffer de memória no servidor (`apps/api`).
+   - As afirmações estruturadas (`GroundedClaimInput`) são submetidas à validação de claims (`validateGroundedClaims`) e renderizadas deterministicamente (`renderValidatedClaims`) com formatação canônica de strings decimais exatas antes de compor o evento `FINAL`.
+
+3. **SEQUENCIAMENTO MONOTÔNICO E TRAVAMENTO TERMINAL (ADR-199):**
+   - O protocolo SSE obedece à especificação `STREAM_SCHEMA_VERSION = '1'`.
+   - Eventos iniciam compulsoriamente com `sequence = 1` e avançam estritamente de `+1` em `+1`.
+   - O fluxo transmite no máximo **8 eventos** por mensagem.
+   - Após a emissão de um evento terminal (`FINAL` ou `ERROR`), o emissor (`GroundedAiStreamEmitter`) é travado contra qualquer emissão subsequente.
+
+4. **PERSISTÊNCIA ATÔMICA ANTES DO FINAL (PERSIST-BEFORE-FINAL, ADR-203):**
+   - O turno da conversa é gravado no PostgreSQL (`conversationRepository.appendTurn`) **antes** da transmissão do evento terminal `FINAL`.
+   - Em caso de falha de persistência, um evento `ERROR` (`AI.INTERNAL_ERROR`) é emitido e nenhum evento `FINAL` é transmitido.
+   - Em caso de cancelamento pelo cliente (`AbortSignal`) ou erro do provedor, nenhum turno de assistente respondido com sucesso é persistido no banco.
+
+5. **CANCELAMENTO RESILIENTE E PROPAGAÇÃO DE ABORT (ADR-201):**
+   - Desconexões de socket (`req.on('close')`) e sinais de cancelamento do cliente são propagados imediatamente ao provedor a jusante (`AICompletionOptions.signal`), interrompendo a requisição sem processos zumbis.
+
+6. **ISOLAMENTO DE RECURSOS E PROTEÇÃO PRÉ-STREAM (ADR-202):**
+   - A verificação de propriedade (`verifyOwnership`) é executada compulsoriamente antes do envio de cabeçalhos SSE. Tentativas de acesso não autorizado ou cross-portfolio respondem com HTTP puro `404 Not Found` (anti-enumeração).
+   - Rate limit estrito de 20 requisições por minuto por usuário.
+
+7. **ZERO IMPACTO UPSTREAM (DELTA 3T → 3U = 0):**
+   - A Fase 3U é estritamente uma camada de transporte e entrega resiliente.
+   - Adiciona zero cálculos financeiros, zero replay, zero chamadas de valuation e zero alterações em motores a montante.
+   - Exatamente 1 chamada de provedor para requisições suportadas, 0 chamadas para requisições não-suportadas.
+
+8. **ANTI-ESCOPO DA FASE 3U:**
+   - Proibido implementar RAG, embeddings, bancos vetoriais, agentes autônomos, busca na web, recomendações de investimento ou recálculo financeiro.

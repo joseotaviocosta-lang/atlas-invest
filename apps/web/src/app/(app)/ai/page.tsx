@@ -13,9 +13,11 @@ import {
   AiConversationMessageDto,
   AiConversationDetailVM,
   GroundedExplanationDto,
+  AiStreamStateVM,
+  AiStreamProgressStage,
 } from '@atlas/ui';
 
-// Multi-turn grounded conversation experience (Phase 3S), maintaining backward compatibility with /ai/explain endpoints.
+// Multi-turn grounded conversation experience with streaming (Phase 3U), maintaining backward compatibility with /ai/explain endpoints.
 
 const STARTER_QUESTIONS = [
   'Como foi o desempenho da minha carteira no período?',
@@ -30,7 +32,21 @@ export default function AIPage() {
   const [inputQuery, setInputQuery] = useState('');
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(null);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [streamState, setStreamState] = useState<AiStreamStateVM>({
+    isStreaming: false,
+    stage: null,
+    stageMessage: null,
+    error: null,
+  });
+  const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Clean up streaming abort controller on unmount
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   // Load portfolios
   const { data: portfolios } = useQuery({
@@ -88,7 +104,7 @@ export default function AIPage() {
   // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [conversationDetail?.messages]);
+  }, [conversationDetail?.messages, streamState.stageMessage]);
 
   // Create conversation mutation
   const createConversationMutation = useMutation({
@@ -106,7 +122,7 @@ export default function AIPage() {
     },
   });
 
-  // Send message mutation
+  // Backward-compatible non-streaming fallback mutation
   const sendMessageMutation = useMutation({
     mutationFn: async ({
       conversationId,
@@ -131,6 +147,73 @@ export default function AIPage() {
     },
   });
 
+  const handleSendMessageStream = async (targetConvId: string, q: string) => {
+    if (streamState.isStreaming || sendMessageMutation.isPending) return;
+
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setStreamState({
+      isStreaming: true,
+      stage: 'CLASSIFYING',
+      stageMessage: 'Analisando sua pergunta...',
+      error: null,
+    });
+    setInputQuery('');
+
+    try {
+      await apiClient.stream(
+        `/api/v1/portfolios/${activePortfolioId}/ai/conversations/${targetConvId}/messages/stream`,
+        { question: q },
+        (event: { type: string; data?: { stage?: string; message?: string } }) => {
+          if (event?.type === 'PROGRESS') {
+            setStreamState((prev) => ({
+              ...prev,
+              stage: (event.data?.stage as AiStreamProgressStage) ?? null,
+              stageMessage: event.data?.message ?? 'Processando...',
+            }));
+          } else if (event?.type === 'FINAL') {
+            setStreamState({
+              isStreaming: false,
+              stage: null,
+              stageMessage: null,
+              error: null,
+            });
+            queryClient.invalidateQueries({
+              queryKey: ['ai-conversation', activePortfolioId, activeConversationId],
+            });
+            queryClient.invalidateQueries({ queryKey: ['ai-conversations', activePortfolioId] });
+          } else if (event?.type === 'ERROR') {
+            setStreamState({
+              isStreaming: false,
+              stage: null,
+              stageMessage: null,
+              error: event.data?.message || 'Não foi possível gerar a explicação agora.',
+            });
+          }
+        },
+        { signal: controller.signal },
+      );
+    } catch (err: unknown) {
+      if (controller.signal.aborted) {
+        setStreamState({
+          isStreaming: false,
+          stage: null,
+          stageMessage: null,
+          error: null,
+        });
+        return;
+      }
+      setStreamState({
+        isStreaming: false,
+        stage: null,
+        stageMessage: null,
+        error: (err as Error).message || 'Não foi possível gerar a explicação agora.',
+      });
+    }
+  };
+
   const handleStartNewConversation = () => {
     createConversationMutation.mutate(undefined);
   };
@@ -145,10 +228,7 @@ export default function AIPage() {
     }
 
     if (targetConvId) {
-      sendMessageMutation.mutate({
-        conversationId: targetConvId,
-        question: prompt,
-      });
+      handleSendMessageStream(targetConvId, prompt);
     }
   };
 
@@ -164,10 +244,7 @@ export default function AIPage() {
     }
 
     if (targetConvId) {
-      sendMessageMutation.mutate({
-        conversationId: targetConvId,
-        question: q,
-      });
+      handleSendMessageStream(targetConvId, q);
     }
   };
 
@@ -569,15 +646,44 @@ export default function AIPage() {
                 </div>
               ))}
 
-            {/* Mutation pending skeleton */}
-            {sendMessageMutation.isPending && (
+            {/* Streaming progress indicator (Phase 3U) */}
+            {streamState.isStreaming && (
+              <div style={{ alignSelf: 'flex-start', maxWidth: '80%' }}>
+                <div
+                  style={{
+                    padding: `${spacing.sm}px ${spacing.base}px`,
+                    borderRadius: `${borderRadius.md}px`,
+                    backgroundColor: colors.surfaceElevated,
+                    border: `1px solid ${colors.border}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: `${spacing.sm}px`,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      backgroundColor: colors.accent,
+                    }}
+                  />
+                  <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                    {streamState.stageMessage || 'Analisando...'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Mutation pending skeleton (fallback) */}
+            {sendMessageMutation.isPending && !streamState.isStreaming && (
               <div style={{ alignSelf: 'flex-start', width: '70%' }}>
                 <Skeleton height="80px" />
               </div>
             )}
 
             {/* Error state */}
-            {sendMessageMutation.isError && (
+            {(streamState.error || sendMessageMutation.isError) && (
               <div
                 style={{
                   padding: `${spacing.sm}px`,
@@ -588,7 +694,8 @@ export default function AIPage() {
                   fontSize: '0.8125rem',
                 }}
               >
-                Não foi possível gerar a explicação agora. Tente novamente mais tarde.
+                {streamState.error ||
+                  'Não foi possível gerar a explicação agora. Tente novamente mais tarde.'}
               </div>
             )}
 
@@ -611,15 +718,26 @@ export default function AIPage() {
                 placeholder="Pergunte sobre a carteira (ex: 'E o risco?', 'E contra o CDI?')..."
                 value={inputQuery}
                 onChange={(e) => setInputQuery(e.target.value)}
-                disabled={sendMessageMutation.isPending || !activePortfolioId}
+                disabled={
+                  streamState.isStreaming || sendMessageMutation.isPending || !activePortfolioId
+                }
                 maxLength={2000}
               />
             </div>
             <Button
               type="submit"
-              disabled={sendMessageMutation.isPending || !inputQuery.trim() || !activePortfolioId}
+              disabled={
+                streamState.isStreaming ||
+                sendMessageMutation.isPending ||
+                !inputQuery.trim() ||
+                !activePortfolioId
+              }
             >
-              {sendMessageMutation.isPending ? 'Analisando...' : 'Enviar'}
+              {streamState.isStreaming
+                ? 'Analisando...'
+                : sendMessageMutation.isPending
+                  ? 'Analisando...'
+                  : 'Enviar'}
             </Button>
           </form>
         </div>

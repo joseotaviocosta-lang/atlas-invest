@@ -228,6 +228,105 @@ class ApiClient {
   delete<T>(endpoint: string, options?: RequestOptions): Promise<T> {
     return this.request<T>(endpoint, { ...options, method: 'DELETE' });
   }
+
+  /**
+   * Stream Server-Sent Events from an endpoint (Phase 3U).
+   */
+  async stream<TEvent = unknown>(
+    endpoint: string,
+    body: unknown,
+    onEvent: (event: TEvent) => void,
+    options?: RequestOptions,
+  ): Promise<void> {
+    const url = `${this.baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+      'x-atlas-client': 'mobile',
+      ...(options?.headers as Record<string, string>),
+    };
+
+    const token = getInMemoryAccessToken();
+    if (token && !options?.skipAuth && !headers['Authorization']) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, {
+      ...options,
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      let errData: { message?: string; code?: string; details?: unknown } | null = null;
+      try {
+        errData = (await response.json()) as {
+          message?: string;
+          code?: string;
+          details?: unknown;
+        };
+      } catch {
+        // ignore
+      }
+      throw new ApiError(
+        errData?.message || `Streaming request failed with status ${response.status}`,
+        response.status,
+        errData?.code,
+        errData?.details,
+      );
+    }
+
+    if (!response.body) {
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split(/\r?\n\r?\n/);
+      buffer = parts.pop() || '';
+
+      for (const part of parts) {
+        const trimmed = part.trim();
+        if (!trimmed) continue;
+
+        const lines = trimmed.split(/\r?\n/);
+        for (const line of lines) {
+          if (line.startsWith('data:')) {
+            const jsonStr = line.slice(5).trim();
+            try {
+              const event = JSON.parse(jsonStr) as TEvent;
+              onEvent(event);
+            } catch {
+              // skip unparseable event
+            }
+          }
+        }
+      }
+    }
+
+    if (buffer.trim()) {
+      const lines = buffer.trim().split(/\r?\n/);
+      for (const line of lines) {
+        if (line.startsWith('data:')) {
+          const jsonStr = line.slice(5).trim();
+          try {
+            const event = JSON.parse(jsonStr) as TEvent;
+            onEvent(event);
+          } catch {
+            // skip
+          }
+        }
+      }
+    }
+  }
 }
 
 export const apiClient = new ApiClient();

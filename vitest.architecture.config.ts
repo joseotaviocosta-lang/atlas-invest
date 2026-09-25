@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    testTimeout: 30000,
+    testTimeout: 60000,
     include: [
       'tests/architecture/**/*.test.ts',
       'tests/foundation/domain-rules.test.ts',

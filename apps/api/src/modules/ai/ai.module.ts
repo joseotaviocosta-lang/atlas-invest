@@ -6,6 +6,7 @@ import { CreateAiConversationUseCase } from '../../application/ai/create-ai-conv
 import { ListAiConversationsUseCase } from '../../application/ai/list-ai-conversations.use-case';
 import { GetAiConversationUseCase } from '../../application/ai/get-ai-conversation.use-case';
 import { SendAiConversationMessageUseCase } from '../../application/ai/send-ai-conversation-message.use-case';
+import { StreamAiConversationMessageUseCase } from '../../application/ai/stream-ai-conversation-message.use-case';
 import { AI_PROVIDER_TOKEN, OpenAiProvider } from '../../infrastructure/ai/openai-ai.provider';
 import { FakeAiProvider } from '@atlas/ai-engine';
 
@@ -18,6 +19,7 @@ import { FakeAiProvider } from '@atlas/ai-engine';
     ListAiConversationsUseCase,
     GetAiConversationUseCase,
     SendAiConversationMessageUseCase,
+    StreamAiConversationMessageUseCase,
     {
       provide: AI_PROVIDER_TOKEN,
       useFactory: () => {
@@ -34,6 +36,7 @@ import { FakeAiProvider } from '@atlas/ai-engine';
     ListAiConversationsUseCase,
     GetAiConversationUseCase,
     SendAiConversationMessageUseCase,
+    StreamAiConversationMessageUseCase,
     AI_PROVIDER_TOKEN,
   ],
 })
