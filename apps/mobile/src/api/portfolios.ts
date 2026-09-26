@@ -137,6 +137,7 @@ export const portfoliosApi = {
     portfolioId: string,
     conversationId: string,
     question: string,
+    scope?: { type: 'PORTFOLIO' } | { type: 'ASSET'; assetId: string },
     startDate?: string,
     endDate?: string,
   ): Promise<{
@@ -144,7 +145,7 @@ export const portfoliosApi = {
   }> {
     return apiClient.post(
       `/api/v1/portfolios/${portfolioId}/ai/conversations/${conversationId}/messages`,
-      { question, startDate, endDate },
+      { question, scope, startDate, endDate },
     );
   },
 
@@ -154,6 +155,7 @@ export const portfoliosApi = {
     question: string,
     onEvent: (event: TEvent) => void,
     options?: {
+      scope?: { type: 'PORTFOLIO' } | { type: 'ASSET'; assetId: string };
       startDate?: string;
       endDate?: string;
       signal?: AbortSignal;
@@ -163,6 +165,7 @@ export const portfoliosApi = {
       `/api/v1/portfolios/${portfolioId}/ai/conversations/${conversationId}/messages/stream`,
       {
         question,
+        scope: options?.scope,
         startDate: options?.startDate,
         endDate: options?.endDate,
       },

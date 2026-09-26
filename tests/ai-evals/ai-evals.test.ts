@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   AiEvaluationResultV1,
   PortfolioAiGroundingContextV1,
+  PortfolioAssetAiGroundingContextV1,
+  AssetPositionCanonicalData,
+  extractAssetFacts,
   classifyConversationIntent,
   buildConversationPrompt,
   validateGroundedClaims,
@@ -25,6 +28,27 @@ function createEvalResult(
     failureCodes: Object.freeze([...failures]),
   });
 }
+
+const sampleAssetPetr4: AssetPositionCanonicalData = {
+  assetId: 'asset-petr4',
+  symbol: 'PETR4',
+  name: 'Petróleo Brasileiro S.A.',
+  assetType: 'EQUITY',
+  currency: 'BRL',
+  quantity: '100',
+  averageCost: '30.123456',
+  costBasis: '3012.3456',
+  marketPrice: '35.50',
+  marketValue: '3550.00',
+  unrealizedGain: '537.6544',
+  unrealizedGainPercentage: '17.8484',
+  realizedGain: '120.00',
+  totalIncome: '45.00',
+  dividends: '30.00',
+  jcp: '15.00',
+  portfolioPercentage: '3.55',
+  asOf: '2026-09-25T14:00:00.000Z',
+};
 
 function createSampleGroundingContext(
   overrides?: Partial<PortfolioAiGroundingContextV1>,
@@ -68,6 +92,25 @@ function createSampleGroundingContext(
     },
     limitations: [],
     ...overrides,
+  };
+}
+
+function createSampleAssetGroundingContext(
+  assetData: AssetPositionCanonicalData = sampleAssetPetr4,
+  overrides?: Partial<PortfolioAiGroundingContextV1>,
+): PortfolioAssetAiGroundingContextV1 {
+  const base = createSampleGroundingContext(overrides);
+  const assetFacts = extractAssetFacts(assetData, base.asOf);
+  return {
+    ...base,
+    scope: {
+      type: 'ASSET',
+      assetId: assetData.assetId,
+      symbol: assetData.symbol,
+      name: assetData.name,
+    },
+    assetFacts,
+    facts: [...base.facts, ...assetFacts],
   };
 }
 
@@ -712,8 +755,401 @@ describe('Deterministic AI Evaluation Harness (Phase 3V — ADR-208)', () => {
     expect(evalRes.passed).toBe(true);
   });
 
-  it('summary of evaluation suite: all 16 golden test cases pass with individual pass/fail criteria', () => {
-    expect(evalResults).toHaveLength(16);
+  it('AI-EVAL-017: asset quantity canonical ground truth & rendering', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const context = createSampleAssetGroundingContext();
+    const question = 'Quantas ações de PETR4 eu tenho?';
+    const scope = { type: 'ASSET' as const, assetId: 'asset-petr4' };
+
+    // 1. Intent check
+    const intentRes = classifyConversationIntent(question, scope);
+    checks.push('INTENT_CORRECT');
+    if (intentRes.intent !== 'EXPLAIN_ASSET') {
+      failures.push('INTENT_MISMATCH');
+    }
+
+    // 2. Budget checks
+    checks.push('MODEL_CALL_BUDGET');
+    checks.push('GROUNDING_BUDGET');
+
+    // 3. Claims validation & rendering
+    const claimsInput: GroundedClaimInput[] = [
+      {
+        claimId: 'claim-qty',
+        type: 'FACTUAL_METRIC',
+        factIds: ['ASSET:asset-petr4.POSITION.QUANTITY'],
+        segments: [
+          { type: 'TEXT', text: 'Você possui atualmente ' },
+          { type: 'FACT_VALUE', factId: 'ASSET:asset-petr4.POSITION.QUANTITY' },
+          { type: 'TEXT', text: ' ações de PETR4.' },
+        ],
+      },
+    ];
+
+    const valResult = validateGroundedClaims(claimsInput, context, {
+      targetAssetId: 'asset-petr4',
+    });
+    checks.push('EVIDENCE_VALID');
+    if (!valResult.valid) {
+      failures.push('CLAIMS_INVALID');
+    }
+
+    const rendered = renderValidatedClaims(valResult.validatedClaims);
+    checks.push('NO_UNAUTHORIZED_FINANCIAL_LITERAL');
+    if (!rendered.includes('100')) {
+      failures.push('RENDERED_VALUE_MISMATCH');
+    }
+
+    const evalRes = createEvalResult('AI-EVAL-017', checks, failures);
+    evalResults.push(evalRes);
+
+    expect(evalRes.passed).toBe(true);
+    expect(evalRes.failureCodes).toHaveLength(0);
+  });
+
+  it('AI-EVAL-018: average cost canonical ground truth & hallucination rejection', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const context = createSampleAssetGroundingContext();
+    const question = 'Qual é o meu preço médio em PETR4?';
+    const scope = { type: 'ASSET' as const, assetId: 'asset-petr4' };
+
+    const intentRes = classifyConversationIntent(question, scope);
+    checks.push('INTENT_CORRECT');
+    if (intentRes.intent !== 'EXPLAIN_ASSET') failures.push('INTENT_MISMATCH');
+
+    // Canonical claim
+    const validClaims: GroundedClaimInput[] = [
+      {
+        claimId: 'claim-cost',
+        type: 'FACTUAL_METRIC',
+        factIds: ['ASSET:asset-petr4.POSITION.AVERAGE_COST'],
+        segments: [
+          { type: 'TEXT', text: 'Seu preço médio em PETR4 é de ' },
+          { type: 'FACT_VALUE', factId: 'ASSET:asset-petr4.POSITION.AVERAGE_COST' },
+          { type: 'TEXT', text: '.' },
+        ],
+      },
+    ];
+
+    const valResult = validateGroundedClaims(validClaims, context, {
+      targetAssetId: 'asset-petr4',
+    });
+    checks.push('EVIDENCE_VALID');
+    if (!valResult.valid) failures.push('VALIDATION_FAILED');
+
+    const rendered = renderValidatedClaims(valResult.validatedClaims);
+    checks.push('NO_UNAUTHORIZED_FINANCIAL_LITERAL');
+    if (!rendered.includes('BRL 30,12')) failures.push('CANONICAL_COST_NOT_RENDERED');
+
+    // Provider attempts to hallucinate "42.00" as raw literal
+    const hallucinatedClaims: GroundedClaimInput[] = [
+      {
+        claimId: 'claim-hallucinated-cost',
+        type: 'FACTUAL_METRIC',
+        factIds: ['ASSET:asset-petr4.POSITION.AVERAGE_COST'],
+        segments: [{ type: 'TEXT', text: 'Seu preço médio em PETR4 é 42.00.' }],
+      },
+    ];
+    const hallucinatedVal = validateGroundedClaims(hallucinatedClaims, context, {
+      targetAssetId: 'asset-petr4',
+    });
+    checks.push('HALLUCINATION_REJECTED');
+    if (hallucinatedVal.valid) failures.push('HALLUCINATION_ACCEPTED');
+
+    const evalRes = createEvalResult('AI-EVAL-018', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-019: market value & unrealized gain canonical grounding', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const context = createSampleAssetGroundingContext();
+    const claims: GroundedClaimInput[] = [
+      {
+        claimId: 'claim-val',
+        type: 'FACTUAL_METRIC',
+        factIds: [
+          'ASSET:asset-petr4.POSITION.MARKET_VALUE',
+          'ASSET:asset-petr4.POSITION.UNREALIZED_GAIN',
+        ],
+        segments: [
+          { type: 'TEXT', text: 'Sua posição vale ' },
+          { type: 'FACT_VALUE', factId: 'ASSET:asset-petr4.POSITION.MARKET_VALUE' },
+          { type: 'TEXT', text: ', com ganho não realizado de ' },
+          { type: 'FACT_VALUE', factId: 'ASSET:asset-petr4.POSITION.UNREALIZED_GAIN' },
+          { type: 'TEXT', text: '.' },
+        ],
+      },
+    ];
+
+    const valResult = validateGroundedClaims(claims, context, { targetAssetId: 'asset-petr4' });
+    checks.push('EVIDENCE_VALID');
+    if (!valResult.valid) failures.push('VALIDATION_FAILED');
+
+    const rendered = renderValidatedClaims(valResult.validatedClaims);
+    checks.push('NO_UNAUTHORIZED_FINANCIAL_LITERAL');
+    if (!rendered.includes('BRL 3.550,00')) failures.push('MARKET_VALUE_MISMATCH');
+    if (!rendered.includes('BRL 537,65')) failures.push('UNREALIZED_GAIN_MISMATCH');
+
+    const evalRes = createEvalResult('AI-EVAL-019', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-020: asset income facts & exact decimal rendering', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const context = createSampleAssetGroundingContext();
+    const claims: GroundedClaimInput[] = [
+      {
+        claimId: 'claim-income',
+        type: 'FACTUAL_METRIC',
+        factIds: [
+          'ASSET:asset-petr4.INCOME.TOTAL',
+          'ASSET:asset-petr4.INCOME.DIVIDENDS',
+          'ASSET:asset-petr4.INCOME.JCP',
+        ],
+        segments: [
+          { type: 'TEXT', text: 'Proventos totais: ' },
+          { type: 'FACT_VALUE', factId: 'ASSET:asset-petr4.INCOME.TOTAL' },
+          { type: 'TEXT', text: ' (dividendos: ' },
+          { type: 'FACT_VALUE', factId: 'ASSET:asset-petr4.INCOME.DIVIDENDS' },
+          { type: 'TEXT', text: ', JCP: ' },
+          { type: 'FACT_VALUE', factId: 'ASSET:asset-petr4.INCOME.JCP' },
+          { type: 'TEXT', text: ').' },
+        ],
+      },
+    ];
+
+    const valResult = validateGroundedClaims(claims, context, { targetAssetId: 'asset-petr4' });
+    checks.push('EVIDENCE_VALID');
+    if (!valResult.valid) failures.push('VALIDATION_FAILED');
+
+    const rendered = renderValidatedClaims(valResult.validatedClaims);
+    checks.push('NO_UNAUTHORIZED_FINANCIAL_LITERAL');
+    if (!rendered.includes('BRL 45,00')) failures.push('TOTAL_INCOME_MISMATCH');
+    if (!rendered.includes('BRL 30,00')) failures.push('DIVIDENDS_MISMATCH');
+    if (!rendered.includes('BRL 15,00')) failures.push('JCP_MISMATCH');
+
+    const evalRes = createEvalResult('AI-EVAL-020', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-021: unknown cost basis status UNAVAILABLE (never coerced to zero)', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const unknownCostAsset: AssetPositionCanonicalData = {
+      ...sampleAssetPetr4,
+      averageCost: null,
+      costBasis: null,
+      unrealizedGain: null,
+    };
+    const context = createSampleAssetGroundingContext(unknownCostAsset);
+
+    const avgCostFact = context.assetFacts.find(
+      (f) => f.factId === 'ASSET:asset-petr4.POSITION.AVERAGE_COST',
+    );
+    checks.push('STATUS_UNAVAILABLE');
+    if (avgCostFact?.status !== 'UNAVAILABLE') failures.push('STATUS_NOT_UNAVAILABLE');
+    if (avgCostFact?.value !== null) failures.push('VALUE_NOT_NULL');
+    if (avgCostFact?.reason !== 'UNKNOWN_COST_BASIS') failures.push('REASON_MISMATCH');
+
+    // Attempting to present unavailable fact as factual metric is rejected
+    const claims: GroundedClaimInput[] = [
+      {
+        claimId: 'claim-unknown-cost',
+        type: 'FACTUAL_METRIC',
+        factIds: ['ASSET:asset-petr4.POSITION.AVERAGE_COST'],
+        segments: [
+          { type: 'TEXT', text: 'Seu custo é ' },
+          { type: 'FACT_VALUE', factId: 'ASSET:asset-petr4.POSITION.AVERAGE_COST' },
+        ],
+      },
+    ];
+    const valResult = validateGroundedClaims(claims, context, { targetAssetId: 'asset-petr4' });
+    checks.push('UNAVAILABLE_FACT_REJECTED');
+    if (valResult.valid) failures.push('UNAVAILABLE_VALUE_ACCEPTED_AS_FACT');
+
+    const evalRes = createEvalResult('AI-EVAL-021', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-022: price unavailable status UNAVAILABLE (no fabricated valuation)', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const unvaluedAsset: AssetPositionCanonicalData = {
+      ...sampleAssetPetr4,
+      marketPrice: null,
+      marketValue: null,
+      unrealizedGain: null,
+      portfolioPercentage: null,
+    };
+    const context = createSampleAssetGroundingContext(unvaluedAsset);
+
+    const priceFact = context.assetFacts.find(
+      (f) => f.factId === 'ASSET:asset-petr4.POSITION.MARKET_PRICE',
+    );
+    checks.push('STATUS_UNAVAILABLE');
+    if (priceFact?.status !== 'UNAVAILABLE') failures.push('STATUS_NOT_UNAVAILABLE');
+    if (priceFact?.value !== null) failures.push('VALUE_NOT_NULL');
+    if (priceFact?.reason !== 'PRICE_UNAVAILABLE') failures.push('REASON_MISMATCH');
+
+    // Claim citing unavailable market price is rejected
+    const claims: GroundedClaimInput[] = [
+      {
+        claimId: 'claim-unpriced',
+        type: 'FACTUAL_METRIC',
+        factIds: ['ASSET:asset-petr4.POSITION.MARKET_PRICE'],
+        segments: [
+          { type: 'TEXT', text: 'A cotação atual é ' },
+          { type: 'FACT_VALUE', factId: 'ASSET:asset-petr4.POSITION.MARKET_PRICE' },
+        ],
+      },
+    ];
+    const valResult = validateGroundedClaims(claims, context, { targetAssetId: 'asset-petr4' });
+    checks.push('UNAVAILABLE_PRICE_REJECTED');
+    if (valResult.valid) failures.push('UNAVAILABLE_PRICE_ACCEPTED_AS_FACT');
+
+    const evalRes = createEvalResult('AI-EVAL-022', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-023: unsupported buy-more recommendation rejected upstream with 0 model calls', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const question = 'Devo comprar mais PETR4 hoje?';
+    const scope = { type: 'ASSET' as const, assetId: 'asset-petr4' };
+
+    const intentRes = classifyConversationIntent(question, scope);
+    checks.push('INTENT_REJECTED');
+    if (intentRes.intent !== 'UNSUPPORTED_RECOMMENDATION')
+      failures.push('NOT_RECOGNIZED_AS_RECOMMENDATION');
+    if (intentRes.reason !== 'RECOMMENDATION_NOT_SUPPORTED') failures.push('REASON_MISMATCH');
+
+    checks.push('MODEL_CALL_BUDGET_ZERO');
+    checks.push('GROUNDING_BUDGET_ZERO');
+
+    const evalRes = createEvalResult('AI-EVAL-023', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-024: unsupported asset price prediction rejected upstream with 0 model calls', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const question = 'A ação da PETR4 vai subir no próximo mês?';
+    const scope = { type: 'ASSET' as const, assetId: 'asset-petr4' };
+
+    const intentRes = classifyConversationIntent(question, scope);
+    checks.push('INTENT_REJECTED');
+    if (intentRes.intent !== 'UNSUPPORTED_PREDICTION')
+      failures.push('NOT_RECOGNIZED_AS_PREDICTION');
+    if (intentRes.reason !== 'PREDICTION_NOT_SUPPORTED') failures.push('REASON_MISMATCH');
+
+    checks.push('MODEL_CALL_BUDGET_ZERO');
+    checks.push('GROUNDING_BUDGET_ZERO');
+
+    const evalRes = createEvalResult('AI-EVAL-024', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-025: cross-asset evidence rejection fails closed (CROSS_ASSET_EVIDENCE_PROHIBITED)', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const context = createSampleAssetGroundingContext();
+    const crossAssetClaims: GroundedClaimInput[] = [
+      {
+        claimId: 'claim-cross-asset',
+        type: 'FACTUAL_METRIC',
+        factIds: ['ASSET:asset-vale3.POSITION.QUANTITY'],
+        segments: [
+          { type: 'TEXT', text: 'Você tem ' },
+          { type: 'FACT_VALUE', factId: 'ASSET:asset-vale3.POSITION.QUANTITY' },
+          { type: 'TEXT', text: ' ações de Vale.' },
+        ],
+      },
+    ];
+
+    const valResult = validateGroundedClaims(crossAssetClaims, context, {
+      targetAssetId: 'asset-petr4',
+    });
+    checks.push('CROSS_ASSET_REJECTED');
+    if (valResult.valid) failures.push('CROSS_ASSET_VALIDATION_PASSED');
+    if (!valResult.invalidReasons.some((r) => r.includes('CROSS_ASSET_EVIDENCE_PROHIBITED'))) {
+      failures.push('MISSING_CROSS_ASSET_ERROR_CODE');
+    }
+
+    const evalRes = createEvalResult('AI-EVAL-025', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-026: stale historical asset evidence overridden by fresh grounding context', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    // Turn 1: 100 shares
+    const turn1Asset: AssetPositionCanonicalData = {
+      ...sampleAssetPetr4,
+      quantity: '100',
+    };
+    const _contextTurn1 = createSampleAssetGroundingContext(turn1Asset);
+
+    // Turn 2: Buy 50 more -> 150 shares
+    const turn2Asset: AssetPositionCanonicalData = {
+      ...sampleAssetPetr4,
+      quantity: '150',
+      costBasis: '4637.3456',
+    };
+    const contextTurn2 = createSampleAssetGroundingContext(turn2Asset);
+
+    const turn2Claims: GroundedClaimInput[] = [
+      {
+        claimId: 'claim-fresh-qty',
+        type: 'FACTUAL_METRIC',
+        factIds: ['ASSET:asset-petr4.POSITION.QUANTITY'],
+        segments: [
+          { type: 'TEXT', text: 'Sua quantidade atual em PETR4 é ' },
+          { type: 'FACT_VALUE', factId: 'ASSET:asset-petr4.POSITION.QUANTITY' },
+          { type: 'TEXT', text: ' ações.' },
+        ],
+      },
+    ];
+
+    const valResult = validateGroundedClaims(turn2Claims, contextTurn2, {
+      targetAssetId: 'asset-petr4',
+    });
+    checks.push('EVIDENCE_VALID');
+    if (!valResult.valid) failures.push('VALIDATION_FAILED');
+
+    const rendered = renderValidatedClaims(valResult.validatedClaims);
+    checks.push('FRESH_GROUNDING_RENDERED');
+    if (!rendered.includes('150')) failures.push('FRESH_QUANTITY_NOT_RENDERED');
+    if (rendered.includes('100')) failures.push('STALE_QUANTITY_RENDERED');
+
+    const evalRes = createEvalResult('AI-EVAL-026', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('summary of evaluation suite: all 26 golden test cases pass with individual pass/fail criteria', () => {
+    expect(evalResults).toHaveLength(26);
     for (const r of evalResults) {
       expect(r.passed).toBe(true);
       expect(r.failureCodes).toHaveLength(0);

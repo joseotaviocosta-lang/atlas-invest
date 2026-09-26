@@ -15,6 +15,7 @@ import {
 import {
   Screen,
   Header,
+  Button,
   LoadingState,
   EmptyState,
   ErrorState,
@@ -275,6 +276,23 @@ export default function MobileAssetDetailPage() {
               isCostBasisIncomplete={viewModel.header.isCostBasisIncomplete}
               completenessBadgeLabel={viewModel.header.completenessBadgeLabel}
               isOpen={viewModel.primaryCard.rawQuantity !== '0'}
+            />
+
+            {/* AI Assistant CTA (Phase 3W) */}
+            <Button
+              title={`Perguntar à IA sobre ${viewModel.header.ticker}`}
+              variant="secondary"
+              onPress={() => {
+                router.push({
+                  pathname: '/(app)/(tabs)/ai',
+                  params: {
+                    portfolioId: activePortfolioId,
+                    assetId,
+                    symbol: viewModel.header.ticker,
+                  },
+                });
+              }}
+              style={{ marginVertical: themeTokens.spacing.sm }}
             />
 
             {/* Primary Position Card */}

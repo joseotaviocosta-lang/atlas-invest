@@ -20,9 +20,12 @@ import {
   ConversationHistoryMessage,
   ExplanationIntent,
   GroundedClaimV1,
+  PortfolioAiGroundingContextV1,
+  PortfolioAssetAiGroundingContextV1,
 } from '@atlas/ai-engine';
 import { IAiConversationRepository } from '@atlas/database';
 import { GetPortfolioAiGroundingContextUseCase } from './get-portfolio-ai-grounding-context.use-case';
+import { GetPortfolioAssetAiGroundingContextUseCase } from './get-portfolio-asset-ai-grounding-context.use-case';
 import { AI_CONVERSATION_REPOSITORY } from '../../database/tokens';
 import { AI_PROVIDER_TOKEN } from '../../infrastructure/ai/openai-ai.provider';
 import {
@@ -36,6 +39,17 @@ export const SendAiConversationMessageBodySchema = z.object({
     .trim()
     .min(3, { message: 'A pergunta deve conter pelo menos 3 caracteres.' })
     .max(2000, { message: 'A pergunta deve conter no máximo 2000 caracteres.' }),
+  scope: z
+    .discriminatedUnion('type', [
+      z.object({
+        type: z.literal('PORTFOLIO'),
+      }),
+      z.object({
+        type: z.literal('ASSET'),
+        assetId: z.string().min(1, { message: 'assetId is required for ASSET scope' }),
+      }),
+    ])
+    .optional(),
   startDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'startDate must be YYYY-MM-DD' })
@@ -123,6 +137,8 @@ export class SendAiConversationMessageUseCase {
     private readonly conversationRepository: IAiConversationRepository,
     @Inject(GetPortfolioAiGroundingContextUseCase)
     private readonly getGroundingContextUseCase: GetPortfolioAiGroundingContextUseCase,
+    @Inject(GetPortfolioAssetAiGroundingContextUseCase)
+    private readonly getAssetGroundingContextUseCase: GetPortfolioAssetAiGroundingContextUseCase,
     @Inject(AI_PROVIDER_TOKEN)
     private readonly aiProvider: AIProvider,
     @Optional()
@@ -141,6 +157,7 @@ export class SendAiConversationMessageUseCase {
     let ownershipMs: number | undefined;
     let historyLoadMs: number | undefined;
     let groundingMs: number | undefined;
+    let assetGroundingMs: number | undefined;
     let promptBuildMs: number | undefined;
     let providerMs: number | undefined;
     let claimValidationMs: number | undefined;
@@ -161,6 +178,7 @@ export class SendAiConversationMessageUseCase {
     let historyMessageCount: number | undefined;
     let historyChars: number | undefined;
     let groundingFactCount: number | undefined;
+    let assetFactCount: number | undefined;
     let groundingSerializedBytes: number | undefined;
 
     let inputTokens: number | null = null;
@@ -226,6 +244,7 @@ export class SendAiConversationMessageUseCase {
       const { intent, reason } = classifyConversationIntent(
         validatedInput.question,
         selectedHistory.messages,
+        validatedInput.scope,
       );
       intentGateMs = performance.now() - tIntentStart;
       detectedIntent = intent;
@@ -275,12 +294,27 @@ export class SendAiConversationMessageUseCase {
       // 4. Obtain FRESH grounding context EXACTLY ONCE for supported intents
       const tGroundingStart = performance.now();
       groundingCallCount = 1;
-      const context = await this.getGroundingContextUseCase.execute({
-        portfolioId: validatedInput.portfolioId,
-        userId: validatedInput.userId,
-        startDate: validatedInput.startDate,
-        endDate: validatedInput.endDate,
-      });
+      let context: PortfolioAiGroundingContextV1 | PortfolioAssetAiGroundingContextV1;
+
+      if (validatedInput.scope?.type === 'ASSET') {
+        const tAssetStart = performance.now();
+        context = await this.getAssetGroundingContextUseCase.execute({
+          portfolioId: validatedInput.portfolioId,
+          userId: validatedInput.userId,
+          assetId: validatedInput.scope.assetId,
+          startDate: validatedInput.startDate,
+          endDate: validatedInput.endDate,
+        });
+        assetGroundingMs = performance.now() - tAssetStart;
+        assetFactCount = (context as PortfolioAssetAiGroundingContextV1).assetFacts.length;
+      } else {
+        context = await this.getGroundingContextUseCase.execute({
+          portfolioId: validatedInput.portfolioId,
+          userId: validatedInput.userId,
+          startDate: validatedInput.startDate,
+          endDate: validatedInput.endDate,
+        });
+      }
       groundingMs = performance.now() - tGroundingStart;
       groundingFactCount = context.facts.length;
       groundingSerializedBytes = Buffer.byteLength(JSON.stringify(context.facts), 'utf8');
@@ -388,7 +422,10 @@ export class SendAiConversationMessageUseCase {
       const tValidationStart = performance.now();
       if (claims && claims.length > 0) {
         claimValidationCount = 1;
-        const claimValidation = validateGroundedClaims(claims, context);
+        const claimValidation = validateGroundedClaims(claims, context, {
+          targetAssetId:
+            validatedInput.scope?.type === 'ASSET' ? validatedInput.scope.assetId : undefined,
+        });
         if (!claimValidation.valid) {
           executionStatus = 'VALIDATION_ERROR';
           errorCode = 'AI.INVALID_MODEL_RESPONSE';
@@ -520,6 +557,7 @@ export class SendAiConversationMessageUseCase {
             ownershipMs,
             historyLoadMs,
             groundingMs,
+            assetGroundingMs,
             promptBuildMs,
             providerMs,
             claimValidationMs,
@@ -543,8 +581,10 @@ export class SendAiConversationMessageUseCase {
             historyMessageCount,
             historyChars,
             groundingFactCount,
+            assetFactCount,
             groundingSerializedBytes,
           },
+          scopeType: validatedInput.scope?.type === 'ASSET' ? 'ASSET' : 'PORTFOLIO',
           portfolioId: validatedInput.portfolioId,
           conversationId: validatedInput.conversationId,
           errorCode,

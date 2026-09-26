@@ -329,6 +329,18 @@ function AssetPositionDetailContent() {
         asOf={temporal.asOf}
       />
 
+      {/* AI Assistant CTA (Phase 3W) */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: `${spacing.md}px` }}>
+        <Link
+          href={`/ai?portfolioId=${activePortfolioId}&assetId=${assetId}&symbol=${encodeURIComponent(viewModel.header.ticker)}`}
+          style={{ textDecoration: 'none' }}
+        >
+          <Button variant="outline" size="sm">
+            Perguntar à IA sobre {viewModel.header.ticker}
+          </Button>
+        </Link>
+      </div>
+
       {/* 2. Primary Position Card (Quantity, Average Cost, Total Cost) */}
       <AssetPositionPrimaryCard
         quantity={viewModel.primaryCard.quantity}

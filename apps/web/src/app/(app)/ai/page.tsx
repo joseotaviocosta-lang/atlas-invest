@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 import { PortfolioDto } from '@/api/types';
@@ -27,10 +28,25 @@ const STARTER_QUESTIONS = [
   'Há dados incompletos na minha carteira?',
 ];
 
-export default function AIPage() {
+const ASSET_STARTER_QUESTIONS = [
+  'Qual é meu preço médio neste ativo?',
+  'Quantas cotas ou ações eu possuo?',
+  'Qual é o valor atual de mercado da posição?',
+  'Quanto recebi de proventos deste ativo?',
+];
+
+function AIContent() {
+  const searchParams = useSearchParams();
+  const initialAssetId = searchParams.get('assetId');
+  const initialSymbol = searchParams.get('symbol');
+  const portfolioIdParam = searchParams.get('portfolioId');
+
   const queryClient = useQueryClient();
   const [inputQuery, setInputQuery] = useState('');
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(null);
+  const [assetScope, setAssetScope] = useState<{ assetId: string; symbol: string } | null>(
+    initialAssetId ? { assetId: initialAssetId, symbol: initialSymbol || initialAssetId } : null,
+  );
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(portfolioIdParam);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [streamState, setStreamState] = useState<AiStreamStateVM>({
     isStreaming: false,
@@ -132,9 +148,13 @@ export default function AIPage() {
       question: string;
     }) => {
       if (!activePortfolioId) throw new Error('Selecione uma carteira');
+      const payload = {
+        question,
+        ...(assetScope ? { scope: { type: 'ASSET' as const, assetId: assetScope.assetId } } : {}),
+      };
       const response = await apiClient.post<{ data: GroundedExplanationDto }>(
         `/api/v1/portfolios/${activePortfolioId}/ai/conversations/${conversationId}/messages`,
-        { question },
+        payload,
       );
       return response.data;
     },
@@ -163,9 +183,13 @@ export default function AIPage() {
     setInputQuery('');
 
     try {
+      const streamPayload = {
+        question: q,
+        ...(assetScope ? { scope: { type: 'ASSET' as const, assetId: assetScope.assetId } } : {}),
+      };
       await apiClient.stream(
         `/api/v1/portfolios/${activePortfolioId}/ai/conversations/${targetConvId}/messages/stream`,
-        { question: q },
+        streamPayload,
         (event: { type: string; data?: { stage?: string; message?: string } }) => {
           if (event?.type === 'PROGRESS') {
             setStreamState((prev) => ({
@@ -431,7 +455,7 @@ export default function AIPage() {
                       justifyContent: 'center',
                     }}
                   >
-                    {STARTER_QUESTIONS.map((q) => (
+                    {(assetScope ? ASSET_STARTER_QUESTIONS : STARTER_QUESTIONS).map((q) => (
                       <Chip
                         key={q}
                         label={q}
@@ -702,6 +726,34 @@ export default function AIPage() {
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Asset Scope Indicator (Phase 3W) */}
+          {assetScope && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: `${spacing.xs}px ${spacing.md}px`,
+                backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+                borderRadius: `${borderRadius.md}px`,
+                marginBottom: `${spacing.sm}px`,
+              }}
+            >
+              <span style={{ fontSize: '0.8125rem', color: colors.accent, fontWeight: 600 }}>
+                🎯 Sobre: {assetScope.symbol}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAssetScope(null)}
+                style={{ fontSize: '0.75rem', padding: '2px 8px' }}
+              >
+                Limpar escopo
+              </Button>
+            </div>
+          )}
+
           {/* Message Composer */}
           <form
             onSubmit={handleSend}
@@ -715,7 +767,11 @@ export default function AIPage() {
           >
             <div style={{ flex: 1 }}>
               <Input
-                placeholder="Pergunte sobre a carteira (ex: 'E o risco?', 'E contra o CDI?')..."
+                placeholder={
+                  assetScope
+                    ? `Pergunte sobre ${assetScope.symbol} (ex: 'Qual é meu preço médio?')...`
+                    : "Pergunte sobre a carteira (ex: 'E o risco?', 'E contra o CDI?')..."
+                }
                 value={inputQuery}
                 onChange={(e) => setInputQuery(e.target.value)}
                 disabled={
@@ -743,5 +799,13 @@ export default function AIPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AIPage() {
+  return (
+    <React.Suspense fallback={<Skeleton width="100%" height="400px" />}>
+      <AIContent />
+    </React.Suspense>
   );
 }

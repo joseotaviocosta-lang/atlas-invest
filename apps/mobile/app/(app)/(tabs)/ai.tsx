@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   themeTokens,
@@ -28,11 +28,30 @@ const STARTER_QUESTIONS = [
   'Há dados incompletos na minha carteira?',
 ];
 
+const ASSET_STARTER_QUESTIONS = [
+  'Qual é meu preço médio neste ativo?',
+  'Quantas cotas ou ações eu possuo?',
+  'Qual é o valor atual de mercado da posição?',
+  'Quanto recebi de proventos deste ativo?',
+];
+
 export default function AIScreen() {
   const router = useRouter();
+  const localParams = useLocalSearchParams<{
+    portfolioId?: string;
+    assetId?: string;
+    symbol?: string;
+  }>();
   const queryClient = useQueryClient();
   const [question, setQuestion] = useState('');
-  const [selectedPortfolioId, _setSelectedPortfolioId] = useState<string | null>(null);
+  const [assetScope, setAssetScope] = useState<{ assetId: string; symbol: string } | null>(
+    localParams.assetId
+      ? { assetId: localParams.assetId, symbol: localParams.symbol || localParams.assetId }
+      : null,
+  );
+  const [selectedPortfolioId, _setSelectedPortfolioId] = useState<string | null>(
+    localParams.portfolioId || null,
+  );
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -123,6 +142,7 @@ export default function AIScreen() {
         activePortfolioId,
         conversationId,
         q,
+        assetScope ? { type: 'ASSET', assetId: assetScope.assetId } : undefined,
       );
       return response.data;
     },
@@ -187,7 +207,10 @@ export default function AIScreen() {
             });
           }
         },
-        { signal: controller.signal },
+        {
+          scope: assetScope ? { type: 'ASSET', assetId: assetScope.assetId } : undefined,
+          signal: controller.signal,
+        },
       );
     } catch {
       if (controller.signal.aborted) {
@@ -296,7 +319,7 @@ export default function AIScreen() {
                 incompletos.
               </Text>
               <View style={styles.starterChipsContainer}>
-                {STARTER_QUESTIONS.map((q) => (
+                {(assetScope ? ASSET_STARTER_QUESTIONS : STARTER_QUESTIONS).map((q) => (
                   <TouchableOpacity
                     key={q}
                     style={styles.starterChip}
@@ -392,11 +415,28 @@ export default function AIScreen() {
         )}
       </ScrollView>
 
+      {/* Scope Banner (Phase 3W) */}
+      {assetScope && (
+        <View style={styles.scopeBanner}>
+          <Text style={styles.scopeBannerText}>
+            🎯 Sobre:{' '}
+            <Text style={{ fontWeight: '700', color: themeTokens.colors.primary }}>
+              {assetScope.symbol}
+            </Text>
+          </Text>
+          <TouchableOpacity onPress={() => setAssetScope(null)} style={styles.clearScopeButton}>
+            <Text style={styles.clearScopeButtonText}>Limpar escopo</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Composer */}
       <View style={styles.composerContainer}>
         <TextInput
           style={styles.textInput}
-          placeholder="Pergunte sobre sua carteira..."
+          placeholder={
+            assetScope ? `Pergunte sobre ${assetScope.symbol}...` : 'Pergunte sobre sua carteira...'
+          }
           placeholderTextColor={colors.textMuted}
           value={question}
           onChangeText={setQuestion}
@@ -646,5 +686,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     fontSize: 13,
+  },
+  scopeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: themeTokens.spacing.md,
+    paddingVertical: 6,
+    backgroundColor: themeTokens.colors.surfaceElevated,
+    borderTopWidth: 1,
+    borderTopColor: themeTokens.colors.border,
+  },
+  scopeBannerText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  clearScopeButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: themeTokens.colors.border,
+  },
+  clearScopeButtonText: {
+    fontSize: 11,
+    color: themeTokens.colors.primary,
   },
 });

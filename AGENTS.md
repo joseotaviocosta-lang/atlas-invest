@@ -1343,3 +1343,38 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 
 8. **ANTI-ESCOPO DA FASE 3V:**
    - A Fase 3V não adiciona RAG, embeddings, bancos vetoriais, agentes autônomos, busca na web, recomendações ou previsões de investimento.
+
+---
+
+## 45. Regras de Inteligência de Ativos e Escopo de IA (Fase 3W)
+
+1. **ASSETID COMO IDENTIDADE CANÔNICA (ADR-210):**
+   - O `AssetId` é a identidade canônica e inequívoca do ativo financeiro no escopo de IA. O ticker/símbolo atua unicamente como metadado visual de exibição.
+   - Requisições com escopo de ativo devem resolver o `AssetId` antes de qualquer invocação ao provedor de IA. É **terminantemente proibido** utilizar LLMs para inferir ou adivinhar o ativo a partir de texto livre.
+
+2. **AUTORIDADE CANÔNICA E ZERO RECÁLCULO FINANCEIRO (ADR-211, ADR-212):**
+   - Fatos de ativos derivam exclusivamente dos modelos de leitura e avaliação canônicos (`PortfolioReadApi`, `PortfolioReplayEngine`, `PortfolioValuation`).
+   - A IA pode explicar valores canônicos preexistentes, mas **NUNCA** calcular novos valores financeiros ou métricas contábeis.
+   - É expressamente proibido enviar o histórico bruto de transações (ledger) ao modelo de IA.
+
+3. **SEMÂNTICA DE PRECISÃO E VALORES INDISPONÍVEIS (ADR-212):**
+   - Fatos de ativos preservam moedas, unidades e naturezas canônicas com precisão decimal exata (`Money`, `Quantity`, `Percentage` em strings decimais).
+   - Preço médio desconhecido (`UNKNOWN_COST_BASIS`) ou cotação indisponível (`PRICE_UNAVAILABLE`) resultam estritamente em valor `null`, **NUNCA** sendo coagidos para `"0"` ou `0`.
+
+4. **ESCOPO POR MENSAGEM E SEM SANGRIA HISTÓRICA (ADR-213):**
+   - O escopo de conversa é avaliado por mensagem (`{ type: 'PORTFOLIO' } | { type: 'ASSET', assetId }`).
+   - O escopo de turnos anteriores **NUNCA** deve sangrar silenciosamente para turnos futuros. Limpar o escopo na interface retorna imediatamente ao contexto global da carteira.
+
+5. **PROIBIÇÃO ESTRITA DE EVIDÊNCIA CRUZADA (ADR-214):**
+   - Em requisições com escopo de ativo (`targetAssetId`), é proibido que qualquer claim cite fatos pertencentes a outro ativo.
+   - Violações disparam imediatamente `CROSS_ASSET_EVIDENCE_PROHIBITED` e falha fechada com `422 Unprocessable Entity` (`AI.INVALID_MODEL_RESPONSE`).
+
+6. **CONTEXTO BOUNDED INDEPENDENTE DO TAMANHO DA CARTEIRA (ADR-215):**
+   - O contexto de grounding de ativo é estritamente limitado ($\le 25$ fatos de ativo e orçamento total $\le 32.768$ bytes), independentemente de a carteira possuir 10, 100 ou 1.000 posições.
+   - Métricas de telemetria utilizam exclusivamente `scopeType: 'PORTFOLIO' | 'ASSET'`, excluindo `assetId` de labels para evitar explosão de cardinalidade.
+
+7. **BARRAGEM PRÉ-MODELO DE INTENÇÕES NÃO SUPORTADAS:**
+   - Perguntas de recomendação ("devo comprar mais?"), previsão ("vai subir?") ou opinião de valuation permanecem bloqueadas deterministicamente antes de qualquer chamada a provedores (`providerCallCount = 0`).
+
+8. **ANTI-ESCOPO DA FASE 3W:**
+   - A Fase 3W proíbe estritamente RAG, bancos vetoriais, embeddings, agentes autônomos, busca na internet, web scraping, ferramentas (function calling) ou novas autoridades financeiras.

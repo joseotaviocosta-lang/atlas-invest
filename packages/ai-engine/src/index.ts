@@ -74,6 +74,11 @@ export const GROUNDED_FACT_CATEGORIES = [
   'ACTIVE_PERFORMANCE',
   'TAIL_RISK',
   'SCENARIO',
+  'ASSET_IDENTITY',
+  'ASSET_POSITION',
+  'ASSET_INCOME',
+  'ASSET_REALIZED',
+  'ASSET_ALLOCATION',
 ] as const;
 export type GroundedFactCategory = (typeof GROUNDED_FACT_CATEGORIES)[number];
 
@@ -86,6 +91,7 @@ export const GROUNDED_FACT_UNITS = [
   'DATE',
   'STATUS',
   'TEXT_ENUM',
+  'QUANTITY',
 ] as const;
 export type GroundedFactUnit = (typeof GROUNDED_FACT_UNITS)[number];
 
@@ -95,6 +101,7 @@ export const GROUNDED_FACT_NATURES = [
   'HISTORICAL',
   'HYPOTHETICAL',
   'STRUCTURAL',
+  'CURRENT',
 ] as const;
 export type GroundedFactNature = (typeof GROUNDED_FACT_NATURES)[number];
 
@@ -102,7 +109,7 @@ export const GROUNDED_FACT_STATUSES = ['AVAILABLE', 'PARTIAL', 'UNAVAILABLE'] as
 export type GroundedFactStatus = (typeof GROUNDED_FACT_STATUSES)[number];
 
 export interface GroundedFactSource {
-  readonly contract: 'PORTFOLIO_INTELLIGENCE_SUMMARY_V1';
+  readonly contract: 'PORTFOLIO_INTELLIGENCE_SUMMARY_V1' | 'PORTFOLIO_READ_API_V1';
   readonly path: string;
 }
 
@@ -123,6 +130,7 @@ export interface GroundedFinancialFact {
   };
   readonly asOf?: string;
   readonly source: GroundedFactSource;
+  readonly assetId?: string;
 }
 
 export interface GroundedLimitation {
@@ -177,6 +185,45 @@ export interface PortfolioAiGroundingContextV1 {
 
 export interface BuildGroundingOptions {
   readonly generatedAt?: string;
+}
+
+export interface AssetAiScope {
+  readonly type: 'ASSET';
+  readonly assetId: string;
+  readonly symbol?: string;
+  readonly name?: string;
+}
+
+export interface PortfolioAiScope {
+  readonly type: 'PORTFOLIO';
+}
+
+export type AiConversationScope = PortfolioAiScope | AssetAiScope;
+
+export interface PortfolioAssetAiGroundingContextV1 extends PortfolioAiGroundingContextV1 {
+  readonly scope: AssetAiScope;
+  readonly assetFacts: readonly GroundedFinancialFact[];
+}
+
+export interface AssetPositionCanonicalData {
+  readonly assetId: string;
+  readonly symbol?: string;
+  readonly name?: string;
+  readonly assetType?: string;
+  readonly currency: string;
+  readonly quantity: string;
+  readonly averageCost: string | null;
+  readonly costBasis: string | null;
+  readonly marketPrice: string | null;
+  readonly marketValue: string | null;
+  readonly unrealizedGain: string | null;
+  readonly unrealizedGainPercentage: string | null;
+  readonly realizedGain?: string | null;
+  readonly totalIncome?: string | null;
+  readonly dividends?: string | null;
+  readonly jcp?: string | null;
+  readonly portfolioPercentage?: string | null;
+  readonly asOf?: string;
 }
 
 function deepFreeze<T>(obj: T): T {
@@ -869,6 +916,317 @@ export function buildPortfolioAiGroundingContext(
   return deepFreeze(context);
 }
 
+/**
+ * Deterministically extracts canonical GroundedFinancialFact items for an individual asset position (Phase 3W, ADR-210–ADR-215).
+ * Facts are bounded (max 25), strictly ordered by priority:
+ * 1. ASSET_IDENTITY (Symbol, Name, Type)
+ * 2. ASSET_POSITION (Quantity, Average Cost, Cost Basis, Market Price, Market Value, Unrealized Gain, Unrealized Gain Percentage)
+ * 3. ASSET_REALIZED (Realized Gain)
+ * 4. ASSET_INCOME (Total Income, Dividends, JCP)
+ * 5. ASSET_ALLOCATION (Portfolio Percentage)
+ */
+export function extractAssetFacts(
+  assetData: AssetPositionCanonicalData,
+  asOf: string,
+): GroundedFinancialFact[] {
+  const facts: GroundedFinancialFact[] = [];
+  const assetId = assetData.assetId;
+  const scope = assetData.symbol ? `${assetData.symbol} (${assetId})` : assetId;
+  const currency = assetData.currency;
+  const factAsOf = assetData.asOf ?? asOf;
+  const source: GroundedFactSource = {
+    contract: 'PORTFOLIO_READ_API_V1',
+    path: `positions.${assetId}`,
+  };
+
+  // 1. ASSET_IDENTITY
+  facts.push({
+    factId: `ASSET:${assetId}.IDENTITY.SYMBOL`,
+    category: 'ASSET_IDENTITY',
+    scope,
+    metric: 'ASSET_SYMBOL',
+    value: assetData.symbol ?? assetId,
+    unit: 'TEXT_ENUM',
+    nature: 'CURRENT',
+    status: 'AVAILABLE',
+    asOf: factAsOf,
+    source,
+    assetId,
+  });
+
+  if (assetData.name) {
+    facts.push({
+      factId: `ASSET:${assetId}.IDENTITY.NAME`,
+      category: 'ASSET_IDENTITY',
+      scope,
+      metric: 'ASSET_NAME',
+      value: assetData.name,
+      unit: 'TEXT_ENUM',
+      nature: 'CURRENT',
+      status: 'AVAILABLE',
+      asOf: factAsOf,
+      source,
+      assetId,
+    });
+  }
+
+  if (assetData.assetType) {
+    facts.push({
+      factId: `ASSET:${assetId}.IDENTITY.TYPE`,
+      category: 'ASSET_IDENTITY',
+      scope,
+      metric: 'ASSET_TYPE',
+      value: assetData.assetType,
+      unit: 'TEXT_ENUM',
+      nature: 'CURRENT',
+      status: 'AVAILABLE',
+      asOf: factAsOf,
+      source,
+      assetId,
+    });
+  }
+
+  // 2. ASSET_POSITION
+  facts.push({
+    factId: `ASSET:${assetId}.POSITION.QUANTITY`,
+    category: 'ASSET_POSITION',
+    scope,
+    metric: 'QUANTITY',
+    value: assetData.quantity,
+    unit: 'QUANTITY',
+    nature: 'CURRENT',
+    status: 'AVAILABLE',
+    asOf: factAsOf,
+    source,
+    assetId,
+  });
+
+  facts.push({
+    factId: `ASSET:${assetId}.POSITION.AVERAGE_COST`,
+    category: 'ASSET_POSITION',
+    scope,
+    metric: 'AVERAGE_COST',
+    value: assetData.averageCost,
+    unit: 'MONEY',
+    currency,
+    nature: 'CURRENT',
+    status: assetData.averageCost !== null ? 'AVAILABLE' : 'UNAVAILABLE',
+    reason: assetData.averageCost === null ? 'UNKNOWN_COST_BASIS' : null,
+    asOf: factAsOf,
+    source,
+    assetId,
+  });
+
+  facts.push({
+    factId: `ASSET:${assetId}.POSITION.COST_BASIS`,
+    category: 'ASSET_POSITION',
+    scope,
+    metric: 'COST_BASIS',
+    value: assetData.costBasis,
+    unit: 'MONEY',
+    currency,
+    nature: 'CURRENT',
+    status: assetData.costBasis !== null ? 'AVAILABLE' : 'UNAVAILABLE',
+    reason: assetData.costBasis === null ? 'UNKNOWN_COST_BASIS' : null,
+    asOf: factAsOf,
+    source,
+    assetId,
+  });
+
+  facts.push({
+    factId: `ASSET:${assetId}.POSITION.MARKET_PRICE`,
+    category: 'ASSET_POSITION',
+    scope,
+    metric: 'MARKET_PRICE',
+    value: assetData.marketPrice,
+    unit: 'MONEY',
+    currency,
+    nature: 'CURRENT',
+    status: assetData.marketPrice !== null ? 'AVAILABLE' : 'UNAVAILABLE',
+    reason: assetData.marketPrice === null ? 'PRICE_UNAVAILABLE' : null,
+    asOf: factAsOf,
+    source,
+    assetId,
+  });
+
+  facts.push({
+    factId: `ASSET:${assetId}.POSITION.MARKET_VALUE`,
+    category: 'ASSET_POSITION',
+    scope,
+    metric: 'CURRENT_MARKET_VALUE',
+    value: assetData.marketValue,
+    unit: 'MONEY',
+    currency,
+    nature: 'CURRENT',
+    status: assetData.marketValue !== null ? 'AVAILABLE' : 'UNAVAILABLE',
+    reason: assetData.marketValue === null ? 'PRICE_UNAVAILABLE' : null,
+    asOf: factAsOf,
+    source,
+    assetId,
+  });
+
+  facts.push({
+    factId: `ASSET:${assetId}.POSITION.UNREALIZED_GAIN`,
+    category: 'ASSET_POSITION',
+    scope,
+    metric: 'UNREALIZED_GAIN',
+    value: assetData.unrealizedGain,
+    unit: 'MONEY',
+    currency,
+    nature: 'CURRENT',
+    status: assetData.unrealizedGain !== null ? 'AVAILABLE' : 'UNAVAILABLE',
+    reason:
+      assetData.unrealizedGain === null
+        ? assetData.averageCost === null
+          ? 'UNKNOWN_COST_BASIS'
+          : 'PRICE_UNAVAILABLE'
+        : null,
+    asOf: factAsOf,
+    source,
+    assetId,
+  });
+
+  facts.push({
+    factId: `ASSET:${assetId}.POSITION.UNREALIZED_GAIN_PERCENTAGE`,
+    category: 'ASSET_POSITION',
+    scope,
+    metric: 'UNREALIZED_GAIN_PERCENTAGE',
+    value: assetData.unrealizedGainPercentage,
+    unit: 'PERCENTAGE',
+    nature: 'CURRENT',
+    status: assetData.unrealizedGainPercentage !== null ? 'AVAILABLE' : 'UNAVAILABLE',
+    reason:
+      assetData.unrealizedGainPercentage === null
+        ? assetData.averageCost === null
+          ? 'UNKNOWN_COST_BASIS'
+          : 'PRICE_UNAVAILABLE'
+        : null,
+    asOf: factAsOf,
+    source,
+    assetId,
+  });
+
+  // 3. ASSET_REALIZED
+  if (assetData.realizedGain !== undefined) {
+    facts.push({
+      factId: `ASSET:${assetId}.REALIZED.REALIZED_GAIN`,
+      category: 'ASSET_REALIZED',
+      scope,
+      metric: 'REALIZED_GAIN',
+      value: assetData.realizedGain,
+      unit: 'MONEY',
+      currency,
+      nature: 'CURRENT',
+      status: assetData.realizedGain !== null ? 'AVAILABLE' : 'UNAVAILABLE',
+      reason: assetData.realizedGain === null ? 'UNKNOWN_COST_BASIS' : null,
+      asOf: factAsOf,
+      source,
+      assetId,
+    });
+  }
+
+  // 4. ASSET_INCOME
+  if (assetData.totalIncome !== undefined) {
+    facts.push({
+      factId: `ASSET:${assetId}.INCOME.TOTAL`,
+      category: 'ASSET_INCOME',
+      scope,
+      metric: 'TOTAL_INCOME',
+      value: assetData.totalIncome,
+      unit: 'MONEY',
+      currency,
+      nature: 'CURRENT',
+      status: assetData.totalIncome !== null ? 'AVAILABLE' : 'UNAVAILABLE',
+      asOf: factAsOf,
+      source,
+      assetId,
+    });
+  }
+
+  if (assetData.dividends !== undefined) {
+    facts.push({
+      factId: `ASSET:${assetId}.INCOME.DIVIDENDS`,
+      category: 'ASSET_INCOME',
+      scope,
+      metric: 'DIVIDENDS',
+      value: assetData.dividends,
+      unit: 'MONEY',
+      currency,
+      nature: 'CURRENT',
+      status: assetData.dividends !== null ? 'AVAILABLE' : 'UNAVAILABLE',
+      asOf: factAsOf,
+      source,
+      assetId,
+    });
+  }
+
+  if (assetData.jcp !== undefined) {
+    facts.push({
+      factId: `ASSET:${assetId}.INCOME.JCP`,
+      category: 'ASSET_INCOME',
+      scope,
+      metric: 'JCP',
+      value: assetData.jcp,
+      unit: 'MONEY',
+      currency,
+      nature: 'CURRENT',
+      status: assetData.jcp !== null ? 'AVAILABLE' : 'UNAVAILABLE',
+      asOf: factAsOf,
+      source,
+      assetId,
+    });
+  }
+
+  // 5. ASSET_ALLOCATION
+  if (assetData.portfolioPercentage !== undefined) {
+    facts.push({
+      factId: `ASSET:${assetId}.ALLOCATION.PORTFOLIO_PERCENTAGE`,
+      category: 'ASSET_ALLOCATION',
+      scope,
+      metric: 'PORTFOLIO_PERCENTAGE',
+      value: assetData.portfolioPercentage,
+      unit: 'PERCENTAGE',
+      nature: 'CURRENT',
+      status: assetData.portfolioPercentage !== null ? 'AVAILABLE' : 'UNAVAILABLE',
+      reason: assetData.portfolioPercentage === null ? 'PRICE_UNAVAILABLE' : null,
+      asOf: factAsOf,
+      source,
+      assetId,
+    });
+  }
+
+  return facts.slice(0, 25);
+}
+
+/**
+ * Pure, deterministic builder transforming a PortfolioIntelligenceSummary and canonical asset position data into
+ * a versioned, bounded, immutable PortfolioAssetAiGroundingContextV1 (Phase 3W, ADR-210–ADR-215).
+ */
+export function buildPortfolioAssetAiGroundingContext(
+  summary: PortfolioIntelligenceSummary,
+  assetData: AssetPositionCanonicalData,
+  options?: BuildGroundingOptions,
+): PortfolioAssetAiGroundingContextV1 {
+  const portfolioContext = buildPortfolioAiGroundingContext(summary, options);
+  const assetFacts = extractAssetFacts(assetData, summary.asOf);
+
+  const combinedFacts = [...portfolioContext.facts, ...assetFacts];
+
+  const context: PortfolioAssetAiGroundingContextV1 = {
+    ...portfolioContext,
+    scope: {
+      type: 'ASSET',
+      assetId: assetData.assetId,
+      symbol: assetData.symbol,
+      name: assetData.name,
+    },
+    assetFacts,
+    facts: combinedFacts,
+  };
+
+  return deepFreeze(context);
+}
+
 // ---------------------------------------------------------------------------
 // Phase 3R: Grounded AI Explanation Foundation (ADR-179–ADR-185)
 // First generative model execution bounded by canonical grounded facts.
@@ -892,6 +1250,7 @@ export const EXPLANATION_INTENTS = [
   'EXPLAIN_RISK',
   'EXPLAIN_SCENARIO',
   'EXPLAIN_DATA_QUALITY',
+  'EXPLAIN_ASSET',
   'UNSUPPORTED_RECOMMENDATION',
   'UNSUPPORTED_PREDICTION',
   'UNSUPPORTED_NEW_CALCULATION',
@@ -951,7 +1310,10 @@ export const INTENT_REFUSAL_MESSAGES: Record<
  * Deterministic intent classifier (ADR-181)
  * Evaluates user questions against capability boundaries before any model invocation.
  */
-export function classifyExplanationIntent(question: string): {
+export function classifyExplanationIntent(
+  question: string,
+  scope?: AiConversationScope,
+): {
   intent: ExplanationIntent;
   reason?: string;
 } {
@@ -977,9 +1339,9 @@ export function classifyExplanationIntent(question: string): {
     };
   }
 
-  // 2. Recommendations
+  // 2. Recommendations (including asset-level recommendation phrases: "comprar mais", "barata", "vale a pena", etc.)
   if (
-    /\b(comprar|compre|compro|vender|vendo|venda|vendi|rebalancear|rebalanceamento|rebalanceio|alocar|alocacao\s+ideal|melhor\s+ativo|melhores\s+ativos|pior\s+ativo|piores\s+ativos|qual\s+acao|quais\s+acoes|qual\s+fii|quais\s+fiis|o\s+que\s+comprar|o\s+que\s+vender|devo\s+comprar|devo\s+vender|devo\s+manter|recomende|recomendacao|indique|indicacao|sugira|sugestao\s+de\s+compra|carteira\s+recomendada|onde\s+investir|onde\s+devo\s+investir)\b/i.test(
+    /\b(comprar|compre|compro|vender|vendo|venda|vendi|rebalancear|rebalanceamento|rebalanceio|alocar|alocacao\s+ideal|melhor\s+ativo|melhores\s+ativos|pior\s+ativo|piores\s+ativos|qual\s+acao|quais\s+acoes|qual\s+fii|quais\s+fiis|o\s+que\s+comprar|o\s+que\s+vender|devo\s+comprar|devo\s+vender|devo\s+manter|recomende|recomendacao|indique|indicacao|sugira|sugestao\s+de\s+compra|carteira\s+recomendada|onde\s+investir|onde\s+devo\s+investir|barata|barato|cara|caro|preco\s+justo|substituir|substituiria|vale\s+a\s+pena\s+comprar|vale\s+comprar|vale\s+vender|devo\s+comprar\s+mais)\b/i.test(
       normalized,
     )
   ) {
@@ -989,7 +1351,7 @@ export function classifyExplanationIntent(question: string): {
     };
   }
 
-  // 3. Predictions
+  // 3. Predictions (including asset-level price targets and forecasts)
   if (
     /\b(vai\s+subir|vai\s+cair|vai\s+render|previsao|prever|projetar|projecao|projecoes|quanto\s+vai\s+render|futuro|proximo\s+ano|ano\s+que\s+vem|preco\s+alvo|preco-alvo|meta\s+de\s+preco|estimativa\s+de\s+retorno|expectativa\s+de\s+retorno|vai\s+bater\s+o\s+ibov|vai\s+superar)\b/i.test(
       normalized,
@@ -1028,7 +1390,26 @@ export function classifyExplanationIntent(question: string): {
     };
   }
 
-  // 6. Allowed Explanation Categories
+  // 6. Explicit Asset Scope Routing (Phase 3W)
+  if (scope?.type === 'ASSET') {
+    return { intent: 'EXPLAIN_ASSET' };
+  }
+
+  // 7. Missing Asset Scope Refusal (ADR-210, ADR-213)
+  // If user asks about an individual asset's position/cost/holdings without explicit asset scope,
+  // fail-closed deterministically instead of guessing identity through NLP.
+  if (
+    /\b(preco\s+medio|quantas\s+cotas|minha\s+posicao\s+em|quantos\s+tenho\s+em|quanto\s+tenho\s+em|fale\s+sobre\s+[a-z]{4}\d{1,2}|sobre\s+o\s+ativo|sobre\s+este\s+ativo)\b/i.test(
+      normalized,
+    )
+  ) {
+    return {
+      intent: 'UNSUPPORTED_OTHER',
+      reason: 'MISSING_ASSET_SCOPE',
+    };
+  }
+
+  // 8. Allowed Portfolio Explanation Categories
   // Scenario
   if (
     /\b(cenario|cenarios|queda\s+de\s+10%|alta\s+de\s+10%|queda\s+de\s+20%|stress|estresse|choque|simulacao|hipotetico|hipotetica)\b/i.test(
@@ -1108,6 +1489,8 @@ export interface ResolvedEvidenceFact {
   asOf?: string;
   nature: GroundedFactNature;
   status: GroundedFactStatus;
+  assetId?: string;
+  currency?: string;
 }
 
 export interface GroundedAiExplanationResponseV1 {
@@ -1377,6 +1760,8 @@ export interface MinimalEvidenceSnapshotFact {
     readonly startDate: string;
     readonly endDate: string;
   };
+  readonly assetId?: string;
+  readonly currency?: string;
 }
 
 export interface ConversationHistoryMessage {
@@ -1388,6 +1773,7 @@ export interface ConversationHistoryMessage {
   readonly evidenceSnapshot?: readonly MinimalEvidenceSnapshotFact[];
   readonly limitations?: readonly string[];
   readonly createdAt: string;
+  readonly scope?: AiConversationScope;
 }
 
 export interface ConversationHistorySelection {
@@ -1474,13 +1860,26 @@ export function selectConversationHistory(
  */
 export function classifyConversationIntent(
   question: string,
-  recentHistory?: readonly ConversationHistoryMessage[],
+  recentHistoryOrScope?: readonly ConversationHistoryMessage[] | AiConversationScope,
+  scope?: AiConversationScope,
 ): {
   intent: ExplanationIntent;
   reason?: string;
 } {
+  const effectiveScope: AiConversationScope | undefined =
+    scope ??
+    (recentHistoryOrScope && !Array.isArray(recentHistoryOrScope) && 'type' in recentHistoryOrScope
+      ? (recentHistoryOrScope as AiConversationScope)
+      : undefined);
+
+  const recentHistory: readonly ConversationHistoryMessage[] | undefined = Array.isArray(
+    recentHistoryOrScope,
+  )
+    ? recentHistoryOrScope
+    : undefined;
+
   // First evaluate direct intent
-  const direct = classifyExplanationIntent(question);
+  const direct = classifyExplanationIntent(question, effectiveScope);
   if (
     direct.intent === 'UNSUPPORTED_RECOMMENDATION' ||
     direct.intent === 'UNSUPPORTED_PREDICTION' ||
@@ -1496,7 +1895,8 @@ export function classifyConversationIntent(
     direct.intent === 'EXPLAIN_RISK' ||
     direct.intent === 'EXPLAIN_SCENARIO' ||
     direct.intent === 'EXPLAIN_PERFORMANCE' ||
-    direct.intent === 'EXPLAIN_DATA_QUALITY'
+    direct.intent === 'EXPLAIN_DATA_QUALITY' ||
+    direct.intent === 'EXPLAIN_ASSET'
   ) {
     return direct;
   }
@@ -1556,6 +1956,10 @@ export function buildConversationPrompt(
     analysisPeriod: context.analysisPeriod,
     asOf: context.asOf,
     currencies: context.currencies,
+    scope:
+      'scope' in context && context.scope
+        ? (context.scope as AiConversationScope)
+        : { type: 'PORTFOLIO' as const },
     facts: context.facts.map((f) => ({
       factId: f.factId,
       category: f.category,
@@ -1567,6 +1971,8 @@ export function buildConversationPrompt(
       asOf: f.asOf,
       nature: f.nature,
       status: f.status,
+      assetId: f.assetId,
+      currency: f.currency,
     })),
     dataQuality: {
       status: context.dataQuality.status,
@@ -1619,6 +2025,8 @@ export function buildMinimalEvidenceSnapshot(
         status: f.status,
         asOf: f.asOf,
         period: f.period,
+        assetId: f.assetId,
+        currency: f.currency,
       }),
     ),
   );
@@ -1679,6 +2087,11 @@ export const CLAIM_CATEGORY_COMPATIBILITY: Readonly<
     'ACTIVE_PERFORMANCE',
     'TAIL_RISK',
     'SCENARIO',
+    'ASSET_IDENTITY',
+    'ASSET_POSITION',
+    'ASSET_INCOME',
+    'ASSET_REALIZED',
+    'ASSET_ALLOCATION',
   ] as const),
   BENCHMARK_COMPARISON: Object.freeze([
     'BENCHMARK',
@@ -1699,6 +2112,11 @@ export const CLAIM_CATEGORY_COMPATIBILITY: Readonly<
     'ACTIVE_PERFORMANCE',
     'TAIL_RISK',
     'SCENARIO',
+    'ASSET_IDENTITY',
+    'ASSET_POSITION',
+    'ASSET_INCOME',
+    'ASSET_REALIZED',
+    'ASSET_ALLOCATION',
   ] as const),
   CONTEXTUAL_EXPLANATION: Object.freeze([
     'OVERVIEW',
@@ -1710,6 +2128,11 @@ export const CLAIM_CATEGORY_COMPATIBILITY: Readonly<
     'ACTIVE_PERFORMANCE',
     'TAIL_RISK',
     'SCENARIO',
+    'ASSET_IDENTITY',
+    'ASSET_POSITION',
+    'ASSET_INCOME',
+    'ASSET_REALIZED',
+    'ASSET_ALLOCATION',
   ] as const),
 });
 
@@ -1739,6 +2162,20 @@ const CANONICAL_METRIC_LABELS: Readonly<Record<string, string>> = Object.freeze(
   DIFFERENCE: 'Diferença',
   STRESSED_VALUE: 'Valor Estressado',
   ESTIMATED_IMPACT: 'Impacto Estimado',
+  QUANTITY: 'Quantidade',
+  AVERAGE_COST: 'Preço Médio',
+  COST_BASIS: 'Custo Total',
+  MARKET_PRICE: 'Cotação Atual',
+  UNREALIZED_GAIN: 'Ganho/Perda Não Realizado',
+  UNREALIZED_GAIN_PERCENTAGE: 'Rentabilidade Não Realizada',
+  REALIZED_GAIN: 'Ganho Realizado',
+  TOTAL_INCOME: 'Total de Proventos',
+  DIVIDENDS: 'Dividendos',
+  JCP: 'Juros sobre Capital Próprio',
+  PORTFOLIO_PERCENTAGE: 'Participação na Carteira',
+  ASSET_SYMBOL: 'Ticker',
+  ASSET_NAME: 'Nome do Ativo',
+  ASSET_TYPE: 'Tipo de Ativo',
 });
 
 /**
@@ -1778,6 +2215,7 @@ function formatExactDecimalString(valueStr: string, decimalPlaces = 2): string {
  * - PERCENTAGE_POINTS: formatted amount with sign + " p.p." (e.g. "+4,25 p.p.", "-2,10 p.p.", NEVER "%")
  * - RATIO: formatted unitless decimal (e.g. "-0,12", "1,45", NEVER "%")
  * - COUNT: integer string
+ * - QUANTITY: exact formatted quantity
  * - Unavailable or null: "—"
  */
 export function formatFactValueForDisplay(
@@ -1809,6 +2247,12 @@ export function formatFactValueForDisplay(
     }
     case 'COUNT': {
       return formatExactDecimalString(fact.value, 0);
+    }
+    case 'QUANTITY': {
+      const trimmed = fact.value.trim();
+      const dotIndex = trimmed.indexOf('.');
+      const decimals = dotIndex >= 0 ? trimmed.length - dotIndex - 1 : 0;
+      return formatExactDecimalString(trimmed, decimals);
     }
     case 'DATE':
     case 'STATUS':
@@ -1878,6 +2322,10 @@ export function validateGroundedClaims(
   context:
     | PortfolioAiGroundingContextV1
     | { readonly facts: readonly (GroundedFinancialFact | MinimalEvidenceSnapshotFact)[] },
+  options?: {
+    targetAssetId?: string;
+    assetCurrency?: string;
+  },
 ): GroundedClaimValidationResult {
   if (!claimsInput || claimsInput.length === 0) {
     return Object.freeze({
@@ -1904,6 +2352,16 @@ export function validateGroundedClaims(
   for (const f of context.facts) {
     factMap.set(f.factId, f);
   }
+
+  const targetAssetId =
+    options?.targetAssetId ??
+    ('scope' in context &&
+    context.scope &&
+    typeof context.scope === 'object' &&
+    'type' in context.scope &&
+    (context.scope as { readonly type: string; readonly assetId?: string }).type === 'ASSET'
+      ? (context.scope as { readonly type: string; readonly assetId: string }).assetId
+      : undefined);
 
   const validatedClaims: GroundedClaimV1[] = [];
   const invalidReasons: string[] = [];
@@ -2035,16 +2493,46 @@ export function validateGroundedClaims(
           break;
         }
 
+        // Check for raw standalone financial decimal literals (e.g. "42.00", "30.123456")
+        const floatMatches = text.match(/\b\d+\.\d{2,}\b/g);
+        if (floatMatches) {
+          const isDateOrVersion = floatMatches.every((m) => /^\d{4}\.\d{2}$/.test(m));
+          if (!isDateOrVersion) {
+            claimValid = false;
+            claimFailureReason = `EMBEDDED_FINANCIAL_LITERAL: text segment in '${claimId}' contains raw numeric literal ('${floatMatches.join(
+              ', ',
+            )}'). Financial values must use FACT_VALUE segments.`;
+            break;
+          }
+        }
+
         renderedParts.push(text);
       } else if (seg.type === 'FACT_VALUE' || seg.type === 'FACT_LABEL') {
         const factId = seg.factId;
         claimFactIds.add(factId);
         allCitedFactIds.add(factId);
 
+        // Cross-asset evidence rejection by factId prefix (Phase 3W, ADR-214)
+        if (targetAssetId) {
+          const assetPrefixMatch = factId.match(/^ASSET:([^.]+)\./);
+          if (assetPrefixMatch && assetPrefixMatch[1] !== targetAssetId) {
+            claimValid = false;
+            claimFailureReason = `CROSS_ASSET_EVIDENCE_PROHIBITED: claim '${claimId}' cites fact '${factId}' for asset '${assetPrefixMatch[1]}', but request is scoped to asset '${targetAssetId}'`;
+            break;
+          }
+        }
+
         const fact = factMap.get(factId);
         if (!fact) {
           claimValid = false;
           claimFailureReason = `UNKNOWN_FACT_ID: factId '${factId}' cited in '${claimId}' does not exist in grounding context`;
+          break;
+        }
+
+        // Cross-asset evidence rejection by fact assetId attribute (Phase 3W, ADR-214)
+        if (targetAssetId && fact.assetId && fact.assetId !== targetAssetId) {
+          claimValid = false;
+          claimFailureReason = `CROSS_ASSET_EVIDENCE_PROHIBITED: claim '${claimId}' cites fact '${factId}' belonging to asset '${fact.assetId}', but request is scoped to asset '${targetAssetId}'`;
           break;
         }
 
@@ -2074,6 +2562,11 @@ export function validateGroundedClaims(
               : undefined;
         if (curr) {
           currenciesInClaim.add(curr);
+          if (options?.assetCurrency && curr !== options.assetCurrency) {
+            claimValid = false;
+            claimFailureReason = `CURRENCY_MISMATCH: fact '${factId}' with currency '${curr}' does not match asset currency '${options.assetCurrency}'`;
+            break;
+          }
         }
       } else {
         claimValid = false;
@@ -2419,6 +2912,7 @@ export interface AiExecutionDurationsV1 {
   readonly ownershipMs?: number;
   readonly historyLoadMs?: number;
   readonly groundingMs?: number;
+  readonly assetGroundingMs?: number;
   readonly promptBuildMs?: number;
   readonly providerMs?: number;
   readonly claimValidationMs?: number;
@@ -2439,6 +2933,7 @@ export interface AiExecutionCountsV1 {
   readonly historyMessageCount?: number;
   readonly historyChars?: number;
   readonly groundingFactCount?: number;
+  readonly assetFactCount?: number;
   readonly groundingSerializedBytes?: number;
 }
 
@@ -2456,6 +2951,7 @@ export interface AiExecutionTelemetryV1 {
   readonly durations: AiExecutionDurationsV1;
   readonly usage: AiTokenUsageV1;
   readonly counts: AiExecutionCountsV1;
+  readonly scopeType?: 'PORTFOLIO' | 'ASSET';
   readonly portfolioId?: string;
   readonly conversationId?: string;
   readonly errorCode?: string;
@@ -2478,7 +2974,7 @@ export const AI_METRIC_NAMES = {
 
 /**
  * Strict low-cardinality metric label extractor (ADR-209).
- * Guarantees that high-cardinality IDs (userId, portfolioId, conversationId, requestId)
+ * Guarantees that high-cardinality IDs (userId, portfolioId, conversationId, requestId, assetId)
  * are NEVER introduced as metric labels.
  */
 export function extractSafeMetricLabels(telemetry: AiExecutionTelemetryV1): Record<string, string> {
@@ -2493,6 +2989,10 @@ export function extractSafeMetricLabels(telemetry: AiExecutionTelemetryV1): Reco
 
   if (telemetry.errorCode) {
     labels.errorCode = telemetry.errorCode;
+  }
+
+  if (telemetry.scopeType) {
+    labels.scopeType = telemetry.scopeType;
   }
 
   return Object.freeze(labels);
@@ -2532,6 +3032,7 @@ export interface BuildAiExecutionTelemetryParams {
     ownershipMs?: number;
     historyLoadMs?: number;
     groundingMs?: number;
+    assetGroundingMs?: number;
     promptBuildMs?: number;
     providerMs?: number;
     claimValidationMs?: number;
@@ -2557,8 +3058,10 @@ export interface BuildAiExecutionTelemetryParams {
     historyMessageCount?: number;
     historyChars?: number;
     groundingFactCount?: number;
+    assetFactCount?: number;
     groundingSerializedBytes?: number;
   };
+  scopeType?: 'PORTFOLIO' | 'ASSET';
   portfolioId?: string;
   conversationId?: string;
   errorCode?: string;
@@ -2717,6 +3220,9 @@ export function buildAiExecutionTelemetry(
     ...(params.durations.groundingMs !== undefined
       ? { groundingMs: sanitizeNonNegativeMs(params.durations.groundingMs) }
       : {}),
+    ...(params.durations.assetGroundingMs !== undefined
+      ? { assetGroundingMs: sanitizeNonNegativeMs(params.durations.assetGroundingMs) }
+      : {}),
     ...(params.durations.promptBuildMs !== undefined
       ? { promptBuildMs: sanitizeNonNegativeMs(params.durations.promptBuildMs) }
       : {}),
@@ -2761,6 +3267,9 @@ export function buildAiExecutionTelemetry(
     ...(params.counts.groundingFactCount !== undefined
       ? { groundingFactCount: Math.max(0, Math.floor(params.counts.groundingFactCount)) }
       : {}),
+    ...(params.counts.assetFactCount !== undefined
+      ? { assetFactCount: Math.max(0, Math.floor(params.counts.assetFactCount)) }
+      : {}),
     ...(params.counts.groundingSerializedBytes !== undefined
       ? {
           groundingSerializedBytes: Math.max(0, Math.floor(params.counts.groundingSerializedBytes)),
@@ -2782,6 +3291,7 @@ export function buildAiExecutionTelemetry(
     durations: normalizedDurations,
     usage: normalizedUsage,
     counts: normalizedCounts,
+    ...(params.scopeType ? { scopeType: params.scopeType } : {}),
     ...(params.portfolioId ? { portfolioId: params.portfolioId } : {}),
     ...(params.conversationId ? { conversationId: params.conversationId } : {}),
     ...(params.errorCode ? { errorCode: params.errorCode } : {}),

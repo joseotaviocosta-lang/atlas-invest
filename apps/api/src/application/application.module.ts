@@ -21,6 +21,7 @@ import { GetPortfolioTailRiskMetricsUseCase } from './performance/get-portfolio-
 import { RunPortfolioScenarioUseCase } from './performance/run-portfolio-scenario.use-case';
 import { GetPortfolioIntelligenceSummaryUseCase } from './performance/get-portfolio-intelligence-summary.use-case';
 import { GetPortfolioAiGroundingContextUseCase } from './ai/get-portfolio-ai-grounding-context.use-case';
+import { GetPortfolioAssetAiGroundingContextUseCase } from './ai/get-portfolio-asset-ai-grounding-context.use-case';
 import {
   CreateInstitutionUseCase,
   GetInstitutionUseCase,
@@ -53,6 +54,7 @@ const USE_CASES = [
   RunPortfolioScenarioUseCase,
   GetPortfolioIntelligenceSummaryUseCase,
   GetPortfolioAiGroundingContextUseCase,
+  GetPortfolioAssetAiGroundingContextUseCase,
   CreateInstitutionUseCase,
   GetInstitutionUseCase,
   ListInstitutionsUseCase,
