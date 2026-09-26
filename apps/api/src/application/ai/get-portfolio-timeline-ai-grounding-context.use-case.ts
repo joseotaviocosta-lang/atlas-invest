@@ -1,20 +1,11 @@
-import {
-  Inject,
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import {
   buildPortfolioTimelineAiGroundingContext,
   PortfolioTimelineAiGroundingContextV1,
   PortfolioAiEventV1,
   MAX_TIMELINE_RANGE_DAYS,
 } from '@atlas/ai-engine';
-import {
-  IPortfolioRepository,
-  ITransactionRepository,
-  IAssetRepository,
-} from '@atlas/database';
+import { IPortfolioRepository, ITransactionRepository, IAssetRepository } from '@atlas/database';
 import { LocalDate } from '@atlas/domain';
 import { replayPortfolio } from '@atlas/portfolio-engine';
 import {

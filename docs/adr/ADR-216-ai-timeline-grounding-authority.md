@@ -20,4 +20,3 @@ A inteligência sobre o histórico patrimonial e eventos passados (compras, vend
 
 - Consistência contábil e histórica absoluta entre as telas do sistema e as respostas da IA.
 - Reutilização das regras congeladas da API de leitura do portfólio.
-

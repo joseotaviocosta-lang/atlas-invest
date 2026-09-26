@@ -6,3 +6,4 @@ export * from './list-ai-conversations.use-case';
 export * from './get-ai-conversation.use-case';
 export * from './send-ai-conversation-message.use-case';
 export * from './stream-ai-conversation-message.use-case';
+export * from './context-budget';

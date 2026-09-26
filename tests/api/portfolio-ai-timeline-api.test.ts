@@ -161,7 +161,9 @@ describe('API Integration: Portfolio AI Timeline Grounding (GET /api/v1/portfoli
     const { portfolioId } = await seedPortfolioWithEvents(user.token);
 
     const res = await request(app.getHttpServer())
-      .get(`/api/v1/portfolios/${portfolioId}/ai/grounding/timeline?startDate=2026-08-01&endDate=2026-09-10`)
+      .get(
+        `/api/v1/portfolios/${portfolioId}/ai/grounding/timeline?startDate=2026-08-01&endDate=2026-09-10`,
+      )
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
 
@@ -185,7 +187,9 @@ describe('API Integration: Portfolio AI Timeline Grounding (GET /api/v1/portfoli
     const { portfolioId, petr4Id } = await seedPortfolioWithEvents(user.token);
 
     const res = await request(app.getHttpServer())
-      .get(`/api/v1/portfolios/${portfolioId}/ai/grounding/timeline?startDate=2026-08-01&endDate=2026-09-10&assetId=${petr4Id}`)
+      .get(
+        `/api/v1/portfolios/${portfolioId}/ai/grounding/timeline?startDate=2026-08-01&endDate=2026-09-10&assetId=${petr4Id}`,
+      )
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
 
@@ -207,7 +211,9 @@ describe('API Integration: Portfolio AI Timeline Grounding (GET /api/v1/portfoli
     const { portfolioId } = await seedPortfolioWithEvents(user.token);
 
     const res = await request(app.getHttpServer())
-      .get(`/api/v1/portfolios/${portfolioId}/ai/grounding/timeline?startDate=2026-08-01&endDate=2026-09-10&assetId=unrelated-asset-id`)
+      .get(
+        `/api/v1/portfolios/${portfolioId}/ai/grounding/timeline?startDate=2026-08-01&endDate=2026-09-10&assetId=unrelated-asset-id`,
+      )
       .set('Authorization', `Bearer ${user.token}`)
       .expect(404);
 
@@ -222,7 +228,9 @@ describe('API Integration: Portfolio AI Timeline Grounding (GET /api/v1/portfoli
     const { portfolioId } = await seedPortfolioWithEvents(user.token);
 
     const res = await request(app.getHttpServer())
-      .get(`/api/v1/portfolios/${portfolioId}/ai/grounding/timeline?startDate=2026-09-10&endDate=2026-08-01`)
+      .get(
+        `/api/v1/portfolios/${portfolioId}/ai/grounding/timeline?startDate=2026-09-10&endDate=2026-08-01`,
+      )
       .set('Authorization', `Bearer ${user.token}`)
       .expect(400);
 
@@ -237,7 +245,9 @@ describe('API Integration: Portfolio AI Timeline Grounding (GET /api/v1/portfoli
     const { portfolioId } = await seedPortfolioWithEvents(user.token);
 
     const res = await request(app.getHttpServer())
-      .get(`/api/v1/portfolios/${portfolioId}/ai/grounding/timeline?startDate=2025-01-01&endDate=2026-09-01`)
+      .get(
+        `/api/v1/portfolios/${portfolioId}/ai/grounding/timeline?startDate=2025-01-01&endDate=2026-09-01`,
+      )
       .set('Authorization', `Bearer ${user.token}`)
       .expect(400);
 

@@ -11,8 +11,6 @@ import {
   validateGroundedClaims,
   renderValidatedClaims,
   buildAiExecutionTelemetry,
-  validateContextBudget,
-  AI_DEFAULT_MAX_CONTEXT_BYTES,
   AiExecutionStatus,
   INTENT_REFUSAL_MESSAGES,
   AIProvider,
@@ -28,6 +26,7 @@ import { IAiConversationRepository } from '@atlas/database';
 import { GetPortfolioAiGroundingContextUseCase } from './get-portfolio-ai-grounding-context.use-case';
 import { GetPortfolioAssetAiGroundingContextUseCase } from './get-portfolio-asset-ai-grounding-context.use-case';
 import { GetPortfolioTimelineAiGroundingContextUseCase } from './get-portfolio-timeline-ai-grounding-context.use-case';
+import { contextBudgetExceededException, evaluateProviderContextBudget } from './context-budget';
 import { AI_CONVERSATION_REPOSITORY } from '../../database/tokens';
 import { AI_PROVIDER_TOKEN } from '../../infrastructure/ai/openai-ai.provider';
 import {
@@ -381,25 +380,14 @@ export class SendAiConversationMessageUseCase {
       );
       promptBuildMs = performance.now() - tPromptStart;
 
-      // 5.1 Enforce Context Budget Governance before provider call (ADR-207)
-      const serializedContextBytes = Buffer.byteLength(JSON.stringify(messages), 'utf8');
-      const maxContextBudget = process.env.AI_MAX_CONTEXT_BYTES
-        ? parseInt(process.env.AI_MAX_CONTEXT_BYTES, 10)
-        : AI_DEFAULT_MAX_CONTEXT_BYTES;
-
-      const budgetCheck = validateContextBudget(serializedContextBytes, maxContextBudget);
+      // 5.1 Enforce TOTAL provider context budget before provider call (ADR-207).
+      // Single authoritative decision over the exact provider payload.
+      const budgetCheck = evaluateProviderContextBudget(messages);
       if (!budgetCheck.ok) {
         executionStatus = 'CONTEXT_BUDGET_EXCEEDED';
         errorCode = 'AI.CONTEXT_BUDGET_EXCEEDED';
         isRetryable = false;
-        throw new HttpException(
-          {
-            message: `AI request context size (${budgetCheck.sizeBytes} bytes) exceeds budget limit (${budgetCheck.maxBytes} bytes)`,
-            code: 'AI.CONTEXT_BUDGET_EXCEEDED',
-            details: { sizeBytes: budgetCheck.sizeBytes, maxBytes: budgetCheck.maxBytes },
-          },
-          HttpStatus.BAD_REQUEST,
-        );
+        throw contextBudgetExceededException(budgetCheck);
       }
 
       // 6. Call AI provider EXACTLY ONCE

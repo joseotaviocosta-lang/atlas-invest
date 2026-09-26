@@ -22,4 +22,3 @@ Carteiras ativas com anos de histórico podem conter milhares de eventos de nego
 
 - Consumo previsível de contexto mantido dentro do orçamento orçado ($< 32.768$ bytes).
 - Determinismo matemático na seleção, garantindo que execuções idênticas produzam os mesmos fatos.
-

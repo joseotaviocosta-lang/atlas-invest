@@ -38,4 +38,3 @@ The **Event Claims Contract** enforces factual citation integrity and determinis
    - When under `ASSET_TIMELINE` scope, citing an event belonging to another asset triggers `CROSS_ASSET_EVIDENCE_PROHIBITED` and fails closed.
 4. **Historical Immutability**:
    - Cited event evidence snapshots remain immutable for historical turns. When new events occur, fresh turns cite the new grounding facts deterministically without altering prior message records.
-

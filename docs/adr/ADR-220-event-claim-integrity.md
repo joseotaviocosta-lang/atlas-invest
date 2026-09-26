@@ -22,4 +22,3 @@ Eventos financeiros possuem naturezas distintas com consequências fiscais e pat
 
 - Eliminação de alucinações sobre transações e proventos.
 - Garantia de que transferências, eventos corporativos e compras permaneçam claramente distinguidos.
-

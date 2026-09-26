@@ -10,8 +10,6 @@ import {
   validateGroundedClaims,
   renderValidatedClaims,
   buildAiExecutionTelemetry,
-  validateContextBudget,
-  AI_DEFAULT_MAX_CONTEXT_BYTES,
   AiExecutionStatus,
   INTENT_REFUSAL_MESSAGES,
   AIProvider,
@@ -27,6 +25,7 @@ import { IAiConversationRepository } from '@atlas/database';
 import { GetPortfolioAiGroundingContextUseCase } from './get-portfolio-ai-grounding-context.use-case';
 import { GetPortfolioAssetAiGroundingContextUseCase } from './get-portfolio-asset-ai-grounding-context.use-case';
 import { GetPortfolioTimelineAiGroundingContextUseCase } from './get-portfolio-timeline-ai-grounding-context.use-case';
+import { evaluateProviderContextBudget } from './context-budget';
 import {
   SendAiConversationMessageInput,
   SendAiConversationMessageInputSchema,
@@ -356,13 +355,9 @@ export class StreamAiConversationMessageUseCase {
       );
       promptBuildMs = performance.now() - tPromptStart;
 
-      // 4.1 Enforce Context Budget Governance before provider call (ADR-207)
-      const serializedContextBytes = Buffer.byteLength(JSON.stringify(messages), 'utf8');
-      const maxContextBudget = process.env.AI_MAX_CONTEXT_BYTES
-        ? parseInt(process.env.AI_MAX_CONTEXT_BYTES, 10)
-        : AI_DEFAULT_MAX_CONTEXT_BYTES;
-
-      const budgetCheck = validateContextBudget(serializedContextBytes, maxContextBudget);
+      // 4.1 Enforce TOTAL provider context budget before provider call (ADR-207).
+      // Single authoritative decision over the exact provider payload.
+      const budgetCheck = evaluateProviderContextBudget(messages);
       if (!budgetCheck.ok) {
         executionStatus = 'CONTEXT_BUDGET_EXCEEDED';
         errorCode = 'AI.CONTEXT_BUDGET_EXCEEDED';

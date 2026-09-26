@@ -20,4 +20,3 @@ O Transaction Ledger contém dados brutos com campos de infraestrutura (chaves e
 
 - Proteção de dados e privacidade em conformidade com as diretrizes do Atlas.
 - Redução substancial do consumo de tokens e eliminação de ruídos técnicos no prompt.
-

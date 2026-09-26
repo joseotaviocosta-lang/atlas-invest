@@ -37,7 +37,7 @@ export interface PortfolioTimelineAiGroundingContextV1 {
   readonly portfolioId: string;
   readonly period: {
     readonly from: string; // YYYY-MM-DD
-    readonly to: string;   // YYYY-MM-DD
+    readonly to: string; // YYYY-MM-DD
   };
   readonly filters: {
     readonly scopeType: 'TIMELINE' | 'ASSET_TIMELINE';
@@ -61,4 +61,3 @@ export interface PortfolioTimelineAiGroundingContextV1 {
   readonly eventLimitReached?: boolean;
 }
 ```
-

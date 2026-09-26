@@ -24,4 +24,3 @@ Dúvidas temporais dos investidores ("O que comprei em setembro?", "Qual foi meu
 
 - Imunidade a fusos horários e offsets de UTC.
 - Delimitação exata e auditável das operações compreendidas em cada resposta.
-

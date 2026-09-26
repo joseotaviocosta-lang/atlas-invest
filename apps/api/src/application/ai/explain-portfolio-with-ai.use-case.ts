@@ -9,10 +9,12 @@ import {
   INTENT_REFUSAL_MESSAGES,
   GroundedAiExplanationResponseV1,
   AIProvider,
+  AIMessage,
   GroundedClaimV1,
 } from '@atlas/ai-engine';
 import { GetPortfolioAiGroundingContextUseCase } from './get-portfolio-ai-grounding-context.use-case';
 import { AI_PROVIDER_TOKEN } from '../../infrastructure/ai/openai-ai.provider';
+import { contextBudgetExceededException, evaluateProviderContextBudget } from './context-budget';
 
 export const ExplainPortfolioBodySchema = z.object({
   question: z
@@ -133,16 +135,25 @@ export class ExplainPortfolioWithAiUseCase {
     // 3. Build bounded model request
     const { system, user } = buildExplanationPrompt(context, validatedInput.question, intent);
 
+    const messages: AIMessage[] = [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ];
+
+    // 3.1 Enforce TOTAL provider context budget BEFORE any provider call (ADR-207).
+    // Measures the exact payload handed to the provider; over-budget => ZERO provider calls.
+    const budgetDecision = evaluateProviderContextBudget(messages);
+    if (!budgetDecision.ok) {
+      throw contextBudgetExceededException(budgetDecision);
+    }
+
     // 4. Call AI provider EXACTLY ONCE
     let completion;
     try {
-      completion = await this.aiProvider.complete(
-        [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-        { temperature: 0.1, maxTokens: 1200 },
-      );
+      completion = await this.aiProvider.complete(messages, {
+        temperature: 0.1,
+        maxTokens: 1200,
+      });
     } catch (err: unknown) {
       if (err instanceof HttpException) {
         throw err;

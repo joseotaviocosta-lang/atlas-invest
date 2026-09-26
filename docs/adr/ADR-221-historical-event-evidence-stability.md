@@ -21,4 +21,3 @@ Em conversas multi-turnos com a IA, novas mensagens podem ser enviadas após nov
 
 - Rastreabilidade e auditabilidade perfeitas de respostas passadas.
 - Coexistência harmoniosa entre histórico imutável e respostas contemporâneas.
-

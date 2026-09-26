@@ -15,13 +15,15 @@ The **Temporal Scope Contract** governs time-bounded inquiry and multi-turn conv
 ### Scope Definitions:
 
 1. **TIMELINE Scope**:
+
    ```typescript
    export interface TimelineAiScope {
      readonly type: 'TIMELINE';
      readonly from?: string; // YYYY-MM-DD
-     readonly to?: string;   // YYYY-MM-DD
+     readonly to?: string; // YYYY-MM-DD
    }
    ```
+
    Limits context to portfolio events occurring within the closed economic date interval `[from, to]`.
 
 2. **ASSET_TIMELINE Scope**:
@@ -30,7 +32,7 @@ The **Temporal Scope Contract** governs time-bounded inquiry and multi-turn conv
      readonly type: 'ASSET_TIMELINE';
      readonly assetId: string;
      readonly from?: string; // YYYY-MM-DD
-     readonly to?: string;   // YYYY-MM-DD
+     readonly to?: string; // YYYY-MM-DD
      readonly symbol?: string;
      readonly name?: string;
    }
@@ -49,4 +51,3 @@ The **Temporal Scope Contract** governs time-bounded inquiry and multi-turn conv
 4. **Display Ticker vs Canonical Identity**:
    - The UI shows formatted civil dates (`DD/MM/YYYY`) and ticker symbols for user convenience.
    - Internally and on API contracts, identity is canonical `AssetId` and economic date is `YYYY-MM-DD`.
-
