@@ -16,6 +16,12 @@ import {
   AiConversationMessageDto,
 } from '@atlas/ui';
 
+export type MobileAiScope =
+  | { type: 'PORTFOLIO' }
+  | { type: 'ASSET'; assetId: string }
+  | { type: 'TIMELINE'; from?: string; to?: string }
+  | { type: 'ASSET_TIMELINE'; assetId: string; from?: string; to?: string };
+
 export const portfoliosApi = {
   async listPortfolios(): Promise<{ data: PortfolioDto[] }> {
     return apiClient.get<{ data: PortfolioDto[] }>('/api/v1/portfolios');
@@ -137,7 +143,7 @@ export const portfoliosApi = {
     portfolioId: string,
     conversationId: string,
     question: string,
-    scope?: { type: 'PORTFOLIO' } | { type: 'ASSET'; assetId: string },
+    scope?: MobileAiScope,
     startDate?: string,
     endDate?: string,
   ): Promise<{
@@ -155,7 +161,7 @@ export const portfoliosApi = {
     question: string,
     onEvent: (event: TEvent) => void,
     options?: {
-      scope?: { type: 'PORTFOLIO' } | { type: 'ASSET'; assetId: string };
+      scope?: MobileAiScope;
       startDate?: string;
       endDate?: string;
       signal?: AbortSignal;

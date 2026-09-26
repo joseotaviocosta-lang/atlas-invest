@@ -308,21 +308,48 @@ function PortfolioHistoryContent() {
           </p>
         </div>
 
-        <Link
-          href={`/portfolio${activePortfolioId ? `?portfolioId=${activePortfolioId}` : ''}`}
-          style={{ textDecoration: 'none' }}
+        <div
+          style={{
+            display: 'flex',
+            gap: `${spacing.sm}px`,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
         >
-          <span
+          <Link
+            href={`/ai?portfolioId=${activePortfolioId}&scope=timeline${filters.from ? `&from=${filters.from}` : ''}${filters.to ? `&to=${filters.to}` : ''}`}
             style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
               fontSize: '0.875rem',
-              color: colors.accent,
               fontWeight: 600,
-              cursor: 'pointer',
+              color: colors.accent,
+              backgroundColor: `${colors.accent}15`,
+              border: `1px solid ${colors.accent}40`,
+              borderRadius: '8px',
+              textDecoration: 'none',
             }}
           >
-            ← Voltar para Visão Geral
-          </span>
-        </Link>
+            <span>✨ Perguntar à IA sobre este período</span>
+          </Link>
+          <Link
+            href={`/portfolio${activePortfolioId ? `?portfolioId=${activePortfolioId}` : ''}`}
+            style={{ textDecoration: 'none' }}
+          >
+            <span
+              style={{
+                fontSize: '0.875rem',
+                color: colors.accent,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              ← Voltar para Visão Geral
+            </span>
+          </Link>
+        </div>
       </div>
 
       {/* 3. Filter Bar */}

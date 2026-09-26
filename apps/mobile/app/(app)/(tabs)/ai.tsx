@@ -35,20 +35,91 @@ const ASSET_STARTER_QUESTIONS = [
   'Quanto recebi de proventos deste ativo?',
 ];
 
+const TIMELINE_STARTER_QUESTIONS = [
+  'Quais foram minhas últimas compras no período?',
+  'Quando ocorreram vendas e quais foram os resultados?',
+  'Quais proventos foram pagos neste período?',
+  'Houve aportes ou retiradas recentes na carteira?',
+];
+
+function formatCivilDate(isoDate?: string): string {
+  if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return isoDate || '';
+  const [y, m, d] = isoDate.split('-');
+  return `${d}/${m}/${y}`;
+}
+
 export default function AIScreen() {
   const router = useRouter();
   const localParams = useLocalSearchParams<{
     portfolioId?: string;
     assetId?: string;
     symbol?: string;
+    scope?: string;
+    from?: string;
+    to?: string;
   }>();
   const queryClient = useQueryClient();
   const [question, setQuestion] = useState('');
+
+  const initialTimelineScope = useMemo(() => {
+    if (localParams.scope === 'timeline') {
+      return {
+        type: 'TIMELINE' as const,
+        from: localParams.from || undefined,
+        to: localParams.to || undefined,
+      };
+    }
+    if (localParams.scope === 'asset_timeline' && localParams.assetId) {
+      return {
+        type: 'ASSET_TIMELINE' as const,
+        assetId: localParams.assetId,
+        symbol: localParams.symbol || localParams.assetId,
+        from: localParams.from || undefined,
+        to: localParams.to || undefined,
+      };
+    }
+    return null;
+  }, [
+    localParams.scope,
+    localParams.assetId,
+    localParams.symbol,
+    localParams.from,
+    localParams.to,
+  ]);
+
+  const [timelineScope, setTimelineScope] = useState(initialTimelineScope);
   const [assetScope, setAssetScope] = useState<{ assetId: string; symbol: string } | null>(
-    localParams.assetId
+    localParams.assetId &&
+      localParams.scope !== 'timeline' &&
+      localParams.scope !== 'asset_timeline'
       ? { assetId: localParams.assetId, symbol: localParams.symbol || localParams.assetId }
       : null,
   );
+
+  const currentScope = useMemo(() => {
+    if (timelineScope) {
+      if (timelineScope.type === 'ASSET_TIMELINE') {
+        return {
+          type: 'ASSET_TIMELINE' as const,
+          assetId: timelineScope.assetId,
+          from: timelineScope.from,
+          to: timelineScope.to,
+        };
+      }
+      return {
+        type: 'TIMELINE' as const,
+        from: timelineScope.from,
+        to: timelineScope.to,
+      };
+    }
+    if (assetScope) {
+      return {
+        type: 'ASSET' as const,
+        assetId: assetScope.assetId,
+      };
+    }
+    return undefined;
+  }, [timelineScope, assetScope]);
   const [selectedPortfolioId, _setSelectedPortfolioId] = useState<string | null>(
     localParams.portfolioId || null,
   );
@@ -142,7 +213,7 @@ export default function AIScreen() {
         activePortfolioId,
         conversationId,
         q,
-        assetScope ? { type: 'ASSET', assetId: assetScope.assetId } : undefined,
+        currentScope,
       );
       return response.data;
     },
@@ -208,7 +279,7 @@ export default function AIScreen() {
           }
         },
         {
-          scope: assetScope ? { type: 'ASSET', assetId: assetScope.assetId } : undefined,
+          scope: currentScope,
           signal: controller.signal,
         },
       );
@@ -319,7 +390,12 @@ export default function AIScreen() {
                 incompletos.
               </Text>
               <View style={styles.starterChipsContainer}>
-                {(assetScope ? ASSET_STARTER_QUESTIONS : STARTER_QUESTIONS).map((q) => (
+                {(timelineScope
+                  ? TIMELINE_STARTER_QUESTIONS
+                  : assetScope
+                    ? ASSET_STARTER_QUESTIONS
+                    : STARTER_QUESTIONS
+                ).map((q) => (
                   <TouchableOpacity
                     key={q}
                     style={styles.starterChip}
@@ -415,8 +491,27 @@ export default function AIScreen() {
         )}
       </ScrollView>
 
-      {/* Scope Banner (Phase 3W) */}
-      {assetScope && (
+      {/* Scope Banner (Phase 3X Timeline) */}
+      {timelineScope && (
+        <View style={styles.scopeBanner}>
+          <Text style={styles.scopeBannerText}>
+            📅 Período:{' '}
+            <Text style={{ fontWeight: '700', color: themeTokens.colors.primary }}>
+              {timelineScope.type === 'ASSET_TIMELINE'
+                ? `${timelineScope.symbol || 'Ativo'} · `
+                : 'Carteira · '}
+              {timelineScope.from ? formatCivilDate(timelineScope.from) : 'Início'} a{' '}
+              {timelineScope.to ? formatCivilDate(timelineScope.to) : 'Hoje'}
+            </Text>
+          </Text>
+          <TouchableOpacity onPress={() => setTimelineScope(null)} style={styles.clearScopeButton}>
+            <Text style={styles.clearScopeButtonText}>Limpar escopo</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Scope Banner (Phase 3W Asset) */}
+      {!timelineScope && assetScope && (
         <View style={styles.scopeBanner}>
           <Text style={styles.scopeBannerText}>
             🎯 Sobre:{' '}
@@ -435,7 +530,11 @@ export default function AIScreen() {
         <TextInput
           style={styles.textInput}
           placeholder={
-            assetScope ? `Pergunte sobre ${assetScope.symbol}...` : 'Pergunte sobre sua carteira...'
+            timelineScope
+              ? 'Pergunte sobre eventos deste período...'
+              : assetScope
+                ? `Pergunte sobre ${assetScope.symbol}...`
+                : 'Pergunte sobre sua carteira...'
           }
           placeholderTextColor={colors.textMuted}
           value={question}

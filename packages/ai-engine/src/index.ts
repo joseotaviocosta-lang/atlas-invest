@@ -79,6 +79,10 @@ export const GROUNDED_FACT_CATEGORIES = [
   'ASSET_INCOME',
   'ASSET_REALIZED',
   'ASSET_ALLOCATION',
+  'TIMELINE_EVENT',
+  'EVENT_TRANSACTION',
+  'EVENT_INCOME',
+  'EVENT_CORPORATE_ACTION',
 ] as const;
 export type GroundedFactCategory = (typeof GROUNDED_FACT_CATEGORIES)[number];
 
@@ -154,6 +158,7 @@ export interface GroundingCapabilities {
   readonly canRecommendTrades: boolean;
   readonly canPredictReturns: boolean;
   readonly canCalculateNewMetrics: boolean;
+  readonly canExplainTimelineEvents?: boolean;
 }
 
 export const CANONICAL_GROUNDING_CAPABILITIES: GroundingCapabilities = Object.freeze({
@@ -164,6 +169,7 @@ export const CANONICAL_GROUNDING_CAPABILITIES: GroundingCapabilities = Object.fr
   canRecommendTrades: false,
   canPredictReturns: false,
   canCalculateNewMetrics: false,
+  canExplainTimelineEvents: true,
 });
 
 export interface PortfolioAiGroundingContextV1 {
@@ -198,7 +204,96 @@ export interface PortfolioAiScope {
   readonly type: 'PORTFOLIO';
 }
 
-export type AiConversationScope = PortfolioAiScope | AssetAiScope;
+export interface TimelineAiScope {
+  readonly type: 'TIMELINE';
+  readonly from?: string; // YYYY-MM-DD
+  readonly to?: string; // YYYY-MM-DD
+}
+
+export interface AssetTimelineAiScope {
+  readonly type: 'ASSET_TIMELINE';
+  readonly assetId: string;
+  readonly from?: string; // YYYY-MM-DD
+  readonly to?: string; // YYYY-MM-DD
+  readonly symbol?: string;
+  readonly name?: string;
+}
+
+export type AiConversationScope =
+  PortfolioAiScope | AssetAiScope | TimelineAiScope | AssetTimelineAiScope;
+
+export type PortfolioAiEventType =
+  | 'BUY'
+  | 'SELL'
+  | 'DIVIDEND'
+  | 'JCP'
+  | 'CASH_DEPOSIT'
+  | 'CASH_WITHDRAWAL'
+  | 'TRANSFER_IN'
+  | 'TRANSFER_OUT'
+  | 'SPLIT'
+  | 'REVERSE_SPLIT'
+  | 'BONUS'
+  | 'SUBSCRIPTION'
+  | 'AMORTIZATION'
+  | 'OTHER_CORPORATE_ACTION';
+
+export interface PortfolioAiEventV1 {
+  readonly eventId: string;
+  readonly eventType: PortfolioAiEventType;
+  readonly economicDate: string; // YYYY-MM-DD
+  readonly assetId?: string;
+  readonly symbol?: string;
+  readonly assetName?: string;
+  readonly quantity?: string;
+  readonly moneyAmount?: string;
+  readonly currency?: string;
+  readonly descriptionCode?: string;
+  readonly nature?: 'HISTORICAL';
+  readonly sourceReference?: string;
+  readonly details?: Readonly<Record<string, string>>;
+}
+
+export const MAX_AI_TIMELINE_EVENTS = 50;
+export const MAX_TIMELINE_RANGE_DAYS = 366;
+
+export interface PortfolioTimelineAiGroundingContextV1 {
+  readonly schemaVersion: '1.0' | '1';
+  readonly portfolioId: string;
+  readonly period: {
+    readonly from: string;
+    readonly to: string;
+  };
+  readonly filters: {
+    readonly scopeType: 'TIMELINE' | 'ASSET_TIMELINE';
+    readonly assetId?: string;
+    readonly symbol?: string;
+  };
+  readonly summaryFacts: {
+    readonly eventCountIncluded: number;
+    readonly hasMore: boolean;
+    readonly totalMatchingEvents?: number;
+    readonly periodStart: string;
+    readonly periodEnd: string;
+  };
+  readonly events: readonly PortfolioAiEventV1[];
+  readonly facts: readonly GroundedFinancialFact[];
+  readonly scope: TimelineAiScope | AssetTimelineAiScope;
+  readonly limitations: readonly GroundedLimitation[];
+  readonly capabilities: {
+    readonly canExplainTimelineEvents: true;
+  };
+  readonly eventLimitReached?: boolean;
+  readonly dataQuality?: GroundedDataQuality;
+  readonly currencies?: readonly string[];
+  readonly asOf?: string;
+  readonly generatedAt?: string;
+  readonly analysisPeriod?: {
+    readonly startDate: string;
+    readonly endDate: string;
+  };
+  readonly observations?: readonly string[];
+}
 
 export interface PortfolioAssetAiGroundingContextV1 extends PortfolioAiGroundingContextV1 {
   readonly scope: AssetAiScope;
@@ -1227,6 +1322,321 @@ export function buildPortfolioAssetAiGroundingContext(
   return deepFreeze(context);
 }
 
+/**
+ * Extracts canonical GroundedFinancialFact items from a bounded list of timeline events and summary facts (Phase 3X, ADR-216–ADR-221).
+ */
+export function extractTimelineFacts(
+  events: readonly PortfolioAiEventV1[],
+  summaryFacts: PortfolioTimelineAiGroundingContextV1['summaryFacts'],
+): readonly GroundedFinancialFact[] {
+  const facts: GroundedFinancialFact[] = [];
+
+  // Summary facts
+  facts.push({
+    factId: 'TIMELINE:EVENT_COUNT',
+    category: 'TIMELINE_EVENT',
+    metric: 'event_count',
+    scope: 'TIMELINE',
+    value: String(summaryFacts.eventCountIncluded),
+    unit: 'COUNT',
+    nature: 'HISTORICAL',
+    status: 'AVAILABLE',
+    period: { startDate: summaryFacts.periodStart, endDate: summaryFacts.periodEnd },
+    asOf: summaryFacts.periodEnd,
+    source: { contract: 'PORTFOLIO_READ_API_V1', path: 'summary.eventCount' },
+  });
+
+  facts.push({
+    factId: 'TIMELINE:HAS_MORE',
+    category: 'TIMELINE_EVENT',
+    metric: 'has_more',
+    scope: 'TIMELINE',
+    value: String(summaryFacts.hasMore),
+    unit: 'TEXT_ENUM',
+    nature: 'HISTORICAL',
+    status: 'AVAILABLE',
+    period: { startDate: summaryFacts.periodStart, endDate: summaryFacts.periodEnd },
+    asOf: summaryFacts.periodEnd,
+    source: { contract: 'PORTFOLIO_READ_API_V1', path: 'summary.hasMore' },
+  });
+
+  facts.push({
+    factId: 'TIMELINE:PERIOD_START',
+    category: 'TIMELINE_EVENT',
+    metric: 'period_start',
+    scope: 'TIMELINE',
+    value: summaryFacts.periodStart,
+    unit: 'DATE',
+    nature: 'HISTORICAL',
+    status: 'AVAILABLE',
+    period: { startDate: summaryFacts.periodStart, endDate: summaryFacts.periodEnd },
+    asOf: summaryFacts.periodEnd,
+    source: { contract: 'PORTFOLIO_READ_API_V1', path: 'summary.periodStart' },
+  });
+
+  facts.push({
+    factId: 'TIMELINE:PERIOD_END',
+    category: 'TIMELINE_EVENT',
+    metric: 'period_end',
+    scope: 'TIMELINE',
+    value: summaryFacts.periodEnd,
+    unit: 'DATE',
+    nature: 'HISTORICAL',
+    status: 'AVAILABLE',
+    period: { startDate: summaryFacts.periodStart, endDate: summaryFacts.periodEnd },
+    asOf: summaryFacts.periodEnd,
+    source: { contract: 'PORTFOLIO_READ_API_V1', path: 'summary.periodEnd' },
+  });
+
+  // Event facts
+  for (const event of events) {
+    const isIncome = event.eventType === 'DIVIDEND' || event.eventType === 'JCP';
+    const isTx = event.eventType === 'BUY' || event.eventType === 'SELL';
+    const isCorp =
+      event.eventType === 'SPLIT' ||
+      event.eventType === 'REVERSE_SPLIT' ||
+      event.eventType === 'BONUS' ||
+      event.eventType === 'SUBSCRIPTION' ||
+      event.eventType === 'AMORTIZATION' ||
+      event.eventType === 'OTHER_CORPORATE_ACTION';
+
+    const eventCategory: GroundedFactCategory = isIncome
+      ? 'EVENT_INCOME'
+      : isTx
+        ? 'EVENT_TRANSACTION'
+        : isCorp
+          ? 'EVENT_CORPORATE_ACTION'
+          : 'TIMELINE_EVENT';
+
+    const eventPeriod = { startDate: event.economicDate, endDate: event.economicDate };
+    const eventSource = {
+      contract: 'PORTFOLIO_READ_API_V1' as const,
+      path: `events.${event.eventId}`,
+    };
+
+    // EVENT:<id>.TYPE
+    facts.push({
+      factId: `EVENT:${event.eventId}.TYPE`,
+      category: eventCategory,
+      metric: 'type',
+      scope: 'EVENT',
+      value: event.eventType,
+      unit: 'TEXT_ENUM',
+      period: eventPeriod,
+      asOf: event.economicDate,
+      nature: 'HISTORICAL',
+      status: 'AVAILABLE',
+      source: eventSource,
+      assetId: event.assetId,
+      currency: event.currency,
+    });
+
+    // EVENT:<id>.DATE
+    facts.push({
+      factId: `EVENT:${event.eventId}.DATE`,
+      category: 'TIMELINE_EVENT',
+      metric: 'date',
+      scope: 'EVENT',
+      value: event.economicDate,
+      unit: 'DATE',
+      period: eventPeriod,
+      asOf: event.economicDate,
+      nature: 'HISTORICAL',
+      status: 'AVAILABLE',
+      source: eventSource,
+      assetId: event.assetId,
+    });
+
+    // EVENT:<id>.ASSET_ID
+    if (event.assetId) {
+      facts.push({
+        factId: `EVENT:${event.eventId}.ASSET_ID`,
+        category: 'TIMELINE_EVENT',
+        metric: 'asset_id',
+        scope: 'EVENT',
+        value: event.assetId,
+        unit: 'TEXT_ENUM',
+        period: eventPeriod,
+        asOf: event.economicDate,
+        nature: 'HISTORICAL',
+        status: 'AVAILABLE',
+        source: eventSource,
+        assetId: event.assetId,
+      });
+    }
+
+    // EVENT:<id>.QUANTITY
+    if (event.quantity !== undefined && event.quantity !== null) {
+      facts.push({
+        factId: `EVENT:${event.eventId}.QUANTITY`,
+        category: 'TIMELINE_EVENT',
+        metric: 'quantity',
+        scope: 'EVENT',
+        value: event.quantity,
+        unit: 'QUANTITY',
+        period: eventPeriod,
+        asOf: event.economicDate,
+        nature: 'HISTORICAL',
+        status: 'AVAILABLE',
+        source: eventSource,
+        assetId: event.assetId,
+      });
+    }
+
+    // EVENT:<id>.AMOUNT
+    if (event.moneyAmount !== undefined && event.moneyAmount !== null) {
+      facts.push({
+        factId: `EVENT:${event.eventId}.AMOUNT`,
+        category: eventCategory,
+        metric: 'amount',
+        scope: event.currency ?? 'BRL',
+        value: event.moneyAmount,
+        unit: 'MONEY',
+        period: eventPeriod,
+        asOf: event.economicDate,
+        nature: 'HISTORICAL',
+        status: 'AVAILABLE',
+        source: eventSource,
+        assetId: event.assetId,
+        currency: event.currency,
+      });
+    }
+
+    // EVENT:<id>.CURRENCY
+    if (event.currency) {
+      facts.push({
+        factId: `EVENT:${event.eventId}.CURRENCY`,
+        category: 'TIMELINE_EVENT',
+        metric: 'currency',
+        scope: 'EVENT',
+        value: event.currency,
+        unit: 'TEXT_ENUM',
+        period: eventPeriod,
+        asOf: event.economicDate,
+        nature: 'HISTORICAL',
+        status: 'AVAILABLE',
+        source: eventSource,
+        currency: event.currency,
+      });
+    }
+  }
+
+  return deepFreeze(facts);
+}
+
+export interface BuildTimelineGroundingInput {
+  readonly portfolioId: string;
+  readonly period: {
+    readonly from: string; // YYYY-MM-DD
+    readonly to: string; // YYYY-MM-DD
+  };
+  readonly scope: TimelineAiScope | AssetTimelineAiScope;
+  readonly candidateEvents: readonly PortfolioAiEventV1[];
+  readonly totalMatchingEvents?: number;
+}
+
+/**
+ * Pure, deterministic builder transforming candidate canonical timeline events into
+ * a versioned, bounded, immutable PortfolioTimelineAiGroundingContextV1 (Phase 3X, ADR-216–ADR-221).
+ */
+export function buildPortfolioTimelineAiGroundingContext(
+  input: BuildTimelineGroundingInput,
+): PortfolioTimelineAiGroundingContextV1 {
+  // 1. Filter by target asset if ASSET_TIMELINE scope
+  let filtered = input.candidateEvents;
+  if (input.scope.type === 'ASSET_TIMELINE') {
+    const targetAssetId = input.scope.assetId;
+    filtered = filtered.filter((e) => e.assetId === targetAssetId);
+  }
+
+  // 2. Filter by date range (inclusive [from, to])
+  filtered = filtered.filter(
+    (e) => e.economicDate >= input.period.from && e.economicDate <= input.period.to,
+  );
+
+  // 3. Deterministic selection: economicDate DESC, eventId DESC
+  const sortedDescending = [...filtered].sort((a, b) => {
+    const cmp = b.economicDate.localeCompare(a.economicDate);
+    if (cmp !== 0) return cmp;
+    return b.eventId.localeCompare(a.eventId);
+  });
+
+  const totalMatching = input.totalMatchingEvents ?? sortedDescending.length;
+  const hasMore = sortedDescending.length > MAX_AI_TIMELINE_EVENTS;
+  const selectedDescending = sortedDescending.slice(0, MAX_AI_TIMELINE_EVENTS);
+
+  // 4. Chronological order for prompt context: economicDate ASC, eventId ASC
+  const events = [...selectedDescending].sort((a, b) => {
+    const cmp = a.economicDate.localeCompare(b.economicDate);
+    if (cmp !== 0) return cmp;
+    return a.eventId.localeCompare(b.eventId);
+  });
+
+  // 5. Summary facts and limitations
+  const summaryFacts = {
+    eventCountIncluded: events.length,
+    hasMore,
+    totalMatchingEvents: totalMatching,
+    periodStart: input.period.from,
+    periodEnd: input.period.to,
+  };
+
+  const limitations: GroundedLimitation[] = [];
+  if (hasMore) {
+    limitations.push({
+      code: 'PARTIAL_TIMELINE_EVENTS',
+      scope: 'TIMELINE',
+      description: 'Showing the 50 most recent events within the selected period.',
+    });
+  }
+  if (events.length === 0) {
+    limitations.push({
+      code: 'EMPTY_TIMELINE_PERIOD',
+      scope: 'TIMELINE',
+      description: 'No portfolio events were recorded in this period.',
+    });
+  }
+
+  const facts = extractTimelineFacts(events, summaryFacts);
+
+  // Distinct currencies
+  const currencySet = new Set<string>();
+  for (const e of events) {
+    if (e.currency) currencySet.add(e.currency);
+  }
+
+  const context: PortfolioTimelineAiGroundingContextV1 = {
+    schemaVersion: '1.0',
+    portfolioId: input.portfolioId,
+    period: input.period,
+    filters: {
+      scopeType: input.scope.type,
+      ...(input.scope.type === 'ASSET_TIMELINE'
+        ? { assetId: input.scope.assetId, symbol: input.scope.symbol }
+        : {}),
+    },
+    summaryFacts,
+    events,
+    facts,
+    scope: input.scope,
+    limitations,
+    capabilities: {
+      canExplainTimelineEvents: true,
+    },
+    eventLimitReached: hasMore,
+    currencies: Array.from(currencySet),
+    asOf: input.period.to,
+    generatedAt: new Date().toISOString(),
+    analysisPeriod: {
+      startDate: input.period.from,
+      endDate: input.period.to,
+    },
+    observations: [],
+  };
+
+  return deepFreeze(context);
+}
+
 // ---------------------------------------------------------------------------
 // Phase 3R: Grounded AI Explanation Foundation (ADR-179–ADR-185)
 // First generative model execution bounded by canonical grounded facts.
@@ -1251,6 +1661,7 @@ export const EXPLANATION_INTENTS = [
   'EXPLAIN_SCENARIO',
   'EXPLAIN_DATA_QUALITY',
   'EXPLAIN_ASSET',
+  'EXPLAIN_TIMELINE',
   'UNSUPPORTED_RECOMMENDATION',
   'UNSUPPORTED_PREDICTION',
   'UNSUPPORTED_NEW_CALCULATION',
@@ -1339,8 +1750,15 @@ export function classifyExplanationIntent(
     };
   }
 
+  // Detect factual historical timeline inquiries
+  const isHistoricalTimelineQuestion =
+    /\b(ultima\s+compra|primeira\s+compra|quando\s+comprei|quando\s+vendi|quais\s+aportes|quais\s+proventos|o\s+que\s+mudou|acontecimentos|movimentacoes|historico\s+de\s+eventos|timeline|linha\s+do\s+tempo)\b/i.test(
+      normalized,
+    );
+
   // 2. Recommendations (including asset-level recommendation phrases: "comprar mais", "barata", "vale a pena", etc.)
   if (
+    !isHistoricalTimelineQuestion &&
     /\b(comprar|compre|compro|vender|vendo|venda|vendi|rebalancear|rebalanceamento|rebalanceio|alocar|alocacao\s+ideal|melhor\s+ativo|melhores\s+ativos|pior\s+ativo|piores\s+ativos|qual\s+acao|quais\s+acoes|qual\s+fii|quais\s+fiis|o\s+que\s+comprar|o\s+que\s+vender|devo\s+comprar|devo\s+vender|devo\s+manter|recomende|recomendacao|indique|indicacao|sugira|sugestao\s+de\s+compra|carteira\s+recomendada|onde\s+investir|onde\s+devo\s+investir|barata|barato|cara|caro|preco\s+justo|substituir|substituiria|vale\s+a\s+pena\s+comprar|vale\s+comprar|vale\s+vender|devo\s+comprar\s+mais)\b/i.test(
       normalized,
     )
@@ -1353,7 +1771,7 @@ export function classifyExplanationIntent(
 
   // 3. Predictions (including asset-level price targets and forecasts)
   if (
-    /\b(vai\s+subir|vai\s+cair|vai\s+render|previsao|prever|projetar|projecao|projecoes|quanto\s+vai\s+render|futuro|proximo\s+ano|ano\s+que\s+vem|preco\s+alvo|preco-alvo|meta\s+de\s+preco|estimativa\s+de\s+retorno|expectativa\s+de\s+retorno|vai\s+bater\s+o\s+ibov|vai\s+superar)\b/i.test(
+    /\b(v(ai|ao)\s+(subir|cair|render)|previsao|prever|projetar|projecao|projecoes|quanto\s+v(ai|ao)\s+render|futuro|proximo\s+(ano|mes)|ano\s+que\s+vem|mes\s+que\s+vem|preco\s+alvo|preco-alvo|meta\s+de\s+preco|estimativa\s+de\s+retorno|expectativa\s+de\s+retorno|v(ai|ao)\s+bater\s+o\s+ibov|v(ai|ao)\s+superar)\b/i.test(
       normalized,
     )
   ) {
@@ -1390,7 +1808,16 @@ export function classifyExplanationIntent(
     };
   }
 
-  // 6. Explicit Asset Scope Routing (Phase 3W)
+  // 6. Explicit Timeline Scope Routing (Phase 3X)
+  if (
+    scope?.type === 'TIMELINE' ||
+    scope?.type === 'ASSET_TIMELINE' ||
+    isHistoricalTimelineQuestion
+  ) {
+    return { intent: 'EXPLAIN_TIMELINE' };
+  }
+
+  // 7. Explicit Asset Scope Routing (Phase 3W)
   if (scope?.type === 'ASSET') {
     return { intent: 'EXPLAIN_ASSET' };
   }
@@ -1563,7 +1990,10 @@ export function buildExplanationPrompt(
  */
 export function validateExplanationEvidence(
   evidenceFactIds: string[],
-  context: PortfolioAiGroundingContextV1,
+  context:
+    | PortfolioAiGroundingContextV1
+    | PortfolioTimelineAiGroundingContextV1
+    | { readonly facts: readonly GroundedFinancialFact[] },
 ): {
   valid: boolean;
   resolvedEvidence: ResolvedEvidenceFact[];
@@ -1896,7 +2326,8 @@ export function classifyConversationIntent(
     direct.intent === 'EXPLAIN_SCENARIO' ||
     direct.intent === 'EXPLAIN_PERFORMANCE' ||
     direct.intent === 'EXPLAIN_DATA_QUALITY' ||
-    direct.intent === 'EXPLAIN_ASSET'
+    direct.intent === 'EXPLAIN_ASSET' ||
+    direct.intent === 'EXPLAIN_TIMELINE'
   ) {
     return direct;
   }
@@ -1924,6 +2355,13 @@ export function classifyConversationIntent(
   if (/^(e\s+a\s+rentabilidade|e\s+o\s+retorno|e\s+a\s+performance)/i.test(normalized)) {
     return { intent: 'EXPLAIN_PERFORMANCE' };
   }
+  if (
+    /^(e\s+os\s+eventos|e\s+a\s+timeline|e\s+as\s+movimentacoes|e\s+o\s+historico)/i.test(
+      normalized,
+    )
+  ) {
+    return { intent: 'EXPLAIN_TIMELINE' };
+  }
 
   // If ambiguous short question like "e agora?", "e entao?", "continue", inherit last valid intent from history if available
   if (recentHistory && recentHistory.length > 0) {
@@ -1942,7 +2380,10 @@ export function classifyConversationIntent(
  * Builds structured multi-turn conversation prompt for the AI provider (ADR-186, ADR-188, ADR-189).
  */
 export function buildConversationPrompt(
-  context: PortfolioAiGroundingContextV1,
+  context:
+    | PortfolioAiGroundingContextV1
+    | PortfolioAssetAiGroundingContextV1
+    | PortfolioTimelineAiGroundingContextV1,
   question: string,
   intent: ExplanationIntent,
   history: readonly ConversationHistoryMessage[],
@@ -1953,7 +2394,10 @@ export function buildConversationPrompt(
 } {
   const groundedContextPayload = {
     portfolioId: context.portfolioId,
-    analysisPeriod: context.analysisPeriod,
+    analysisPeriod:
+      'analysisPeriod' in context
+        ? context.analysisPeriod
+        : { startDate: context.period.from, endDate: context.period.to },
     asOf: context.asOf,
     currencies: context.currencies,
     scope:
@@ -1974,10 +2418,16 @@ export function buildConversationPrompt(
       assetId: f.assetId,
       currency: f.currency,
     })),
-    dataQuality: {
-      status: context.dataQuality.status,
-      availability: context.dataQuality.availability,
-    },
+    ...('dataQuality' in context && context.dataQuality
+      ? {
+          dataQuality: {
+            status: context.dataQuality.status,
+            availability: context.dataQuality.availability,
+          },
+        }
+      : {}),
+    ...('summaryFacts' in context ? { summaryFacts: context.summaryFacts } : {}),
+    ...('events' in context ? { events: context.events } : {}),
     limitations: context.limitations,
   };
 
@@ -2092,6 +2542,10 @@ export const CLAIM_CATEGORY_COMPATIBILITY: Readonly<
     'ASSET_INCOME',
     'ASSET_REALIZED',
     'ASSET_ALLOCATION',
+    'TIMELINE_EVENT',
+    'EVENT_TRANSACTION',
+    'EVENT_INCOME',
+    'EVENT_CORPORATE_ACTION',
   ] as const),
   BENCHMARK_COMPARISON: Object.freeze([
     'BENCHMARK',
@@ -2117,6 +2571,10 @@ export const CLAIM_CATEGORY_COMPATIBILITY: Readonly<
     'ASSET_INCOME',
     'ASSET_REALIZED',
     'ASSET_ALLOCATION',
+    'TIMELINE_EVENT',
+    'EVENT_TRANSACTION',
+    'EVENT_INCOME',
+    'EVENT_CORPORATE_ACTION',
   ] as const),
   CONTEXTUAL_EXPLANATION: Object.freeze([
     'OVERVIEW',
@@ -2133,6 +2591,10 @@ export const CLAIM_CATEGORY_COMPATIBILITY: Readonly<
     'ASSET_INCOME',
     'ASSET_REALIZED',
     'ASSET_ALLOCATION',
+    'TIMELINE_EVENT',
+    'EVENT_TRANSACTION',
+    'EVENT_INCOME',
+    'EVENT_CORPORATE_ACTION',
   ] as const),
 });
 
@@ -2176,6 +2638,16 @@ const CANONICAL_METRIC_LABELS: Readonly<Record<string, string>> = Object.freeze(
   ASSET_SYMBOL: 'Ticker',
   ASSET_NAME: 'Nome do Ativo',
   ASSET_TYPE: 'Tipo de Ativo',
+  type: 'Tipo de Evento',
+  date: 'Data do Evento',
+  asset_id: 'Identificador do Ativo',
+  quantity: 'Quantidade',
+  amount: 'Valor Financeiro',
+  currency: 'Moeda',
+  event_count: 'Total de Eventos',
+  has_more: 'Eventos Adicionais',
+  period_start: 'Início do Período',
+  period_end: 'Fim do Período',
 });
 
 /**
@@ -2359,7 +2831,9 @@ export function validateGroundedClaims(
     context.scope &&
     typeof context.scope === 'object' &&
     'type' in context.scope &&
-    (context.scope as { readonly type: string; readonly assetId?: string }).type === 'ASSET'
+    ((context.scope as { readonly type: string; readonly assetId?: string }).type === 'ASSET' ||
+      (context.scope as { readonly type: string; readonly assetId?: string }).type ===
+        'ASSET_TIMELINE')
       ? (context.scope as { readonly type: string; readonly assetId: string }).assetId
       : undefined);
 
@@ -2913,6 +3387,7 @@ export interface AiExecutionDurationsV1 {
   readonly historyLoadMs?: number;
   readonly groundingMs?: number;
   readonly assetGroundingMs?: number;
+  readonly timelineGroundingMs?: number;
   readonly promptBuildMs?: number;
   readonly providerMs?: number;
   readonly claimValidationMs?: number;
@@ -2935,6 +3410,8 @@ export interface AiExecutionCountsV1 {
   readonly groundingFactCount?: number;
   readonly assetFactCount?: number;
   readonly groundingSerializedBytes?: number;
+  readonly eventCount?: number;
+  readonly eventLimitReached?: boolean;
 }
 
 export interface AiExecutionTelemetryV1 {
@@ -2951,7 +3428,7 @@ export interface AiExecutionTelemetryV1 {
   readonly durations: AiExecutionDurationsV1;
   readonly usage: AiTokenUsageV1;
   readonly counts: AiExecutionCountsV1;
-  readonly scopeType?: 'PORTFOLIO' | 'ASSET';
+  readonly scopeType?: 'PORTFOLIO' | 'ASSET' | 'TIMELINE' | 'ASSET_TIMELINE';
   readonly portfolioId?: string;
   readonly conversationId?: string;
   readonly errorCode?: string;
@@ -3033,6 +3510,7 @@ export interface BuildAiExecutionTelemetryParams {
     historyLoadMs?: number;
     groundingMs?: number;
     assetGroundingMs?: number;
+    timelineGroundingMs?: number;
     promptBuildMs?: number;
     providerMs?: number;
     claimValidationMs?: number;
@@ -3060,8 +3538,10 @@ export interface BuildAiExecutionTelemetryParams {
     groundingFactCount?: number;
     assetFactCount?: number;
     groundingSerializedBytes?: number;
+    eventCount?: number;
+    eventLimitReached?: boolean;
   };
-  scopeType?: 'PORTFOLIO' | 'ASSET';
+  scopeType?: 'PORTFOLIO' | 'ASSET' | 'TIMELINE' | 'ASSET_TIMELINE';
   portfolioId?: string;
   conversationId?: string;
   errorCode?: string;
@@ -3223,6 +3703,9 @@ export function buildAiExecutionTelemetry(
     ...(params.durations.assetGroundingMs !== undefined
       ? { assetGroundingMs: sanitizeNonNegativeMs(params.durations.assetGroundingMs) }
       : {}),
+    ...(params.durations.timelineGroundingMs !== undefined
+      ? { timelineGroundingMs: sanitizeNonNegativeMs(params.durations.timelineGroundingMs) }
+      : {}),
     ...(params.durations.promptBuildMs !== undefined
       ? { promptBuildMs: sanitizeNonNegativeMs(params.durations.promptBuildMs) }
       : {}),
@@ -3274,6 +3757,12 @@ export function buildAiExecutionTelemetry(
       ? {
           groundingSerializedBytes: Math.max(0, Math.floor(params.counts.groundingSerializedBytes)),
         }
+      : {}),
+    ...(params.counts.eventCount !== undefined
+      ? { eventCount: Math.max(0, Math.floor(params.counts.eventCount)) }
+      : {}),
+    ...(params.counts.eventLimitReached !== undefined
+      ? { eventLimitReached: Boolean(params.counts.eventLimitReached) }
       : {}),
   });
 

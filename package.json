@@ -30,6 +30,7 @@
     "test:ai-claims": "vitest run --config vitest.ai-claims.config.ts",
     "test:ai-streaming": "vitest run --config vitest.ai-streaming.config.ts",
     "test:ai-asset-grounding": "vitest run --config vitest.ai-asset-grounding.config.ts",
+    "test:ai-timeline-grounding": "vitest run --config vitest.ai-timeline-grounding.config.ts",
     "test:ai-observability": "vitest run --config vitest.ai-observability.config.ts",
     "test:ai-evals": "vitest run --config vitest.ai-evals.config.ts",
     "test:performance-ui": "vitest run --config vitest.performance-ui.config.ts",

@@ -22,10 +22,12 @@ import {
   GroundedClaimV1,
   PortfolioAiGroundingContextV1,
   PortfolioAssetAiGroundingContextV1,
+  PortfolioTimelineAiGroundingContextV1,
 } from '@atlas/ai-engine';
 import { IAiConversationRepository } from '@atlas/database';
 import { GetPortfolioAiGroundingContextUseCase } from './get-portfolio-ai-grounding-context.use-case';
 import { GetPortfolioAssetAiGroundingContextUseCase } from './get-portfolio-asset-ai-grounding-context.use-case';
+import { GetPortfolioTimelineAiGroundingContextUseCase } from './get-portfolio-timeline-ai-grounding-context.use-case';
 import { AI_CONVERSATION_REPOSITORY } from '../../database/tokens';
 import { AI_PROVIDER_TOKEN } from '../../infrastructure/ai/openai-ai.provider';
 import {
@@ -47,6 +49,29 @@ export const SendAiConversationMessageBodySchema = z.object({
       z.object({
         type: z.literal('ASSET'),
         assetId: z.string().min(1, { message: 'assetId is required for ASSET scope' }),
+      }),
+      z.object({
+        type: z.literal('TIMELINE'),
+        from: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'from must be YYYY-MM-DD' })
+          .optional(),
+        to: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'to must be YYYY-MM-DD' })
+          .optional(),
+      }),
+      z.object({
+        type: z.literal('ASSET_TIMELINE'),
+        assetId: z.string().min(1, { message: 'assetId is required for ASSET_TIMELINE scope' }),
+        from: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'from must be YYYY-MM-DD' })
+          .optional(),
+        to: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'to must be YYYY-MM-DD' })
+          .optional(),
       }),
     ])
     .optional(),
@@ -139,6 +164,8 @@ export class SendAiConversationMessageUseCase {
     private readonly getGroundingContextUseCase: GetPortfolioAiGroundingContextUseCase,
     @Inject(GetPortfolioAssetAiGroundingContextUseCase)
     private readonly getAssetGroundingContextUseCase: GetPortfolioAssetAiGroundingContextUseCase,
+    @Inject(GetPortfolioTimelineAiGroundingContextUseCase)
+    private readonly getTimelineGroundingContextUseCase: GetPortfolioTimelineAiGroundingContextUseCase,
     @Inject(AI_PROVIDER_TOKEN)
     private readonly aiProvider: AIProvider,
     @Optional()
@@ -158,6 +185,9 @@ export class SendAiConversationMessageUseCase {
     let historyLoadMs: number | undefined;
     let groundingMs: number | undefined;
     let assetGroundingMs: number | undefined;
+    let timelineGroundingMs: number | undefined;
+    let timelineEventCount: number | undefined;
+    let timelineEventLimitReached: boolean | undefined;
     let promptBuildMs: number | undefined;
     let providerMs: number | undefined;
     let claimValidationMs: number | undefined;
@@ -294,7 +324,10 @@ export class SendAiConversationMessageUseCase {
       // 4. Obtain FRESH grounding context EXACTLY ONCE for supported intents
       const tGroundingStart = performance.now();
       groundingCallCount = 1;
-      let context: PortfolioAiGroundingContextV1 | PortfolioAssetAiGroundingContextV1;
+      let context:
+        | PortfolioAiGroundingContextV1
+        | PortfolioAssetAiGroundingContextV1
+        | PortfolioTimelineAiGroundingContextV1;
 
       if (validatedInput.scope?.type === 'ASSET') {
         const tAssetStart = performance.now();
@@ -307,6 +340,25 @@ export class SendAiConversationMessageUseCase {
         });
         assetGroundingMs = performance.now() - tAssetStart;
         assetFactCount = (context as PortfolioAssetAiGroundingContextV1).assetFacts.length;
+      } else if (
+        validatedInput.scope?.type === 'TIMELINE' ||
+        validatedInput.scope?.type === 'ASSET_TIMELINE'
+      ) {
+        const tTimelineStart = performance.now();
+        context = await this.getTimelineGroundingContextUseCase.execute({
+          portfolioId: validatedInput.portfolioId,
+          userId: validatedInput.userId,
+          from: validatedInput.scope.from ?? validatedInput.startDate,
+          to: validatedInput.scope.to ?? validatedInput.endDate,
+          assetId:
+            validatedInput.scope.type === 'ASSET_TIMELINE'
+              ? validatedInput.scope.assetId
+              : undefined,
+        });
+        timelineGroundingMs = performance.now() - tTimelineStart;
+        timelineEventCount = (context as PortfolioTimelineAiGroundingContextV1).events.length;
+        timelineEventLimitReached = (context as PortfolioTimelineAiGroundingContextV1).summaryFacts
+          .hasMore;
       } else {
         context = await this.getGroundingContextUseCase.execute({
           portfolioId: validatedInput.portfolioId,
@@ -558,6 +610,7 @@ export class SendAiConversationMessageUseCase {
             historyLoadMs,
             groundingMs,
             assetGroundingMs,
+            timelineGroundingMs,
             promptBuildMs,
             providerMs,
             claimValidationMs,
@@ -583,8 +636,10 @@ export class SendAiConversationMessageUseCase {
             groundingFactCount,
             assetFactCount,
             groundingSerializedBytes,
+            eventCount: timelineEventCount,
+            eventLimitReached: timelineEventLimitReached,
           },
-          scopeType: validatedInput.scope?.type === 'ASSET' ? 'ASSET' : 'PORTFOLIO',
+          scopeType: validatedInput.scope?.type ?? 'PORTFOLIO',
           portfolioId: validatedInput.portfolioId,
           conversationId: validatedInput.conversationId,
           errorCode,

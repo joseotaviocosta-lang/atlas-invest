@@ -15,6 +15,7 @@ import { Request, Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { GetPortfolioAiGroundingContextUseCase } from '../../application/ai/get-portfolio-ai-grounding-context.use-case';
+import { GetPortfolioTimelineAiGroundingContextUseCase } from '../../application/ai/get-portfolio-timeline-ai-grounding-context.use-case';
 import {
   ExplainPortfolioWithAiUseCase,
   ExplainPortfolioBodySchema,
@@ -43,6 +44,8 @@ export class AiController {
   constructor(
     @Inject(GetPortfolioAiGroundingContextUseCase)
     private readonly getPortfolioAiGroundingContextUseCase: GetPortfolioAiGroundingContextUseCase,
+    @Inject(GetPortfolioTimelineAiGroundingContextUseCase)
+    private readonly getPortfolioTimelineAiGroundingContextUseCase: GetPortfolioTimelineAiGroundingContextUseCase,
     @Inject(ExplainPortfolioWithAiUseCase)
     private readonly explainPortfolioWithAiUseCase: ExplainPortfolioWithAiUseCase,
     @Inject(CreateAiConversationUseCase)
@@ -77,6 +80,32 @@ export class AiController {
       userId: principal.userId,
       startDate,
       endDate,
+    });
+    return { data };
+  }
+
+  @Get(':portfolioId/ai/grounding/timeline')
+  @ApiOperation({
+    summary:
+      'Get deterministic Portfolio Timeline AI Grounding Context — compact, versioned, bounded event facts for temporal Q&A (Phase 3X)',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({ status: 200, description: 'Portfolio Timeline AI grounding context' })
+  @ApiResponse({ status: 400, description: 'Invalid period or date range' })
+  @ApiResponse({ status: 404, description: 'Portfolio or asset not found' })
+  async getAiTimelineGroundingContext(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Query('startDate') startDate: string | undefined,
+    @Query('endDate') endDate: string | undefined,
+    @Query('assetId') assetId: string | undefined,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.getPortfolioTimelineAiGroundingContextUseCase.execute({
+      portfolioId,
+      userId: principal.userId,
+      startDate,
+      endDate,
+      assetId,
     });
     return { data };
   }

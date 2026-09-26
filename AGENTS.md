@@ -1378,3 +1378,34 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 
 8. **ANTI-ESCOPO DA FASE 3W:**
    - A Fase 3W proíbe estritamente RAG, bancos vetoriais, embeddings, agentes autônomos, busca na internet, web scraping, ferramentas (function calling) ou novas autoridades financeiras.
+
+---
+
+## 46. Arquitetura e Invariantes do AI Timeline Grounding (Fase 3X)
+
+1. **AUTORIDADE CANÔNICA DE HISTÓRICO E ZERO REPLAY PARALELO (ADR-216):**
+   - O grounding temporal e de eventos consome exclusivamente projeções canônicas de leitura (`PortfolioReadApi`, `PortfolioReplayEngine`, `PortfolioReadModelMapper`).
+   - É terminantemente proibido reimplementar interpretação de ledger ou cálculo de replay no motor de IA.
+2. **ZERO LEDGER BRUTO AO PROVEDOR DE IA (ADR-217):**
+   - Linhas brutas da tabela `Transaction` ou entidades do Prisma **NUNCA** devem ser enviadas aos modelos de linguagem.
+   - O modelo recebe exclusivamente a projeção sanitizada `PortfolioAiEventV1` contendo apenas dados econômicos relevantes.
+3. **PRIMAZIA DA DATA ECONÔMICA E ESCOPO TEMPORAL EXPLÍCITO (ADR-218):**
+   - A data econômica civil (`tradeDate`, `LocalDate`, `YYYY-MM-DD`) é soberana e imune a fusos horários. Timestamps técnicos (`createdAt`) nunca representam datas de eventos financeiros.
+   - O escopo temporal (`TIMELINE` ou `ASSET_TIMELINE`) é fornecido explicitamente a cada mensagem (`[from, to]`). O modelo nunca deduz ou expande intervalos de datas por conta própria.
+   - Intervalos de calendário inválidos (ex: datas civis inexistentes ou `from > to`) ou que excedam o teto de 366 dias (`MAX_TIMELINE_RANGE_DAYS`) são rejeitados compulsoriamente com erro 400.
+4. **CONTEXTO DE EVENTOS DELIMITADO E SELEÇÃO DETERMINÍSTICA (ADR-219):**
+   - O número de eventos no contexto é limitado a no máximo 50 (`MAX_AI_TIMELINE_EVENTS = 50`).
+   - A seleção prioriza os 50 eventos mais recentes do período por ordenação determinística (`economicDate DESC, eventId DESC`) e os apresenta em ordem cronológica (`economicDate ASC, eventId ASC`) no prompt.
+   - Em caso de truncamento, a limitação `PARTIAL_TIMELINE_EVENTS` e `summaryFacts.hasMore: true` são obrigatoriamente divulgados ao investidor.
+5. **PRECISÃO DECIMAL EXATA E ZERO COERÇÃO (ADR-220):**
+   - Quantidades transacionadas e valores monetários preservam strings decimais canônicas exatas.
+   - Valores desconhecidos ou indisponíveis jamais são convertidos para zero.
+   - O `AssetId` permanece a identidade canônica e inequívoca do ativo.
+6. **DISTINÇÃO SEMÂNTICA DE NATUREZAS DE EVENTOS (ADR-220):**
+   - Semânticas de `BUY`, `SELL`, `TRANSFER_IN`, `TRANSFER_OUT`, `DIVIDEND`, `JCP`, `SPLIT`, `BONUS`, `AMORTIZATION` permanecem estritamente distintas. Transferências não são compras, proventos não são aportes e bonificações não são trades.
+7. **ZERO CÁLCULOS OU AGREGAÇÕES FINANCEIRAS PELA IA:**
+   - A IA pode explicar eventos passados, mas é expressamente proibida de computar agregações ou novos totais contábeis no período.
+8. **ESTABILIDADE E IMUTABILIDADE DE EVIDÊNCIAS HISTÓRICAS (ADR-221):**
+   - Snapshots de evidências de mensagens anteriores permanecem imutáveis. O surgimento de novos eventos é capturado deterministicamente pela reconstrução de contexto no turno subsequente.
+9. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+   - As garantias de streaming seguro (3U), governança estrita de tokens e telemetria fail-open (3V) e isolamento de escopo de ativos (3W) permanecem integralmente ativas e invioláveis.

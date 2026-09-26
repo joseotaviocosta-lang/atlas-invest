@@ -35,16 +35,66 @@ const ASSET_STARTER_QUESTIONS = [
   'Quanto recebi de proventos deste ativo?',
 ];
 
+const TIMELINE_STARTER_QUESTIONS = [
+  'Quais foram minhas últimas compras no período?',
+  'Quando ocorreram vendas e quais foram os resultados?',
+  'Quais proventos foram pagos neste período?',
+  'Houve aportes ou retiradas recentes na carteira?',
+];
+
+function formatCivilDate(isoDate?: string): string {
+  if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return isoDate || '';
+  const [y, m, d] = isoDate.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+export type TimelineScopeState = {
+  type: 'TIMELINE' | 'ASSET_TIMELINE';
+  from?: string;
+  to?: string;
+  assetId?: string;
+  symbol?: string;
+};
+
 function AIContent() {
   const searchParams = useSearchParams();
   const initialAssetId = searchParams.get('assetId');
   const initialSymbol = searchParams.get('symbol');
   const portfolioIdParam = searchParams.get('portfolioId');
+  const scopeParam = searchParams.get('scope');
+  const fromParam = searchParams.get('from');
+  const toParam = searchParams.get('to');
 
   const queryClient = useQueryClient();
   const [inputQuery, setInputQuery] = useState('');
   const [assetScope, setAssetScope] = useState<{ assetId: string; symbol: string } | null>(
-    initialAssetId ? { assetId: initialAssetId, symbol: initialSymbol || initialAssetId } : null,
+    initialAssetId && scopeParam !== 'timeline' && scopeParam !== 'asset_timeline'
+      ? { assetId: initialAssetId, symbol: initialSymbol || initialAssetId }
+      : null,
+  );
+
+  const initialTimelineScope = useMemo<TimelineScopeState | null>(() => {
+    if (scopeParam === 'timeline') {
+      return {
+        type: 'TIMELINE',
+        from: fromParam || undefined,
+        to: toParam || undefined,
+      };
+    }
+    if (scopeParam === 'asset_timeline' && initialAssetId) {
+      return {
+        type: 'ASSET_TIMELINE',
+        assetId: initialAssetId,
+        symbol: initialSymbol || initialAssetId,
+        from: fromParam || undefined,
+        to: toParam || undefined,
+      };
+    }
+    return null;
+  }, [scopeParam, initialAssetId, initialSymbol, fromParam, toParam]);
+
+  const [timelineScope, setTimelineScope] = useState<TimelineScopeState | null>(
+    initialTimelineScope,
   );
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(portfolioIdParam);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -138,6 +188,32 @@ function AIContent() {
     },
   });
 
+  // Resolve current active scope
+  const currentScope = useMemo(() => {
+    if (timelineScope) {
+      if (timelineScope.type === 'ASSET_TIMELINE' && timelineScope.assetId) {
+        return {
+          type: 'ASSET_TIMELINE' as const,
+          assetId: timelineScope.assetId,
+          from: timelineScope.from,
+          to: timelineScope.to,
+        };
+      }
+      return {
+        type: 'TIMELINE' as const,
+        from: timelineScope.from,
+        to: timelineScope.to,
+      };
+    }
+    if (assetScope) {
+      return {
+        type: 'ASSET' as const,
+        assetId: assetScope.assetId,
+      };
+    }
+    return undefined;
+  }, [timelineScope, assetScope]);
+
   // Backward-compatible non-streaming fallback mutation
   const sendMessageMutation = useMutation({
     mutationFn: async ({
@@ -150,7 +226,7 @@ function AIContent() {
       if (!activePortfolioId) throw new Error('Selecione uma carteira');
       const payload = {
         question,
-        ...(assetScope ? { scope: { type: 'ASSET' as const, assetId: assetScope.assetId } } : {}),
+        ...(currentScope ? { scope: currentScope } : {}),
       };
       const response = await apiClient.post<{ data: GroundedExplanationDto }>(
         `/api/v1/portfolios/${activePortfolioId}/ai/conversations/${conversationId}/messages`,
@@ -185,7 +261,7 @@ function AIContent() {
     try {
       const streamPayload = {
         question: q,
-        ...(assetScope ? { scope: { type: 'ASSET' as const, assetId: assetScope.assetId } } : {}),
+        ...(currentScope ? { scope: currentScope } : {}),
       };
       await apiClient.stream(
         `/api/v1/portfolios/${activePortfolioId}/ai/conversations/${targetConvId}/messages/stream`,
@@ -455,7 +531,12 @@ function AIContent() {
                       justifyContent: 'center',
                     }}
                   >
-                    {(assetScope ? ASSET_STARTER_QUESTIONS : STARTER_QUESTIONS).map((q) => (
+                    {(timelineScope
+                      ? TIMELINE_STARTER_QUESTIONS
+                      : assetScope
+                        ? ASSET_STARTER_QUESTIONS
+                        : STARTER_QUESTIONS
+                    ).map((q) => (
                       <Chip
                         key={q}
                         label={q}
@@ -726,8 +807,41 @@ function AIContent() {
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Timeline Scope Indicator (Phase 3X) */}
+          {timelineScope && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: `${spacing.xs}px ${spacing.md}px`,
+                backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+                borderRadius: `${borderRadius.md}px`,
+                marginBottom: `${spacing.sm}px`,
+              }}
+            >
+              <span style={{ fontSize: '0.8125rem', color: colors.accent, fontWeight: 600 }}>
+                📅 Período:{' '}
+                {timelineScope.type === 'ASSET_TIMELINE'
+                  ? `${timelineScope.symbol || 'Ativo'} · `
+                  : 'Carteira · '}
+                {timelineScope.from ? formatCivilDate(timelineScope.from) : 'Início'} a{' '}
+                {timelineScope.to ? formatCivilDate(timelineScope.to) : 'Hoje'}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setTimelineScope(null)}
+                style={{ fontSize: '0.75rem', padding: '2px 8px' }}
+              >
+                Limpar escopo
+              </Button>
+            </div>
+          )}
+
           {/* Asset Scope Indicator (Phase 3W) */}
-          {assetScope && (
+          {!timelineScope && assetScope && (
             <div
               style={{
                 display: 'flex',
@@ -768,9 +882,11 @@ function AIContent() {
             <div style={{ flex: 1 }}>
               <Input
                 placeholder={
-                  assetScope
-                    ? `Pergunte sobre ${assetScope.symbol} (ex: 'Qual é meu preço médio?')...`
-                    : "Pergunte sobre a carteira (ex: 'E o risco?', 'E contra o CDI?')..."
+                  timelineScope
+                    ? 'Pergunte sobre eventos ou transações deste período...'
+                    : assetScope
+                      ? `Pergunte sobre ${assetScope.symbol} (ex: 'Qual é meu preço médio?')...`
+                      : "Pergunte sobre a carteira (ex: 'E o risco?', 'E contra o CDI?')..."
                 }
                 value={inputQuery}
                 onChange={(e) => setInputQuery(e.target.value)}

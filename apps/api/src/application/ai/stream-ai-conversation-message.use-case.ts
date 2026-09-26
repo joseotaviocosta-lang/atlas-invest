@@ -21,10 +21,12 @@ import {
   GroundedClaimV1,
   PortfolioAiGroundingContextV1,
   PortfolioAssetAiGroundingContextV1,
+  PortfolioTimelineAiGroundingContextV1,
 } from '@atlas/ai-engine';
 import { IAiConversationRepository } from '@atlas/database';
 import { GetPortfolioAiGroundingContextUseCase } from './get-portfolio-ai-grounding-context.use-case';
 import { GetPortfolioAssetAiGroundingContextUseCase } from './get-portfolio-asset-ai-grounding-context.use-case';
+import { GetPortfolioTimelineAiGroundingContextUseCase } from './get-portfolio-timeline-ai-grounding-context.use-case';
 import {
   SendAiConversationMessageInput,
   SendAiConversationMessageInputSchema,
@@ -99,6 +101,8 @@ export class StreamAiConversationMessageUseCase {
     private readonly getGroundingContextUseCase: GetPortfolioAiGroundingContextUseCase,
     @Inject(GetPortfolioAssetAiGroundingContextUseCase)
     private readonly getAssetGroundingContextUseCase: GetPortfolioAssetAiGroundingContextUseCase,
+    @Inject(GetPortfolioTimelineAiGroundingContextUseCase)
+    private readonly getTimelineGroundingContextUseCase: GetPortfolioTimelineAiGroundingContextUseCase,
     @Inject(AI_PROVIDER_TOKEN)
     private readonly aiProvider: AIProvider,
     @Optional()
@@ -146,6 +150,7 @@ export class StreamAiConversationMessageUseCase {
     let historyLoadMs: number | undefined;
     let groundingMs: number | undefined;
     let assetGroundingMs: number | undefined;
+    let timelineGroundingMs: number | undefined;
     let promptBuildMs: number | undefined;
     let providerMs: number | undefined;
     let claimValidationMs: number | undefined;
@@ -168,6 +173,8 @@ export class StreamAiConversationMessageUseCase {
     let historyChars: number | undefined;
     let groundingFactCount: number | undefined;
     let assetFactCount: number | undefined;
+    let timelineEventCount: number | undefined;
+    let timelineEventLimitReached: boolean | undefined;
     let groundingSerializedBytes: number | undefined;
 
     let inputTokens: number | null = null;
@@ -284,7 +291,10 @@ export class StreamAiConversationMessageUseCase {
 
       const tGroundingStart = performance.now();
       groundingCallCount = 1;
-      let context: PortfolioAiGroundingContextV1 | PortfolioAssetAiGroundingContextV1;
+      let context:
+        | PortfolioAiGroundingContextV1
+        | PortfolioAssetAiGroundingContextV1
+        | PortfolioTimelineAiGroundingContextV1;
 
       if (validatedInput.scope?.type === 'ASSET') {
         const tAssetStart = performance.now();
@@ -297,6 +307,25 @@ export class StreamAiConversationMessageUseCase {
         });
         assetGroundingMs = performance.now() - tAssetStart;
         assetFactCount = (context as PortfolioAssetAiGroundingContextV1).assetFacts.length;
+      } else if (
+        validatedInput.scope?.type === 'TIMELINE' ||
+        validatedInput.scope?.type === 'ASSET_TIMELINE'
+      ) {
+        const tTimelineStart = performance.now();
+        const timelineContext = await this.getTimelineGroundingContextUseCase.execute({
+          portfolioId: validatedInput.portfolioId,
+          userId: validatedInput.userId,
+          from: validatedInput.scope.from ?? validatedInput.startDate,
+          to: validatedInput.scope.to ?? validatedInput.endDate,
+          assetId:
+            validatedInput.scope.type === 'ASSET_TIMELINE'
+              ? validatedInput.scope.assetId
+              : undefined,
+        });
+        timelineGroundingMs = performance.now() - tTimelineStart;
+        timelineEventCount = timelineContext.events.length;
+        timelineEventLimitReached = timelineContext.eventLimitReached;
+        context = timelineContext;
       } else {
         context = await this.getGroundingContextUseCase.execute({
           portfolioId: validatedInput.portfolioId,
@@ -430,7 +459,11 @@ export class StreamAiConversationMessageUseCase {
         claimValidationCount = 1;
         const claimValidation = validateGroundedClaims(claims, context, {
           targetAssetId:
-            validatedInput.scope?.type === 'ASSET' ? validatedInput.scope.assetId : undefined,
+            validatedInput.scope?.type === 'ASSET'
+              ? validatedInput.scope.assetId
+              : validatedInput.scope?.type === 'ASSET_TIMELINE'
+                ? validatedInput.scope.assetId
+                : undefined,
         });
         if (!claimValidation.valid) {
           executionStatus = 'VALIDATION_ERROR';
@@ -562,6 +595,7 @@ export class StreamAiConversationMessageUseCase {
             historyLoadMs,
             groundingMs,
             assetGroundingMs,
+            timelineGroundingMs,
             promptBuildMs,
             providerMs,
             claimValidationMs,
@@ -588,9 +622,11 @@ export class StreamAiConversationMessageUseCase {
             historyChars,
             groundingFactCount,
             assetFactCount,
+            eventCount: timelineEventCount,
+            eventLimitReached: timelineEventLimitReached,
             groundingSerializedBytes,
           },
-          scopeType: validatedInput.scope?.type === 'ASSET' ? 'ASSET' : 'PORTFOLIO',
+          scopeType: validatedInput.scope?.type ?? 'PORTFOLIO',
           portfolioId: validatedInput.portfolioId,
           conversationId: validatedInput.conversationId,
           errorCode,

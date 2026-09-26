@@ -54,15 +54,20 @@ describe('Architecture: AI Grounding boundaries (Phase 3Q, ADR-173–ADR-178)', 
 
     for (const f of forbiddenFiles) {
       const c = read(f);
-      expect(c, `File ${f} must not import ai-engine`).not.toMatch(/ai-engine|@atlas\/ai-engine/i);
+      expect(c, `File ${f} must not import ai-engine`).not.toMatch(
+        /ai-engine|@atlas\/ai-engine/i,
+      );
     }
   });
 
   it('ai grounding use-case calls Portfolio Intelligence Summary exactly once and does not call model providers', () => {
-    const c = read('apps/api/src/application/ai/get-portfolio-ai-grounding-context.use-case.ts');
+    const c = read(
+      'apps/api/src/application/ai/get-portfolio-ai-grounding-context.use-case.ts',
+    );
     expect(c).toContain('GetPortfolioIntelligenceSummaryUseCase');
     expect(c).toContain('buildPortfolioAiGroundingContext');
     expect(c).not.toMatch(/openai|anthropic|gemini/i);
     expect(c).not.toMatch(/calculateSharpe|calculateBeta|calculateTWR/i);
   });
 });
+
