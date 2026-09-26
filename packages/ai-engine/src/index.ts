@@ -2572,10 +2572,7 @@ export interface BuildAiExecutionTelemetryParams {
  */
 export function isValidTokenCount(value: unknown): value is number {
   return (
-    typeof value === 'number' &&
-    Number.isFinite(value) &&
-    Number.isSafeInteger(value) &&
-    value >= 0
+    typeof value === 'number' && Number.isFinite(value) && Number.isSafeInteger(value) && value >= 0
   );
 }
 
@@ -2638,20 +2635,17 @@ export function normalizeProviderUsage(
     u.inputTokens !== undefined
       ? u.inputTokens
       : u.promptTokens !== undefined
-      ? u.promptTokens
-      : u.prompt_tokens;
+        ? u.promptTokens
+        : u.prompt_tokens;
 
   const rawOutput =
     u.outputTokens !== undefined
       ? u.outputTokens
       : u.completionTokens !== undefined
-      ? u.completionTokens
-      : u.completion_tokens;
+        ? u.completionTokens
+        : u.completion_tokens;
 
-  const rawTotal =
-    u.totalTokens !== undefined
-      ? u.totalTokens
-      : u.total_tokens;
+  const rawTotal = u.totalTokens !== undefined ? u.totalTokens : u.total_tokens;
 
   // If all fields are missing / undefined / null, usage is UNAVAILABLE
   if (rawInput === undefined && rawOutput === undefined && rawTotal === undefined) {
