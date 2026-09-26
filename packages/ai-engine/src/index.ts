@@ -2566,37 +2566,148 @@ export interface BuildAiExecutionTelemetryParams {
 }
 
 /**
+ * Strict validator for provider-reported token usage counts (ADR-206).
+ * Invariant: Must be a non-negative safe integer.
+ * Zero string coercion, zero Math.floor, zero Math.round, zero negative clamping.
+ */
+export function isValidTokenCount(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    Number.isSafeInteger(value) &&
+    value >= 0
+  );
+}
+
+/**
+ * Pure deterministic normalizer for AI token usage (ADR-206).
+ * Enforces atomic all-or-nothing validation and total token consistency.
+ *
+ * Rules:
+ * 1. UNSUPPORTED / CONTEXT_BUDGET_EXCEEDED -> NOT_APPLICABLE (0, 0, 0)
+ * 2. Missing usage object / fields -> UNAVAILABLE (null, null, null)
+ * 3. Every canonical token count must be a non-negative safe integer (no string parsing, no flooring, no clamping)
+ * 4. All-or-nothing: if any field is invalid, the entire envelope becomes UNAVAILABLE (null, null, null)
+ * 5. Total token consistency: total_tokens === prompt_tokens + completion_tokens
+ *    If mismatch exists: becomes UNAVAILABLE (null, null, null) without silent repair
+ * 6. Reported 0 / 0 / 0 is valid and remains PROVIDER (0, 0, 0)
+ */
+export function normalizeProviderUsage(
+  rawUsage: unknown,
+  status?: AiExecutionStatus,
+): AiTokenUsageV1 {
+  if (status === 'UNSUPPORTED' || status === 'CONTEXT_BUDGET_EXCEEDED') {
+    return Object.freeze({
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      source: 'NOT_APPLICABLE' as const,
+    });
+  }
+
+  if (!rawUsage || typeof rawUsage !== 'object') {
+    return Object.freeze({
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+      source: 'UNAVAILABLE' as const,
+    });
+  }
+
+  const u = rawUsage as Record<string, unknown>;
+
+  if (u.source === 'NOT_APPLICABLE') {
+    return Object.freeze({
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      source: 'NOT_APPLICABLE' as const,
+    });
+  }
+
+  if (u.source === 'UNAVAILABLE') {
+    return Object.freeze({
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+      source: 'UNAVAILABLE' as const,
+    });
+  }
+
+  const rawInput =
+    u.inputTokens !== undefined
+      ? u.inputTokens
+      : u.promptTokens !== undefined
+      ? u.promptTokens
+      : u.prompt_tokens;
+
+  const rawOutput =
+    u.outputTokens !== undefined
+      ? u.outputTokens
+      : u.completionTokens !== undefined
+      ? u.completionTokens
+      : u.completion_tokens;
+
+  const rawTotal =
+    u.totalTokens !== undefined
+      ? u.totalTokens
+      : u.total_tokens;
+
+  // If all fields are missing / undefined / null, usage is UNAVAILABLE
+  if (rawInput === undefined && rawOutput === undefined && rawTotal === undefined) {
+    return Object.freeze({
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+      source: 'UNAVAILABLE' as const,
+    });
+  }
+
+  // Atomic validity: all 3 fields must be valid non-negative safe integers
+  if (
+    !isValidTokenCount(rawInput) ||
+    !isValidTokenCount(rawOutput) ||
+    !isValidTokenCount(rawTotal)
+  ) {
+    return Object.freeze({
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+      source: 'UNAVAILABLE' as const,
+    });
+  }
+
+  // Total token consistency: total_tokens === prompt_tokens + completion_tokens
+  if (rawTotal !== rawInput + rawOutput) {
+    return Object.freeze({
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+      source: 'UNAVAILABLE' as const,
+    });
+  }
+
+  return Object.freeze({
+    inputTokens: rawInput,
+    outputTokens: rawOutput,
+    totalTokens: rawTotal,
+    source: 'PROVIDER' as const,
+  });
+}
+
+/**
  * Pure deterministic builder for AiExecutionTelemetryV1 (ADR-204, ADR-205).
  * Validates integer token counts, ensures non-negative numbers, and deeply freezes output.
  */
 export function buildAiExecutionTelemetry(
   params: BuildAiExecutionTelemetryParams,
 ): AiExecutionTelemetryV1 {
-  const sanitizeInt = (val: number | null | undefined): number | null => {
-    if (val === null || val === undefined || isNaN(val)) return null;
-    return Math.max(0, Math.floor(val));
-  };
-
   const sanitizeNonNegativeMs = (val: number | undefined): number | undefined => {
     if (val === undefined || isNaN(val)) return undefined;
     return Math.max(0, Math.round(val * 100) / 100);
   };
 
-  let usageSource: AiTokenUsageSource = params.usage.source ?? 'UNAVAILABLE';
-  let inputTokens = sanitizeInt(params.usage.inputTokens);
-  let outputTokens = sanitizeInt(params.usage.outputTokens);
-  let totalTokens = sanitizeInt(params.usage.totalTokens);
-
-  if (params.status === 'UNSUPPORTED' || params.status === 'CONTEXT_BUDGET_EXCEEDED') {
-    usageSource = 'NOT_APPLICABLE';
-    inputTokens = 0;
-    outputTokens = 0;
-    totalTokens = 0;
-  } else if (inputTokens === null && outputTokens === null && totalTokens === null) {
-    usageSource = 'UNAVAILABLE';
-  } else if (usageSource !== 'PROVIDER') {
-    usageSource = 'PROVIDER';
-  }
+  const normalizedUsage = normalizeProviderUsage(params.usage, params.status);
 
   const normalizedDurations: AiExecutionDurationsV1 = Object.freeze({
     totalMs: Math.max(0, Math.round(params.durations.totalMs * 100) / 100),
@@ -2630,13 +2741,6 @@ export function buildAiExecutionTelemetry(
     ...(params.durations.timeToFirstEventMs !== undefined
       ? { timeToFirstEventMs: sanitizeNonNegativeMs(params.durations.timeToFirstEventMs) }
       : {}),
-  });
-
-  const normalizedUsage: AiTokenUsageV1 = Object.freeze({
-    inputTokens,
-    outputTokens,
-    totalTokens,
-    source: usageSource,
   });
 
   const normalizedCounts: AiExecutionCountsV1 = Object.freeze({

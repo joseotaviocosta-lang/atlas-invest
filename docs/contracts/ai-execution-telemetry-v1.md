@@ -57,3 +57,12 @@ export interface AiExecutionTelemetryV1 {
 3. **NO FINANCIAL FACTS**: Grounding facts, fact values, and ledger values are excluded. Only counts (`groundingFactCount`, `groundingSerializedBytes`) are recorded.
 4. **NO CREDENTIALS / PII**: Telemetry records never store API keys, bearer tokens, passwords, CPFs, or user emails.
 5. **FAIL-OPEN SINK**: Failures in recording telemetry (e.g. logging errors) must never throw or disrupt the delivery of answers to users.
+
+---
+
+## 4. Strict Token Usage Invariants (ADR-206)
+
+1. **STRICT SAFE INTEGER VALIDATION**: Every token count must satisfy `typeof val === 'number' && Number.isFinite(val) && Number.isSafeInteger(val) && val >= 0`. Zero string coercion, zero `Math.floor`, zero `Math.round`, and zero negative clamping.
+2. **ATOMIC ALL-OR-NOTHING**: If any token count field is missing or invalid, the entire usage envelope becomes `source: 'UNAVAILABLE'` with `inputTokens: null, outputTokens: null, totalTokens: null`.
+3. **TOTAL TOKEN CONSISTENCY**: When all counts are present, `total_tokens === prompt_tokens + completion_tokens` is enforced. Any arithmetic mismatch causes fail-closed marking as `UNAVAILABLE` (`null / null / null`) without silent recalculation.
+4. **TELEMETRY FAIL-OPEN**: Malformed provider usage metadata never fails the assistant's answer or stream. The status remains `ANSWERED` / `FINAL`.

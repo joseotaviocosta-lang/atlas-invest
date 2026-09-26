@@ -1312,11 +1312,14 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Senhas, chaves de API (`OPENAI_API_KEY`), tokens de autenticação (JWT), e-mails ou CPF são terminantemente proibidos na telemetria.
    - O rastreamento utiliza contagens seguras (`questionLength`, `historyMessageCount`, `historyChars`, `groundingFactCount`, `claimCount`).
 
-2. **CONTABILIDADE FIDEDIGNA DE TOKENS (ADR-206):**
+2. **CONTABILIDADE FIDEDIGNA E ESTRITA DE TOKENS (ADR-206):**
    - O uso de tokens reportado pelo provedor (`prompt_tokens`, `completion_tokens`, `total_tokens`) é a contabilidade canônica operacional de recursos.
+   - Todo campo deve ser um inteiro seguro não-negativo (`isValidTokenCount`). São **terminantemente proibidos**: coerção de strings, truncamentos via `Math.floor`/`Math.round`, e clamps de negativos via `Math.max(0, ...)`.
+   - Validação atômica: qualquer campo malformado ou inconsistente com a soma (`total !== prompt + completion`) invalida todo o uso para `source: 'UNAVAILABLE'` e `null` em todos os campos, sem reparo silencioso.
+   - Relato genuíno de `0 / 0 / 0` pelo provedor é válido e gravado como `source: 'PROVIDER'`.
    - Se o provedor não reportar uso, os tokens devem ser gravados como `null` com `source: 'UNAVAILABLE'`, **NUNCA** reportando silenciosamente zero.
    - Requisições não suportadas ou orçamentos excedidos registram tokens `0` com `source: 'NOT_APPLICABLE'`.
-   - Sem tabelas de precificação monetária fictícia na Fase 3V.
+   - Sem tabelas de precificação monetária fictícia na Fase 3V. Falhas na telemetria de uso operam em fail-open e não afetam o status da resposta ao usuário.
 
 3. **BAIXA CARDINALIDADE EM MÉTRICAS (ADR-209):**
    - As dimensões/tags de métricas agregadas devem ser estritamente de baixa cardinalidade (`operation`, `deliveryMode`, `intent`, `status`, `provider`, `model`, `errorCode`).

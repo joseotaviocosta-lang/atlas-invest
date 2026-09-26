@@ -7,6 +7,8 @@ import {
   validateContextBudget,
   AI_DEFAULT_MAX_CONTEXT_BYTES,
   AiExecutionTelemetryV1,
+  isValidTokenCount,
+  normalizeProviderUsage,
 } from '@atlas/ai-engine';
 
 describe('Phase 3V: AI Reliability, Observability & Usage Governance', () => {
@@ -142,6 +144,180 @@ describe('Phase 3V: AI Reliability, Observability & Usage Governance', () => {
       expect(telemetry.usage.totalTokens).toBe(0);
       expect(telemetry.counts.providerCallCount).toBe(0);
       expect(telemetry.counts.groundingCallCount).toBe(0);
+    });
+  });
+
+  describe('1b. Strict Provider Token Usage Validation (ADR-206 Hotfix)', () => {
+    it('isValidTokenCount returns true only for finite, non-negative safe integers', () => {
+      expect(isValidTokenCount(0)).toBe(true);
+      expect(isValidTokenCount(1)).toBe(true);
+      expect(isValidTokenCount(1000)).toBe(true);
+      expect(isValidTokenCount(Number.MAX_SAFE_INTEGER)).toBe(true);
+
+      // Prohibited: negative numbers
+      expect(isValidTokenCount(-1)).toBe(false);
+      expect(isValidTokenCount(-100)).toBe(false);
+
+      // Prohibited: fractional numbers (no floor/round)
+      expect(isValidTokenCount(10.5)).toBe(false);
+      expect(isValidTokenCount(0.1)).toBe(false);
+      expect(isValidTokenCount(1e-5)).toBe(false);
+
+      // Prohibited: strings (no parseInt/coercion)
+      expect(isValidTokenCount('100')).toBe(false);
+      expect(isValidTokenCount('0')).toBe(false);
+      expect(isValidTokenCount('')).toBe(false);
+
+      // Prohibited: unsafe integers / non-finite / special values
+      expect(isValidTokenCount(Number.MAX_SAFE_INTEGER + 1)).toBe(false);
+      expect(isValidTokenCount(Infinity)).toBe(false);
+      expect(isValidTokenCount(-Infinity)).toBe(false);
+      expect(isValidTokenCount(NaN)).toBe(false);
+      expect(isValidTokenCount(null)).toBe(false);
+      expect(isValidTokenCount(undefined)).toBe(false);
+      expect(isValidTokenCount({})).toBe(false);
+    });
+
+    it('normalizeProviderUsage accepts valid non-negative safe integers matching arithmetic sum', () => {
+      const usage = normalizeProviderUsage({
+        prompt_tokens: 120,
+        completion_tokens: 30,
+        total_tokens: 150,
+      });
+
+      expect(usage.source).toBe('PROVIDER');
+      expect(usage.inputTokens).toBe(120);
+      expect(usage.outputTokens).toBe(30);
+      expect(usage.totalTokens).toBe(150);
+      expect(Object.isFrozen(usage)).toBe(true);
+    });
+
+    it('normalizeProviderUsage accepts zero when actually reported by provider (0 / 0 / 0)', () => {
+      const usage = normalizeProviderUsage({
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+      });
+
+      expect(usage.source).toBe('PROVIDER');
+      expect(usage.inputTokens).toBe(0);
+      expect(usage.outputTokens).toBe(0);
+      expect(usage.totalTokens).toBe(0);
+    });
+
+    it('normalizeProviderUsage marks UNAVAILABLE when total tokens does not match sum (no silent recomputation)', () => {
+      const usage = normalizeProviderUsage({
+        prompt_tokens: 100,
+        completion_tokens: 20,
+        total_tokens: 999, // Arithmetic mismatch
+      });
+
+      expect(usage.source).toBe('UNAVAILABLE');
+      expect(usage.inputTokens).toBeNull();
+      expect(usage.outputTokens).toBeNull();
+      expect(usage.totalTokens).toBeNull();
+    });
+
+    it('normalizeProviderUsage enforces atomic all-or-nothing rejection (no partial usage)', () => {
+      // Input is string, output is number, total is valid sum
+      const stringUsage = normalizeProviderUsage({
+        prompt_tokens: '100',
+        completion_tokens: 20,
+        total_tokens: 120,
+      });
+      expect(stringUsage.source).toBe('UNAVAILABLE');
+      expect(stringUsage.inputTokens).toBeNull();
+      expect(stringUsage.outputTokens).toBeNull();
+      expect(stringUsage.totalTokens).toBeNull();
+
+      // Fractional total
+      const fracUsage = normalizeProviderUsage({
+        prompt_tokens: 100,
+        completion_tokens: 20,
+        total_tokens: 120.5,
+      });
+      expect(fracUsage.source).toBe('UNAVAILABLE');
+      expect(fracUsage.inputTokens).toBeNull();
+      expect(fracUsage.outputTokens).toBeNull();
+      expect(fracUsage.totalTokens).toBeNull();
+
+      // Negative prompt tokens (never clamped to 0)
+      const negUsage = normalizeProviderUsage({
+        prompt_tokens: -5,
+        completion_tokens: 20,
+        total_tokens: 15,
+      });
+      expect(negUsage.source).toBe('UNAVAILABLE');
+      expect(negUsage.inputTokens).toBeNull();
+      expect(negUsage.outputTokens).toBeNull();
+      expect(negUsage.totalTokens).toBeNull();
+
+      // Unsafe integer
+      const unsafeUsage = normalizeProviderUsage({
+        prompt_tokens: Number.MAX_SAFE_INTEGER + 10,
+        completion_tokens: 0,
+        total_tokens: Number.MAX_SAFE_INTEGER + 10,
+      });
+      expect(unsafeUsage.source).toBe('UNAVAILABLE');
+      expect(unsafeUsage.inputTokens).toBeNull();
+      expect(unsafeUsage.outputTokens).toBeNull();
+      expect(unsafeUsage.totalTokens).toBeNull();
+    });
+
+    it('normalizeProviderUsage handles missing, null, and empty usage objects', () => {
+      expect(normalizeProviderUsage(null).source).toBe('UNAVAILABLE');
+      expect(normalizeProviderUsage(null).inputTokens).toBeNull();
+      expect(normalizeProviderUsage(undefined).source).toBe('UNAVAILABLE');
+      expect(normalizeProviderUsage({}).source).toBe('UNAVAILABLE');
+    });
+
+    it('normalizeProviderUsage returns NOT_APPLICABLE for UNSUPPORTED or CONTEXT_BUDGET_EXCEEDED status', () => {
+      const unsupported = normalizeProviderUsage(null, 'UNSUPPORTED');
+      expect(unsupported.source).toBe('NOT_APPLICABLE');
+      expect(unsupported.inputTokens).toBe(0);
+      expect(unsupported.outputTokens).toBe(0);
+      expect(unsupported.totalTokens).toBe(0);
+
+      const budgetExceeded = normalizeProviderUsage(null, 'CONTEXT_BUDGET_EXCEEDED');
+      expect(budgetExceeded.source).toBe('NOT_APPLICABLE');
+      expect(budgetExceeded.inputTokens).toBe(0);
+      expect(budgetExceeded.outputTokens).toBe(0);
+      expect(budgetExceeded.totalTokens).toBe(0);
+    });
+
+    it('buildAiExecutionTelemetry does NOT break response when usage is malformed (telemetry fail-open invariant)', () => {
+      const telemetry = buildAiExecutionTelemetry({
+        requestId: 'req-malformed-usage',
+        operation: 'CONVERSATION_MESSAGE',
+        deliveryMode: 'SYNC',
+        intent: 'PORTFOLIO_PERFORMANCE',
+        status: 'ANSWERED',
+        provider: 'openai',
+        model: 'gpt-4o-mini',
+        startedAt: '2026-09-25T14:00:00.000Z',
+        completedAt: '2026-09-25T14:00:00.250Z',
+        durations: { totalMs: 250 },
+        usage: {
+          inputTokens: 100.75, // Fractional!
+          outputTokens: 20,
+          totalTokens: 120.75,
+        } as unknown as Record<string, unknown>,
+        counts: {
+          groundingCallCount: 1,
+          providerCallCount: 1,
+          claimValidationCount: 1,
+          rendererCount: 1,
+          questionLength: 22,
+        },
+      });
+
+      // Status remains ANSWERED — user response is NEVER failed by malformed usage telemetry
+      expect(telemetry.status).toBe('ANSWERED');
+      // Usage is safely marked UNAVAILABLE with all nulls
+      expect(telemetry.usage.source).toBe('UNAVAILABLE');
+      expect(telemetry.usage.inputTokens).toBeNull();
+      expect(telemetry.usage.outputTokens).toBeNull();
+      expect(telemetry.usage.totalTokens).toBeNull();
     });
   });
 
