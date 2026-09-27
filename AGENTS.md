@@ -1409,3 +1409,46 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Snapshots de evidências de mensagens anteriores permanecem imutáveis. O surgimento de novos eventos é capturado deterministicamente pela reconstrução de contexto no turno subsequente.
 9. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
    - As garantias de streaming seguro (3U), governança estrita de tokens e telemetria fail-open (3V) e isolamento de escopo de ativos (3W) permanecem integralmente ativas e invioláveis.
+
+---
+
+## 47. Eficiência de Contexto e Seleção Determinística de Relevância (Fase 3Y)
+
+1. **SELEÇÃO DE GROUNDING DETERMINÍSTICA E PRÉ-PROVEDOR (ADR-222):**
+   - A escolha dos fatos enviados ao provedor é feita por lógica determinística de servidor (`selectGroundingFacts`), **antes** de qualquer chamada ao modelo, a partir de intenção classificada deterministicamente e escopo explícito.
+   - Entradas permitidas: `intent`, `scope.type`, `AssetId`, intervalo temporal, filtros de tipo de evento e capacidades canônicas.
+   - É **terminantemente proibido** usar a saída do provedor, embeddings, similaridade vetorial ou ranking por magnitude numérica de valores financeiros para decidir relevância. Ranking por "valor grande" introduziria julgamento financeiro oculto.
+   - Versão da política exposta para auditoria: `GROUNDING_SELECTION_POLICY_VERSION = "1"`. Não é atrelada à versão do Portfolio Engine.
+2. **GROUNDING CANÔNICO E PROJEÇÃO PARA O PROVEDOR SÃO CONCEITOS DISTINTOS (ADR-223):**
+   - O grounding canônico permanece rico e autoritativo, e não é alterado pela otimização.
+   - A projeção para o provedor é compacta, local à requisição e derivada apenas dos fatos selecionados; ela não possui autoridade financeira própria.
+3. **O CONTEXTO DO PROVEDOR CONTÉM APENAS O EXIGIDO PELA INTENÇÃO E PELO ESCOPO:**
+   - Pergunta sobre rentabilidade não recebe automaticamente cauda, cenário ou métricas não relacionadas; pergunta sobre risco não recebe automaticamente performance e cenário; pergunta sobre preço médio não recebe automaticamente proventos, benchmark ou timeline.
+4. **FATOS EXCLUÍDOS NÃO SÃO AUTORITATIVOS NO TURNO (ADR-227):**
+   - O registro autoritativo do turno (`canonicalFactRegistry`) contém **apenas** os fatos selecionados.
+   - A validação de claims e de evidências opera sobre a autoridade selecionada, nunca sobre o conjunto canônico completo. Citar fato excluído falha fechado com `422 AI.INVALID_MODEL_RESPONSE` e nada é persistido.
+   - A seleção é finalizada antes do provedor e **nunca** é revisada após a resposta. Não há ferramentas nem segunda chamada para obter mais fatos no meio do turno.
+5. **COMPACTAÇÃO NUNCA ALTERA SEMÂNTICA FINANCEIRA:**
+   - Proibido alterar valor, moeda, natureza (`CURRENT` / `HISTORICAL` / `HYPOTHETICAL`), status de disponibilidade ou tipo semântico.
+   - Strings decimais permanecem exatas: `3.999999999999999999` nunca se torna `4` nem `3.99`. Arredondamento é exclusivamente da camada de renderização.
+   - Proibido fundir realizado com não realizado, `DIVIDEND` com `JCP`, `BUY` com `TRANSFER_IN`, ou moedas distintas. Custo desconhecido permanece `null`, nunca `0`.
+6. **LIMITAÇÕES NECESSÁRIAS À INTERPRETAÇÃO SOBREVIVEM À SELEÇÃO:**
+   - `PARTIAL_TIMELINE_EVENTS` e `EMPTY_TIMELINE_PERIOD` nunca são removidas para economizar bytes. Nenhuma diretriz de segurança da política de sistema é removida por motivo de tamanho.
+7. **O PAYLOAD FINAL DO PROVEDOR É SEMPRE MEDIDO APÓS A COMPACTAÇÃO (ADR-225):**
+   - Ordem canônica: seleção -> compactação -> mensagens finais -> medição exata de bytes UTF-8 -> decisão de orçamento -> provedor.
+   - `32768` bytes permanece limite rígido e inalterável: `<= 32768` permitido, `> 32768` bloqueado (32768 permitido, 32769 bloqueado). Proibido elevar o limite ou estimar por contagem de tokens.
+   - Payload acima do orçamento após compactação: `0` chamadas de provedor, `AI.CONTEXT_BUDGET_EXCEEDED`, nenhum `FINAL` no streaming, nenhuma resposta de assistente persistida.
+   - Proibido descartar mensagens arbitrárias do provedor para caber no orçamento.
+8. **NENHUM SUMARIZADOR, EMBEDDING OU CHAMADA ADICIONAL DE MODELO (ADR-226):**
+   - Proibido usar LLM sumarizador, compressor, juiz, modelo de reparo, embeddings, banco vetorial ou RAG para selecionar ou compactar contexto.
+   - Seleção custa `0` chamadas de provedor. Requisição suportada: no máximo `1` chamada. Requisição não suportada: `0`.
+   - Histórico conversacional continua sendo contexto linguístico (3S), nunca verdade financeira, e nunca é resumido por modelo.
+9. **EVIDÊNCIA HISTÓRICA PERSISTIDA USA IDENTIDADE CANÔNICA (ADR-224):**
+   - Aliases de evidência (`F1`, `F2`) são efêmeros e locais à requisição, resolvidos no servidor antes da validação. É **proibido** persistir aliases como identidade histórica.
+10. **TELEMETRIA DE SELEÇÃO PRESERVA PRIVACIDADE E BAIXA CARDINALIDADE:**
+    - Permitidos: `selectedFactCount`, `availableFactCount`, `contextBytes`, `budgetUtilizationBucket`, `scopeType`, `intent`, `selectionPolicyVersion`.
+    - Proibidos como rótulo de métrica: `factId`, `assetId`, `portfolioId`, `conversationId`, `userId`, `requestId` e contagens brutas de bytes. Proibido registrar texto de pergunta, texto de resposta ou qualquer valor financeiro.
+11. **ZERO DELTA FINANCEIRO:**
+    - A seleção opera sobre grounding já construído: zero novo replay, zero nova valuation, zero nova busca de mercado, zero nova chamada de benchmark ou cenário, zero novo algoritmo financeiro e zero N+1.
+12. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+    - As garantias de streaming seguro (3U), governança estrita de tokens e telemetria fail-open (3V), isolamento de escopo de ativos por `AssetId` (3W) e autoridade de timeline (3X) permanecem integralmente ativas e invioláveis.

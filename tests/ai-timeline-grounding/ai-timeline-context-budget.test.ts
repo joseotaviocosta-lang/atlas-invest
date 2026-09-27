@@ -96,7 +96,22 @@ interface PersistedTurn {
   status?: string;
 }
 
-function makeConversationRepositoryStub(persisted: PersistedTurn[]) {
+/**
+ * Full bounded conversation history (10 messages / ~13.8k chars) with accented
+ * UTF-8 text. Combined with a 50-event timeline this is the realistic worst case
+ * that still exceeds the 32768-byte budget AFTER deterministic compaction.
+ */
+const MAX_HISTORY_ITEMS = Array.from({ length: 10 }, (_, i) => ({
+  id: `hist-${i}`,
+  role: i % 2 === 0 ? 'USER' : 'ASSISTANT',
+  content: 'ação posição São Paulo '.repeat(60),
+  status: 'ANSWERED',
+  intent: 'EXPLAIN_TIMELINE',
+  limitations: [],
+  createdAt: new Date('2025-01-01T00:00:00.000Z'),
+}));
+
+function makeConversationRepositoryStub(persisted: PersistedTurn[], withMaxHistory = false) {
   return {
     findConversationById: async () => ({
       id: CONVERSATION_ID,
@@ -106,7 +121,7 @@ function makeConversationRepositoryStub(persisted: PersistedTurn[]) {
       createdAt: new Date('2025-01-01T00:00:00.000Z'),
       updatedAt: new Date('2025-01-01T00:00:00.000Z'),
     }),
-    listMessages: async () => ({ items: [] }),
+    listMessages: async () => ({ items: withMaxHistory ? MAX_HISTORY_ITEMS : [] }),
     appendTurn: async (
       _conversationId: string,
       _userMessage: unknown,
@@ -135,9 +150,10 @@ function makeSendUseCase(
   context: PortfolioTimelineAiGroundingContextV1,
   provider: CountingAiProvider,
   persisted: PersistedTurn[],
+  withMaxHistory = false,
 ) {
   return new SendAiConversationMessageUseCase(
-    makeConversationRepositoryStub(persisted),
+    makeConversationRepositoryStub(persisted, withMaxHistory),
     unusedGroundingStub,
     unusedGroundingStub,
     makeTimelineGroundingStub(context),
@@ -149,9 +165,10 @@ function makeStreamUseCase(
   context: PortfolioTimelineAiGroundingContextV1,
   provider: CountingAiProvider,
   persisted: PersistedTurn[],
+  withMaxHistory = false,
 ) {
   return new StreamAiConversationMessageUseCase(
-    makeConversationRepositoryStub(persisted),
+    makeConversationRepositoryStub(persisted, withMaxHistory),
     unusedGroundingStub,
     unusedGroundingStub,
     makeTimelineGroundingStub(context),
@@ -161,18 +178,35 @@ function makeStreamUseCase(
 
 const TIMELINE_QUESTION = 'Explique os eventos registrados na minha carteira neste periodo.';
 
-function timelineInput(context: PortfolioTimelineAiGroundingContextV1) {
+/**
+ * Long-but-valid question (under the 2000-character schema cap) used together with
+ * the full bounded history so the over-budget fixture stays comfortably above
+ * 32768 bytes even after Phase 3Y deterministic compaction.
+ */
+const LONG_TIMELINE_QUESTION = 'Explique os eventos registrados na minha carteira neste periodo. '
+  .repeat(29)
+  .slice(0, 1900);
+
+function timelineInput(
+  context: PortfolioTimelineAiGroundingContextV1,
+  question: string = TIMELINE_QUESTION,
+) {
   return {
     portfolioId: PORTFOLIO_ID,
     conversationId: CONVERSATION_ID,
     userId: USER_ID,
-    question: TIMELINE_QUESTION,
+    question,
     scope: {
       type: 'TIMELINE' as const,
       from: context.period.from,
       to: context.period.to,
     },
   };
+}
+
+/** Over-budget input: 50 events + full bounded history + long valid question. */
+function overBudgetInput(context: PortfolioTimelineAiGroundingContextV1) {
+  return timelineInput(context, LONG_TIMELINE_QUESTION);
 }
 
 function collectStreamEvents(chunks: string[]) {
@@ -301,9 +335,9 @@ describe('Phase 3X Hotfix: TOTAL provider context budget enforcement', () => {
       const context = buildTimelineContext(5000);
       const provider = answeringProvider(context);
       const persisted: PersistedTurn[] = [];
-      const useCase = makeSendUseCase(context, provider, persisted);
+      const useCase = makeSendUseCase(context, provider, persisted, true);
 
-      await expect(useCase.execute(timelineInput(context))).rejects.toMatchObject({
+      await expect(useCase.execute(overBudgetInput(context))).rejects.toMatchObject({
         response: { code: 'AI.CONTEXT_BUDGET_EXCEEDED' },
       });
 
@@ -331,9 +365,9 @@ describe('Phase 3X Hotfix: TOTAL provider context budget enforcement', () => {
     it('budget decision happens BEFORE the provider call', async () => {
       const context = buildTimelineContext(5000);
       const provider = answeringProvider(context);
-      const useCase = makeSendUseCase(context, provider, []);
+      const useCase = makeSendUseCase(context, provider, [], true);
 
-      await expect(useCase.execute(timelineInput(context))).rejects.toBeTruthy();
+      await expect(useCase.execute(overBudgetInput(context))).rejects.toBeTruthy();
       // Provider never observed any payload at all.
       expect(provider.completedMessages).toHaveLength(0);
     });
@@ -344,10 +378,10 @@ describe('Phase 3X Hotfix: TOTAL provider context budget enforcement', () => {
       const context = buildTimelineContext(5000);
       const provider = answeringProvider(context);
       const persisted: PersistedTurn[] = [];
-      const useCase = makeStreamUseCase(context, provider, persisted);
+      const useCase = makeStreamUseCase(context, provider, persisted, true);
 
       const chunks: string[] = [];
-      await useCase.executeStream(timelineInput(context), (c) => chunks.push(c));
+      await useCase.executeStream(overBudgetInput(context), (c) => chunks.push(c));
 
       const events = collectStreamEvents(chunks);
       const errorEvent = events.find((e) => e.type === 'ERROR');
@@ -381,15 +415,15 @@ describe('Phase 3X Hotfix: TOTAL provider context budget enforcement', () => {
       const syncProvider = answeringProvider(context);
       let syncCode: string | undefined;
       try {
-        await makeSendUseCase(context, syncProvider, []).execute(timelineInput(context));
+        await makeSendUseCase(context, syncProvider, [], true).execute(overBudgetInput(context));
       } catch (err) {
         syncCode = (err as { response?: { code?: string } }).response?.code;
       }
 
       const streamProvider = answeringProvider(context);
       const chunks: string[] = [];
-      await makeStreamUseCase(context, streamProvider, []).executeStream(
-        timelineInput(context),
+      await makeStreamUseCase(context, streamProvider, [], true).executeStream(
+        overBudgetInput(context),
         (c) => chunks.push(c),
       );
       const streamCode = collectStreamEvents(chunks).find((e) => e.type === 'ERROR')?.data?.code;

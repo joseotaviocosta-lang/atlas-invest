@@ -3,7 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import {
   classifyConversationIntent,
-  buildConversationPrompt,
+  buildCompactConversationPrompt,
+  resolveClaimReferences,
+  resolveEvidenceReferences,
+  GroundingSelectionManifestV1,
+  AiBudgetUtilizationBucket,
+  classifyBudgetUtilization,
   validateExplanationEvidence,
   buildMinimalEvidenceSnapshot,
   selectConversationHistory,
@@ -175,6 +180,9 @@ export class StreamAiConversationMessageUseCase {
     let timelineEventCount: number | undefined;
     let timelineEventLimitReached: boolean | undefined;
     let groundingSerializedBytes: number | undefined;
+    let selectionManifest: GroundingSelectionManifestV1 | undefined;
+    let contextBytesMeasured: number | undefined;
+    let budgetBucket: AiBudgetUtilizationBucket | undefined;
 
     let inputTokens: number | null = null;
     let outputTokens: number | null = null;
@@ -347,17 +355,24 @@ export class StreamAiConversationMessageUseCase {
       emitter.emitProgress('GENERATING');
 
       const tPromptStart = performance.now();
-      const { messages } = buildConversationPrompt(
+      const { messages, selection, projection } = buildCompactConversationPrompt(
         context,
         validatedInput.question,
         intent,
         selectedHistory.messages,
       );
       promptBuildMs = performance.now() - tPromptStart;
+      selectionManifest = selection.manifest;
 
-      // 4.1 Enforce TOTAL provider context budget before provider call (ADR-207).
-      // Single authoritative decision over the exact provider payload.
+      // Authoritative registry for THIS turn is the selected subset only (ADR-227).
+      const authoritativeContext = { ...context, facts: selection.selectedFacts };
+
+      // 4.1 Enforce TOTAL provider context budget AFTER compaction, before the
+      // provider call (ADR-207, ADR-225). Single authoritative decision over the
+      // exact provider payload.
       const budgetCheck = evaluateProviderContextBudget(messages);
+      contextBytesMeasured = budgetCheck.sizeBytes;
+      budgetBucket = classifyBudgetUtilization(budgetCheck.sizeBytes, budgetCheck.maxBytes);
       if (!budgetCheck.ok) {
         executionStatus = 'CONTEXT_BUDGET_EXCEEDED';
         errorCode = 'AI.CONTEXT_BUDGET_EXCEEDED';
@@ -452,7 +467,10 @@ export class StreamAiConversationMessageUseCase {
       const tValidationStart = performance.now();
       if (claims && claims.length > 0) {
         claimValidationCount = 1;
-        const claimValidation = validateGroundedClaims(claims, context, {
+        // Resolve request-local aliases to canonical identity (ADR-224) and
+        // validate strictly against the SELECTED authority (ADR-227).
+        const canonicalClaims = resolveClaimReferences(claims, projection.aliases);
+        const claimValidation = validateGroundedClaims(canonicalClaims, authoritativeContext, {
           targetAssetId:
             validatedInput.scope?.type === 'ASSET'
               ? validatedInput.scope.assetId
@@ -474,7 +492,14 @@ export class StreamAiConversationMessageUseCase {
       }
 
       // Validate evidence citations
-      const validation = validateExplanationEvidence(evidenceFactIds, context);
+      const canonicalEvidenceFactIds = resolveEvidenceReferences(
+        evidenceFactIds,
+        projection.aliases,
+      );
+      const validation = validateExplanationEvidence(
+        canonicalEvidenceFactIds,
+        authoritativeContext,
+      );
       claimValidationMs = performance.now() - tValidationStart;
 
       if (!validation.valid || validation.resolvedEvidence.length === 0) {
@@ -620,12 +645,17 @@ export class StreamAiConversationMessageUseCase {
             eventCount: timelineEventCount,
             eventLimitReached: timelineEventLimitReached,
             groundingSerializedBytes,
+            availableFactCount: selectionManifest?.availableFactCount,
+            selectedFactCount: selectionManifest?.selectedFactCount,
+            contextBytes: contextBytesMeasured,
           },
           scopeType: validatedInput.scope?.type ?? 'PORTFOLIO',
           portfolioId: validatedInput.portfolioId,
           conversationId: validatedInput.conversationId,
           errorCode,
           retryable: isRetryable,
+          selectionPolicyVersion: selectionManifest?.policyVersion,
+          budgetUtilizationBucket: budgetBucket,
         });
 
         if (this.telemetrySink) {

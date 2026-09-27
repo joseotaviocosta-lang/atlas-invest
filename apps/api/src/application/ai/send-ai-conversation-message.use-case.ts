@@ -4,7 +4,12 @@ import { performance } from 'node:perf_hooks';
 import { z } from 'zod';
 import {
   classifyConversationIntent,
-  buildConversationPrompt,
+  buildCompactConversationPrompt,
+  resolveClaimReferences,
+  resolveEvidenceReferences,
+  GroundingSelectionManifestV1,
+  AiBudgetUtilizationBucket,
+  classifyBudgetUtilization,
   validateExplanationEvidence,
   buildMinimalEvidenceSnapshot,
   selectConversationHistory,
@@ -209,6 +214,9 @@ export class SendAiConversationMessageUseCase {
     let groundingFactCount: number | undefined;
     let assetFactCount: number | undefined;
     let groundingSerializedBytes: number | undefined;
+    let selectionManifest: GroundingSelectionManifestV1 | undefined;
+    let contextBytesMeasured: number | undefined;
+    let budgetBucket: AiBudgetUtilizationBucket | undefined;
 
     let inputTokens: number | null = null;
     let outputTokens: number | null = null;
@@ -370,19 +378,26 @@ export class SendAiConversationMessageUseCase {
       groundingFactCount = context.facts.length;
       groundingSerializedBytes = Buffer.byteLength(JSON.stringify(context.facts), 'utf8');
 
-      // 5. Build bounded multi-turn model request
+      // 5. Deterministic relevance selection + compaction, then bounded model request
+      //    (Phase 3Y, ADR-222/ADR-223: pre-provider, no model involvement)
       const tPromptStart = performance.now();
-      const { messages } = buildConversationPrompt(
+      const { messages, selection, projection } = buildCompactConversationPrompt(
         context,
         validatedInput.question,
         intent,
         selectedHistory.messages,
       );
       promptBuildMs = performance.now() - tPromptStart;
+      selectionManifest = selection.manifest;
+
+      // Authoritative registry for THIS turn is the selected subset only (ADR-227).
+      const authoritativeContext = { ...context, facts: selection.selectedFacts };
 
       // 5.1 Enforce TOTAL provider context budget before provider call (ADR-207).
       // Single authoritative decision over the exact provider payload.
       const budgetCheck = evaluateProviderContextBudget(messages);
+      contextBytesMeasured = budgetCheck.sizeBytes;
+      budgetBucket = classifyBudgetUtilization(budgetCheck.sizeBytes, budgetCheck.maxBytes);
       if (!budgetCheck.ok) {
         executionStatus = 'CONTEXT_BUDGET_EXCEEDED';
         errorCode = 'AI.CONTEXT_BUDGET_EXCEEDED';
@@ -462,7 +477,10 @@ export class SendAiConversationMessageUseCase {
       const tValidationStart = performance.now();
       if (claims && claims.length > 0) {
         claimValidationCount = 1;
-        const claimValidation = validateGroundedClaims(claims, context, {
+        // Resolve request-local aliases back to canonical fact IDs (ADR-224)
+        // and validate strictly against the SELECTED authority (ADR-227).
+        const canonicalClaims = resolveClaimReferences(claims, projection.aliases);
+        const claimValidation = validateGroundedClaims(canonicalClaims, authoritativeContext, {
           targetAssetId:
             validatedInput.scope?.type === 'ASSET' ? validatedInput.scope.assetId : undefined,
         });
@@ -482,8 +500,16 @@ export class SendAiConversationMessageUseCase {
         claimCount = validatedClaims.length;
       }
 
-      // 9. Strict evidence validation against CURRENT grounding context
-      const validation = validateExplanationEvidence(evidenceFactIds, context);
+      // 9. Strict evidence validation against the CURRENT SELECTED authority (ADR-227).
+      //    Provider references are aliases; resolve to canonical identity first (ADR-224).
+      const canonicalEvidenceFactIds = resolveEvidenceReferences(
+        evidenceFactIds,
+        projection.aliases,
+      );
+      const validation = validateExplanationEvidence(
+        canonicalEvidenceFactIds,
+        authoritativeContext,
+      );
       claimValidationMs = performance.now() - tValidationStart;
 
       if (!validation.valid) {
@@ -626,12 +652,17 @@ export class SendAiConversationMessageUseCase {
             groundingSerializedBytes,
             eventCount: timelineEventCount,
             eventLimitReached: timelineEventLimitReached,
+            availableFactCount: selectionManifest?.availableFactCount,
+            selectedFactCount: selectionManifest?.selectedFactCount,
+            contextBytes: contextBytesMeasured,
           },
           scopeType: validatedInput.scope?.type ?? 'PORTFOLIO',
           portfolioId: validatedInput.portfolioId,
           conversationId: validatedInput.conversationId,
           errorCode,
           retryable: isRetryable,
+          selectionPolicyVersion: selectionManifest?.policyVersion,
+          budgetUtilizationBucket: budgetBucket,
         });
 
         if (this.telemetrySink) {

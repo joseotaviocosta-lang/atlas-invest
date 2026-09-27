@@ -352,7 +352,11 @@ describe('API Integration: Portfolio AI Conversation (Phase 3S)', () => {
     // Index 3: Turn 2 User message with fresh grounding context
     expect(lastProviderCall[3]?.role).toBe('user');
     expect(lastProviderCall[3]?.content).toContain('E contra o CDI?');
-    expect(lastProviderCall[3]?.content).toContain('groundingContext');
+    // Fresh grounding is carried by the Phase 3Y compact provider projection.
+    const turn2Payload = JSON.parse(lastProviderCall[3]!.content);
+    expect(Array.isArray(turn2Payload.facts)).toBe(true);
+    expect(turn2Payload.facts.length).toBeGreaterThan(0);
+    expect(turn2Payload.policyVersion).toBe('1');
   });
 
   it('7. CRITICAL INVARIANT: Fresh Grounding Per Turn (Turn 2 receives updated upstream metrics)', async () => {
@@ -381,11 +385,9 @@ describe('API Integration: Portfolio AI Conversation (Phase 3S)', () => {
     const call1UserMsg = aiProvider.completedMessages[aiProvider.completedMessages.length - 1]![1]!;
     // Note: call1 has [system, user]
     const call1Payload = JSON.parse(call1UserMsg.content);
-    const twrFact1 = call1Payload.groundingContext.facts.find(
-      (f: { metric: string }) => f.metric === 'TWR',
-    );
+    const twrFact1 = call1Payload.facts.find((f: { m: string }) => f.m === 'TWR');
     expect(twrFact1).toBeDefined();
-    const originalTwrValue = twrFact1.value;
+    const originalTwrValue = twrFact1.v;
 
     // Upstream change: simulate massive market price surge on the last day
     const lastDay = DAYS[DAYS.length - 1]!;
@@ -411,12 +413,10 @@ describe('API Integration: Portfolio AI Conversation (Phase 3S)', () => {
     const call2Messages = aiProvider.completedMessages[aiProvider.completedMessages.length - 1]!;
     const call2UserMsg = call2Messages[call2Messages.length - 1]!;
     const call2Payload = JSON.parse(call2UserMsg.content);
-    const twrFact2 = call2Payload.groundingContext.facts.find(
-      (f: { metric: string }) => f.metric === 'TWR',
-    );
+    const twrFact2 = call2Payload.facts.find((f: { m: string }) => f.m === 'TWR');
     expect(twrFact2).toBeDefined();
     // Proves fresh grounding: Turn 2's TWR changed to reflect the new market prices
-    expect(twrFact2.value).not.toBe(originalTwrValue);
+    expect(twrFact2.v).not.toBe(originalTwrValue);
   });
 
   it('8. CRITICAL INVARIANT: Historical Evidence Stability (Turn 1 evidence snapshot is immutable)', async () => {

@@ -2,14 +2,15 @@ import { Inject, Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { z } from 'zod';
 import {
   classifyExplanationIntent,
-  buildExplanationPrompt,
+  buildCompactConversationPrompt,
+  resolveClaimReferences,
+  resolveEvidenceReferences,
   validateExplanationEvidence,
   validateGroundedClaims,
   renderValidatedClaims,
   INTENT_REFUSAL_MESSAGES,
   GroundedAiExplanationResponseV1,
   AIProvider,
-  AIMessage,
   GroundedClaimV1,
 } from '@atlas/ai-engine';
 import { GetPortfolioAiGroundingContextUseCase } from './get-portfolio-ai-grounding-context.use-case';
@@ -132,13 +133,16 @@ export class ExplainPortfolioWithAiUseCase {
       endDate: validatedInput.endDate,
     });
 
-    // 3. Build bounded model request
-    const { system, user } = buildExplanationPrompt(context, validatedInput.question, intent);
+    // 3. Deterministic relevance selection + compaction (Phase 3Y, ADR-222/ADR-223)
+    const { messages, selection, projection } = buildCompactConversationPrompt(
+      context,
+      validatedInput.question,
+      intent,
+      [],
+    );
 
-    const messages: AIMessage[] = [
-      { role: 'system', content: system },
-      { role: 'user', content: user },
-    ];
+    // Authoritative registry for THIS turn is the selected subset only (ADR-227).
+    const authoritativeContext = { ...context, facts: selection.selectedFacts };
 
     // 3.1 Enforce TOTAL provider context budget BEFORE any provider call (ADR-207).
     // Measures the exact payload handed to the provider; over-budget => ZERO provider calls.
@@ -198,7 +202,8 @@ export class ExplainPortfolioWithAiUseCase {
     // 6. Validate claims against canonical grounding facts (fail-closed if provided)
     let validatedClaims: GroundedClaimV1[] | undefined;
     if (claims && claims.length > 0) {
-      const claimValidation = validateGroundedClaims(claims, context);
+      const canonicalClaims = resolveClaimReferences(claims, projection.aliases);
+      const claimValidation = validateGroundedClaims(canonicalClaims, authoritativeContext);
       if (!claimValidation.valid) {
         throw new HttpException(
           {
@@ -213,7 +218,8 @@ export class ExplainPortfolioWithAiUseCase {
     }
 
     // 7. Validate evidence citations against canonical grounding facts
-    const validation = validateExplanationEvidence(evidenceFactIds, context);
+    const canonicalEvidenceFactIds = resolveEvidenceReferences(evidenceFactIds, projection.aliases);
+    const validation = validateExplanationEvidence(canonicalEvidenceFactIds, authoritativeContext);
     if (!validation.valid) {
       throw new HttpException(
         {

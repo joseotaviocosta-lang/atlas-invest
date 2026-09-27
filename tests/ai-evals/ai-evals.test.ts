@@ -17,6 +17,14 @@ import {
   buildAiExecutionTelemetry,
   selectConversationHistory,
   ConversationHistoryMessage,
+  // Phase 3Y additions (additive only; AI-EVAL-001..038 semantics unchanged)
+  selectGroundingFacts,
+  buildCompactConversationPrompt,
+  resolveEvidenceReferences,
+  validateExplanationEvidence,
+  validateContextBudget,
+  buildMinimalEvidenceSnapshot,
+  GroundedFinancialFact,
 } from '@atlas/ai-engine';
 
 function createEvalResult(
@@ -115,6 +123,131 @@ function createSampleAssetGroundingContext(
     assetFacts,
     facts: [...base.facts, ...assetFacts],
   };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3Y fixtures (additive; existing 001..038 fixtures untouched)
+// ---------------------------------------------------------------------------
+
+function make3YFact(
+  factId: string,
+  category: GroundedFinancialFact['category'],
+  metric: string,
+  scope: string,
+  value: string | null,
+  unit: GroundedFinancialFact['unit'],
+  nature: GroundedFinancialFact['nature'],
+  currency?: string,
+): GroundedFinancialFact {
+  return {
+    factId,
+    category,
+    metric,
+    scope,
+    value,
+    unit,
+    nature,
+    status: value === null ? 'UNAVAILABLE' : 'AVAILABLE',
+    ...(currency !== undefined ? { currency } : {}),
+    period: { startDate: '2026-01-01', endDate: '2026-12-31' },
+    asOf: '2026-12-31',
+    source: { contract: 'PORTFOLIO_INTELLIGENCE_SUMMARY_V1', path: `eval.${factId}` },
+  } as GroundedFinancialFact;
+}
+
+function buildPortfolio3YContext(
+  currencies: readonly string[] = ['BRL'],
+): PortfolioAiGroundingContextV1 {
+  const facts: GroundedFinancialFact[] = [];
+  for (const c of currencies) {
+    facts.push(
+      make3YFact(
+        `${c}.OVERVIEW.MARKET_VALUE`,
+        'OVERVIEW',
+        'CURRENT_MARKET_VALUE',
+        c,
+        '100000.00',
+        'MONEY',
+        'OBSERVED' as never,
+        c,
+      ),
+      make3YFact(
+        `${c}.PERFORMANCE.TWR`,
+        'PERFORMANCE',
+        'TWR',
+        c,
+        '12',
+        'PERCENTAGE',
+        'OBSERVED' as never,
+      ),
+      make3YFact(
+        `${c}.BENCHMARK.IBOV_RETURN`,
+        'BENCHMARK',
+        'IBOV_RETURN',
+        c,
+        '8',
+        'PERCENTAGE',
+        'OBSERVED' as never,
+      ),
+      make3YFact(
+        `${c}.RISK.VOLATILITY`,
+        'RISK',
+        'VOLATILITY',
+        c,
+        '18',
+        'PERCENTAGE',
+        'OBSERVED' as never,
+      ),
+      make3YFact(
+        `${c}.TAIL_RISK.VAR_95`,
+        'TAIL_RISK',
+        'VAR_95',
+        c,
+        '2.5',
+        'PERCENTAGE',
+        'OBSERVED' as never,
+      ),
+      make3YFact(
+        `${c}.SCENARIO.EQUITY_DOWN_10`,
+        'SCENARIO',
+        'EQUITY_DOWN_10_IMPACT',
+        c,
+        '-10000.00',
+        'MONEY',
+        'HYPOTHETICAL' as never,
+        c,
+      ),
+    );
+  }
+  return createSampleGroundingContext({ facts, currencies: [...currencies] });
+}
+
+function buildAsset3YContext(): PortfolioAssetAiGroundingContextV1 {
+  return createSampleAssetGroundingContext(sampleAssetPetr4, {
+    facts: buildPortfolio3YContext().facts,
+  });
+}
+
+function buildTimeline3YContext(candidateCount: number) {
+  const events: PortfolioAiEventV1[] = Array.from({ length: candidateCount }, (_, i) => ({
+    eventId: `evt-${String(i).padStart(6, '0')}`,
+    eventType: (i % 2 === 0 ? 'BUY' : 'SELL') as PortfolioAiEventV1['eventType'],
+    economicDate: `2026-${String((i % 12) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
+    assetId: `asset-${i % 5}`,
+    symbol: `TCK${i % 5}`,
+    assetName: `Companhia ${i % 5} S.A.`,
+    quantity: '100',
+    moneyAmount: '3752.48',
+    currency: 'BRL',
+    nature: 'HISTORICAL' as const,
+  }));
+
+  return buildPortfolioTimelineAiGroundingContext({
+    portfolioId: 'port-eval-001',
+    period: { from: '2026-01-01', to: '2026-12-31' },
+    scope: { type: 'TIMELINE', from: '2026-01-01', to: '2026-12-31' },
+    candidateEvents: events,
+  });
 }
 
 describe('Deterministic AI Evaluation Harness (Phase 3V — ADR-208)', () => {
@@ -1710,8 +1843,433 @@ describe('Deterministic AI Evaluation Harness (Phase 3V — ADR-208)', () => {
     expect(evalRes.passed).toBe(true);
   });
 
-  it('summary of evaluation suite: all 38 golden test cases pass with individual pass/fail criteria', () => {
-    expect(evalResults).toHaveLength(38);
+  // -------------------------------------------------------------------------
+  // Phase 3Y: deterministic grounding relevance selection & context efficiency
+  // (additive; AI-EVAL-001..038 remain semantically unchanged)
+  // -------------------------------------------------------------------------
+
+  it('AI-EVAL-039: portfolio performance relevance selection excludes unrelated families', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const context = buildPortfolio3YContext();
+    const selection = selectGroundingFacts({ context, intent: 'EXPLAIN_PERFORMANCE' });
+    const categories = new Set(selection.selectedFacts.map((f) => f.category));
+
+    checks.push('PERFORMANCE_FAMILY_SELECTED');
+    if (!categories.has('PERFORMANCE')) failures.push('PERFORMANCE_MISSING');
+
+    checks.push('UNRELATED_FAMILIES_EXCLUDED');
+    if (categories.has('TAIL_RISK')) failures.push('TAIL_RISK_NOT_EXCLUDED');
+    if (categories.has('SCENARIO')) failures.push('SCENARIO_NOT_EXCLUDED');
+
+    checks.push('SELECTION_IS_STRICT_SUBSET');
+    if (selection.manifest.selectedFactCount >= selection.manifest.availableFactCount) {
+      failures.push('NO_REDUCTION');
+    }
+
+    const evalRes = createEvalResult('AI-EVAL-039', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.failureCodes).toEqual([]);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-040: asset average-cost minimal grounding keeps currency and status', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const context = buildAsset3YContext();
+    const r = buildCompactConversationPrompt(
+      context,
+      'Qual e meu preco medio?',
+      'EXPLAIN_ASSET',
+      [],
+    );
+    const rows = (r.projection.payload as { facts: { u: string; cur?: string; st: string }[] })
+      .facts;
+
+    checks.push('ASSET_FACTS_PRESENT');
+    if (rows.length === 0) failures.push('NO_ASSET_FACTS');
+
+    checks.push('CURRENCY_PRESERVED');
+    for (const row of rows) {
+      if (row.u === 'MONEY' && row.cur === undefined) failures.push('MONEY_WITHOUT_CURRENCY');
+    }
+
+    checks.push('STATUS_PRESERVED');
+    for (const row of rows) {
+      if (row.st === undefined) failures.push('STATUS_MISSING');
+    }
+
+    const evalRes = createEvalResult('AI-EVAL-040', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.failureCodes).toEqual([]);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-041: timeline latest purchase uses minimal compact event projection', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const context = buildTimeline3YContext(50);
+    const r = buildCompactConversationPrompt(
+      context,
+      'Qual foi minha ultima compra?',
+      'EXPLAIN_TIMELINE',
+      [],
+    );
+    const payload = r.projection.payload as {
+      events: { id: string; d: string; t: string }[];
+      facts: unknown[];
+      assets: Record<string, unknown>;
+    };
+
+    checks.push('EVENT_ENVELOPE_USED');
+    if (payload.events.length !== MAX_AI_TIMELINE_EVENTS) {
+      failures.push('EVENT_ENVELOPE_WRONG_SIZE');
+    }
+
+    checks.push('EVENT_FACTS_NOT_DUPLICATED');
+    if (payload.facts.length >= MAX_AI_TIMELINE_EVENTS) failures.push('EVENT_FACTS_DUPLICATED');
+
+    checks.push('ASSET_METADATA_DEDUPLICATED');
+    if (Object.keys(payload.assets).length > payload.events.length) {
+      failures.push('ASSET_DICTIONARY_NOT_DEDUPLICATED');
+    }
+
+    checks.push('EVENT_IDENTITY_PRESERVED');
+    for (const e of payload.events) {
+      if (!e.id || !e.d || !e.t) failures.push('EVENT_IDENTITY_INCOMPLETE');
+    }
+
+    const evalRes = createEvalResult('AI-EVAL-041', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.failureCodes).toEqual([]);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-042: excluded fact cannot become claim authority', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const context = buildPortfolio3YContext();
+    const selection = selectGroundingFacts({ context, intent: 'EXPLAIN_PERFORMANCE' });
+    const authoritative = { ...context, facts: selection.selectedFacts };
+    const excluded = context.facts.find((f) => f.category === 'TAIL_RISK');
+
+    checks.push('EXCLUDED_FACT_EXISTS_IN_CANONICAL');
+    if (!excluded) failures.push('NO_EXCLUDED_FACT');
+
+    if (excluded) {
+      checks.push('EXCLUDED_FACT_NOT_IN_REGISTRY');
+      if (selection.canonicalFactRegistry.has(excluded.factId)) {
+        failures.push('EXCLUDED_FACT_IN_REGISTRY');
+      }
+
+      const evidence = validateExplanationEvidence([excluded.factId], authoritative);
+      checks.push('EXCLUDED_EVIDENCE_REJECTED');
+      if (evidence.valid) failures.push('EXCLUDED_EVIDENCE_ACCEPTED');
+
+      const claimResult = validateGroundedClaims(
+        [
+          {
+            type: 'RISK_EXPLANATION',
+            segments: [{ type: 'FACT_VALUE', factId: excluded.factId }],
+          },
+        ] as GroundedClaimInput[],
+        authoritative,
+      );
+      checks.push('EXCLUDED_CLAIM_REJECTED');
+      if (claimResult.valid) failures.push('EXCLUDED_CLAIM_ACCEPTED');
+    }
+
+    const evalRes = createEvalResult('AI-EVAL-042', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.failureCodes).toEqual([]);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-043: 15-event timeline fits budget after deterministic selection', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const context = buildTimeline3YContext(15);
+    const before = Buffer.byteLength(
+      JSON.stringify(
+        buildConversationPrompt(context, 'Explique os eventos.', 'EXPLAIN_TIMELINE', []).messages,
+      ),
+      'utf8',
+    );
+    const after = Buffer.byteLength(
+      JSON.stringify(
+        buildCompactConversationPrompt(context, 'Explique os eventos.', 'EXPLAIN_TIMELINE', [])
+          .messages,
+      ),
+      'utf8',
+    );
+
+    checks.push('BASELINE_WAS_OVER_BUDGET');
+    if (before <= 32768) failures.push('BASELINE_NOT_OVER_BUDGET');
+
+    checks.push('COMPACTED_FITS_BUDGET');
+    if (after > 32768) failures.push(`STILL_OVER_BUDGET_${after}`);
+
+    const evalRes = createEvalResult('AI-EVAL-043', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.failureCodes).toEqual([]);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-044: 50-event targeted timeline bounded projection fits budget', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const context = buildTimeline3YContext(5000);
+    const r = buildCompactConversationPrompt(
+      context,
+      'Quais foram minhas ultimas compras neste periodo?',
+      'EXPLAIN_TIMELINE',
+      [],
+    );
+    const total = Buffer.byteLength(JSON.stringify(r.messages), 'utf8');
+
+    checks.push('EVENT_CAP_INTACT');
+    if (context.events.length !== MAX_AI_TIMELINE_EVENTS) failures.push('EVENT_CAP_BROKEN');
+
+    checks.push('TARGETED_FITS_BUDGET');
+    if (total > 32768) failures.push(`OVER_BUDGET_${total}`);
+
+    checks.push('PARTIAL_DISCLOSED');
+    const payload = r.projection.payload as { limitations: { code: string }[] };
+    if (!payload.limitations.some((l) => l.code === 'PARTIAL_TIMELINE_EVENTS')) {
+      failures.push('PARTIAL_NOT_DISCLOSED');
+    }
+
+    const evalRes = createEvalResult('AI-EVAL-044', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.failureCodes).toEqual([]);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-045: general request still over budget after compaction fails closed', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const history = Array.from({ length: 10 }, (_, i) => ({
+      id: `h${i}`,
+      role: i % 2 === 0 ? 'USER' : 'ASSISTANT',
+      content: 'acao posicao Sao Paulo '.repeat(60),
+      status: 'ANSWERED',
+      limitations: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+    })) as unknown as ConversationHistoryMessage[];
+    const bounded = selectConversationHistory(history);
+
+    const context = buildTimeline3YContext(5000);
+    const r = buildCompactConversationPrompt(
+      context,
+      'Explique tudo que aconteceu.',
+      'EXPLAIN_TIMELINE',
+      bounded.messages,
+    );
+    const total = Buffer.byteLength(JSON.stringify(r.messages), 'utf8');
+    const decision = validateContextBudget(total, 32768);
+
+    checks.push('BUDGET_MEASURED_AFTER_COMPACTION');
+    if (decision.sizeBytes !== total) failures.push('MEASUREMENT_MISMATCH');
+
+    checks.push('FAIL_CLOSED_CONSISTENCY');
+    if (total > 32768 && decision.ok) failures.push('OVER_BUDGET_ALLOWED');
+    if (total <= 32768 && !decision.ok) failures.push('UNDER_BUDGET_BLOCKED');
+
+    const evalRes = createEvalResult('AI-EVAL-045', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.failureCodes).toEqual([]);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-046: selection deterministic across repeated executions', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const context = buildTimeline3YContext(50);
+    const baseline = buildCompactConversationPrompt(
+      context,
+      'Explique os eventos.',
+      'EXPLAIN_TIMELINE',
+      [],
+    );
+    const baselineIds = baseline.selection.selectedFacts.map((f) => f.factId).join('|');
+    const baselineBytes = Buffer.byteLength(JSON.stringify(baseline.messages), 'utf8');
+
+    checks.push('DETERMINISTIC_SELECTION');
+    checks.push('DETERMINISTIC_BYTES');
+    for (let i = 0; i < 100; i++) {
+      const again = buildCompactConversationPrompt(
+        context,
+        'Explique os eventos.',
+        'EXPLAIN_TIMELINE',
+        [],
+      );
+      if (again.selection.selectedFacts.map((f) => f.factId).join('|') !== baselineIds) {
+        failures.push('SELECTION_DRIFT');
+        break;
+      }
+      if (Buffer.byteLength(JSON.stringify(again.messages), 'utf8') !== baselineBytes) {
+        failures.push('BYTE_DRIFT');
+        break;
+      }
+    }
+
+    const evalRes = createEvalResult('AI-EVAL-046', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.failureCodes).toEqual([]);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-047: multi-currency facts not merged under compaction', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const context = buildPortfolio3YContext(['BRL', 'USD']);
+    const r = buildCompactConversationPrompt(
+      context,
+      'Explique o desempenho.',
+      'EXPLAIN_PERFORMANCE',
+      [],
+    );
+    const payload = r.projection.payload as { facts: { s: string }[] };
+    const scopes = new Set(payload.facts.map((f) => f.s));
+
+    checks.push('CURRENCY_SCOPES_SEGREGATED');
+    if (!scopes.has('BRL') || !scopes.has('USD')) failures.push('CURRENCY_SCOPE_MISSING');
+
+    checks.push('NO_IMPLICIT_FX_TOTAL');
+    if (scopes.has('TOTAL') || scopes.has('CONSOLIDATED')) failures.push('IMPLICIT_FX_TOTAL');
+
+    const evalRes = createEvalResult('AI-EVAL-047', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.failureCodes).toEqual([]);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-048: limitations preserved under compaction', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const truncated = buildTimeline3YContext(5000);
+    const rTruncated = buildCompactConversationPrompt(
+      truncated,
+      'Explique os eventos.',
+      'EXPLAIN_TIMELINE',
+      [],
+    );
+    const truncatedPayload = rTruncated.projection.payload as {
+      limitations: { code: string }[];
+    };
+
+    checks.push('PARTIAL_TIMELINE_PRESERVED');
+    if (!truncatedPayload.limitations.some((l) => l.code === 'PARTIAL_TIMELINE_EVENTS')) {
+      failures.push('PARTIAL_TIMELINE_LOST');
+    }
+
+    const empty = buildTimeline3YContext(0);
+    const rEmpty = buildCompactConversationPrompt(
+      empty,
+      'Explique os eventos.',
+      'EXPLAIN_TIMELINE',
+      [],
+    );
+    const emptyPayload = rEmpty.projection.payload as { limitations: { code: string }[] };
+
+    checks.push('EMPTY_TIMELINE_PRESERVED');
+    if (!emptyPayload.limitations.some((l) => l.code === 'EMPTY_TIMELINE_PERIOD')) {
+      failures.push('EMPTY_TIMELINE_LOST');
+    }
+
+    const evalRes = createEvalResult('AI-EVAL-048', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.failureCodes).toEqual([]);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-049: historical evidence uses canonical identity, never ephemeral aliases', () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const context = buildPortfolio3YContext();
+    const r = buildCompactConversationPrompt(
+      context,
+      'Explique o desempenho.',
+      'EXPLAIN_PERFORMANCE',
+      [],
+    );
+    const entries = [...r.projection.aliases.aliasToFactId.entries()];
+
+    checks.push('ALIASES_PRESENT');
+    if (entries.length === 0) failures.push('NO_ALIASES');
+
+    const [alias, canonical] = entries[0] ?? ['', ''];
+    const resolved = resolveEvidenceReferences([alias], r.projection.aliases);
+
+    checks.push('ALIAS_RESOLVES_TO_CANONICAL');
+    if (resolved[0] !== canonical) failures.push('ALIAS_RESOLUTION_FAILED');
+
+    const authoritative = { ...context, facts: r.selection.selectedFacts };
+    const validation = validateExplanationEvidence(resolved, authoritative);
+    const snapshot = buildMinimalEvidenceSnapshot(validation.resolvedEvidence);
+
+    checks.push('SNAPSHOT_USES_CANONICAL_IDENTITY');
+    for (const fact of snapshot) {
+      if (/^F\d+$/.test(fact.factId)) failures.push('SNAPSHOT_PERSISTED_ALIAS');
+    }
+
+    checks.push('SNAPSHOT_PRESERVES_EXACT_VALUES');
+    for (const fact of snapshot) {
+      const canonicalFact = r.selection.canonicalFactRegistry.get(fact.factId);
+      if (canonicalFact && canonicalFact.value !== fact.value) {
+        failures.push('SNAPSHOT_VALUE_MUTATED');
+      }
+    }
+
+    const evalRes = createEvalResult('AI-EVAL-049', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.failureCodes).toEqual([]);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('AI-EVAL-050: no provider call on post-compaction over-budget payload', async () => {
+    const checks: string[] = [];
+    const failures: string[] = [];
+
+    const provider = new FakeAiProvider();
+    const oversized = [{ role: 'system' as const, content: 'x'.repeat(40000) }];
+    const total = Buffer.byteLength(JSON.stringify(oversized), 'utf8');
+    const decision = validateContextBudget(total, 32768);
+
+    checks.push('OVER_BUDGET_DETECTED');
+    if (decision.ok) failures.push('OVER_BUDGET_NOT_DETECTED');
+
+    // Fail-closed: the provider is only reached when the decision allows it.
+    if (decision.ok) {
+      await provider.complete(oversized, {});
+    }
+
+    checks.push('ZERO_PROVIDER_CALLS');
+    if (provider.completedMessages.length !== 0) failures.push('PROVIDER_WAS_CALLED');
+
+    checks.push('BOUNDARY_SEMANTICS_PRESERVED');
+    if (!validateContextBudget(32768, 32768).ok) failures.push('32768_NOT_ALLOWED');
+    if (validateContextBudget(32769, 32768).ok) failures.push('32769_NOT_BLOCKED');
+
+    const evalRes = createEvalResult('AI-EVAL-050', checks, failures);
+    evalResults.push(evalRes);
+    expect(evalRes.failureCodes).toEqual([]);
+    expect(evalRes.passed).toBe(true);
+  });
+
+  it('summary of evaluation suite: all 50 golden test cases pass with individual pass/fail criteria', () => {
+    expect(evalResults).toHaveLength(50);
     for (const r of evalResults) {
       expect(r.passed).toBe(true);
       expect(r.failureCodes).toHaveLength(0);

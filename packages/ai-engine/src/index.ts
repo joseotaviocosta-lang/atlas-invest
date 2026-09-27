@@ -3412,6 +3412,9 @@ export interface AiExecutionCountsV1 {
   readonly groundingSerializedBytes?: number;
   readonly eventCount?: number;
   readonly eventLimitReached?: boolean;
+  readonly availableFactCount?: number;
+  readonly selectedFactCount?: number;
+  readonly contextBytes?: number;
 }
 
 export interface AiExecutionTelemetryV1 {
@@ -3433,6 +3436,8 @@ export interface AiExecutionTelemetryV1 {
   readonly conversationId?: string;
   readonly errorCode?: string;
   readonly retryable?: boolean;
+  readonly selectionPolicyVersion?: string;
+  readonly budgetUtilizationBucket?: AiBudgetUtilizationBucket;
 }
 
 export const AI_METRIC_NAMES = {
@@ -3472,6 +3477,16 @@ export function extractSafeMetricLabels(telemetry: AiExecutionTelemetryV1): Reco
     labels.scopeType = telemetry.scopeType;
   }
 
+  // Phase 3Y: bounded, low-cardinality selection labels only. Never factIds,
+  // never raw byte counts, never user identifiers.
+  if (telemetry.budgetUtilizationBucket) {
+    labels.budgetUtilizationBucket = telemetry.budgetUtilizationBucket;
+  }
+
+  if (telemetry.selectionPolicyVersion) {
+    labels.selectionPolicyVersion = telemetry.selectionPolicyVersion;
+  }
+
   return Object.freeze(labels);
 }
 
@@ -3480,7 +3495,38 @@ export function extractSafeMetricLabels(telemetry: AiExecutionTelemetryV1): Reco
  * Default bound: 32KB (32,768 bytes), comfortably accommodating 14KB bounded history +
  * grounding facts and prompt template, while preventing unbounded provider request payload explosion.
  */
+/**
+ * Bounded low-cardinality budget utilization labels (Phase 3Y).
+ * Never a raw byte count as a metric label; never a user identifier.
+ */
+export const AI_BUDGET_UTILIZATION_BUCKETS = [
+  'LT_25',
+  '25_50',
+  '50_75',
+  '75_90',
+  '90_100',
+  'OVER',
+] as const;
+export type AiBudgetUtilizationBucket = (typeof AI_BUDGET_UTILIZATION_BUCKETS)[number];
+
 export const AI_DEFAULT_MAX_CONTEXT_BYTES = 32768;
+
+/**
+ * Deterministic bounded bucket for context budget utilization (Phase 3Y).
+ */
+export function classifyBudgetUtilization(
+  sizeBytes: number,
+  maxBytes: number = AI_DEFAULT_MAX_CONTEXT_BYTES,
+): AiBudgetUtilizationBucket {
+  if (maxBytes <= 0) return 'OVER';
+  if (sizeBytes > maxBytes) return 'OVER';
+  const pct = (sizeBytes / maxBytes) * 100;
+  if (pct < 25) return 'LT_25';
+  if (pct < 50) return '25_50';
+  if (pct < 75) return '50_75';
+  if (pct < 90) return '75_90';
+  return '90_100';
+}
 
 export function validateContextBudget(
   serializedBytes: number,
@@ -3540,7 +3586,12 @@ export interface BuildAiExecutionTelemetryParams {
     groundingSerializedBytes?: number;
     eventCount?: number;
     eventLimitReached?: boolean;
+    availableFactCount?: number;
+    selectedFactCount?: number;
+    contextBytes?: number;
   };
+  selectionPolicyVersion?: string;
+  budgetUtilizationBucket?: AiBudgetUtilizationBucket;
   scopeType?: 'PORTFOLIO' | 'ASSET' | 'TIMELINE' | 'ASSET_TIMELINE';
   portfolioId?: string;
   conversationId?: string;
@@ -3761,6 +3812,15 @@ export function buildAiExecutionTelemetry(
     ...(params.counts.eventCount !== undefined
       ? { eventCount: Math.max(0, Math.floor(params.counts.eventCount)) }
       : {}),
+    ...(params.counts.availableFactCount !== undefined
+      ? { availableFactCount: Math.max(0, Math.floor(params.counts.availableFactCount)) }
+      : {}),
+    ...(params.counts.selectedFactCount !== undefined
+      ? { selectedFactCount: Math.max(0, Math.floor(params.counts.selectedFactCount)) }
+      : {}),
+    ...(params.counts.contextBytes !== undefined
+      ? { contextBytes: Math.max(0, Math.floor(params.counts.contextBytes)) }
+      : {}),
     ...(params.counts.eventLimitReached !== undefined
       ? { eventLimitReached: Boolean(params.counts.eventLimitReached) }
       : {}),
@@ -3784,6 +3844,12 @@ export function buildAiExecutionTelemetry(
     ...(params.portfolioId ? { portfolioId: params.portfolioId } : {}),
     ...(params.conversationId ? { conversationId: params.conversationId } : {}),
     ...(params.errorCode ? { errorCode: params.errorCode } : {}),
+    ...(params.selectionPolicyVersion
+      ? { selectionPolicyVersion: params.selectionPolicyVersion }
+      : {}),
+    ...(params.budgetUtilizationBucket
+      ? { budgetUtilizationBucket: params.budgetUtilizationBucket }
+      : {}),
     ...(params.retryable !== undefined ? { retryable: params.retryable } : {}),
   });
 }
@@ -3797,4 +3863,64 @@ export interface AiEvaluationResultV1 {
   readonly passed: boolean;
   readonly checks: readonly string[];
   readonly failureCodes: readonly string[];
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3Y — Compact provider prompt (ADR-223, ADR-225, ADR-226)
+// ---------------------------------------------------------------------------
+
+export * from './grounding-selection';
+
+import {
+  selectGroundingFacts,
+  buildProviderProjection,
+  COMPACT_CONTEXT_FORMAT_ADDENDUM,
+  type GroundingSelectionResultV1,
+  type ProviderProjectionV1,
+} from './grounding-selection';
+
+/**
+ * Builds the provider request from a DETERMINISTICALLY SELECTED, compacted
+ * grounding projection (Phase 3Y).
+ *
+ * Pipeline: canonical grounding -> relevance selection -> compaction ->
+ * provider messages. The exact byte budget is enforced downstream on the
+ * returned `messages` array (ADR-225).
+ *
+ * The canonical conversation policy is preserved verbatim and only extended
+ * with a format addendum describing the compact structure (§51).
+ */
+export function buildCompactConversationPrompt(
+  context:
+    | PortfolioAiGroundingContextV1
+    | PortfolioAssetAiGroundingContextV1
+    | PortfolioTimelineAiGroundingContextV1,
+  question: string,
+  intent: ExplanationIntent,
+  history: readonly ConversationHistoryMessage[],
+): {
+  system: string;
+  user: string;
+  messages: AIMessage[];
+  selection: GroundingSelectionResultV1;
+  projection: ProviderProjectionV1;
+} {
+  const selection = selectGroundingFacts({ context, intent });
+  const projection = buildProviderProjection({ context, selection, question, intent });
+
+  const system = PORTFOLIO_AI_CONVERSATION_POLICY_V1 + COMPACT_CONTEXT_FORMAT_ADDENDUM;
+
+  const messages: AIMessage[] = [{ role: 'system', content: system }];
+
+  for (const h of history) {
+    messages.push({
+      role: h.role === 'USER' ? 'user' : 'assistant',
+      content: h.content,
+    });
+  }
+
+  const user = JSON.stringify(projection.payload);
+  messages.push({ role: 'user', content: user });
+
+  return { system, user, messages, selection, projection };
 }
