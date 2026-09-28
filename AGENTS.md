@@ -1452,3 +1452,32 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
     - A seleção opera sobre grounding já construído: zero novo replay, zero nova valuation, zero nova busca de mercado, zero nova chamada de benchmark ou cenário, zero novo algoritmo financeiro e zero N+1.
 12. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
     - As garantias de streaming seguro (3U), governança estrita de tokens e telemetria fail-open (3V), isolamento de escopo de ativos por `AssetId` (3W) e autoridade de timeline (3X) permanecem integralmente ativas e invioláveis.
+
+---
+
+## 48. Arquitetura e Invariantes do Tax Engine Foundation (Fase 4A)
+
+1. **AUTORIDADE EXCLUSIVA DO TAX ENGINE (ADR-235):**
+   - Todo cálculo fiscal pertence exclusivamente a `@atlas/tax-engine`. UI, API (exceto orquestração), IA e clientes nunca calculam tributos.
+2. **LIVRO-RAZÃO IMUTÁVEL COMO FONTE DA VERDADE FISCAL (ADR-236):**
+   - `FiscalEvent` e o Tax Ledger são **derivados** do livro-razão imutável de transações e nunca editáveis. A projeção é determinística, idempotente e invariante à ordem de entrada.
+3. **REGRAS FISCAIS VERSIONADAS E EFETIVAS POR DATA (ADR-237):**
+   - Todo comportamento fiscal material deriva de `TaxRuleSet` versionado com vigência explícita. Sem regra vigente → falha fechada; sobreposição de vigência → config inválida. Nenhuma alíquota/isenção/limite legal hardcoded sem fonte oficial verificada.
+4. **SUJEITO PASSIVO DISTINTO DE CARTEIRA (ADR-238):**
+   - A arquitetura fiscal não fica permanentemente acoplada a um único `PortfolioId`. `TaxSubjectId` é opaco e nunca usa PII (CPF). Transferências internas não geram venda/compra.
+5. **QUALIDADE DE DADOS FISCAL COM FALHA FECHADA (ADR-239):**
+   - Desconhecido nunca vira zero. Custo/base/categoria/regra ausentes falham fechado (`PARTIAL`/`BLOCKED`). Moedas distintas não são somadas sem FX.
+6. **SEM MATEMÁTICA FISCAL NA IA OU NA UI (ADR-240):**
+   - Web, Mobile e IA nunca calculam tributos. Perguntas fiscais conversacionais permanecem `UNSUPPORTED_TAX` com zero chamadas ao provedor.
+7. **DECISÃO DE PERSISTÊNCIA (ADR-241):**
+   - A Fase 4A adota compute-on-read, sem migração de estado fiscal derivado. Se persistência for adicionada no futuro, deve ser recalculável e carregar fingerprint de entrada — nunca fonte da verdade.
+8. **MAPEAMENTO EXAUSTIVO DOS 16 TIPOS DE TRANSAÇÃO:**
+   - Todo tipo canônico é explicitamente mapeado para um `FiscalEventType` e `FiscalRelevance`. Transferências (`TRANSFER_IN`/`TRANSFER_OUT`) nunca são compra/venda. `DIVIDEND`, `JCP` e `FII_INCOME` permanecem distintos.
+9. **CLASSIFICAÇÃO FISCAL POR METADADOS CANÔNICOS:**
+   - A categoria fiscal deriva de `AssetType`, nunca do ticker. Entrada desconhecida → `UNKNOWN`, que nunca recebe tratamento de equity.
+10. **SEM FLOAT FINANCEIRO:**
+    - Zero `parseFloat`/`Number()`/aritmética IEEE-754 em caminhos fiscais. Strings decimais exatas de ponta a ponta.
+11. **ESCOPO DA FASE 4A:**
+    - A Fase 4A **não** calcula imposto a pagar, DARF ou IRPF e não implica cobertura completa da legislação brasileira.
+12. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+    - Portfolio Engine, AI (3Q–3Z) e Market Intelligence permanecem inalterados e invioláveis.

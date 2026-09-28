@@ -28,6 +28,7 @@ export * from './view-models/portfolio-scenario.view-model';
 export * from './view-models/portfolio-intelligence.view-model';
 export * from './view-models/portfolio-ai-explanation.view-model';
 export * from './view-models/portfolio-ai-conversation.view-model';
+export * from './view-models/fiscal-monthly.view-model';
 
 import { colors } from './tokens/colors';
 import { spacing } from './tokens/spacing';

@@ -266,6 +266,9 @@ importers:
       '@atlas/scenario-engine':
         specifier: workspace:*
         version: link:../../packages/scenario-engine
+      '@atlas/tax-engine':
+        specifier: workspace:*
+        version: link:../../packages/tax-engine
       '@atlas/validation':
         specifier: workspace:*
         version: link:../../packages/validation

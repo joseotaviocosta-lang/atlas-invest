@@ -23,6 +23,8 @@
     "test:rolling-analytics": "vitest run --config vitest.rolling-analytics.config.ts",
     "test:tail-risk": "vitest run --config vitest.tail-risk.config.ts",
     "test:scenario": "vitest run --config vitest.scenario.config.ts",
+    "test:tax-engine": "vitest run --config vitest.tax-engine.config.ts",
+    "test:fiscal-api": "vitest run --config vitest.fiscal-api.config.ts",
     "test:portfolio-intelligence": "vitest run --config vitest.portfolio-intelligence.config.ts",
     "test:ai-grounding": "vitest run --config vitest.ai-grounding.config.ts",
     "test:ai-explanation": "vitest run --config vitest.ai-explanation.config.ts",

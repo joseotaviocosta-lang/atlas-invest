@@ -20,6 +20,7 @@ import { GetPortfolioRollingAnalyticsUseCase } from './performance/get-portfolio
 import { GetPortfolioTailRiskMetricsUseCase } from './performance/get-portfolio-tail-risk-metrics.use-case';
 import { RunPortfolioScenarioUseCase } from './performance/run-portfolio-scenario.use-case';
 import { GetPortfolioIntelligenceSummaryUseCase } from './performance/get-portfolio-intelligence-summary.use-case';
+import { GetMonthlyTaxStateUseCase } from './fiscal/get-monthly-tax-state.use-case';
 import { GetPortfolioAiGroundingContextUseCase } from './ai/get-portfolio-ai-grounding-context.use-case';
 import { GetPortfolioAssetAiGroundingContextUseCase } from './ai/get-portfolio-asset-ai-grounding-context.use-case';
 import { GetPortfolioTimelineAiGroundingContextUseCase } from './ai/get-portfolio-timeline-ai-grounding-context.use-case';
@@ -54,6 +55,7 @@ const USE_CASES = [
   GetPortfolioTailRiskMetricsUseCase,
   RunPortfolioScenarioUseCase,
   GetPortfolioIntelligenceSummaryUseCase,
+  GetMonthlyTaxStateUseCase,
   GetPortfolioAiGroundingContextUseCase,
   GetPortfolioAssetAiGroundingContextUseCase,
   GetPortfolioTimelineAiGroundingContextUseCase,

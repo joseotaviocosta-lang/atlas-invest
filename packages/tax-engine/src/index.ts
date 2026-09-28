@@ -1,37 +1,81 @@
-import { PortfolioId, AssetId, Money, Quantity, Transaction } from '@atlas/domain';
-
-export const TAX_ENGINE_VERSION = '0.1.0';
-
-export interface TaxPosition {
-  assetId: AssetId;
-  totalCost: Money;
-  accumulatedLoss: Money;
-}
-
-export interface TaxPeriodSummary {
-  month: number;
-  year: number;
-  grossSales: Money;
-  realizedGain: Money;
-  exemptGain: Money;
-  taxableGain: Money;
-  darfDue: Money;
-}
-
 /**
- * Future Tax Engine contract for Brazilian capital market rules.
- * Pure interface contract - zero tax calculations in Phase 0B.
- * Strict boundary: never depends on @atlas/ai-engine or UI.
+ * @atlas/tax-engine — Phase 4A Brazilian Tax Engine Foundation.
+ *
+ * Pure, deterministic, zero-I/O fiscal domain. Derives auditable fiscal events
+ * and a normalized Monthly Tax State from the canonical immutable transaction
+ * ledger. It does NOT compute payable tax, DARF, or IRPF (ADR-235, ADR-240).
+ *
+ * Hard boundaries: no Prisma, no React/Next/Nest, no OpenAI/provider SDK, no
+ * network, no browser APIs, no AI engine, no market-intelligence dependency.
  */
-export interface TaxEngineContract {
-  calculateTaxPosition(transactions: Transaction[], assetId: AssetId): TaxPosition;
-  calculateRealizedGain(sellTransaction: Transaction, averageCost: Money): Money;
-  calculateTaxLoss(transactions: Transaction[], period: { month: number; year: number }): Money;
-  calculateCompensation(grossGain: Money, accumulatedLoss: Money): Money;
-  simulateSale(
-    assetId: AssetId,
-    quantity: Quantity,
-    simulatedUnitPrice: Money,
-  ): { estimatedTax: Money; netProceeds: Money };
-  calculateTaxPeriod(portfolioId: PortfolioId, year: number, month: number): TaxPeriodSummary;
-}
+export {
+  TAX_ENGINE_VERSION,
+  FISCAL_PROJECTION_VERSION,
+  DEFAULT_TAX_JURISDICTION,
+  SUPPORTED_FISCAL_CURRENCIES,
+} from './version';
+
+export type { FiscalEventId, TaxSubjectId } from './ids';
+export { createTaxSubjectId, deriveFiscalEventId } from './ids';
+
+export {
+  TaxEngineError,
+  TaxRuleOverlapError,
+  InvalidTaxRuleSetError,
+  InvalidFiscalCompetenceError,
+  UnsupportedTaxOperationError,
+} from './errors';
+
+export {
+  TAX_ASSET_CATEGORIES,
+  FISCAL_EVENT_TYPES,
+  FISCAL_RELEVANCES,
+  FISCAL_DATA_QUALITY_ISSUES,
+  FISCAL_STATE_STATUSES,
+  TAX_RULE_SET_STATUSES,
+  TAX_CATEGORY_CAPABILITIES,
+} from './types';
+export type {
+  TaxAssetCategory,
+  FiscalEventType,
+  FiscalRelevance,
+  FiscalDataQualityIssue,
+  FiscalStateStatus,
+  TaxRuleSetStatus,
+  TaxCategoryCapability,
+  FiscalEvent,
+  TaxRuleSet,
+  TaxRuleSetSource,
+  TaxRuleResolution,
+  TaxRuleResolutionOk,
+  TaxRuleResolutionFailure,
+  TaxCategoryMonthlyState,
+  MonthlyTaxCapabilities,
+  FiscalDataQualitySummary,
+  MonthlyTaxState,
+} from './types';
+
+export {
+  daysInMonth,
+  parseFiscalCompetence,
+  fiscalCompetenceFromString,
+  fiscalCompetenceFromDate,
+  compareFiscalCompetence,
+  fiscalCompetenceRange,
+  isWithinCompetence,
+} from './competence';
+export type { FiscalCompetence } from './competence';
+
+export {
+  resolveTaxAssetCategory,
+  isTaxCategorySupportedInPhase4A,
+  PHASE_4A_SUPPORTED_TAX_CATEGORIES,
+} from './asset-classification';
+
+export { validateTaxRuleSetRegistry, resolveTaxRuleSet } from './rules';
+
+export { projectFiscalEvents, getTransactionFiscalMapping } from './projection';
+export type { FiscalProjectionOptions, CanonicalRealizedResult } from './projection';
+
+export { buildMonthlyTaxState } from './monthly-state';
+export type { BuildMonthlyTaxStateInput } from './monthly-state';
