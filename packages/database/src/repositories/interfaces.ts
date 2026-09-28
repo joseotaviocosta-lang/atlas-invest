@@ -312,3 +312,119 @@ export interface IMarketIntelligenceRepository {
     pagination?: PaginationOptions,
   ): Promise<{ items: MarketIntelligenceRecord[]; nextCursor?: string; hasMore: boolean }>;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4B.3 — canonical tax input persistence
+// ---------------------------------------------------------------------------
+
+export type TaxInputWriteOutcome = 'CREATED' | 'DUPLICATE' | 'CONFLICT';
+
+export interface TaxInputWriteResult<T> {
+  outcome: TaxInputWriteOutcome;
+  record: T;
+}
+
+export interface TaxTradeClassificationRow {
+  id: string;
+  taxSubjectId: string;
+  transactionId: string;
+  classification: string;
+  sourceType: string;
+  sourceReference: string;
+  effectiveDate: Date;
+  status: string;
+  conflictStatus: string;
+  fingerprint: string;
+  provenance: Record<string, unknown>;
+  createdAt: Date;
+  confirmedAt: Date | null;
+}
+
+export interface TaxWithholdingRow {
+  id: string;
+  taxSubjectId: string;
+  competence: string;
+  economicDate: Date;
+  category: string;
+  /** Exact decimal string, or null when status is UNKNOWN. */
+  amount: string | null;
+  currency: string;
+  status: string;
+  sourceType: string;
+  sourceReference: string;
+  conflictStatus: string;
+  fingerprint: string;
+  provenance: Record<string, unknown>;
+  createdAt: Date;
+  confirmedAt: Date | null;
+}
+
+export interface FiiTaxEligibilityRow {
+  id: string;
+  taxSubjectId: string;
+  assetId: string;
+  asOfDate: Date;
+  holderCount: number | null;
+  /** Exact decimal string. */
+  investorOwnershipPercent: string | null;
+  isExchangeTraded: boolean | null;
+  sourceType: string;
+  sourceReference: string;
+  status: string;
+  conflictStatus: string;
+  fingerprint: string;
+  provenance: Record<string, unknown>;
+  createdAt: Date;
+}
+
+export interface ITaxInputRepository {
+  upsertTradeClassification(input: {
+    taxSubjectId: string;
+    transactionId: string;
+    classification: string;
+    sourceType: string;
+    sourceReference: string;
+    effectiveDate: Date;
+    status: string;
+    fingerprint: string;
+    provenance: Record<string, unknown>;
+  }): Promise<TaxInputWriteResult<TaxTradeClassificationRow>>;
+  listTradeClassifications(
+    taxSubjectId: string,
+    transactionIds?: readonly string[],
+  ): Promise<TaxTradeClassificationRow[]>;
+
+  upsertWithholding(input: {
+    taxSubjectId: string;
+    competence: string;
+    economicDate: Date;
+    category: string;
+    amount: string | null;
+    currency: string;
+    status: string;
+    sourceType: string;
+    sourceReference: string;
+    fingerprint: string;
+    provenance: Record<string, unknown>;
+  }): Promise<TaxInputWriteResult<TaxWithholdingRow>>;
+  listWithholdings(taxSubjectId: string, competence?: string): Promise<TaxWithholdingRow[]>;
+
+  upsertFiiEligibility(input: {
+    taxSubjectId: string;
+    assetId: string;
+    asOfDate: Date;
+    holderCount: number | null;
+    investorOwnershipPercent: string | null;
+    isExchangeTraded: boolean | null;
+    sourceType: string;
+    sourceReference: string;
+    status: string;
+    fingerprint: string;
+    provenance: Record<string, unknown>;
+  }): Promise<TaxInputWriteResult<FiiTaxEligibilityRow>>;
+  listFiiEligibility(
+    taxSubjectId: string,
+    assetIds: readonly string[],
+    asOfDate: Date,
+  ): Promise<FiiTaxEligibilityRow[]>;
+}

@@ -10,6 +10,7 @@ import {
   SessionRepository,
   PasswordResetTokenRepository,
   AiConversationRepository,
+  TaxInputRepository,
 } from '@atlas/database';
 import {
   PRISMA_CLIENT,
@@ -22,6 +23,7 @@ import {
   SESSION_REPOSITORY,
   PASSWORD_RESET_TOKEN_REPOSITORY,
   AI_CONVERSATION_REPOSITORY,
+  TAX_INPUT_REPOSITORY,
 } from './tokens';
 
 type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
@@ -78,6 +80,11 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
       useFactory: (prisma: AtlasPrismaClient) => new AiConversationRepository(prisma),
       inject: [PRISMA_CLIENT],
     },
+    {
+      provide: TAX_INPUT_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new TaxInputRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
   ],
   exports: [
     PRISMA_CLIENT,
@@ -90,6 +97,7 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     SESSION_REPOSITORY,
     PASSWORD_RESET_TOKEN_REPOSITORY,
     AI_CONVERSATION_REPOSITORY,
+    TAX_INPUT_REPOSITORY,
   ],
 })
 export class DatabaseModule {}

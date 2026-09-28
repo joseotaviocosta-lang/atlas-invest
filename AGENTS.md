@@ -1535,3 +1535,30 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Nenhuma regra de produção, alíquota, limiar, DARF, pagamento, IRPF, integração Receita ou resposta fiscal de IA. A IA permanece `UNSUPPORTED_TAX` com provedor 0.
 10. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
     - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B permanecem inalterados e invioláveis.
+
+---
+
+## 51. Arquitetura e Invariantes de Persistência de Inputs Tributários (Fase 4B.3)
+
+1. **PERSISTÊNCIA COM PROVENIÊNCIA (ADR-254):**
+   - Inputs tributários canônicos são persistidos com identidade estável, escopo de sujeito, `sourceType`/`sourceReference`, fingerprint e proveniência.
+2. **DUPLICATA ≠ CONFLITO (ADR-255):**
+   - Mesma identidade + mesmo fingerprint = duplicata idempotente (uma linha). Mesma identidade + fingerprint diferente = conflito explícito (`409`), **nunca** sobrescrita silenciosa. A `unique constraint` do banco é a barreira de concorrência.
+3. **PROVENIÊNCIA MANUAL (ADR-256):**
+   - Entrada manual exige `MANUAL*` + `confirmedAt`; não sobrescreve importado. Manual é fato, não regra, e não ativa responsabilidade tributária.
+4. **SEM MUTAÇÃO DO LIVRO-RAZÃO:**
+   - Registros de input apenas referenciam `transactionId`/`assetId`; as linhas imutáveis de `transactions` nunca são alteradas.
+5. **UNKNOWN PERMANECE UNKNOWN:**
+   - Nunca normalizado para valor favorável/desfavorável. `amount` nulo quando `UNKNOWN`.
+6. **SEMÂNTICA as-of (ADR-257):**
+   - Fatos datados; leitura por `asOf` sem vazamento futuro; retenção segregada por competência.
+7. **REGRA DE PRODUÇÃO AINDA DESABILITADA:**
+   - A 4B.3 adiciona **zero** regras de produção. A responsabilidade tributária real permanece indisponível (fonte oficial ainda pendente).
+8. **SEM CLASSIFICADOR AUTOMÁTICO DE DAY TRADE:**
+   - A classificação só se torna canônica a partir de fonte explícita (importada/confirmada). Proibida inferência por heurística.
+9. **PRONTIDÃO SERVER-SIDE:**
+   - `GET /api/v1/fiscal/inputs/:competence` lê dados persistidos e reflete conflitos como `PARTIAL`, nunca `COMPLETE`.
+10. **ANTI-ESCOPO 4B.3:**
+    - Nenhuma regra de produção, DARF, pagamento, IRPF, integração Receita ou resposta fiscal de IA. A IA permanece `UNSUPPORTED_TAX` com provedor 0.
+11. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+    - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B permanecem inalterados e invioláveis.

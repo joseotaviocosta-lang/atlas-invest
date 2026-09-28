@@ -1,9 +1,42 @@
-import { Controller, Get, Param, Inject } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  Inject,
+  HttpCode,
+  HttpStatus,
+  ConflictException,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { GetMonthlyTaxStateUseCase } from '../../application/fiscal/get-monthly-tax-state.use-case';
 import { GetMonthlyTaxLiabilityUseCase } from '../../application/fiscal/get-monthly-tax-liability.use-case';
 import { GetTaxInputReadinessUseCase } from '../../application/fiscal/get-tax-input-readiness.use-case';
+import {
+  RecordFiiTaxEligibilityFactsUseCase,
+  RecordTradeClassificationUseCase,
+  RecordWithholdingInputUseCase,
+} from '../../application/fiscal/record-tax-inputs.use-case';
+import { ListTaxInputsUseCase } from '../../application/fiscal/list-tax-inputs.use-case';
+import { ZodValidationPipe } from '../../common/pipes';
+import {
+  RecordFiiMetadataBody,
+  RecordFiiMetadataBodySchema,
+  RecordTradeClassificationBody,
+  RecordTradeClassificationBodySchema,
+  RecordWithholdingBody,
+  RecordWithholdingBodySchema,
+} from './dto/tax-input.dto';
 import { CurrentPrincipal, AuthenticatedPrincipal } from '../../auth';
+
+function conflict(): never {
+  throw new ConflictException({
+    message: 'A canonical tax input already exists for this identity with a different value.',
+    code: 'TAX_INPUT.CONFLICT',
+  });
+}
 
 @ApiTags('Fiscal')
 @ApiBearerAuth()
@@ -16,6 +49,14 @@ export class FiscalController {
     private readonly getMonthlyTaxLiabilityUseCase: GetMonthlyTaxLiabilityUseCase,
     @Inject(GetTaxInputReadinessUseCase)
     private readonly getTaxInputReadinessUseCase: GetTaxInputReadinessUseCase,
+    @Inject(RecordTradeClassificationUseCase)
+    private readonly recordTradeClassificationUseCase: RecordTradeClassificationUseCase,
+    @Inject(RecordWithholdingInputUseCase)
+    private readonly recordWithholdingInputUseCase: RecordWithholdingInputUseCase,
+    @Inject(RecordFiiTaxEligibilityFactsUseCase)
+    private readonly recordFiiTaxEligibilityFactsUseCase: RecordFiiTaxEligibilityFactsUseCase,
+    @Inject(ListTaxInputsUseCase)
+    private readonly listTaxInputsUseCase: ListTaxInputsUseCase,
   ) {}
 
   @Get('monthly/:competence')
@@ -59,6 +100,109 @@ export class FiscalController {
       competence,
     });
     return { data };
+  }
+
+  // --- Canonical tax inputs (Phase 4B.3) ---
+  // Specific routes are declared before `inputs/:competence` so they are not
+  // captured by the competence param route.
+
+  @Post('inputs/trade-classifications')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Record a canonical trade classification (manual or imported). Idempotent; conflicts are explicit.',
+  })
+  @ApiResponse({ status: 200, description: 'Recorded (CREATED/DUPLICATE)' })
+  @ApiResponse({ status: 409, description: 'Conflict with an existing canonical input' })
+  async recordTradeClassification(
+    @Body(new ZodValidationPipe(RecordTradeClassificationBodySchema))
+    body: RecordTradeClassificationBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.recordTradeClassificationUseCase.execute({
+      userId: principal.userId,
+      ...body,
+    });
+    if (result.outcome === 'CONFLICT') conflict();
+    return {
+      data: { outcome: result.outcome, id: result.record.id, status: result.record.status },
+    };
+  }
+
+  @Get('inputs/trade-classifications')
+  @ApiOperation({ summary: 'List persisted canonical trade classifications for the tax subject.' })
+  async listTradeClassifications(@CurrentPrincipal() principal: AuthenticatedPrincipal) {
+    return { data: await this.listTaxInputsUseCase.listTradeClassifications(principal.userId) };
+  }
+
+  @Post('inputs/withholdings')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Record a canonical withholding/IRRF input. Exact decimal; never estimated.',
+  })
+  @ApiResponse({ status: 200, description: 'Recorded (CREATED/DUPLICATE)' })
+  @ApiResponse({ status: 409, description: 'Conflict with an existing canonical input' })
+  async recordWithholding(
+    @Body(new ZodValidationPipe(RecordWithholdingBodySchema)) body: RecordWithholdingBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.recordWithholdingInputUseCase.execute({
+      userId: principal.userId,
+      ...body,
+      amount: body.amount ?? null,
+    });
+    if (result.outcome === 'CONFLICT') conflict();
+    return {
+      data: { outcome: result.outcome, id: result.record.id, status: result.record.status },
+    };
+  }
+
+  @Get('inputs/withholdings')
+  @ApiOperation({
+    summary: 'List persisted canonical withholding/IRRF inputs for the tax subject.',
+  })
+  async listWithholdings(
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Query('competence') competence?: string,
+  ) {
+    return { data: await this.listTaxInputsUseCase.listWithholdings(principal.userId, competence) };
+  }
+
+  @Post('inputs/fii-metadata')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Record factual FII tax-condition metadata (not tax treatment).' })
+  @ApiResponse({ status: 200, description: 'Recorded (CREATED/DUPLICATE)' })
+  @ApiResponse({ status: 409, description: 'Conflict with an existing canonical input' })
+  async recordFiiMetadata(
+    @Body(new ZodValidationPipe(RecordFiiMetadataBodySchema)) body: RecordFiiMetadataBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.recordFiiTaxEligibilityFactsUseCase.execute({
+      userId: principal.userId,
+      ...body,
+      holderCount: body.holderCount ?? null,
+      investorOwnershipPercent: body.investorOwnershipPercent ?? null,
+      isExchangeTraded: body.isExchangeTraded ?? null,
+    });
+    if (result.outcome === 'CONFLICT') conflict();
+    return {
+      data: { outcome: result.outcome, id: result.record.id, status: result.record.status },
+    };
+  }
+
+  @Get('inputs/fii-metadata')
+  @ApiOperation({
+    summary: 'List persisted factual FII tax-condition metadata for an asset at an as-of date.',
+  })
+  @ApiResponse({ status: 400, description: 'Missing/invalid assetId or asOf' })
+  async listFiiMetadata(
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Query('assetId') assetId: string,
+    @Query('asOf') asOf: string,
+  ) {
+    return {
+      data: await this.listTaxInputsUseCase.listFiiEligibility(principal.userId, assetId, asOf),
+    };
   }
 
   @Get('inputs/:competence')

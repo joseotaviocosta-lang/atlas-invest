@@ -6,4 +6,8 @@ export * from './get-monthly-tax-liability.use-case';
 export * from './tax-input-provider';
 export * from './tax-input-readiness.read-model';
 export * from './get-tax-input-readiness.use-case';
+export * from './tax-input-fingerprint';
+export * from './persisted-tax-input-provider';
+export * from './record-tax-inputs.use-case';
+export * from './list-tax-inputs.use-case';
 export * from './tokens';

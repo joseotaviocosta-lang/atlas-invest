@@ -23,6 +23,9 @@ model User {
   sessions            Session[]
   passwordResetTokens PasswordResetToken[]
   aiConversations     AiConversation[]
+  taxTradeClassifications TaxTradeClassificationRecord[]
+  taxWithholdingInputs    TaxWithholdingInputRecord[]
+  fiiTaxEligibilityFacts  FiiTaxEligibilityFactRecord[]
 
   @@map("users")
 }
@@ -130,6 +133,7 @@ model Asset {
 
   transactions            Transaction[]
   marketIntelligenceLinks MarketIntelligenceAssetLink[]
+  fiiTaxEligibilityFacts  FiiTaxEligibilityFactRecord[]
 
   @@unique([ticker, exchange])
   @@index([ticker])
@@ -162,6 +166,7 @@ model Transaction {
   portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   account   Account   @relation(fields: [accountId, portfolioId], references: [id, portfolioId], onDelete: Restrict)
   asset     Asset?    @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  taxTradeClassifications TaxTradeClassificationRecord[]
 
   @@unique([portfolioId, provider, externalId], name: "portfolio_provider_external_id_unique")
   @@index([portfolioId, tradeDate, createdAt, id])
@@ -248,4 +253,82 @@ model MarketIntelligenceAssetLink {
   @@index([assetId])
   @@index([marketIntelligenceItemId])
   @@map("market_intelligence_asset_links")
+}
+
+/// Phase 4B.3 — persisted canonical trade classification (auxiliary tax input).
+/// References the immutable transaction; never mutates it.
+model TaxTradeClassificationRecord {
+  id              String    @id @default(uuid()) @db.Uuid
+  taxSubjectId    String    @map("tax_subject_id") @db.Uuid
+  transactionId   String    @map("transaction_id") @db.Uuid
+  classification  String    @db.VarChar(20)
+  sourceType      String    @map("source_type") @db.VarChar(50)
+  sourceReference String    @map("source_reference") @db.VarChar(255)
+  effectiveDate   DateTime  @map("effective_date") @db.Date
+  status          String    @db.VarChar(20)
+  conflictStatus  String    @default("NONE") @map("conflict_status") @db.VarChar(20)
+  fingerprint     String    @db.VarChar(64)
+  provenance      Json
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  confirmedAt     DateTime? @map("confirmed_at") @db.Timestamptz(6)
+
+  taxSubject  User        @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@unique([taxSubjectId, transactionId, sourceReference], name: "tax_trade_classification_identity")
+  @@index([taxSubjectId, transactionId])
+  @@index([taxSubjectId, effectiveDate])
+  @@map("tax_trade_classification_records")
+}
+
+/// Phase 4B.3 — persisted canonical withholding/IRRF input (exact decimal).
+model TaxWithholdingInputRecord {
+  id              String    @id @default(uuid()) @db.Uuid
+  taxSubjectId    String    @map("tax_subject_id") @db.Uuid
+  competence      String    @db.Char(7)
+  economicDate    DateTime  @map("economic_date") @db.Date
+  category        String    @db.VarChar(50)
+  amount          Decimal?  @db.Decimal(38, 18)
+  currency        String    @db.VarChar(3)
+  status          String    @db.VarChar(20)
+  sourceType      String    @map("source_type") @db.VarChar(50)
+  sourceReference String    @map("source_reference") @db.VarChar(255)
+  conflictStatus  String    @default("NONE") @map("conflict_status") @db.VarChar(20)
+  fingerprint     String    @db.VarChar(64)
+  provenance      Json
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  confirmedAt     DateTime? @map("confirmed_at") @db.Timestamptz(6)
+
+  taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+
+  @@unique([taxSubjectId, sourceType, sourceReference], name: "tax_withholding_identity")
+  @@index([taxSubjectId, competence])
+  @@index([taxSubjectId, economicDate])
+  @@map("tax_withholding_input_records")
+}
+
+/// Phase 4B.3 — persisted FII tax-condition metadata (factual input only).
+/// User-attested facts scoped to the tax subject; never tax treatment.
+model FiiTaxEligibilityFactRecord {
+  id                       String    @id @default(uuid()) @db.Uuid
+  taxSubjectId             String    @map("tax_subject_id") @db.Uuid
+  assetId                  String    @map("asset_id") @db.Uuid
+  asOfDate                 DateTime  @map("as_of_date") @db.Date
+  holderCount              Int?      @map("holder_count")
+  investorOwnershipPercent Decimal?  @map("investor_ownership_percent") @db.Decimal(38, 18)
+  isExchangeTraded         Boolean?  @map("is_exchange_traded")
+  sourceType               String    @map("source_type") @db.VarChar(50)
+  sourceReference          String    @map("source_reference") @db.VarChar(255)
+  status                   String    @db.VarChar(20)
+  conflictStatus           String    @default("NONE") @map("conflict_status") @db.VarChar(20)
+  fingerprint              String    @db.VarChar(64)
+  provenance               Json
+  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  taxSubject User  @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+  asset      Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([taxSubjectId, assetId, sourceType, sourceReference, asOfDate], name: "fii_tax_eligibility_identity")
+  @@index([taxSubjectId, assetId, asOfDate])
+  @@map("fii_tax_eligibility_fact_records")
 }

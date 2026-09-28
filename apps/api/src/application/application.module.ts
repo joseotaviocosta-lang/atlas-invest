@@ -23,7 +23,13 @@ import { GetPortfolioIntelligenceSummaryUseCase } from './performance/get-portfo
 import { GetMonthlyTaxStateUseCase } from './fiscal/get-monthly-tax-state.use-case';
 import { GetMonthlyTaxLiabilityUseCase } from './fiscal/get-monthly-tax-liability.use-case';
 import { GetTaxInputReadinessUseCase } from './fiscal/get-tax-input-readiness.use-case';
-import { EmptyTaxInputProvider } from './fiscal/tax-input-provider';
+import { PersistedTaxInputProvider } from './fiscal/persisted-tax-input-provider';
+import {
+  RecordFiiTaxEligibilityFactsUseCase,
+  RecordTradeClassificationUseCase,
+  RecordWithholdingInputUseCase,
+} from './fiscal/record-tax-inputs.use-case';
+import { ListTaxInputsUseCase } from './fiscal/list-tax-inputs.use-case';
 import { TAX_INPUT_PROVIDER, TAX_RULE_REGISTRY } from './fiscal/tokens';
 import { PRODUCTION_TAX_RULE_REGISTRY } from './fiscal/fiscal-rule-registry';
 import { GetPortfolioAiGroundingContextUseCase } from './ai/get-portfolio-ai-grounding-context.use-case';
@@ -63,6 +69,10 @@ const USE_CASES = [
   GetMonthlyTaxStateUseCase,
   GetMonthlyTaxLiabilityUseCase,
   GetTaxInputReadinessUseCase,
+  RecordTradeClassificationUseCase,
+  RecordWithholdingInputUseCase,
+  RecordFiiTaxEligibilityFactsUseCase,
+  ListTaxInputsUseCase,
   GetPortfolioAiGroundingContextUseCase,
   GetPortfolioAssetAiGroundingContextUseCase,
   GetPortfolioTimelineAiGroundingContextUseCase,
@@ -85,7 +95,7 @@ const USE_CASES = [
   providers: [
     ...USE_CASES,
     { provide: TAX_RULE_REGISTRY, useValue: PRODUCTION_TAX_RULE_REGISTRY },
-    { provide: TAX_INPUT_PROVIDER, useClass: EmptyTaxInputProvider },
+    { provide: TAX_INPUT_PROVIDER, useClass: PersistedTaxInputProvider },
   ],
   exports: [...USE_CASES, TAX_RULE_REGISTRY, TAX_INPUT_PROVIDER],
 })
