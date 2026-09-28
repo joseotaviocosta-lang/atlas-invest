@@ -2,6 +2,14 @@ import { AssetId, LocalDate } from '@atlas/domain';
 
 export const NEWS_DATA_VERSION = '0.1.0';
 
+export * from './types';
+export * from './normalize';
+export * from './fake-market-intelligence-source';
+
+// ---------------------------------------------------------------------------
+// Legacy / Foundation contracts (preserved for backward compatibility)
+// ---------------------------------------------------------------------------
+
 export interface FinancialNewsItem {
   id: string;
   headline: string;

@@ -8,3 +8,4 @@ export * from './user.repository';
 export * from './session.repository';
 export * from './password-reset-token.repository';
 export * from './ai-conversation.repository';
+export * from './market-intelligence.repository';

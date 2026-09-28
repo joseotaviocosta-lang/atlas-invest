@@ -128,7 +128,8 @@ model Asset {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  transactions Transaction[]
+  transactions            Transaction[]
+  marketIntelligenceLinks MarketIntelligenceAssetLink[]
 
   @@unique([ticker, exchange])
   @@index([ticker])
@@ -208,4 +209,43 @@ model AiConversationMessage {
 
   @@index([conversationId, createdAt, id])
   @@map("ai_conversation_messages")
+}
+
+model MarketIntelligenceItem {
+  id             String   @id @default(uuid()) @db.Uuid
+  sourceProvider String   @map("source_provider") @db.VarChar(100)
+  sourceType     String   @map("source_type") @db.VarChar(50)
+  sourceItemId   String   @map("source_item_id") @db.VarChar(255)
+  headline       String   @db.VarChar(500)
+  excerpt        String?  @db.VarChar(2000)
+  canonicalUrl   String?  @map("canonical_url") @db.VarChar(1000)
+  publishedAt    DateTime @map("published_at") @db.Timestamptz(6)
+  retrievedAt    DateTime @default(now()) @map("retrieved_at") @db.Timestamptz(6)
+  category       String   @db.VarChar(50)
+  language       String   @default("pt-BR") @db.VarChar(10)
+  status         String   @default("ACTIVE") @db.VarChar(50)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  assetLinks MarketIntelligenceAssetLink[]
+
+  @@unique([sourceProvider, sourceItemId], name: "source_provider_item_id_unique")
+  @@index([publishedAt])
+  @@index([category])
+  @@map("market_intelligence_items")
+}
+
+model MarketIntelligenceAssetLink {
+  id                       String   @id @default(uuid()) @db.Uuid
+  marketIntelligenceItemId String   @map("market_intelligence_item_id") @db.Uuid
+  assetId                  String   @map("asset_id") @db.Uuid
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  item  MarketIntelligenceItem @relation(fields: [marketIntelligenceItemId], references: [id], onDelete: Cascade)
+  asset Asset                  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([marketIntelligenceItemId, assetId], name: "item_asset_link_unique")
+  @@index([assetId])
+  @@index([marketIntelligenceItemId])
+  @@map("market_intelligence_asset_links")
 }

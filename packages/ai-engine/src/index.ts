@@ -83,6 +83,7 @@ export const GROUNDED_FACT_CATEGORIES = [
   'EVENT_TRANSACTION',
   'EVENT_INCOME',
   'EVENT_CORPORATE_ACTION',
+  'EXTERNAL_SOURCE',
 ] as const;
 export type GroundedFactCategory = (typeof GROUNDED_FACT_CATEGORIES)[number];
 
@@ -106,6 +107,7 @@ export const GROUNDED_FACT_NATURES = [
   'HYPOTHETICAL',
   'STRUCTURAL',
   'CURRENT',
+  'EXTERNAL_REPORTED',
 ] as const;
 export type GroundedFactNature = (typeof GROUNDED_FACT_NATURES)[number];
 
@@ -159,6 +161,8 @@ export interface GroundingCapabilities {
   readonly canPredictReturns: boolean;
   readonly canCalculateNewMetrics: boolean;
   readonly canExplainTimelineEvents?: boolean;
+  readonly canExplainExternalNews?: boolean;
+  readonly canExplainCorporateAnnouncements?: boolean;
 }
 
 export const CANONICAL_GROUNDING_CAPABILITIES: GroundingCapabilities = Object.freeze({
@@ -170,6 +174,8 @@ export const CANONICAL_GROUNDING_CAPABILITIES: GroundingCapabilities = Object.fr
   canPredictReturns: false,
   canCalculateNewMetrics: false,
   canExplainTimelineEvents: true,
+  canExplainExternalNews: true,
+  canExplainCorporateAnnouncements: true,
 });
 
 export interface PortfolioAiGroundingContextV1 {
@@ -219,8 +225,28 @@ export interface AssetTimelineAiScope {
   readonly name?: string;
 }
 
+export interface MarketPortfolioAiScope {
+  readonly type: 'MARKET_PORTFOLIO';
+  readonly from?: string; // YYYY-MM-DD
+  readonly to?: string; // YYYY-MM-DD
+}
+
+export interface MarketAssetAiScope {
+  readonly type: 'MARKET_ASSET';
+  readonly assetId: string;
+  readonly from?: string; // YYYY-MM-DD
+  readonly to?: string; // YYYY-MM-DD
+  readonly symbol?: string;
+  readonly name?: string;
+}
+
 export type AiConversationScope =
-  PortfolioAiScope | AssetAiScope | TimelineAiScope | AssetTimelineAiScope;
+  | PortfolioAiScope
+  | AssetAiScope
+  | TimelineAiScope
+  | AssetTimelineAiScope
+  | MarketPortfolioAiScope
+  | MarketAssetAiScope;
 
 export type PortfolioAiEventType =
   | 'BUY'
@@ -298,6 +324,62 @@ export interface PortfolioTimelineAiGroundingContextV1 {
 export interface PortfolioAssetAiGroundingContextV1 extends PortfolioAiGroundingContextV1 {
   readonly scope: AssetAiScope;
   readonly assetFacts: readonly GroundedFinancialFact[];
+}
+
+export interface MarketIntelligenceAiItemV1 {
+  readonly itemId: string;
+  readonly sourceProvider: string;
+  readonly sourceType: string;
+  readonly headline: string;
+  readonly publishedAt: string; // ISO 8601 string or YYYY-MM-DD
+  readonly category: string;
+  readonly excerpt?: string;
+  readonly canonicalUrl?: string;
+  readonly language?: string;
+  readonly status?: string;
+  readonly linkedAssetIds?: readonly string[];
+  readonly linkedSymbols?: readonly string[];
+}
+
+export const MAX_AI_MARKET_INTELLIGENCE_ITEMS = 25;
+
+export interface PortfolioMarketIntelligenceAiGroundingContextV1 {
+  readonly schemaVersion: '1.0' | '1';
+  readonly portfolioId?: string;
+  readonly period: {
+    readonly from?: string;
+    readonly to?: string;
+  };
+  readonly filters: {
+    readonly scopeType: 'MARKET_PORTFOLIO' | 'MARKET_ASSET';
+    readonly assetId?: string;
+    readonly symbol?: string;
+  };
+  readonly summaryFacts: {
+    readonly itemCountIncluded: number;
+    readonly hasMore: boolean;
+    readonly totalMatchingItems?: number;
+    readonly periodStart?: string;
+    readonly periodEnd?: string;
+  };
+  readonly items: readonly MarketIntelligenceAiItemV1[];
+  readonly facts: readonly GroundedFinancialFact[];
+  readonly scope: MarketPortfolioAiScope | MarketAssetAiScope;
+  readonly limitations: readonly GroundedLimitation[];
+  readonly capabilities: {
+    readonly canExplainExternalNews: true;
+    readonly canExplainCorporateAnnouncements: true;
+  };
+  readonly itemLimitReached?: boolean;
+  readonly dataQuality?: GroundedDataQuality;
+  readonly currencies?: readonly string[];
+  readonly asOf?: string;
+  readonly generatedAt?: string;
+  readonly analysisPeriod?: {
+    readonly startDate: string;
+    readonly endDate: string;
+  };
+  readonly observations?: readonly string[];
 }
 
 export interface AssetPositionCanonicalData {
@@ -1637,6 +1719,246 @@ export function buildPortfolioTimelineAiGroundingContext(
   return deepFreeze(context);
 }
 
+export interface BuildMarketIntelligenceGroundingInput {
+  readonly portfolioId?: string;
+  readonly scope: MarketPortfolioAiScope | MarketAssetAiScope;
+  readonly period?: {
+    readonly from?: string; // YYYY-MM-DD
+    readonly to?: string; // YYYY-MM-DD
+  };
+  readonly candidateItems: readonly MarketIntelligenceAiItemV1[];
+  readonly totalMatchingItems?: number;
+}
+
+/**
+ * Extracts canonical GroundedFinancialFact objects from external market intelligence items.
+ * Fact IDs follow the strict convention: SOURCE:<itemId>.<FIELD>
+ * Category is ALWAYS 'EXTERNAL_SOURCE' and nature is 'EXTERNAL_REPORTED'.
+ */
+export function extractMarketIntelligenceFacts(
+  items: readonly MarketIntelligenceAiItemV1[],
+): readonly GroundedFinancialFact[] {
+  const facts: GroundedFinancialFact[] = [];
+
+  for (const item of items) {
+    const itemDate = item.publishedAt.slice(0, 10);
+    const itemPeriod = { startDate: itemDate, endDate: itemDate };
+    const itemSource: GroundedFactSource = {
+      contract: 'PORTFOLIO_READ_API_V1',
+      path: `market-intelligence/${item.itemId}`,
+    };
+    const primaryAssetId =
+      item.linkedAssetIds && item.linkedAssetIds.length > 0 ? item.linkedAssetIds[0] : undefined;
+
+    // SOURCE:<id>.HEADLINE
+    facts.push({
+      factId: `SOURCE:${item.itemId}.HEADLINE`,
+      category: 'EXTERNAL_SOURCE',
+      metric: 'headline',
+      scope: 'SOURCE',
+      value: item.headline,
+      unit: 'TEXT_ENUM',
+      period: itemPeriod,
+      asOf: itemDate,
+      nature: 'EXTERNAL_REPORTED',
+      status: 'AVAILABLE',
+      source: itemSource,
+      assetId: primaryAssetId,
+    });
+
+    // SOURCE:<id>.PUBLISHED_AT
+    facts.push({
+      factId: `SOURCE:${item.itemId}.PUBLISHED_AT`,
+      category: 'EXTERNAL_SOURCE',
+      metric: 'published_at',
+      scope: 'SOURCE',
+      value: item.publishedAt,
+      unit: 'DATE',
+      period: itemPeriod,
+      asOf: itemDate,
+      nature: 'EXTERNAL_REPORTED',
+      status: 'AVAILABLE',
+      source: itemSource,
+      assetId: primaryAssetId,
+    });
+
+    // SOURCE:<id>.CATEGORY
+    facts.push({
+      factId: `SOURCE:${item.itemId}.CATEGORY`,
+      category: 'EXTERNAL_SOURCE',
+      metric: 'category',
+      scope: 'SOURCE',
+      value: item.category,
+      unit: 'TEXT_ENUM',
+      period: itemPeriod,
+      asOf: itemDate,
+      nature: 'EXTERNAL_REPORTED',
+      status: 'AVAILABLE',
+      source: itemSource,
+      assetId: primaryAssetId,
+    });
+
+    // SOURCE:<id>.REFERENCE
+    facts.push({
+      factId: `SOURCE:${item.itemId}.REFERENCE`,
+      category: 'EXTERNAL_SOURCE',
+      metric: 'reference',
+      scope: 'SOURCE',
+      value: item.sourceProvider,
+      unit: 'TEXT_ENUM',
+      period: itemPeriod,
+      asOf: itemDate,
+      nature: 'EXTERNAL_REPORTED',
+      status: 'AVAILABLE',
+      source: itemSource,
+      assetId: primaryAssetId,
+    });
+
+    // SOURCE:<id>.ASSET_LINK
+    if (item.linkedAssetIds && item.linkedAssetIds.length > 0) {
+      facts.push({
+        factId: `SOURCE:${item.itemId}.ASSET_LINK`,
+        category: 'EXTERNAL_SOURCE',
+        metric: 'asset_link',
+        scope: 'SOURCE',
+        value: item.linkedAssetIds.join(','),
+        unit: 'TEXT_ENUM',
+        period: itemPeriod,
+        asOf: itemDate,
+        nature: 'EXTERNAL_REPORTED',
+        status: 'AVAILABLE',
+        source: itemSource,
+        assetId: primaryAssetId,
+      });
+    }
+
+    // SOURCE:<id>.EXCERPT
+    if (item.excerpt) {
+      facts.push({
+        factId: `SOURCE:${item.itemId}.EXCERPT`,
+        category: 'EXTERNAL_SOURCE',
+        metric: 'excerpt',
+        scope: 'SOURCE',
+        value: item.excerpt,
+        unit: 'TEXT_ENUM',
+        period: itemPeriod,
+        asOf: itemDate,
+        nature: 'EXTERNAL_REPORTED',
+        status: 'AVAILABLE',
+        source: itemSource,
+        assetId: primaryAssetId,
+      });
+    }
+  }
+
+  return deepFreeze(facts);
+}
+
+/**
+ * Pure, deterministic builder transforming candidate market intelligence items into
+ * a versioned, bounded, immutable PortfolioMarketIntelligenceAiGroundingContextV1 (Phase 3Z, ADR-228–ADR-234).
+ */
+export function buildPortfolioMarketIntelligenceAiGroundingContext(
+  input: BuildMarketIntelligenceGroundingInput,
+): PortfolioMarketIntelligenceAiGroundingContextV1 {
+  // 1. Filter by target asset if MARKET_ASSET scope
+  let filtered = input.candidateItems;
+  if (input.scope.type === 'MARKET_ASSET') {
+    const targetAssetId = input.scope.assetId;
+    filtered = filtered.filter(
+      (item) => item.linkedAssetIds && item.linkedAssetIds.includes(targetAssetId),
+    );
+  }
+
+  // 2. Filter by date range (inclusive [from, to]) if provided
+  if (input.period?.from) {
+    const fromStr = input.period.from;
+    filtered = filtered.filter((item) => item.publishedAt.slice(0, 10) >= fromStr);
+  }
+  if (input.period?.to) {
+    const toStr = input.period.to;
+    filtered = filtered.filter((item) => item.publishedAt.slice(0, 10) <= toStr);
+  }
+
+  // 3. Deterministic selection: publishedAt DESC, itemId DESC
+  const sortedDescending = [...filtered].sort((a, b) => {
+    const cmp = b.publishedAt.localeCompare(a.publishedAt);
+    if (cmp !== 0) return cmp;
+    return b.itemId.localeCompare(a.itemId);
+  });
+
+  const totalMatching = input.totalMatchingItems ?? sortedDescending.length;
+  const hasMore = sortedDescending.length > MAX_AI_MARKET_INTELLIGENCE_ITEMS;
+  const selectedDescending = sortedDescending.slice(0, MAX_AI_MARKET_INTELLIGENCE_ITEMS);
+
+  // 4. Chronological order for prompt context: publishedAt ASC, itemId ASC
+  const items = [...selectedDescending].sort((a, b) => {
+    const cmp = a.publishedAt.localeCompare(b.publishedAt);
+    if (cmp !== 0) return cmp;
+    return a.itemId.localeCompare(b.itemId);
+  });
+
+  // 5. Summary facts and limitations
+  const summaryFacts = {
+    itemCountIncluded: items.length,
+    hasMore,
+    totalMatchingItems: totalMatching,
+    periodStart: input.period?.from,
+    periodEnd: input.period?.to,
+  };
+
+  const limitations: GroundedLimitation[] = [];
+  if (hasMore) {
+    limitations.push({
+      code: 'PARTIAL_MARKET_ITEMS',
+      scope: 'MARKET_INTELLIGENCE',
+      description: `Showing the ${MAX_AI_MARKET_INTELLIGENCE_ITEMS} most recent market intelligence items within the selected period.`,
+    });
+  }
+  if (items.length === 0) {
+    limitations.push({
+      code: 'EMPTY_MARKET_INTELLIGENCE',
+      scope: 'MARKET_INTELLIGENCE',
+      description: 'No market intelligence items were found for this query.',
+    });
+  }
+
+  const facts = extractMarketIntelligenceFacts(items);
+
+  const context: PortfolioMarketIntelligenceAiGroundingContextV1 = {
+    schemaVersion: '1.0',
+    portfolioId: input.portfolioId,
+    period: input.period ?? {},
+    filters: {
+      scopeType: input.scope.type,
+      ...(input.scope.type === 'MARKET_ASSET'
+        ? { assetId: input.scope.assetId, symbol: input.scope.symbol }
+        : {}),
+    },
+    summaryFacts,
+    items,
+    facts,
+    scope: input.scope,
+    limitations,
+    capabilities: {
+      canExplainExternalNews: true,
+      canExplainCorporateAnnouncements: true,
+    },
+    itemLimitReached: hasMore,
+    asOf:
+      input.period?.to ??
+      (items.length > 0 ? items[items.length - 1]!.publishedAt.slice(0, 10) : undefined),
+    generatedAt: new Date().toISOString(),
+    analysisPeriod: {
+      startDate: input.period?.from ?? '',
+      endDate: input.period?.to ?? '',
+    },
+    observations: [],
+  };
+
+  return deepFreeze(context);
+}
+
 // ---------------------------------------------------------------------------
 // Phase 3R: Grounded AI Explanation Foundation (ADR-179–ADR-185)
 // First generative model execution bounded by canonical grounded facts.
@@ -1662,6 +1984,9 @@ export const EXPLANATION_INTENTS = [
   'EXPLAIN_DATA_QUALITY',
   'EXPLAIN_ASSET',
   'EXPLAIN_TIMELINE',
+  'EXPLAIN_MARKET_NEWS',
+  'EXPLAIN_ASSET_NEWS',
+  'EXPLAIN_CORPORATE_ANNOUNCEMENT',
   'UNSUPPORTED_RECOMMENDATION',
   'UNSUPPORTED_PREDICTION',
   'UNSUPPORTED_NEW_CALCULATION',
@@ -1750,6 +2075,18 @@ export function classifyExplanationIntent(
     };
   }
 
+  // 1b. Sentiment / trading signal inquiries -> refused with 0 provider calls
+  if (
+    /\b(sentimento|bullish|bearish|otimista|pessimista|sinal\s+de\s+trading|sinais\s+de\s+trading|comprar\s+ou\s+vender\s+apos|devo\s+agir\s+com\s+essa\s+noticia|vale\s+a\s+pena\s+comprar\s+com\s+essa\s+noticia)\b/i.test(
+      normalized,
+    )
+  ) {
+    return {
+      intent: 'UNSUPPORTED_OTHER',
+      reason: 'SENTIMENT_ANALYSIS_NOT_SUPPORTED',
+    };
+  }
+
   // Detect factual historical timeline inquiries
   const isHistoricalTimelineQuestion =
     /\b(ultima\s+compra|primeira\s+compra|quando\s+comprei|quando\s+vendi|quais\s+aportes|quais\s+proventos|o\s+que\s+mudou|acontecimentos|movimentacoes|historico\s+de\s+eventos|timeline|linha\s+do\s+tempo)\b/i.test(
@@ -1817,16 +2154,34 @@ export function classifyExplanationIntent(
     return { intent: 'EXPLAIN_TIMELINE' };
   }
 
-  // 7. Explicit Asset Scope Routing (Phase 3W)
+  // 7. Explicit Market Scope Routing (Phase 3Z)
+  if (scope?.type === 'MARKET_ASSET') {
+    if (/\b(comunicado|fato\s+relevante|fato|anuncio|resultado|dividendo)\b/i.test(normalized)) {
+      return { intent: 'EXPLAIN_CORPORATE_ANNOUNCEMENT' };
+    }
+    return { intent: 'EXPLAIN_ASSET_NEWS' };
+  }
+
+  if (scope?.type === 'MARKET_PORTFOLIO') {
+    return { intent: 'EXPLAIN_MARKET_NEWS' };
+  }
+
+  // 8. Explicit Asset Scope Routing (Phase 3W)
   if (scope?.type === 'ASSET') {
+    if (/\b(noticia|noticias|fato\s+relevante|comunicado|anuncio)\b/i.test(normalized)) {
+      if (/\b(comunicado|fato\s+relevante|fato|anuncio)\b/i.test(normalized)) {
+        return { intent: 'EXPLAIN_CORPORATE_ANNOUNCEMENT' };
+      }
+      return { intent: 'EXPLAIN_ASSET_NEWS' };
+    }
     return { intent: 'EXPLAIN_ASSET' };
   }
 
-  // 7. Missing Asset Scope Refusal (ADR-210, ADR-213)
-  // If user asks about an individual asset's position/cost/holdings without explicit asset scope,
+  // 9. Missing Asset Scope Refusal (ADR-210, ADR-213, ADR-232)
+  // If user asks about an individual asset's position/cost/holdings/news without explicit asset scope,
   // fail-closed deterministically instead of guessing identity through NLP.
   if (
-    /\b(preco\s+medio|quantas\s+cotas|minha\s+posicao\s+em|quantos\s+tenho\s+em|quanto\s+tenho\s+em|fale\s+sobre\s+[a-z]{4}\d{1,2}|sobre\s+o\s+ativo|sobre\s+este\s+ativo)\b/i.test(
+    /\b(preco\s+medio|quantas\s+cotas|minha\s+posicao\s+em|quantos\s+tenho\s+em|quanto\s+tenho\s+em|fale\s+sobre\s+[a-z]{4}\d{1,2}|sobre\s+o\s+ativo|sobre\s+este\s+ativo|noticias?\s+(da|do|de|sobre)\s+[a-z]{4}\d{1,2}|fato\s+relevante\s+(da|do|de|sobre)\s+[a-z]{4}\d{1,2}|comunicado\s+(da|do|de|sobre)\s+[a-z]{4}\d{1,2})\b/i.test(
       normalized,
     )
   ) {
@@ -1834,6 +2189,15 @@ export function classifyExplanationIntent(
       intent: 'UNSUPPORTED_OTHER',
       reason: 'MISSING_ASSET_SCOPE',
     };
+  }
+
+  // 10. General Market News Inquiry
+  if (
+    /\b(noticia|noticias|mercado\s+hoje|acontecimentos\s+de\s+mercado|comunicados|fatos\s+relevantes|noticiario)\b/i.test(
+      normalized,
+    )
+  ) {
+    return { intent: 'EXPLAIN_MARKET_NEWS' };
   }
 
   // 8. Allowed Portfolio Explanation Categories

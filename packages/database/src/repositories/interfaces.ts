@@ -18,6 +18,8 @@ export interface IAssetRepository {
   findById(id: string): Promise<Asset | null>;
   findByTicker(ticker: string): Promise<Asset | null>;
   findByTickerAndExchange(ticker: string, exchange: string): Promise<Asset | null>;
+  /** All canonical assets sharing a ticker (ambiguity detection, Phase 3Z). */
+  findAllByTicker(ticker: string): Promise<Asset[]>;
   create(asset: Asset): Promise<Asset>;
   list(): Promise<Asset[]>;
 }
@@ -236,4 +238,77 @@ export interface IAiConversationRepository {
     userMessage: AiConversationMessageRecord;
     assistantMessage: AiConversationMessageRecord;
   }>;
+}
+
+export interface MarketIntelligenceRecord {
+  id: string;
+  sourceProvider: string;
+  sourceType: string;
+  sourceItemId: string;
+  headline: string;
+  excerpt: string | null;
+  canonicalUrl: string | null;
+  publishedAt: Date;
+  retrievedAt: Date;
+  category: string;
+  language: string;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+  linkedAssetIds: string[];
+}
+
+export interface MarketIntelligenceFilter {
+  assetId?: string;
+  assetIds?: string[];
+  from?: Date;
+  to?: Date;
+  category?: string;
+  status?: string;
+}
+
+export interface IMarketIntelligenceRepository {
+  upsertItem(
+    item: {
+      sourceProvider: string;
+      sourceType: string;
+      sourceItemId: string;
+      headline: string;
+      excerpt?: string;
+      canonicalUrl?: string;
+      publishedAt: Date;
+      category: string;
+      language?: string;
+      status?: string;
+    },
+    linkedAssetIds?: string[],
+  ): Promise<MarketIntelligenceRecord>;
+
+  batchUpsertItems(
+    items: Array<{
+      item: {
+        sourceProvider: string;
+        sourceType: string;
+        sourceItemId: string;
+        headline: string;
+        excerpt?: string;
+        canonicalUrl?: string;
+        publishedAt: Date;
+        category: string;
+        language?: string;
+        status?: string;
+      };
+      linkedAssetIds?: string[];
+    }>,
+  ): Promise<{ accepted: number; duplicates: number }>;
+
+  findById(id: string): Promise<MarketIntelligenceRecord | null>;
+  findByProviderAndItemId(
+    sourceProvider: string,
+    sourceItemId: string,
+  ): Promise<MarketIntelligenceRecord | null>;
+  list(
+    filter?: MarketIntelligenceFilter,
+    pagination?: PaginationOptions,
+  ): Promise<{ items: MarketIntelligenceRecord[]; nextCursor?: string; hasMore: boolean }>;
 }
