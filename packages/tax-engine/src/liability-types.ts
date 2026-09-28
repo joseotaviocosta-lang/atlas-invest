@@ -166,4 +166,8 @@ export interface ReplayMonthlyTaxInput {
   readonly openingLossState?: 'KNOWN' | 'UNKNOWN';
   readonly calculationVersion?: string;
   readonly asOfRuleDateByCompetence?: Readonly<Record<string, string>>;
+  /** Canonical withholding credits per competence (keyed by `YYYY-MM`). */
+  readonly withholdingCreditsByCompetence?: Readonly<
+    Record<string, readonly import('./liability-types').TaxWithholdingCredit[]>
+  >;
 }

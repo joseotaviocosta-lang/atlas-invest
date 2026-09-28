@@ -217,7 +217,7 @@ describe('API Integration: canonical tax input persistence (Phase 4B.3)', () => 
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
     expect(readiness.body.data.withholdingStatus).toBe('COMPLETE');
-    expect(readiness.body.data.productionTaxLiabilityEnabled).toBe(false);
+    expect(readiness.body.data.productionTaxLiabilityEnabled).toBe(true);
   });
 
   it('rejects UNKNOWN withholding that carries an amount', async () => {

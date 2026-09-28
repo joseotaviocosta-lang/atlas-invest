@@ -9,13 +9,15 @@ import {
   type CanonicalRealizedResult,
   type FiscalEvent,
   type TaxRuleSet,
+  type TaxWithholdingCredit,
 } from '@atlas/tax-engine';
 import {
   ASSET_REPOSITORY,
   PORTFOLIO_REPOSITORY,
   TRANSACTION_REPOSITORY,
 } from '../../database/tokens';
-import { TAX_RULE_REGISTRY } from './tokens';
+import { TAX_INPUT_PROVIDER, TAX_RULE_REGISTRY } from './tokens';
+import type { TaxInputProvider } from './tax-input-provider';
 import {
   mapMonthlyTaxLiabilityToReadModel,
   type MonthlyTaxLiabilityReadModel,
@@ -43,6 +45,8 @@ export class GetMonthlyTaxLiabilityUseCase {
     private readonly assetRepository: IAssetRepository,
     @Inject(TAX_RULE_REGISTRY)
     private readonly ruleRegistry: readonly TaxRuleSet[],
+    @Inject(TAX_INPUT_PROVIDER)
+    private readonly taxInputProvider: TaxInputProvider,
   ) {}
 
   async execute(params: {
@@ -116,6 +120,26 @@ export class GetMonthlyTaxLiabilityUseCase {
     }
     const ordered = [...competences].sort();
 
+    // Canonical withholding credits per competence (CONFIRMED only; never estimated).
+    const withholdingInputs = await this.taxInputProvider.getWithholdingInputs(
+      params.userId,
+      competence.value,
+    );
+    const withholdingCreditsByCompetence: Record<string, TaxWithholdingCredit[]> = {};
+    for (const input of withholdingInputs) {
+      if (input.status !== 'CONFIRMED' || !input.amount) continue;
+      const key = input.competence.value;
+      const list = withholdingCreditsByCompetence[key] ?? [];
+      list.push({
+        category: input.category,
+        currency: input.currency,
+        amount: input.amount,
+        source: 'FISCAL_EVENT',
+        ...(input.id ? { sourceEventId: input.id } : {}),
+      });
+      withholdingCreditsByCompetence[key] = list;
+    }
+
     const results = replayMonthlyTaxLiability({
       months: ordered.map((value) => ({
         competence: value,
@@ -123,6 +147,7 @@ export class GetMonthlyTaxLiabilityUseCase {
       })),
       ruleSets: this.ruleRegistry,
       taxSubjectId: params.userId,
+      withholdingCreditsByCompetence,
     });
 
     const requested =

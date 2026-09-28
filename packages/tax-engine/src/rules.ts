@@ -135,3 +135,31 @@ export function resolveTaxRuleSetForCategory(
 
   return { ok: true, ruleSet: candidates[0]! };
 }
+
+/**
+ * 4B.5 — VERIFIED rules require machine-readable official provenance (ADR-245).
+ * A `VERIFIED` rule without `source.legalSourceId`, `source.legalSourceReference`
+ * and `source.verifiedAt` fails validation. Non-VERIFIED rules are exempt.
+ */
+export function validateTaxRuleProvenance(rule: TaxRuleSet): {
+  readonly valid: boolean;
+  readonly errors: readonly string[];
+} {
+  if (rule.status !== 'VERIFIED') {
+    return { valid: true, errors: Object.freeze([]) };
+  }
+  const errors: string[] = [];
+  if (!rule.source?.legalSourceId || rule.source.legalSourceId.trim().length === 0) {
+    errors.push(`VERIFIED rule '${rule.id}' requires source.legalSourceId`);
+  }
+  if (!rule.source?.legalSourceReference || rule.source.legalSourceReference.trim().length === 0) {
+    errors.push(`VERIFIED rule '${rule.id}' requires source.legalSourceReference`);
+  }
+  if (!rule.source?.verifiedAt || rule.source.verifiedAt.trim().length === 0) {
+    errors.push(`VERIFIED rule '${rule.id}' requires source.verifiedAt`);
+  }
+  if (!rule.effectiveFrom) {
+    errors.push(`VERIFIED rule '${rule.id}' requires effectiveFrom`);
+  }
+  return { valid: errors.length === 0, errors: Object.freeze(errors) };
+}

@@ -493,6 +493,7 @@ export function replayMonthlyTaxLiability(input: ReplayMonthlyTaxInput): Monthly
         ? fiscalCompetenceFromString(month.competence)
         : month.competence;
     const asOf = input.asOfRuleDateByCompetence?.[competence.value];
+    const credits = input.withholdingCreditsByCompetence?.[competence.value];
     const liability = calculateMonthlyTaxLiability({
       competence,
       events: month.events,
@@ -508,6 +509,7 @@ export function replayMonthlyTaxLiability(input: ReplayMonthlyTaxInput): Monthly
         ? { calculationVersion: input.calculationVersion }
         : {}),
       ...(asOf !== undefined ? { asOfRuleDate: asOf } : {}),
+      ...(credits !== undefined ? { withholdingCredits: credits } : {}),
     });
     results.push(liability);
     opening = liability.closingLossBalances;

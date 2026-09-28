@@ -1584,3 +1584,26 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Nenhuma regra de produção, DARF, pagamento, IRPF, integração Receita ou resposta fiscal de IA. A IA permanece `UNSUPPORTED_TAX` com provedor 0.
 9. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
    - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3 permanecem inalterados e invioláveis.
+
+---
+
+## 53. Arquitetura e Invariantes de Regras Tributárias de Produção (Fase 4B.5)
+
+1. **PRODUÇÃO EXIGE REGRA `VERIFIED` EFETIVA (ADR-245):**
+   - `taxDue` de produção só existe sob regra `VERIFIED` efetiva na competência. Regras `TEST_ONLY` nunca produzem responsabilidade de produção.
+2. **PROVENIÊNCIA OFICIAL OBRIGATÓRIA:**
+   - Toda regra `VERIFIED` exige `source.legalSourceId`, `source.legalSourceReference` e `source.verifiedAt`; `validateTaxRuleProvenance` rejeita a ausência.
+3. **SUPORTE É POR BUCKET:**
+   - O suporte de produção é específico por bucket. Apenas `FII_SALE` está ativado (`BR-FII-SALE-20-2015`); demais buckets falham fechados. Nunca marcar a categoria-mãe como totalmente suportada.
+4. **INPUTS FACTUAIS E COBERTURA LEGAL SÃO INDEPENDENTES:**
+   - Dados canônicos completos não implicam cobertura de regra; regra verificada não dispensa os inputs exigidos.
+5. **AUSÊNCIA FALHA FECHADO:**
+   - Sem regra → `MISSING_RULE_SET`; sem input exigido (ex.: IRRF canônico) → `PARTIAL`. Nunca estimar IRRF nem assumir zero.
+6. **SEM CONSTANTE LEGAL FORA DA REGRA:**
+   - Alíquotas, limiares e percentuais de retenção vivem exclusivamente na configuração da regra verificada, com proveniência.
+7. **ESTABILIDADE HISTÓRICA (ADR-248):**
+   - Regra futura não reescreve cálculo histórico; a resolução é por data efetiva.
+8. **AI PERMANECE DESABILITADA PARA IMPOSTO:**
+   - Mesmo com responsabilidade de produção ativa, a IA continua `UNSUPPORTED_TAX` com provedor 0. Sem DARF, pagamento, IRPF, Receita ou otimização.
+9. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+   - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4 permanecem inalterados e invioláveis.

@@ -77,6 +77,7 @@ export {
   validateTaxRuleSetRegistry,
   resolveTaxRuleSet,
   resolveTaxRuleSetForCategory,
+  validateTaxRuleProvenance,
 } from './rules';
 
 export { projectFiscalEvents, getTransactionFiscalMapping } from './projection';

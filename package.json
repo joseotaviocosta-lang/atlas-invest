@@ -30,6 +30,7 @@
     "test:tax-trade-classification": "vitest run --config vitest.tax-engine.config.ts tests/tax-engine/tax-trade-classification.test.ts",
     "test:tax-withholding": "vitest run --config vitest.tax-engine.config.ts tests/tax-engine/tax-withholding.test.ts",
     "test:fii-tax-metadata": "vitest run --config vitest.tax-engine.config.ts tests/tax-engine/fii-tax-metadata.test.ts",
+    "test:tax-production-rules": "vitest run --config vitest.tax-engine.config.ts tests/tax-engine/production-rules.test.ts && vitest run --config vitest.fiscal-api.config.ts tests/fiscal-api/production-liability-api.test.ts",
     "test:tax-input-persistence": "vitest run --config vitest.database.config.ts tests/database/tax-input-persistence.test.ts",
     "test:tax-input-api": "vitest run --config vitest.fiscal-api.config.ts tests/fiscal-api/tax-input-persistence-api.test.ts",
     "test:tax-input-conflicts": "vitest run --config vitest.database.config.ts tests/database/tax-input-persistence.test.ts -t \"conflict\"",

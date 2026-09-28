@@ -35,7 +35,8 @@ Toda regra de produção carrega proveniência de fonte oficial (ADR-245).
 
 ## Estado atual
 
-O repositório **não** contém regra de produção oficialmente verificada. O
-registro de produção é vazio; toda apuração com atividade falha fechada
-(`MISSING_RULE_SET`) até que uma regra `VERIFIED` com fonte oficial seja
-adicionada. Nenhum valor de lei é inventado.
+Um bucket de produção foi ativado (Fase 4B.5): `FII_SALE`, regra
+`BR-FII-SALE-20-2015` (`VERIFIED`, versão `1.0.0`), com proveniência oficial
+(`legalSourceId = IN-RFB-1585-2015-ART-37`). Os demais buckets permanecem sem
+regra `VERIFIED` e falham fechados (`MISSING_RULE_SET`). Regra `VERIFIED` sem
+proveniência é rejeitada por `validateTaxRuleProvenance`.

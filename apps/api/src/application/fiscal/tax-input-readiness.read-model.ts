@@ -25,8 +25,8 @@ export interface TaxInputReadinessReadModel {
   };
   readonly provenanceReferences: readonly string[];
   readonly rows: readonly TaxInputReadinessRowReadModel[];
-  /** Phase 4B.2 adds no production rules: liability stays disabled. */
-  readonly productionTaxLiabilityEnabled: false;
+  /** True when at least one VERIFIED production rule exists (rule coverage). */
+  readonly productionTaxLiabilityEnabled: boolean;
   /** Rule coverage is distinct from input readiness (ADR-261). */
   readonly ruleCoverage: 'AVAILABLE' | 'UNAVAILABLE';
   readonly liabilityStatus: 'AVAILABLE' | 'BLOCKED';
@@ -67,7 +67,7 @@ export function mapTaxInputReadinessToReadModel(
         available: readiness.capabilities.fiiMetadataComplete,
       },
     ],
-    productionTaxLiabilityEnabled: false,
+    productionTaxLiabilityEnabled: rulesAvailable,
     ruleCoverage: rulesAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
     liabilityStatus: rulesAvailable ? 'AVAILABLE' : 'BLOCKED',
     productionVerifiedRuleCount: ruleCoverage.verifiedRuleCount,

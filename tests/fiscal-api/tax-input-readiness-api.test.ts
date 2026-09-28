@@ -94,7 +94,7 @@ describe('API Integration: Tax input readiness (GET /api/v1/fiscal/inputs/:compe
       .expect(200);
     expect(res.body.data.tradeClassificationStatus).toBe('NOT_REQUIRED');
     expect(res.body.data.withholdingStatus).toBe('NOT_REQUIRED');
-    expect(res.body.data.productionTaxLiabilityEnabled).toBe(false);
+    expect(res.body.data.productionTaxLiabilityEnabled).toBe(true);
   });
 
   it('surfaces missing canonical inputs for a taxable sale (no estimation)', async () => {
@@ -141,7 +141,7 @@ describe('API Integration: Tax input readiness (GET /api/v1/fiscal/inputs/:compe
     expect(data.issues).toContain('UNKNOWN_TRADE_CLASSIFICATION');
     expect(data.issues).toContain('MISSING_WITHHOLDING_INPUT');
     expect(data.tradeClassificationStatus).not.toBe('COMPLETE');
-    expect(data.productionTaxLiabilityEnabled).toBe(false);
+    expect(data.productionTaxLiabilityEnabled).toBe(true);
     // Rows are present for the UI.
     expect(data.rows.map((r: { key: string }) => r.key)).toEqual([
       'tradeClassification',
