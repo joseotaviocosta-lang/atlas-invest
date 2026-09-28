@@ -21,6 +21,9 @@ import { GetPortfolioTailRiskMetricsUseCase } from './performance/get-portfolio-
 import { RunPortfolioScenarioUseCase } from './performance/run-portfolio-scenario.use-case';
 import { GetPortfolioIntelligenceSummaryUseCase } from './performance/get-portfolio-intelligence-summary.use-case';
 import { GetMonthlyTaxStateUseCase } from './fiscal/get-monthly-tax-state.use-case';
+import { GetMonthlyTaxLiabilityUseCase } from './fiscal/get-monthly-tax-liability.use-case';
+import { TAX_RULE_REGISTRY } from './fiscal/tokens';
+import { PRODUCTION_TAX_RULE_REGISTRY } from './fiscal/fiscal-rule-registry';
 import { GetPortfolioAiGroundingContextUseCase } from './ai/get-portfolio-ai-grounding-context.use-case';
 import { GetPortfolioAssetAiGroundingContextUseCase } from './ai/get-portfolio-asset-ai-grounding-context.use-case';
 import { GetPortfolioTimelineAiGroundingContextUseCase } from './ai/get-portfolio-timeline-ai-grounding-context.use-case';
@@ -56,6 +59,7 @@ const USE_CASES = [
   RunPortfolioScenarioUseCase,
   GetPortfolioIntelligenceSummaryUseCase,
   GetMonthlyTaxStateUseCase,
+  GetMonthlyTaxLiabilityUseCase,
   GetPortfolioAiGroundingContextUseCase,
   GetPortfolioAssetAiGroundingContextUseCase,
   GetPortfolioTimelineAiGroundingContextUseCase,
@@ -75,7 +79,7 @@ const USE_CASES = [
 
 @Module({
   imports: [DatabaseModule, HistoricalMarketDataModule],
-  providers: [...USE_CASES],
-  exports: [...USE_CASES],
+  providers: [...USE_CASES, { provide: TAX_RULE_REGISTRY, useValue: PRODUCTION_TAX_RULE_REGISTRY }],
+  exports: [...USE_CASES, TAX_RULE_REGISTRY],
 })
 export class ApplicationModule {}

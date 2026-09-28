@@ -1,5 +1,5 @@
 import type { LocalDate } from '@atlas/domain';
-import type { TaxRuleResolution, TaxRuleSet } from './types';
+import type { TaxAssetCategory, TaxRuleResolution, TaxRuleSet } from './types';
 
 /**
  * Validates a rule-set registry. Overlapping effective periods for the same
@@ -87,6 +87,47 @@ export function resolveTaxRuleSet(
       ok: false,
       code: 'AMBIGUOUS_RULE_SET',
       message: `Ambiguous tax rule resolution for jurisdiction '${jurisdiction}' on ${date.toString()}: ${candidates
+        .map((c) => c.id)
+        .join(', ')}`,
+    };
+  }
+
+  return { ok: true, ruleSet: candidates[0]! };
+}
+
+/**
+ * 4B — category-aware effective rule resolution.
+ *
+ * A rule applies when its jurisdiction matches, it is effective on the date,
+ * and it is either category-agnostic or matches the requested category.
+ * Missing coverage and (config-invalid) overlap fail closed (ADR-245).
+ */
+export function resolveTaxRuleSetForCategory(
+  ruleSets: readonly TaxRuleSet[],
+  jurisdiction: string,
+  category: TaxAssetCategory,
+  date: LocalDate,
+): TaxRuleResolution {
+  const candidates = ruleSets.filter(
+    (rule) =>
+      rule.jurisdiction === jurisdiction &&
+      (rule.taxCategory === undefined || rule.taxCategory === category) &&
+      isEffectiveOn(rule, date),
+  );
+
+  if (candidates.length === 0) {
+    return {
+      ok: false,
+      code: 'MISSING_RULE_SET',
+      message: `No tax rule set effective for ${jurisdiction}/${category} on ${date.toString()}`,
+    };
+  }
+
+  if (candidates.length > 1) {
+    return {
+      ok: false,
+      code: 'AMBIGUOUS_RULE_SET',
+      message: `Ambiguous tax rule resolution for ${jurisdiction}/${category} on ${date.toString()}: ${candidates
         .map((c) => c.id)
         .join(', ')}`,
     };

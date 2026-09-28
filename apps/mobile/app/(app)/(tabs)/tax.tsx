@@ -5,8 +5,11 @@ import { useQuery } from '@tanstack/react-query';
 import {
   themeTokens,
   mapToFiscalMonthlyViewModel,
+  mapToMonthlyTaxLiabilityViewModel,
   fiscalMonthlyQueryKey,
+  taxLiabilityQueryKey,
   type RawFiscalMonthlyState,
+  type RawMonthlyTaxLiability,
 } from '@atlas/ui';
 import {
   Screen,
@@ -44,6 +47,21 @@ export default function TaxScreen() {
   });
 
   const vm = useMemo(() => mapToFiscalMonthlyViewModel(data ?? null), [data]);
+
+  const { data: liabilityData } = useQuery({
+    queryKey: taxLiabilityQueryKey(competence),
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: RawMonthlyTaxLiability }>(
+        `/api/v1/fiscal/monthly/${competence}/liability`,
+      );
+      return res.data;
+    },
+  });
+
+  const liability = useMemo(
+    () => mapToMonthlyTaxLiabilityViewModel(liabilityData ?? null),
+    [liabilityData],
+  );
 
   return (
     <Screen>
@@ -138,6 +156,76 @@ export default function TaxScreen() {
                 {vm.dataQuality.issueLabels.map((label) => (
                   <Text key={label} style={styles.warning}>
                     • {label}
+                  </Text>
+                ))}
+              </Card>
+            )}
+
+            {liability && (
+              <Card>
+                <Text style={styles.sectionTitle}>Apuração de imposto (4B)</Text>
+                <Text style={[styles.status, { color: liability.statusColor }]}>
+                  {liability.statusLabel}
+                </Text>
+                <Text style={styles.meta}>Imposto calculado: {liability.taxDueFormatted}</Text>
+                <Text style={styles.meta}>
+                  {liability.productionRuleVerified
+                    ? 'Regra de produção verificada'
+                    : 'Sem regra de produção verificada'}
+                </Text>
+              </Card>
+            )}
+
+            {liability && liability.categories.length > 0 && (
+              <Card>
+                <Text style={styles.sectionTitle}>Categorias</Text>
+                {liability.categories.map((c, i) => (
+                  <View key={`${c.categoryLabel}-${c.currency}-${i}`} style={styles.categoryRow}>
+                    <View style={styles.categoryHeader}>
+                      <Text style={styles.categoryTitle}>
+                        {c.categoryLabel} · {c.currency}
+                      </Text>
+                      <Text style={[styles.categoryCapability, { color: c.statusColor }]}>
+                        {c.statusLabel}
+                      </Text>
+                    </View>
+                    <Text style={styles.meta}>
+                      Base antes de prejuízos: {c.taxableBaseBeforeLossesFormatted}
+                    </Text>
+                    <Text style={styles.meta}>
+                      Prejuízo anterior: {c.openingLossFormatted} · Compensado:{' '}
+                      {c.lossAppliedFormatted} · Final: {c.closingLossFormatted}
+                    </Text>
+                    <Text style={styles.meta}>
+                      Alíquota: {c.rateFormatted} · Retenção: {c.withholdingAppliedFormatted} ·
+                      Imposto: {c.taxDueFormatted}
+                    </Text>
+                    {c.qualityLabels.length > 0 && (
+                      <Text style={styles.warning}>Pendências: {c.qualityLabels.join(' · ')}</Text>
+                    )}
+                  </View>
+                ))}
+              </Card>
+            )}
+
+            {liability && liability.qualityLabels.length > 0 && (
+              <Card>
+                <Text style={styles.sectionTitle}>Pendências de dados</Text>
+                {liability.qualityLabels.map((label) => (
+                  <Text key={label} style={styles.warning}>
+                    • {label}
+                  </Text>
+                ))}
+              </Card>
+            )}
+
+            {liability && liability.trace.length > 0 && (
+              <Card>
+                <Text style={styles.sectionTitle}>Como foi calculado</Text>
+                {liability.trace.map((t, i) => (
+                  <Text key={`${t.stage}-${i}`} style={styles.meta}>
+                    {t.stage} · {t.operation} · {t.status}
+                    {t.ruleVersion ? ` · regra ${t.ruleVersion}` : ''}
                   </Text>
                 ))}
               </Card>

@@ -8,8 +8,11 @@ import {
   spacing,
   borderRadius,
   mapToFiscalMonthlyViewModel,
+  mapToMonthlyTaxLiabilityViewModel,
   fiscalMonthlyQueryKey,
+  taxLiabilityQueryKey,
   type RawFiscalMonthlyState,
+  type RawMonthlyTaxLiability,
 } from '@atlas/ui';
 import { Card, Skeleton, ErrorState, EmptyState, PageHeader, SectionHeader } from '@/components/ui';
 
@@ -35,6 +38,23 @@ function FiscalContent() {
   });
 
   const viewModel = useMemo(() => mapToFiscalMonthlyViewModel(data ?? null), [data]);
+
+  const { data: liabilityData } = useQuery({
+    queryKey: taxLiabilityQueryKey(competence),
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: RawMonthlyTaxLiability }>(
+        `/api/v1/fiscal/monthly/${competence}/liability`,
+      );
+      return res.data;
+    },
+    enabled: /^\d{4}-\d{2}$/.test(competence),
+    staleTime: 30_000,
+  });
+
+  const liability = useMemo(
+    () => mapToMonthlyTaxLiabilityViewModel(liabilityData ?? null),
+    [liabilityData],
+  );
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
@@ -220,6 +240,154 @@ function FiscalContent() {
                   ))}
                 </ul>
               </Card>
+            </div>
+          )}
+
+          {liability && (
+            <div style={{ marginTop: `${spacing.xl}px` }}>
+              <SectionHeader
+                title="Apuração de imposto (Fase 4B)"
+                description={liability.statusLabel}
+              />
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: `${spacing.base}px`,
+                  marginBottom: `${spacing.base}px`,
+                }}
+              >
+                <Card style={{ padding: `${spacing.base}px` }}>
+                  <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                    Imposto calculado
+                  </span>
+                  <div
+                    style={{ fontSize: '1.5rem', fontWeight: 700, color: liability.statusColor }}
+                  >
+                    {liability.taxDueFormatted}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: colors.textMuted, marginTop: '4px' }}>
+                    {liability.productionRuleVerified
+                      ? 'Regra de produção verificada'
+                      : 'Sem regra de produção verificada'}
+                  </div>
+                </Card>
+              </div>
+
+              {liability.categories.map((c, idx) => (
+                <Card
+                  key={`${c.categoryLabel}-${c.currency}-${idx}`}
+                  style={{ padding: `${spacing.base}px`, marginBottom: `${spacing.sm}px` }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'baseline',
+                    }}
+                  >
+                    <strong style={{ color: colors.textPrimary }}>
+                      {c.categoryLabel} · {c.currency}
+                    </strong>
+                    <span style={{ fontSize: '0.8125rem', color: c.statusColor }}>
+                      {c.statusLabel}
+                    </span>
+                  </div>
+                  <div
+                    style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginTop: '6px' }}
+                  >
+                    Vendas: {c.grossSalesFormatted} · Resultado realizado:{' '}
+                    {c.realizedResultFormatted} · Base antes de prejuízos:{' '}
+                    {c.taxableBaseBeforeLossesFormatted}
+                  </div>
+                  <div
+                    style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginTop: '2px' }}
+                  >
+                    Prejuízo anterior: {c.openingLossFormatted} · Compensado:{' '}
+                    {c.lossAppliedFormatted} · Prejuízo gerado: {c.lossGeneratedFormatted} · Saldo
+                    final: {c.closingLossFormatted}
+                  </div>
+                  <div
+                    style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginTop: '2px' }}
+                  >
+                    Base após prejuízos: {c.taxableBaseAfterLossesFormatted} · Alíquota:{' '}
+                    {c.rateFormatted} · Retenção: {c.withholdingAppliedFormatted} · Imposto:{' '}
+                    {c.taxDueFormatted}
+                  </div>
+                  {c.qualityLabels.length > 0 && (
+                    <div style={{ fontSize: '0.75rem', color: colors.warning, marginTop: '4px' }}>
+                      Pendências: {c.qualityLabels.join(' · ')}
+                    </div>
+                  )}
+                </Card>
+              ))}
+
+              {(liability.openingLosses.length > 0 || liability.closingLosses.length > 0) && (
+                <Card style={{ padding: `${spacing.base}px`, marginBottom: `${spacing.sm}px` }}>
+                  <strong style={{ color: colors.textPrimary }}>Prejuízos a compensar</strong>
+                  <div
+                    style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginTop: '4px' }}
+                  >
+                    {liability.closingLosses
+                      .map((l) => `${l.categoryLabel} (${l.currency}): ${l.amountFormatted}`)
+                      .join(' · ') || '—'}
+                  </div>
+                </Card>
+              )}
+
+              {liability.qualityLabels.length > 0 && (
+                <Card style={{ padding: `${spacing.base}px`, marginBottom: `${spacing.sm}px` }}>
+                  <strong style={{ color: colors.warning }}>Pendências de dados</strong>
+                  <ul
+                    style={{
+                      margin: '6px 0 0 0',
+                      paddingLeft: `${spacing.base}px`,
+                      color: colors.warning,
+                    }}
+                  >
+                    {liability.qualityLabels.map((label) => (
+                      <li key={label} style={{ fontSize: '0.875rem' }}>
+                        {label}
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
+
+              {liability.trace.length > 0 && (
+                <details style={{ marginBottom: `${spacing.sm}px` }}>
+                  <summary
+                    style={{
+                      cursor: 'pointer',
+                      fontSize: '0.875rem',
+                      color: colors.accent,
+                      fontWeight: 600,
+                    }}
+                  >
+                    Como foi calculado
+                  </summary>
+                  <Card style={{ padding: `${spacing.base}px`, marginTop: `${spacing.xs}px` }}>
+                    {liability.trace.map((t, i) => (
+                      <div
+                        key={`${t.stage}-${i}`}
+                        style={{
+                          fontSize: '0.75rem',
+                          color: colors.textSecondary,
+                          padding: '2px 0',
+                        }}
+                      >
+                        <strong>{t.stage}</strong> · {t.operation} · {t.status}
+                        {t.ruleVersion ? ` · regra ${t.ruleVersion}` : ''}
+                        {t.output ? ` · ${t.output}` : ''}
+                      </div>
+                    ))}
+                  </Card>
+                </details>
+              )}
+
+              <div style={{ fontSize: '0.75rem', color: colors.textMuted, lineHeight: 1.6 }}>
+                {liability.disclaimer}
+              </div>
             </div>
           )}
 

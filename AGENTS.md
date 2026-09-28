@@ -1481,3 +1481,32 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
     - A Fase 4A **não** calcula imposto a pagar, DARF ou IRPF e não implica cobertura completa da legislação brasileira.
 12. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
     - Portfolio Engine, AI (3Q–3Z) e Market Intelligence permanecem inalterados e invioláveis.
+
+---
+
+## 49. Arquitetura e Invariantes da Responsabilidade Tributária Mensal (Fase 4B)
+
+1. **AUTORIDADE ÚNICA (ADR-242):**
+   - A responsabilidade tributária mensal é calculada exclusivamente por `@atlas/tax-engine`. UI, mobile, controllers, IA e renderer nunca calculam imposto.
+2. **RELEVÂNCIA FISCAL 4A ≠ TRIBUTABILIDADE LEGAL (ADR-245):**
+   - O rótulo de relevância fiscal da 4A (ex.: `TAXABLE`) não significa imposto devido. Somente uma regra `VERIFIED` efetiva decide tributação, isenção, retenção ou não-tributação.
+3. **REGRAS DE PRODUÇÃO VERIFICADAS (ADR-245):**
+   - `taxDue` de produção só existe sob regra `VERIFIED` com proveniência oficial (`legalSourceId`, `effectiveFrom`, `verifiedAt`). Regras `TEST_ONLY` nunca produzem responsabilidade de produção. Sem fonte oficial, não se inventa valor legal; o registro de produção fica vazio e a apuração falha fechada.
+4. **REGRA EFETIVA E ESTABILIDADE HISTÓRICA (ADR-237, ADR-248):**
+   - A regra é resolvida por jurisdição + categoria + data. Sobreposição é config inválida; lacuna é `MISSING_RULE_SET`. Regra futura nunca reescreve resultado histórico.
+5. **PREJUÍZO ISOLADO POR CATEGORIA (ADR-243):**
+   - `closing = opening − lossApplied + lossGenerated`, exato. Prejuízo de uma categoria não compensa outra sem regra verificada. Desconhecido nunca vira zero: `UNKNOWN_OPENING_LOSS_BALANCE` torna o resultado `PARTIAL`.
+6. **RETENÇÃO CANÔNICA (ADR-244):**
+   - Retenção deriva exclusivamente de `FiscalEvent`/campo canônico; nunca estimada. `taxDue = max(0, taxBeforeWithholding − withholdingApplied)`.
+7. **SEM ZERO FABRICADO (ADR-247):**
+   - `BLOCKED`/`PARTIAL` → `taxDue = null`. `NO_ACTIVITY` → `taxDue = "0"` somente com histórico conhecido. Imposto nunca é negativo.
+8. **TRILHA DE CÁLCULO (ADR-246):**
+   - Toda apuração emite `TaxCalculationTraceV1` estruturada, determinística, com referências a eventos fiscais e versão de regra. Sem prosa, sem float.
+9. **DECIMAL EXATO E MOEDA:**
+   - Zero `parseFloat`/`Number()`/`Math.round` em caminhos fiscais. Sem FX implícito; moeda não suportada → `BLOCKED`.
+10. **SEM VAZAMENTO TEMPORAL:**
+    - O mês não enxerga eventos nem regras de meses futuros.
+11. **ANTI-ESCOPO 4B:**
+    - Não gera DARF, pagamento, juros/multa ou IRPF; não integra Receita Federal; não oferece otimização/planejamento tributário; a IA permanece `UNSUPPORTED_TAX` com zero chamadas ao provedor.
+12. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+    - Portfolio Engine, AI (3Q–3Z), Market Intelligence e a fundação fiscal 4A permanecem inalterados e invioláveis.

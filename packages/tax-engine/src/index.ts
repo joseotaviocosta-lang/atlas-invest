@@ -11,6 +11,7 @@
 export {
   TAX_ENGINE_VERSION,
   FISCAL_PROJECTION_VERSION,
+  CALCULATION_VERSION,
   DEFAULT_TAX_JURISDICTION,
   SUPPORTED_FISCAL_CURRENCIES,
 } from './version';
@@ -72,10 +73,37 @@ export {
   PHASE_4A_SUPPORTED_TAX_CATEGORIES,
 } from './asset-classification';
 
-export { validateTaxRuleSetRegistry, resolveTaxRuleSet } from './rules';
+export {
+  validateTaxRuleSetRegistry,
+  resolveTaxRuleSet,
+  resolveTaxRuleSetForCategory,
+} from './rules';
 
 export { projectFiscalEvents, getTransactionFiscalMapping } from './projection';
 export type { FiscalProjectionOptions, CanonicalRealizedResult } from './projection';
 
 export { buildMonthlyTaxState } from './monthly-state';
 export type { BuildMonthlyTaxStateInput } from './monthly-state';
+
+// --- Phase 4B: monthly tax liability & loss compensation ---
+export { TAX_LIABILITY_STATUSES, TAX_TRACE_STAGES } from './liability-types';
+export type {
+  TaxLiabilityStatus,
+  TaxCategoryLiabilityStatus,
+  TaxTraceStage,
+  TaxCalculationTraceEntry,
+  TaxLossProvenance,
+  TaxLossBalance,
+  TaxWithholdingCredit,
+  TaxCategoryMonthlyResult,
+  MonthlyTaxLiabilityCapabilities,
+  MonthlyTaxLiability,
+  CanonicalWithholdingInput,
+  MonthlyTaxCalculationInput,
+  ReplayMonthlyTaxInput,
+} from './liability-types';
+export {
+  calculateMonthlyTaxLiability,
+  replayMonthlyTaxLiability,
+  toWithholdingCredits,
+} from './liability';

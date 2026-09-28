@@ -22,3 +22,15 @@ export const FISCAL_RULE_REGISTRY: readonly TaxRuleSet[] = Object.freeze([
     },
   },
 ]);
+
+/**
+ * Phase 4B production rule registry.
+ *
+ * The repository currently holds NO authoritative, officially-sourced Brazilian
+ * investment tax rule. Per ADR-245 no production rule may be invented, so this
+ * registry is intentionally empty. As a consequence, production monthly tax
+ * liability fails closed (`MISSING_RULE_SET`) for every taxable category until
+ * a VERIFIED rule with official provenance is added. TEST_ONLY fixtures are
+ * never placed here.
+ */
+export const PRODUCTION_TAX_RULE_REGISTRY: readonly TaxRuleSet[] = Object.freeze([]);

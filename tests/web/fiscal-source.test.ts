@@ -12,10 +12,10 @@ describe('Web Fiscal tab source boundaries (Phase 4A)', () => {
     expect(c).toContain('fiscalMonthlyQueryKey');
   });
 
-  it('performs no client-side tax math and exposes no tax due', () => {
+  it('performs no client-side tax math and hardcodes no tax value', () => {
     const c = fs.readFileSync(path.join(process.cwd(), PAGE), 'utf8');
     expect(c).not.toMatch(/parseFloat|Number\s*\(/);
-    expect(c).not.toMatch(/taxDue|impostoDevido/);
+    expect(c).not.toMatch(/impostoDevido|taxDue\s*[:=]\s*['"\d]/);
     expect(c).not.toMatch(/calculateTax|computeTax/i);
   });
 

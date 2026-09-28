@@ -47,6 +47,10 @@ export const FISCAL_DATA_QUALITY_ISSUES = [
   'MISSING_RULE_SET',
   'INCOMPLETE_HISTORY',
   'MISSING_PROCEEDS',
+  'UNVERIFIED_RULE_SET',
+  'UNKNOWN_OPENING_LOSS_BALANCE',
+  'MISSING_REQUIRED_WITHHOLDING',
+  'MISSING_RATE_RULE',
 ] as const;
 export type FiscalDataQualityIssue = (typeof FISCAL_DATA_QUALITY_ISSUES)[number];
 
@@ -111,6 +115,31 @@ export interface TaxRuleSetSource {
 }
 
 /**
+ * Optional legal components carried by a rule set (Phase 4B). A rule set with
+ * no components contributes no taxable treatment and is effectively
+ * informational. Amounts are exact decimal strings; percentages are exact
+ * decimal strings (e.g. `'15'` = 15%).
+ */
+export interface TaxRuleComponents {
+  /** Statutory rate as a percentage of the taxable base (e.g. `'15'`). */
+  readonly ratePercentage?: string;
+  /** Gross-sales exemption threshold; sales at or below are exempt. */
+  readonly exemptionGrossSalesThreshold?: string;
+  /** Loss compensation policy (category-isolated unless explicitly overridden). */
+  readonly lossCompensation?: {
+    readonly crossCategoryAllowed?: boolean;
+  };
+  /** Withholding applied at the canonical source. */
+  readonly withholding?: {
+    readonly ratePercentage?: string;
+  };
+  /** Opaque official rounding instruction, applied only if the law requires it. */
+  readonly rounding?: {
+    readonly decimalPlaces?: number;
+  };
+}
+
+/**
  * Versioned, effective-dated rule set (ADR-237). Production liability (4B)
  * may only derive from `VERIFIED` rule sets; Phase 4A never computes liability.
  */
@@ -122,6 +151,10 @@ export interface TaxRuleSet {
   readonly effectiveTo?: LocalDate;
   readonly status: TaxRuleSetStatus;
   readonly source?: TaxRuleSetSource;
+  /** Category this rule applies to; `undefined` means it is category-agnostic. */
+  readonly taxCategory?: TaxAssetCategory;
+  /** Legal components; absent means the rule carries no computed treatment. */
+  readonly components?: TaxRuleComponents;
 }
 
 export interface TaxRuleResolutionOk {

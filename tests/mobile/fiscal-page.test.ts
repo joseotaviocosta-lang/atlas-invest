@@ -13,11 +13,11 @@ describe('Mobile Fiscal tab (Phase 4A)', () => {
     expect(c).toContain('competence');
   });
 
-  it('contains no client-side tax math and exposes no tax due', () => {
+  it('contains no client-side tax math and exposes no invented tax due', () => {
     const c = fs.readFileSync(path.join(process.cwd(), SCREEN), 'utf8');
     expect(c).not.toMatch(/parseFloat|Number\s*\(/);
     expect(c).not.toMatch(/Math\./);
-    expect(c).not.toMatch(/taxDue|impostoDevido|darfDue/);
+    expect(c).not.toMatch(/impostoDevido|darfDue|taxDue\s*[:=]\s*['"\d]/);
     expect(c).not.toMatch(/calculateTax|computeTax/i);
   });
 
