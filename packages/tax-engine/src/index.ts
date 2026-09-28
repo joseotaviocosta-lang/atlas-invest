@@ -107,3 +107,37 @@ export {
   replayMonthlyTaxLiability,
   toWithholdingCredits,
 } from './liability';
+
+// --- Phase 4B.2: canonical tax input foundation ---
+export {
+  TAX_TRADE_CLASSIFICATIONS,
+  TRADE_CLASSIFICATION_SOURCES,
+  TAX_WITHHOLDING_STATUSES,
+  TAX_WITHHOLDING_SOURCE_TYPES,
+  FII_TAX_ELIGIBILITY_STATUSES,
+  FII_TAX_METADATA_SOURCES,
+  TAX_INPUT_READINESS_STATUSES,
+  validateTaxTradeClassification,
+  validateTaxWithholdingInput,
+  validateFiiTaxEligibilityFacts,
+  isValidOwnershipPercent,
+  withholdingConfirmedTotal,
+  evaluateTaxInputReadiness,
+  isCompetenceAtOrAfter,
+} from './tax-inputs';
+export type {
+  TaxInputProvenance,
+  TaxTradeClassificationValue,
+  TradeClassificationSource,
+  TaxTradeClassification,
+  TaxWithholdingStatus,
+  TaxWithholdingSourceType,
+  TaxWithholdingInput,
+  FiiTaxEligibilityStatus,
+  FiiTaxMetadataSource,
+  FiiTaxEligibilityFacts,
+  TaxInputReadinessStatus,
+  TaxInputReadinessInput,
+  TaxInputReadiness,
+  ValidationResult,
+} from './tax-inputs';

@@ -9,10 +9,13 @@ import {
   borderRadius,
   mapToFiscalMonthlyViewModel,
   mapToMonthlyTaxLiabilityViewModel,
+  mapToTaxInputReadinessViewModel,
   fiscalMonthlyQueryKey,
   taxLiabilityQueryKey,
+  taxInputReadinessQueryKey,
   type RawFiscalMonthlyState,
   type RawMonthlyTaxLiability,
+  type RawTaxInputReadiness,
 } from '@atlas/ui';
 import { Card, Skeleton, ErrorState, EmptyState, PageHeader, SectionHeader } from '@/components/ui';
 
@@ -54,6 +57,23 @@ function FiscalContent() {
   const liability = useMemo(
     () => mapToMonthlyTaxLiabilityViewModel(liabilityData ?? null),
     [liabilityData],
+  );
+
+  const { data: inputReadinessData } = useQuery({
+    queryKey: taxInputReadinessQueryKey(competence),
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: RawTaxInputReadiness }>(
+        `/api/v1/fiscal/inputs/${competence}`,
+      );
+      return res.data;
+    },
+    enabled: /^\d{4}-\d{2}$/.test(competence),
+    staleTime: 30_000,
+  });
+
+  const inputReadiness = useMemo(
+    () => mapToTaxInputReadinessViewModel(inputReadinessData ?? null),
+    [inputReadinessData],
   );
 
   return (
@@ -388,6 +408,54 @@ function FiscalContent() {
               <div style={{ fontSize: '0.75rem', color: colors.textMuted, lineHeight: 1.6 }}>
                 {liability.disclaimer}
               </div>
+            </div>
+          )}
+
+          {inputReadiness && (
+            <div style={{ marginTop: `${spacing.xl}px` }}>
+              <SectionHeader
+                title="Dados necessários para apuração"
+                description={`Competência ${inputReadiness.competenceLabel}`}
+              />
+              <Card style={{ padding: `${spacing.base}px` }}>
+                {inputReadiness.rows.map((row) => (
+                  <div
+                    key={row.key}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      fontSize: '0.875rem',
+                      padding: '4px 0',
+                    }}
+                  >
+                    <span style={{ color: colors.textPrimary }}>{row.label}</span>
+                    <span style={{ color: row.statusColor, fontWeight: 600 }}>
+                      {row.statusLabel}
+                    </span>
+                  </div>
+                ))}
+                {inputReadiness.issueLabels.length > 0 && (
+                  <div
+                    style={{
+                      marginTop: `${spacing.sm}px`,
+                      fontSize: '0.75rem',
+                      color: colors.warning,
+                    }}
+                  >
+                    Pendências: {inputReadiness.issueLabels.join(' · ')}
+                  </div>
+                )}
+                <div
+                  style={{
+                    marginTop: `${spacing.sm}px`,
+                    fontSize: '0.75rem',
+                    color: colors.textMuted,
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {inputReadiness.notice}
+                </div>
+              </Card>
             </div>
           )}
 

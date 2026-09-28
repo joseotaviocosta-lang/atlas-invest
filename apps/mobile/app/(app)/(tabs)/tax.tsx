@@ -6,10 +6,13 @@ import {
   themeTokens,
   mapToFiscalMonthlyViewModel,
   mapToMonthlyTaxLiabilityViewModel,
+  mapToTaxInputReadinessViewModel,
   fiscalMonthlyQueryKey,
   taxLiabilityQueryKey,
+  taxInputReadinessQueryKey,
   type RawFiscalMonthlyState,
   type RawMonthlyTaxLiability,
+  type RawTaxInputReadiness,
 } from '@atlas/ui';
 import {
   Screen,
@@ -61,6 +64,21 @@ export default function TaxScreen() {
   const liability = useMemo(
     () => mapToMonthlyTaxLiabilityViewModel(liabilityData ?? null),
     [liabilityData],
+  );
+
+  const { data: inputReadinessData } = useQuery({
+    queryKey: taxInputReadinessQueryKey(competence),
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: RawTaxInputReadiness }>(
+        `/api/v1/fiscal/inputs/${competence}`,
+      );
+      return res.data;
+    },
+  });
+
+  const inputReadiness = useMemo(
+    () => mapToTaxInputReadinessViewModel(inputReadinessData ?? null),
+    [inputReadinessData],
   );
 
   return (
@@ -228,6 +246,25 @@ export default function TaxScreen() {
                     {t.ruleVersion ? ` · regra ${t.ruleVersion}` : ''}
                   </Text>
                 ))}
+              </Card>
+            )}
+
+            {inputReadiness && (
+              <Card>
+                <Text style={styles.sectionTitle}>Dados necessários para apuração</Text>
+                {inputReadiness.rows.map((row) => (
+                  <View key={row.key} style={styles.categoryHeader}>
+                    <Text style={styles.meta}>{row.label}</Text>
+                    <Text style={[styles.categoryCapability, { color: row.statusColor }]}>
+                      {row.statusLabel}
+                    </Text>
+                  </View>
+                ))}
+                {inputReadiness.issueLabels.length > 0 && (
+                  <Text style={styles.warning}>
+                    Pendências: {inputReadiness.issueLabels.join(' · ')}
+                  </Text>
+                )}
               </Card>
             )}
 

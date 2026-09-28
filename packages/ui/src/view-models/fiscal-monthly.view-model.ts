@@ -133,6 +133,15 @@ const QUALITY_ISSUE_LABELS: Record<string, string> = {
   MISSING_RULE_SET: 'Sem conjunto de regras vigente',
   INCOMPLETE_HISTORY: 'Histórico de aquisição incompleto',
   MISSING_PROCEEDS: 'Valor de venda indisponível',
+  UNVERIFIED_RULE_SET: 'Regra fiscal não verificada',
+  UNKNOWN_OPENING_LOSS_BALANCE: 'Saldo de prejuízo anterior desconhecido',
+  MISSING_REQUIRED_WITHHOLDING: 'Retenção/IRRF obrigatória ausente',
+  MISSING_RATE_RULE: 'Regra de alíquota ausente',
+  UNKNOWN_TRADE_CLASSIFICATION: 'Classificação de operações desconhecida',
+  MISSING_WITHHOLDING_INPUT: 'Retenção/IRRF ausente',
+  UNVERIFIED_WITHHOLDING: 'Retenção/IRRF não confirmada',
+  MISSING_FII_ELIGIBILITY_METADATA: 'Dados fiscais de FII incompletos',
+  STALE_FII_ELIGIBILITY_METADATA: 'Dados fiscais de FII desatualizados',
 };
 
 export function fiscalCategoryLabel(category: string): string {

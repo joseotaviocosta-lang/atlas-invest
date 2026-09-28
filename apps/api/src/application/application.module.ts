@@ -22,7 +22,9 @@ import { RunPortfolioScenarioUseCase } from './performance/run-portfolio-scenari
 import { GetPortfolioIntelligenceSummaryUseCase } from './performance/get-portfolio-intelligence-summary.use-case';
 import { GetMonthlyTaxStateUseCase } from './fiscal/get-monthly-tax-state.use-case';
 import { GetMonthlyTaxLiabilityUseCase } from './fiscal/get-monthly-tax-liability.use-case';
-import { TAX_RULE_REGISTRY } from './fiscal/tokens';
+import { GetTaxInputReadinessUseCase } from './fiscal/get-tax-input-readiness.use-case';
+import { EmptyTaxInputProvider } from './fiscal/tax-input-provider';
+import { TAX_INPUT_PROVIDER, TAX_RULE_REGISTRY } from './fiscal/tokens';
 import { PRODUCTION_TAX_RULE_REGISTRY } from './fiscal/fiscal-rule-registry';
 import { GetPortfolioAiGroundingContextUseCase } from './ai/get-portfolio-ai-grounding-context.use-case';
 import { GetPortfolioAssetAiGroundingContextUseCase } from './ai/get-portfolio-asset-ai-grounding-context.use-case';
@@ -60,6 +62,7 @@ const USE_CASES = [
   GetPortfolioIntelligenceSummaryUseCase,
   GetMonthlyTaxStateUseCase,
   GetMonthlyTaxLiabilityUseCase,
+  GetTaxInputReadinessUseCase,
   GetPortfolioAiGroundingContextUseCase,
   GetPortfolioAssetAiGroundingContextUseCase,
   GetPortfolioTimelineAiGroundingContextUseCase,
@@ -79,7 +82,11 @@ const USE_CASES = [
 
 @Module({
   imports: [DatabaseModule, HistoricalMarketDataModule],
-  providers: [...USE_CASES, { provide: TAX_RULE_REGISTRY, useValue: PRODUCTION_TAX_RULE_REGISTRY }],
-  exports: [...USE_CASES, TAX_RULE_REGISTRY],
+  providers: [
+    ...USE_CASES,
+    { provide: TAX_RULE_REGISTRY, useValue: PRODUCTION_TAX_RULE_REGISTRY },
+    { provide: TAX_INPUT_PROVIDER, useClass: EmptyTaxInputProvider },
+  ],
+  exports: [...USE_CASES, TAX_RULE_REGISTRY, TAX_INPUT_PROVIDER],
 })
 export class ApplicationModule {}

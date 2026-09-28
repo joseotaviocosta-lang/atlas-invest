@@ -1,1 +1,2 @@
 export const TAX_RULE_REGISTRY = Symbol('TAX_RULE_REGISTRY');
+export const TAX_INPUT_PROVIDER = Symbol('TAX_INPUT_PROVIDER');

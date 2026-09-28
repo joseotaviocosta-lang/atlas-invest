@@ -2,6 +2,7 @@ import { Controller, Get, Param, Inject } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { GetMonthlyTaxStateUseCase } from '../../application/fiscal/get-monthly-tax-state.use-case';
 import { GetMonthlyTaxLiabilityUseCase } from '../../application/fiscal/get-monthly-tax-liability.use-case';
+import { GetTaxInputReadinessUseCase } from '../../application/fiscal/get-tax-input-readiness.use-case';
 import { CurrentPrincipal, AuthenticatedPrincipal } from '../../auth';
 
 @ApiTags('Fiscal')
@@ -13,6 +14,8 @@ export class FiscalController {
     private readonly getMonthlyTaxStateUseCase: GetMonthlyTaxStateUseCase,
     @Inject(GetMonthlyTaxLiabilityUseCase)
     private readonly getMonthlyTaxLiabilityUseCase: GetMonthlyTaxLiabilityUseCase,
+    @Inject(GetTaxInputReadinessUseCase)
+    private readonly getTaxInputReadinessUseCase: GetTaxInputReadinessUseCase,
   ) {}
 
   @Get('monthly/:competence')
@@ -52,6 +55,26 @@ export class FiscalController {
     @CurrentPrincipal() principal: AuthenticatedPrincipal,
   ) {
     const data = await this.getMonthlyTaxLiabilityUseCase.execute({
+      userId: principal.userId,
+      competence,
+    });
+    return { data };
+  }
+
+  @Get('inputs/:competence')
+  @ApiOperation({
+    summary:
+      'Get canonical tax-input readiness for a competence (trade classification, withholding/IRRF, FII condition metadata). Read-only; no tax is calculated.',
+  })
+  @ApiParam({ name: 'competence', description: 'Civil competence in canonical YYYY-MM format' })
+  @ApiResponse({ status: 200, description: 'Tax input readiness (may be MISSING/PARTIAL/UNKNOWN)' })
+  @ApiResponse({ status: 400, description: 'Invalid competence' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  async getTaxInputReadiness(
+    @Param('competence') competence: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.getTaxInputReadinessUseCase.execute({
       userId: principal.userId,
       competence,
     });

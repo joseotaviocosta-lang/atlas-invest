@@ -1510,3 +1510,28 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
     - Não gera DARF, pagamento, juros/multa ou IRPF; não integra Receita Federal; não oferece otimização/planejamento tributário; a IA permanece `UNSUPPORTED_TAX` com zero chamadas ao provedor.
 12. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
     - Portfolio Engine, AI (3Q–3Z), Market Intelligence e a fundação fiscal 4A permanecem inalterados e invioláveis.
+
+---
+
+## 50. Arquitetura e Invariantes de Inputs Tributários Canônicos (Fase 4B.2)
+
+1. **COMPLETUDE DE INPUT ≠ COBERTURA DE REGRA:**
+   - A existência de inputs canônicos (classificação de operação, retenção/IRRF, metadados de FII) **não** ativa cálculo tributário. Regras de produção verificadas permanecem separadas e ausentes na 4B.2.
+2. **CLASSIFICAÇÃO DE OPERAÇÃO CANÔNICA (ADR-249):**
+   - `NORMAL | DAY_TRADE | UNKNOWN` com proveniência. Proibido inferir `DAY_TRADE` por heurística (mesmo ativo + mesmo dia + BUY/SELL). `UNKNOWN` nunca vira `NORMAL`.
+3. **RETENÇÃO/IRRF CANÔNICA (ADR-250):**
+   - Valor decimal exato, moeda explícita, proveniência. Nunca estimada. `UNKNOWN` não carrega valor. Só `CONFIRMED` poderá alimentar regra de produção futura.
+4. **METADADOS DE CONDIÇÃO DE FII (ADR-251):**
+   - Input factual, nunca tratamento tributário. `KNOWN` exige todos os fatos; `UNKNOWN` não adivinha. `asOfDate` explícito; metadado atual não é verdade histórica automática.
+5. **PROVENIÊNCIA DE INPUTS (ADR-252):**
+   - Todo input carrega `source`/`sourceReference`; manual exige confirmação e não sobrescreve importado sem tratamento de conflito.
+6. **SEM HEURÍSTICA TRIBUTÁRIA (ADR-253):**
+   - Ausência de dado nunca vira valor favorável/desfavorável. `UNKNOWN` permanece `UNKNOWN`; input exigido ausente mantém `PARTIAL`/`BLOCKED`.
+7. **PRONTIDÃO SERVER-SIDE:**
+   - `GET /api/v1/fiscal/inputs/:competence` expõe prontidão (COMPLETE/PARTIAL/MISSING/UNKNOWN/NOT_REQUIRED) e issues. Read-only; sem cálculo de imposto.
+8. **UI SEM MATEMÁTICA FISCAL:**
+   - A UI mostra disponibilidade de inputs e pendências; nunca calcula imposto nem infere valores.
+9. **ANTI-ESCOPO 4B.2:**
+   - Nenhuma regra de produção, alíquota, limiar, DARF, pagamento, IRPF, integração Receita ou resposta fiscal de IA. A IA permanece `UNSUPPORTED_TAX` com provedor 0.
+10. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+    - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B permanecem inalterados e invioláveis.
