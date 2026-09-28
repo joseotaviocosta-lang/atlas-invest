@@ -18,6 +18,7 @@ import {
   type RawTaxInputReadiness,
 } from '@atlas/ui';
 import { Card, Skeleton, ErrorState, EmptyState, PageHeader, SectionHeader } from '@/components/ui';
+import { TaxInputEntry } from '@/components/fiscal/TaxInputEntry';
 
 function currentCompetence(): string {
   const now = new Date();
@@ -434,6 +435,34 @@ function FiscalContent() {
                     </span>
                   </div>
                 ))}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: '0.875rem',
+                    padding: '4px 0',
+                    borderTop: `1px solid ${colors.border}`,
+                    marginTop: '4px',
+                  }}
+                >
+                  <span style={{ color: colors.textPrimary }}>Regras tributárias</span>
+                  <span style={{ color: inputReadiness.ruleCoverageColor, fontWeight: 600 }}>
+                    {inputReadiness.ruleCoverageLabel}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: '0.875rem',
+                    padding: '4px 0',
+                  }}
+                >
+                  <span style={{ color: colors.textPrimary }}>Apuração</span>
+                  <span style={{ color: inputReadiness.liabilityStatusColor, fontWeight: 600 }}>
+                    {inputReadiness.liabilityStatusLabel}
+                  </span>
+                </div>
                 {inputReadiness.issueLabels.length > 0 && (
                   <div
                     style={{
@@ -458,6 +487,19 @@ function FiscalContent() {
               </Card>
             </div>
           )}
+
+          <TaxInputEntry
+            competence={competence}
+            events={
+              (data?.events ?? []) as unknown as {
+                sourceTransactionId: string;
+                eventType: string;
+                economicDate: string;
+                taxAssetCategory: string;
+              }[]
+            }
+            onSaved={() => refetch()}
+          />
 
           <div
             style={{

@@ -27,11 +27,17 @@ export interface TaxInputReadinessReadModel {
   readonly rows: readonly TaxInputReadinessRowReadModel[];
   /** Phase 4B.2 adds no production rules: liability stays disabled. */
   readonly productionTaxLiabilityEnabled: false;
+  /** Rule coverage is distinct from input readiness (ADR-261). */
+  readonly ruleCoverage: 'AVAILABLE' | 'UNAVAILABLE';
+  readonly liabilityStatus: 'AVAILABLE' | 'BLOCKED';
+  readonly productionVerifiedRuleCount: number;
 }
 
 export function mapTaxInputReadinessToReadModel(
   readiness: TaxInputReadiness,
+  ruleCoverage: { readonly verifiedRuleCount: number },
 ): TaxInputReadinessReadModel {
+  const rulesAvailable = ruleCoverage.verifiedRuleCount > 0;
   return {
     competence: readiness.competence.value,
     tradeClassificationStatus: readiness.tradeClassificationStatus,
@@ -62,5 +68,8 @@ export function mapTaxInputReadinessToReadModel(
       },
     ],
     productionTaxLiabilityEnabled: false,
+    ruleCoverage: rulesAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
+    liabilityStatus: rulesAvailable ? 'AVAILABLE' : 'BLOCKED',
+    productionVerifiedRuleCount: ruleCoverage.verifiedRuleCount,
   };
 }

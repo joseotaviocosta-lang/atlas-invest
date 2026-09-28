@@ -20,6 +20,10 @@ import {
   RecordWithholdingInputUseCase,
 } from '../../application/fiscal/record-tax-inputs.use-case';
 import { ListTaxInputsUseCase } from '../../application/fiscal/list-tax-inputs.use-case';
+import {
+  ResolveTaxInputConflictUseCase,
+  type TaxInputEntity,
+} from '../../application/fiscal/resolve-tax-input-conflict.use-case';
 import { ZodValidationPipe } from '../../common/pipes';
 import {
   RecordFiiMetadataBody,
@@ -28,6 +32,8 @@ import {
   RecordTradeClassificationBodySchema,
   RecordWithholdingBody,
   RecordWithholdingBodySchema,
+  ResolveTaxInputConflictBody,
+  ResolveTaxInputConflictBodySchema,
 } from './dto/tax-input.dto';
 import { CurrentPrincipal, AuthenticatedPrincipal } from '../../auth';
 
@@ -57,6 +63,8 @@ export class FiscalController {
     private readonly recordFiiTaxEligibilityFactsUseCase: RecordFiiTaxEligibilityFactsUseCase,
     @Inject(ListTaxInputsUseCase)
     private readonly listTaxInputsUseCase: ListTaxInputsUseCase,
+    @Inject(ResolveTaxInputConflictUseCase)
+    private readonly resolveTaxInputConflictUseCase: ResolveTaxInputConflictUseCase,
   ) {}
 
   @Get('monthly/:competence')
@@ -203,6 +211,31 @@ export class FiscalController {
     return {
       data: await this.listTaxInputsUseCase.listFiiEligibility(principal.userId, assetId, asOf),
     };
+  }
+
+  @Post('inputs/:entity/:id/resolve')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Resolve a tax-input conflict explicitly (KEEP_EXISTING or ACCEPT_NEW); original records are retained.',
+  })
+  @ApiResponse({ status: 200, description: 'Resolved' })
+  @ApiResponse({ status: 404, description: 'Tax input not found' })
+  async resolveTaxInputConflict(
+    @Param('entity') entity: string,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(ResolveTaxInputConflictBodySchema))
+    body: ResolveTaxInputConflictBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.resolveTaxInputConflictUseCase.execute({
+      userId: principal.userId,
+      entity: entity as TaxInputEntity,
+      id,
+      action: body.action,
+      resolutionSource: body.resolutionSource ?? 'USER_RESOLUTION',
+    });
+    return { data };
   }
 
   @Get('inputs/:competence')

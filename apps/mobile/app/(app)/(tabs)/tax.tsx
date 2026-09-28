@@ -260,6 +260,25 @@ export default function TaxScreen() {
                     </Text>
                   </View>
                 ))}
+                <View style={styles.categoryHeader}>
+                  <Text style={styles.meta}>Regras tributárias</Text>
+                  <Text
+                    style={[styles.categoryCapability, { color: inputReadiness.ruleCoverageColor }]}
+                  >
+                    {inputReadiness.ruleCoverageLabel}
+                  </Text>
+                </View>
+                <View style={styles.categoryHeader}>
+                  <Text style={styles.meta}>Apuração</Text>
+                  <Text
+                    style={[
+                      styles.categoryCapability,
+                      { color: inputReadiness.liabilityStatusColor },
+                    ]}
+                  >
+                    {inputReadiness.liabilityStatusLabel}
+                  </Text>
+                </View>
                 {inputReadiness.issueLabels.length > 0 && (
                   <Text style={styles.warning}>
                     Pendências: {inputReadiness.issueLabels.join(' · ')}

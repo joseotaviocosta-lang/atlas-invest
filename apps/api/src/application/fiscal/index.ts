@@ -10,4 +10,6 @@ export * from './tax-input-fingerprint';
 export * from './persisted-tax-input-provider';
 export * from './record-tax-inputs.use-case';
 export * from './list-tax-inputs.use-case';
+export * from './tax-input-source-adapter';
+export * from './resolve-tax-input-conflict.use-case';
 export * from './tokens';

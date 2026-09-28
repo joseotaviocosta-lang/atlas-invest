@@ -47,3 +47,9 @@ export const RecordFiiMetadataBodySchema = z.object({
   status: z.enum(['KNOWN', 'PARTIAL', 'UNKNOWN']),
 });
 export type RecordFiiMetadataBody = z.infer<typeof RecordFiiMetadataBodySchema>;
+
+export const ResolveTaxInputConflictBodySchema = z.object({
+  action: z.enum(['KEEP_EXISTING', 'ACCEPT_NEW']),
+  resolutionSource: z.string().min(1).max(255).optional(),
+});
+export type ResolveTaxInputConflictBody = z.infer<typeof ResolveTaxInputConflictBodySchema>;

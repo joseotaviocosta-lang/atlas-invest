@@ -23,6 +23,9 @@ export interface RawTaxInputReadiness {
   provenanceReferences: string[];
   rows: Array<{ key: string; label: string; status: string; available: boolean }>;
   productionTaxLiabilityEnabled: boolean;
+  ruleCoverage: 'AVAILABLE' | 'UNAVAILABLE';
+  liabilityStatus: 'AVAILABLE' | 'BLOCKED';
+  productionVerifiedRuleCount: number;
 }
 
 export interface TaxInputReadinessRowVM {
@@ -42,6 +45,12 @@ export interface TaxInputReadinessViewModel {
   issueLabels: string[];
   classificationCoverage: { required: number; classified: number; unknown: number };
   productionTaxLiabilityEnabled: boolean;
+  ruleCoverage: 'AVAILABLE' | 'UNAVAILABLE';
+  liabilityStatus: 'AVAILABLE' | 'BLOCKED';
+  ruleCoverageLabel: string;
+  ruleCoverageColor: string;
+  liabilityStatusLabel: string;
+  liabilityStatusColor: string;
   notice: string;
   accessibilitySummary: string;
 }
@@ -78,13 +87,20 @@ export function mapToTaxInputReadinessViewModel(
   const issueLabels = (data.issues ?? []).map(fiscalQualityIssueLabel);
 
   const notice =
-    'Dados necessários para apuração (Fase 4B.2). A presença destes dados não ativa ' +
-    'cálculo de imposto: nenhuma regra de produção verificada está habilitada.';
+    'Dados necessários para apuração (Fase 4B.2/4B.3). A presença destes dados não ativa ' +
+    'cálculo de imposto: a cobertura de regras tributárias de produção é avaliada separadamente.';
+
+  const ruleCoverageLabel = data.ruleCoverage === 'AVAILABLE' ? 'Disponíveis' : 'Indisponíveis';
+  const ruleCoverageColor = data.ruleCoverage === 'AVAILABLE' ? colors.positive : colors.textMuted;
+  const liabilityStatusLabel = data.liabilityStatus === 'AVAILABLE' ? 'Disponível' : 'Bloqueada';
+  const liabilityStatusColor =
+    data.liabilityStatus === 'AVAILABLE' ? colors.positive : colors.warning;
 
   const accessibilitySummary =
     `Competência ${month}/${year}: ` +
     rows.map((r) => `${r.label}: ${r.statusLabel}`).join('; ') +
-    (issueLabels.length > 0 ? `. Pendências: ${issueLabels.join('; ')}.` : '.');
+    `. Regras tributárias: ${ruleCoverageLabel}. Apuração: ${liabilityStatusLabel}.` +
+    (issueLabels.length > 0 ? ` Pendências: ${issueLabels.join('; ')}.` : '');
 
   return {
     competence: data.competence,
@@ -94,6 +110,12 @@ export function mapToTaxInputReadinessViewModel(
     issueLabels,
     classificationCoverage: data.classificationCoverage,
     productionTaxLiabilityEnabled: data.productionTaxLiabilityEnabled,
+    ruleCoverage: data.ruleCoverage,
+    liabilityStatus: data.liabilityStatus,
+    ruleCoverageLabel,
+    ruleCoverageColor,
+    liabilityStatusLabel,
+    liabilityStatusColor,
     notice,
     accessibilitySummary,
   };

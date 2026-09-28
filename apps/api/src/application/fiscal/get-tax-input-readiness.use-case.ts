@@ -7,13 +7,14 @@ import {
   parseFiscalCompetence,
   projectFiscalEvents,
   type FiscalEvent,
+  type TaxRuleSet,
 } from '@atlas/tax-engine';
 import {
   ASSET_REPOSITORY,
   PORTFOLIO_REPOSITORY,
   TRANSACTION_REPOSITORY,
 } from '../../database/tokens';
-import { TAX_INPUT_PROVIDER } from './tokens';
+import { TAX_INPUT_PROVIDER, TAX_RULE_REGISTRY } from './tokens';
 import type { TaxInputProvider } from './tax-input-provider';
 import {
   mapTaxInputReadinessToReadModel,
@@ -36,6 +37,8 @@ export class GetTaxInputReadinessUseCase {
     private readonly assetRepository: IAssetRepository,
     @Inject(TAX_INPUT_PROVIDER)
     private readonly taxInputProvider: TaxInputProvider,
+    @Inject(TAX_RULE_REGISTRY)
+    private readonly ruleRegistry: readonly TaxRuleSet[],
   ) {}
 
   async execute(params: {
@@ -108,6 +111,8 @@ export class GetTaxInputReadinessUseCase {
       fiiStalenessDays: 90,
     });
 
-    return mapTaxInputReadinessToReadModel(readiness);
+    return mapTaxInputReadinessToReadModel(readiness, {
+      verifiedRuleCount: this.ruleRegistry.filter((rule) => rule.status === 'VERIFIED').length,
+    });
   }
 }

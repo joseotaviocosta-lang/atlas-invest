@@ -319,6 +319,8 @@ export interface IMarketIntelligenceRepository {
 
 export type TaxInputWriteOutcome = 'CREATED' | 'DUPLICATE' | 'CONFLICT';
 
+export type TaxInputResolutionAction = 'KEEP_EXISTING' | 'ACCEPT_NEW';
+
 export interface TaxInputWriteResult<T> {
   outcome: TaxInputWriteOutcome;
   record: T;
@@ -393,6 +395,10 @@ export interface ITaxInputRepository {
     taxSubjectId: string,
     transactionIds?: readonly string[],
   ): Promise<TaxTradeClassificationRow[]>;
+  resolveTradeClassification(
+    id: string,
+    input: { action: TaxInputResolutionAction; resolutionSource: string; taxSubjectId: string },
+  ): Promise<TaxTradeClassificationRow | null>;
 
   upsertWithholding(input: {
     taxSubjectId: string;
@@ -408,6 +414,10 @@ export interface ITaxInputRepository {
     provenance: Record<string, unknown>;
   }): Promise<TaxInputWriteResult<TaxWithholdingRow>>;
   listWithholdings(taxSubjectId: string, competence?: string): Promise<TaxWithholdingRow[]>;
+  resolveWithholding(
+    id: string,
+    input: { action: TaxInputResolutionAction; resolutionSource: string; taxSubjectId: string },
+  ): Promise<TaxWithholdingRow | null>;
 
   upsertFiiEligibility(input: {
     taxSubjectId: string;
@@ -427,4 +437,8 @@ export interface ITaxInputRepository {
     assetIds: readonly string[],
     asOfDate: Date,
   ): Promise<FiiTaxEligibilityRow[]>;
+  resolveFiiEligibility(
+    id: string,
+    input: { action: TaxInputResolutionAction; resolutionSource: string; taxSubjectId: string },
+  ): Promise<FiiTaxEligibilityRow | null>;
 }

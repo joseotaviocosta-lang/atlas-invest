@@ -1562,3 +1562,25 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
     - Nenhuma regra de produção, DARF, pagamento, IRPF, integração Receita ou resposta fiscal de IA. A IA permanece `UNSUPPORTED_TAX` com provedor 0.
 11. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
     - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B permanecem inalterados e invioláveis.
+
+---
+
+## 52. Arquitetura e Invariantes de UX de Inputs Tributários (Fase 4B.4)
+
+1. **INPUT COMPLETO ≠ REGRA COBERTA ≠ APURAÇÃO DISPONÍVEL (ADR-261):**
+   - A prontidão distingue três estados independentes: dados disponíveis, regras tributárias disponíveis e apuração disponível. Dados completos **nunca** implicam imposto apurado.
+2. **INPUT MANUAL É FATO, NÃO LEI (ADR-258):**
+   - A UX coleta fatos; nunca alíquota, isenção, imposto ou compensação. Estado inicial `UNKNOWN`; proibido default `NORMAL`/`0`/`false`.
+3. **PROVENIÊNCIA MANUAL:**
+   - Salvar registra `MANUAL*` + `confirmedAt`. Editar com valor diferente gera conflito explícito.
+4. **CONFLITOS EXPLÍCITOS E RESOLUÇÃO AUDITÁVEL (ADR-260):**
+   - Conflitos permanecem explícitos até resolução (`KEEP_EXISTING`/`ACCEPT_NEW`); registros originais preservados; nunca sobrescrita silenciosa.
+5. **ADAPTADORES PROVIDER-NEUTRAL (ADR-259):**
+   - Adaptadores emitem apenas modelos canônicos; sem fonte real o registro permanece vazio. Prioridade de fonte não é hardcoded.
+6. **DECIMAL EXATO NO CLIENTE:**
+   - Strings decimais exatas; proibido `parseFloat`/`Number()` em valores financeiros; comma brasileiro normalizado deterministicamente; campo vazio ≠ `"0"`.
+7. **SEM CLASSIFICADOR AUTOMÁTICO DE DAY TRADE.**
+8. **ANTI-ESCOPO 4B.4:**
+   - Nenhuma regra de produção, DARF, pagamento, IRPF, integração Receita ou resposta fiscal de IA. A IA permanece `UNSUPPORTED_TAX` com provedor 0.
+9. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+   - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3 permanecem inalterados e invioláveis.

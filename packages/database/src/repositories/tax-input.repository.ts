@@ -14,15 +14,45 @@ function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
+type ModelName =
+  'taxTradeClassificationRecord' | 'taxWithholdingInputRecord' | 'fiiTaxEligibilityFactRecord';
+
 /**
- * Phase 4B.3 — canonical tax input persistence.
+ * Phase 4B.3/4B.4 — canonical tax input persistence.
  *
  * Deduplication is exact (same identity + same fingerprint => idempotent).
- * A same-identity record with a different fingerprint is a CONFLICT and is
- * never silently overwritten. Immutable transaction rows are never mutated.
+ * A same-identity record with a different fingerprint is a CONFLICT; the
+ * incoming candidate is recorded in provenance (never silently overwriting)
+ * and can be explicitly resolved (ADR-255, ADR-260). Immutable transaction
+ * rows are never mutated.
  */
 export class TaxInputRepository implements ITaxInputRepository {
   constructor(private readonly prisma: PrismaClient) {}
+
+  private async markConflict(
+    model: ModelName,
+    id: string,
+    existingProvenance: Prisma.JsonValue,
+    candidate: Record<string, unknown>,
+  ): Promise<void> {
+    const provenance = {
+      ...((existingProvenance ?? {}) as Record<string, unknown>),
+      conflictingCandidate: { ...candidate, recordedAt: new Date().toISOString() },
+    };
+    await (
+      this.prisma[model] as unknown as {
+        update(args: {
+          where: { id: string };
+          data: Prisma.InputJsonValue & {
+            conflictStatus: string;
+            provenance: Prisma.InputJsonValue;
+          };
+        }): Promise<unknown>;
+      }
+    ).update({ where: { id }, data: { conflictStatus: 'CONFLICT', provenance: json(provenance) } });
+  }
+
+  // --- Trade classification ---
 
   private mapTrade(row: {
     id: string;
@@ -64,6 +94,13 @@ export class TaxInputRepository implements ITaxInputRepository {
       transactionId: input.transactionId,
       sourceReference: input.sourceReference,
     };
+    const candidate = {
+      classification: input.classification,
+      sourceType: input.sourceType,
+      sourceReference: input.sourceReference,
+      effectiveDate: input.effectiveDate.toISOString().slice(0, 10),
+      fingerprint: input.fingerprint,
+    };
     try {
       const existing = await this.prisma.taxTradeClassificationRecord.findUnique({
         where: { tax_trade_classification_identity: identity },
@@ -72,11 +109,16 @@ export class TaxInputRepository implements ITaxInputRepository {
         if (existing.fingerprint === input.fingerprint) {
           return { outcome: 'DUPLICATE', record: this.mapTrade(existing) };
         }
-        const conflicted = await this.prisma.taxTradeClassificationRecord.update({
+        await this.markConflict(
+          'taxTradeClassificationRecord',
+          existing.id,
+          existing.provenance,
+          candidate,
+        );
+        const refreshed = await this.prisma.taxTradeClassificationRecord.findUniqueOrThrow({
           where: { id: existing.id },
-          data: { conflictStatus: 'CONFLICT' },
         });
-        return { outcome: 'CONFLICT', record: this.mapTrade(conflicted) };
+        return { outcome: 'CONFLICT', record: this.mapTrade(refreshed) };
       }
       const created = await this.prisma.taxTradeClassificationRecord.create({
         data: {
@@ -100,11 +142,16 @@ export class TaxInputRepository implements ITaxInputRepository {
           if (again.fingerprint === input.fingerprint) {
             return { outcome: 'DUPLICATE', record: this.mapTrade(again) };
           }
-          const conflicted = await this.prisma.taxTradeClassificationRecord.update({
+          await this.markConflict(
+            'taxTradeClassificationRecord',
+            again.id,
+            again.provenance,
+            candidate,
+          );
+          const refreshed = await this.prisma.taxTradeClassificationRecord.findUniqueOrThrow({
             where: { id: again.id },
-            data: { conflictStatus: 'CONFLICT' },
           });
-          return { outcome: 'CONFLICT', record: this.mapTrade(conflicted) };
+          return { outcome: 'CONFLICT', record: this.mapTrade(refreshed) };
         }
       }
       throw new PersistenceError(
@@ -128,6 +175,58 @@ export class TaxInputRepository implements ITaxInputRepository {
     });
     return rows.map((row) => this.mapTrade(row));
   }
+
+  async resolveTradeClassification(
+    id: string,
+    input: {
+      action: 'KEEP_EXISTING' | 'ACCEPT_NEW';
+      resolutionSource: string;
+      taxSubjectId: string;
+    },
+  ): Promise<TaxTradeClassificationRow | null> {
+    const row = await this.prisma.taxTradeClassificationRecord.findFirst({
+      where: { id, taxSubjectId: input.taxSubjectId },
+    });
+    if (!row) return null;
+    const provenance = (row.provenance ?? {}) as Record<string, unknown>;
+    const candidate = provenance.conflictingCandidate as Record<string, unknown> | undefined;
+    const resolution = {
+      action: input.action,
+      resolutionSource: input.resolutionSource,
+      resolvedAt: new Date().toISOString(),
+    };
+    if (input.action === 'ACCEPT_NEW' && candidate) {
+      const history = Array.isArray(provenance.history) ? provenance.history : [];
+      const updated = await this.prisma.taxTradeClassificationRecord.update({
+        where: { id },
+        data: {
+          classification: String(candidate.classification),
+          sourceType: String(candidate.sourceType),
+          sourceReference: String(candidate.sourceReference),
+          effectiveDate: new Date(`${String(candidate.effectiveDate)}T00:00:00.000Z`),
+          fingerprint: String(candidate.fingerprint),
+          status: String(candidate.classification) === 'UNKNOWN' ? 'UNKNOWN' : 'CONFIRMED',
+          conflictStatus: 'RESOLVED',
+          provenance: json({
+            ...provenance,
+            history: [
+              ...history,
+              { previous: row.classification, replacedAt: resolution.resolvedAt },
+            ],
+            resolution,
+          }),
+        },
+      });
+      return this.mapTrade(updated);
+    }
+    const updated = await this.prisma.taxTradeClassificationRecord.update({
+      where: { id },
+      data: { conflictStatus: 'RESOLVED', provenance: json({ ...provenance, resolution }) },
+    });
+    return this.mapTrade(updated);
+  }
+
+  // --- Withholding ---
 
   private mapWithholding(row: {
     id: string;
@@ -183,6 +282,17 @@ export class TaxInputRepository implements ITaxInputRepository {
       fingerprint: input.fingerprint,
       provenance: json(input.provenance),
     };
+    const candidate = {
+      amount: input.amount,
+      currency: input.currency,
+      status: input.status,
+      competence: input.competence,
+      economicDate: input.economicDate.toISOString().slice(0, 10),
+      category: input.category,
+      sourceType: input.sourceType,
+      sourceReference: input.sourceReference,
+      fingerprint: input.fingerprint,
+    };
     try {
       const existing = await this.prisma.taxWithholdingInputRecord.findUnique({
         where: { tax_withholding_identity: identity },
@@ -191,11 +301,16 @@ export class TaxInputRepository implements ITaxInputRepository {
         if (existing.fingerprint === input.fingerprint) {
           return { outcome: 'DUPLICATE', record: this.mapWithholding(existing) };
         }
-        const conflicted = await this.prisma.taxWithholdingInputRecord.update({
+        await this.markConflict(
+          'taxWithholdingInputRecord',
+          existing.id,
+          existing.provenance,
+          candidate,
+        );
+        const refreshed = await this.prisma.taxWithholdingInputRecord.findUniqueOrThrow({
           where: { id: existing.id },
-          data: { conflictStatus: 'CONFLICT' },
         });
-        return { outcome: 'CONFLICT', record: this.mapWithholding(conflicted) };
+        return { outcome: 'CONFLICT', record: this.mapWithholding(refreshed) };
       }
       const created = await this.prisma.taxWithholdingInputRecord.create({
         data: {
@@ -214,11 +329,16 @@ export class TaxInputRepository implements ITaxInputRepository {
           if (again.fingerprint === input.fingerprint) {
             return { outcome: 'DUPLICATE', record: this.mapWithholding(again) };
           }
-          const conflicted = await this.prisma.taxWithholdingInputRecord.update({
+          await this.markConflict(
+            'taxWithholdingInputRecord',
+            again.id,
+            again.provenance,
+            candidate,
+          );
+          const refreshed = await this.prisma.taxWithholdingInputRecord.findUniqueOrThrow({
             where: { id: again.id },
-            data: { conflictStatus: 'CONFLICT' },
           });
-          return { outcome: 'CONFLICT', record: this.mapWithholding(conflicted) };
+          return { outcome: 'CONFLICT', record: this.mapWithholding(refreshed) };
         }
       }
       throw new PersistenceError(`Failed to upsert withholding input: ${(error as Error).message}`);
@@ -232,6 +352,60 @@ export class TaxInputRepository implements ITaxInputRepository {
     });
     return rows.map((row) => this.mapWithholding(row));
   }
+
+  async resolveWithholding(
+    id: string,
+    input: {
+      action: 'KEEP_EXISTING' | 'ACCEPT_NEW';
+      resolutionSource: string;
+      taxSubjectId: string;
+    },
+  ): Promise<TaxWithholdingRow | null> {
+    const row = await this.prisma.taxWithholdingInputRecord.findFirst({
+      where: { id, taxSubjectId: input.taxSubjectId },
+    });
+    if (!row) return null;
+    const provenance = (row.provenance ?? {}) as Record<string, unknown>;
+    const candidate = provenance.conflictingCandidate as Record<string, unknown> | undefined;
+    const resolution = {
+      action: input.action,
+      resolutionSource: input.resolutionSource,
+      resolvedAt: new Date().toISOString(),
+    };
+    if (input.action === 'ACCEPT_NEW' && candidate) {
+      const history = Array.isArray(provenance.history) ? provenance.history : [];
+      const updated = await this.prisma.taxWithholdingInputRecord.update({
+        where: { id },
+        data: {
+          amount: candidate.amount === null ? null : new Prisma.Decimal(String(candidate.amount)),
+          currency: String(candidate.currency),
+          status: String(candidate.status),
+          category: String(candidate.category),
+          fingerprint: String(candidate.fingerprint),
+          conflictStatus: 'RESOLVED',
+          provenance: json({
+            ...provenance,
+            history: [
+              ...history,
+              {
+                previousAmount: row.amount ? row.amount.toString() : null,
+                replacedAt: resolution.resolvedAt,
+              },
+            ],
+            resolution,
+          }),
+        },
+      });
+      return this.mapWithholding(updated);
+    }
+    const updated = await this.prisma.taxWithholdingInputRecord.update({
+      where: { id },
+      data: { conflictStatus: 'RESOLVED', provenance: json({ ...provenance, resolution }) },
+    });
+    return this.mapWithholding(updated);
+  }
+
+  // --- FII eligibility ---
 
   private mapFii(row: {
     id: string;
@@ -278,6 +452,16 @@ export class TaxInputRepository implements ITaxInputRepository {
       sourceReference: input.sourceReference,
       asOfDate: input.asOfDate,
     };
+    const candidate = {
+      holderCount: input.holderCount,
+      investorOwnershipPercent: input.investorOwnershipPercent,
+      isExchangeTraded: input.isExchangeTraded,
+      status: input.status,
+      asOfDate: input.asOfDate.toISOString().slice(0, 10),
+      sourceType: input.sourceType,
+      sourceReference: input.sourceReference,
+      fingerprint: input.fingerprint,
+    };
     try {
       const existing = await this.prisma.fiiTaxEligibilityFactRecord.findUnique({
         where: { fii_tax_eligibility_identity: identity },
@@ -286,11 +470,16 @@ export class TaxInputRepository implements ITaxInputRepository {
         if (existing.fingerprint === input.fingerprint) {
           return { outcome: 'DUPLICATE', record: this.mapFii(existing) };
         }
-        const conflicted = await this.prisma.fiiTaxEligibilityFactRecord.update({
+        await this.markConflict(
+          'fiiTaxEligibilityFactRecord',
+          existing.id,
+          existing.provenance,
+          candidate,
+        );
+        const refreshed = await this.prisma.fiiTaxEligibilityFactRecord.findUniqueOrThrow({
           where: { id: existing.id },
-          data: { conflictStatus: 'CONFLICT' },
         });
-        return { outcome: 'CONFLICT', record: this.mapFii(conflicted) };
+        return { outcome: 'CONFLICT', record: this.mapFii(refreshed) };
       }
       const created = await this.prisma.fiiTaxEligibilityFactRecord.create({
         data: {
@@ -316,11 +505,16 @@ export class TaxInputRepository implements ITaxInputRepository {
           if (again.fingerprint === input.fingerprint) {
             return { outcome: 'DUPLICATE', record: this.mapFii(again) };
           }
-          const conflicted = await this.prisma.fiiTaxEligibilityFactRecord.update({
+          await this.markConflict(
+            'fiiTaxEligibilityFactRecord',
+            again.id,
+            again.provenance,
+            candidate,
+          );
+          const refreshed = await this.prisma.fiiTaxEligibilityFactRecord.findUniqueOrThrow({
             where: { id: again.id },
-            data: { conflictStatus: 'CONFLICT' },
           });
-          return { outcome: 'CONFLICT', record: this.mapFii(conflicted) };
+          return { outcome: 'CONFLICT', record: this.mapFii(refreshed) };
         }
       }
       throw new PersistenceError(
@@ -336,15 +530,9 @@ export class TaxInputRepository implements ITaxInputRepository {
   ): Promise<FiiTaxEligibilityRow[]> {
     if (assetIds.length === 0) return [];
     const rows = await this.prisma.fiiTaxEligibilityFactRecord.findMany({
-      where: {
-        taxSubjectId,
-        assetId: { in: [...assetIds] },
-        asOfDate: { lte: asOfDate },
-      },
+      where: { taxSubjectId, assetId: { in: [...assetIds] }, asOfDate: { lte: asOfDate } },
       orderBy: [{ asOfDate: 'desc' }, { id: 'asc' }],
     });
-    // Latest fact at or before asOfDate per (assetId, sourceType, sourceReference):
-    // no future leakage.
     const seen = new Set<string>();
     const result: FiiTaxEligibilityRow[] = [];
     for (const row of rows) {
@@ -354,5 +542,64 @@ export class TaxInputRepository implements ITaxInputRepository {
       result.push(this.mapFii(row));
     }
     return result;
+  }
+
+  async resolveFiiEligibility(
+    id: string,
+    input: {
+      action: 'KEEP_EXISTING' | 'ACCEPT_NEW';
+      resolutionSource: string;
+      taxSubjectId: string;
+    },
+  ): Promise<FiiTaxEligibilityRow | null> {
+    const row = await this.prisma.fiiTaxEligibilityFactRecord.findFirst({
+      where: { id, taxSubjectId: input.taxSubjectId },
+    });
+    if (!row) return null;
+    const provenance = (row.provenance ?? {}) as Record<string, unknown>;
+    const candidate = provenance.conflictingCandidate as Record<string, unknown> | undefined;
+    const resolution = {
+      action: input.action,
+      resolutionSource: input.resolutionSource,
+      resolvedAt: new Date().toISOString(),
+    };
+    if (input.action === 'ACCEPT_NEW' && candidate) {
+      const history = Array.isArray(provenance.history) ? provenance.history : [];
+      const updated = await this.prisma.fiiTaxEligibilityFactRecord.update({
+        where: { id },
+        data: {
+          holderCount:
+            candidate.holderCount === null || candidate.holderCount === undefined
+              ? null
+              : Number(candidate.holderCount),
+          investorOwnershipPercent:
+            candidate.investorOwnershipPercent === null ||
+            candidate.investorOwnershipPercent === undefined
+              ? null
+              : new Prisma.Decimal(String(candidate.investorOwnershipPercent)),
+          isExchangeTraded:
+            candidate.isExchangeTraded === null || candidate.isExchangeTraded === undefined
+              ? null
+              : Boolean(candidate.isExchangeTraded),
+          status: String(candidate.status),
+          fingerprint: String(candidate.fingerprint),
+          conflictStatus: 'RESOLVED',
+          provenance: json({
+            ...provenance,
+            history: [
+              ...history,
+              { previousHolderCount: row.holderCount, replacedAt: resolution.resolvedAt },
+            ],
+            resolution,
+          }),
+        },
+      });
+      return this.mapFii(updated);
+    }
+    const updated = await this.prisma.fiiTaxEligibilityFactRecord.update({
+      where: { id },
+      data: { conflictStatus: 'RESOLVED', provenance: json({ ...provenance, resolution }) },
+    });
+    return this.mapFii(updated);
   }
 }

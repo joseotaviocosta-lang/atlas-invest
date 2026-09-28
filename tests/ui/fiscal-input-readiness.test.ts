@@ -29,6 +29,9 @@ const SAMPLE: RawTaxInputReadiness = {
     { key: 'fiiMetadata', label: 'Dados fiscais de FII', status: 'MISSING', available: false },
   ],
   productionTaxLiabilityEnabled: false,
+  ruleCoverage: 'UNAVAILABLE',
+  liabilityStatus: 'BLOCKED',
+  productionVerifiedRuleCount: 0,
 };
 
 describe('UI: Tax input readiness view-model (Phase 4B.2)', () => {
@@ -81,5 +84,15 @@ describe('UI: Tax input readiness view-model (Phase 4B.2)', () => {
   it('contains no tax arithmetic', () => {
     const vm = mapToTaxInputReadinessViewModel(SAMPLE)!;
     expect(JSON.stringify(vm)).not.toMatch(/parseFloat|Math\.|taxDue/);
+  });
+
+  it('separates input readiness from rule coverage and liability (Phase 4B.4)', () => {
+    const vm = mapToTaxInputReadinessViewModel(SAMPLE)!;
+    expect(vm.ruleCoverage).toBe('UNAVAILABLE');
+    expect(vm.ruleCoverageLabel).toBe('Indisponíveis');
+    expect(vm.liabilityStatus).toBe('BLOCKED');
+    expect(vm.liabilityStatusLabel).toBe('Bloqueada');
+    // Complete inputs would still not imply available rules/liability.
+    expect(vm.productionTaxLiabilityEnabled).toBe(false);
   });
 });

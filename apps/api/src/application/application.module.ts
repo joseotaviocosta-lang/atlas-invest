@@ -30,7 +30,9 @@ import {
   RecordWithholdingInputUseCase,
 } from './fiscal/record-tax-inputs.use-case';
 import { ListTaxInputsUseCase } from './fiscal/list-tax-inputs.use-case';
-import { TAX_INPUT_PROVIDER, TAX_RULE_REGISTRY } from './fiscal/tokens';
+import { ResolveTaxInputConflictUseCase } from './fiscal/resolve-tax-input-conflict.use-case';
+import { EMPTY_TAX_INPUT_ADAPTER_REGISTRY } from './fiscal/tax-input-source-adapter';
+import { TAX_INPUT_ADAPTER_REGISTRY, TAX_INPUT_PROVIDER, TAX_RULE_REGISTRY } from './fiscal/tokens';
 import { PRODUCTION_TAX_RULE_REGISTRY } from './fiscal/fiscal-rule-registry';
 import { GetPortfolioAiGroundingContextUseCase } from './ai/get-portfolio-ai-grounding-context.use-case';
 import { GetPortfolioAssetAiGroundingContextUseCase } from './ai/get-portfolio-asset-ai-grounding-context.use-case';
@@ -73,6 +75,7 @@ const USE_CASES = [
   RecordWithholdingInputUseCase,
   RecordFiiTaxEligibilityFactsUseCase,
   ListTaxInputsUseCase,
+  ResolveTaxInputConflictUseCase,
   GetPortfolioAiGroundingContextUseCase,
   GetPortfolioAssetAiGroundingContextUseCase,
   GetPortfolioTimelineAiGroundingContextUseCase,
@@ -96,7 +99,8 @@ const USE_CASES = [
     ...USE_CASES,
     { provide: TAX_RULE_REGISTRY, useValue: PRODUCTION_TAX_RULE_REGISTRY },
     { provide: TAX_INPUT_PROVIDER, useClass: PersistedTaxInputProvider },
+    { provide: TAX_INPUT_ADAPTER_REGISTRY, useValue: EMPTY_TAX_INPUT_ADAPTER_REGISTRY },
   ],
-  exports: [...USE_CASES, TAX_RULE_REGISTRY, TAX_INPUT_PROVIDER],
+  exports: [...USE_CASES, TAX_RULE_REGISTRY, TAX_INPUT_PROVIDER, TAX_INPUT_ADAPTER_REGISTRY],
 })
 export class ApplicationModule {}
