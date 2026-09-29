@@ -8,11 +8,16 @@ import {
   spacing,
   borderRadius,
   formatCurrency,
+  mapToDarfHandoffViewModel,
   mapToTaxObligationViewModel,
   taxObligationQueryKey,
   taxObligationsQueryKey,
+  type RawDarfReadiness,
   type RawTaxObligation,
 } from '@atlas/ui';
+
+/** Allowlisted official origin for the Sicalc handoff (open-redirect defense). */
+const OFFICIAL_DARF_ORIGIN = 'https://sicalc.receita.fazenda.gov.br/';
 import { Card, Skeleton, EmptyState, SectionHeader } from '@/components/ui';
 
 interface RawAdjustment {
@@ -80,6 +85,28 @@ export function TaxObligationSection({ competence }: { competence: string }) {
     enabled: Boolean(raw) && /^\d{4}-\d{2}-\d{2}$/.test(adjustDate),
     staleTime: 30_000,
   });
+
+  // Phase 4F — official DARF handoff readiness (read-only; never generates a document).
+  const darfEnabled =
+    Boolean(raw) &&
+    raw!.darfReadiness === 'READY' &&
+    !['PAID', 'NO_PAYMENT_DUE', 'BLOCKED', 'PROVISIONAL'].includes(raw!.status);
+  const { data: darfReadiness } = useQuery({
+    queryKey: ['fiscal-darf-readiness', raw?.id ?? ''],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: RawDarfReadiness }>(
+        `/api/v1/fiscal/obligations/${raw!.id}/darf-readiness`,
+      );
+      return res.data;
+    },
+    enabled: darfEnabled,
+    staleTime: 30_000,
+  });
+  const darf = useMemo(() => mapToDarfHandoffViewModel(darfReadiness ?? null), [darfReadiness]);
+  const officialDarfHref =
+    darf?.destinationUrl && darf.destinationUrl.startsWith(OFFICIAL_DARF_ORIGIN)
+      ? darf.destinationUrl
+      : null;
 
   async function confirmPayment() {
     if (!raw || !raw.principalAmount || !raw.currency) return;
@@ -268,6 +295,162 @@ export function TaxObligationSection({ competence }: { competence: string }) {
           {message && (
             <div style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginTop: '6px' }}>
               {message}
+            </div>
+          )}
+
+          {darf && (
+            <div
+              style={{
+                marginTop: `${spacing.base}px`,
+                borderTop: `1px solid ${colors.border}`,
+                paddingTop: `${spacing.sm}px`,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'baseline',
+                  gap: `${spacing.sm}px`,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <strong style={{ color: colors.textPrimary }}>DARF oficial</strong>
+                <span
+                  style={{ fontSize: '0.8125rem', color: darf.statusColor, fontWeight: 600 }}
+                  data-testid="darf-status"
+                >
+                  {darf.statusLabel}
+                </span>
+              </div>
+
+              {darf.eligible && (
+                <>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                      gap: `${spacing.sm}px`,
+                      marginTop: `${spacing.sm}px`,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+                        Valor principal
+                      </div>
+                      <div style={{ fontWeight: 700, color: colors.textPrimary }}>
+                        {darf.principalFormatted}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+                        Valor a pagar
+                      </div>
+                      <div style={{ fontWeight: 700, color: colors.textPrimary }}>
+                        {darf.totalFormatted}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+                        Vencimento
+                      </div>
+                      <div style={{ fontWeight: 700, color: colors.textPrimary }}>
+                        {darf.dueDateFormatted}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+                        Código de receita
+                      </div>
+                      <div style={{ fontWeight: 700, color: colors.textPrimary }}>
+                        {darf.revenueCode ?? '—'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {darf.carryForwardFormatted && (
+                    <div
+                      style={{
+                        fontSize: '0.8125rem',
+                        color: colors.textSecondary,
+                        marginTop: `${spacing.sm}px`,
+                      }}
+                    >
+                      Valor acumulado de períodos anteriores: {darf.carryForwardFormatted}
+                    </div>
+                  )}
+
+                  {darf.lateFeeFormatted && (
+                    <div
+                      style={{
+                        fontSize: '0.8125rem',
+                        color: colors.textSecondary,
+                        marginTop: '4px',
+                      }}
+                    >
+                      Multa: {darf.lateFeeFormatted} · Juros: {darf.interestFormatted}
+                    </div>
+                  )}
+
+                  <div
+                    style={{
+                      fontSize: '0.75rem',
+                      color: colors.textMuted,
+                      marginTop: `${spacing.sm}px`,
+                    }}
+                  >
+                    Fonte oficial: {darf.officialSourceLabel}. Conclua a emissão no site oficial da
+                    Receita.
+                  </div>
+
+                  {officialDarfHref && (
+                    <a
+                      href={officialDarfHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid="darf-open-sicalc"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        minHeight: '44px',
+                        marginTop: `${spacing.sm}px`,
+                        padding: `${spacing.xs}px ${spacing.base}px`,
+                        borderRadius: `${borderRadius.md}px`,
+                        backgroundColor: colors.accent,
+                        color: colors.surface,
+                        fontWeight: 600,
+                        textDecoration: 'none',
+                      }}
+                    >
+                      {darf.actionLabel}
+                    </a>
+                  )}
+
+                  <div
+                    style={{
+                      fontSize: '0.75rem',
+                      color: colors.textMuted,
+                      marginTop: `${spacing.sm}px`,
+                    }}
+                  >
+                    O documento oficial não marca a obrigação como paga; registre o pagamento
+                    separadamente.
+                  </div>
+                </>
+              )}
+
+              {!darf.eligible && darf.reasonLabel && (
+                <div
+                  style={{
+                    fontSize: '0.8125rem',
+                    color: colors.warning,
+                    marginTop: '4px',
+                  }}
+                >
+                  {darf.reasonLabel}
+                </div>
+              )}
             </div>
           )}
         </Card>

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -8,11 +8,13 @@ import {
   mapToFiscalMonthlyViewModel,
   mapToMonthlyTaxLiabilityViewModel,
   mapToTaxInputReadinessViewModel,
+  mapToDarfHandoffViewModel,
   mapToTaxObligationViewModel,
   fiscalMonthlyQueryKey,
   taxLiabilityQueryKey,
   taxInputReadinessQueryKey,
   taxObligationQueryKey,
+  type RawDarfReadiness,
   type RawFiscalMonthlyState,
   type RawMonthlyTaxLiability,
   type RawTaxInputReadiness,
@@ -27,6 +29,9 @@ import {
   ErrorState,
 } from '../../../src/components/ui';
 import { apiClient, ApiError } from '../../../src/api/client';
+
+/** Allowlisted official origin for the Sicalc handoff (open-redirect defense). */
+const OFFICIAL_DARF_ORIGIN = 'https://sicalc.receita.fazenda.gov.br/';
 
 function currentCompetence(): string {
   const now = new Date();
@@ -119,6 +124,30 @@ export default function TaxScreen() {
     },
     enabled: Boolean(obligationData),
   });
+
+  // Phase 4F — official DARF handoff readiness (read-only; never generates a document).
+  const darfEnabled =
+    Boolean(obligationData) &&
+    obligationData!.darfReadiness === 'READY' &&
+    !['PAID', 'NO_PAYMENT_DUE', 'BLOCKED', 'PROVISIONAL'].includes(obligationData!.status);
+  const { data: darfReadinessData } = useQuery({
+    queryKey: ['fiscal-darf-readiness', obligationData?.id ?? ''],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: RawDarfReadiness }>(
+        `/api/v1/fiscal/obligations/${obligationData!.id}/darf-readiness`,
+      );
+      return res.data;
+    },
+    enabled: darfEnabled,
+  });
+  const darf = useMemo(
+    () => mapToDarfHandoffViewModel(darfReadinessData ?? null),
+    [darfReadinessData],
+  );
+  const officialDarfHref =
+    darf?.destinationUrl && darf.destinationUrl.startsWith(OFFICIAL_DARF_ORIGIN)
+      ? darf.destinationUrl
+      : null;
 
   return (
     <Screen>
@@ -377,6 +406,53 @@ export default function TaxScreen() {
                 {adjustmentData?.status === 'BLOCKED' && (
                   <Text style={styles.warning}>Atualização do valor indisponível.</Text>
                 )}
+
+                {darf && (
+                  <>
+                    <View style={styles.categoryHeader}>
+                      <Text style={styles.sectionTitle}>DARF oficial</Text>
+                      <Text style={[styles.categoryCapability, { color: darf.statusColor }]}>
+                        {darf.statusLabel}
+                      </Text>
+                    </View>
+                    {darf.eligible ? (
+                      <>
+                        <Text style={styles.meta}>Valor a pagar: {darf.totalFormatted}</Text>
+                        <Text style={styles.meta}>Vencimento: {darf.dueDateFormatted}</Text>
+                        {darf.carryForwardFormatted && (
+                          <Text style={styles.meta}>
+                            Valor acumulado de períodos anteriores: {darf.carryForwardFormatted}
+                          </Text>
+                        )}
+                        {darf.lateFeeFormatted && (
+                          <Text style={styles.meta}>
+                            Multa: {darf.lateFeeFormatted} · Juros: {darf.interestFormatted}
+                          </Text>
+                        )}
+                        <Text style={styles.meta}>
+                          Fonte oficial: {darf.officialSourceLabel}. Conclua a emissão no site
+                          oficial da Receita.
+                        </Text>
+                        {officialDarfHref && (
+                          <TouchableOpacity
+                            accessibilityRole="link"
+                            accessibilityLabel="Abrir Sicalc"
+                            style={styles.darfButton}
+                            onPress={() => Linking.openURL(officialDarfHref)}
+                          >
+                            <Text style={styles.darfButtonText}>{darf.actionLabel}</Text>
+                          </TouchableOpacity>
+                        )}
+                        <Text style={styles.meta}>
+                          O documento oficial não marca a obrigação como paga; registre o pagamento
+                          separadamente.
+                        </Text>
+                      </>
+                    ) : (
+                      darf.reasonLabel && <Text style={styles.warning}>{darf.reasonLabel}</Text>
+                    )}
+                  </>
+                )}
               </Card>
             )}
 
@@ -460,5 +536,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     paddingHorizontal: 4,
+  },
+  darfButton: {
+    minHeight: 44,
+    marginTop: themeTokens.spacing.sm,
+    borderRadius: themeTokens.borderRadius.md,
+    backgroundColor: themeTokens.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: themeTokens.spacing.md,
+  },
+  darfButtonText: {
+    color: themeTokens.colors.text,
+    fontWeight: '700',
   },
 });
