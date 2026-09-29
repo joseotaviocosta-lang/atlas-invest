@@ -258,3 +258,34 @@ export type { TaxCarryForwardStatus, TaxCarryForwardEntry } from './carry-forwar
 
 export { computeAggregationFingerprint, buildTaxPaymentAggregation } from './payment-aggregation';
 export type { TaxPaymentAggregation, AggregationFingerprintInput } from './payment-aggregation';
+
+// --- Phase 4F: taxpayer identity boundary & official DARF handoff ---
+export {
+  TAXPAYER_IDENTITY_TYPES,
+  normalizeTaxpayerIdentifier,
+  isCanonicalCpf,
+  isCanonicalCnpj,
+  maskCpf,
+  maskCnpj,
+  maskTaxpayerIdentifier,
+  isValidTaxpayerIdentifier,
+} from './taxpayer-identity';
+export type { TaxpayerIdentityType, TaxpayerIdentityReference } from './taxpayer-identity';
+
+export {
+  DARF_GENERATION_MODES,
+  DARF_GENERATION_STATUSES,
+  DARF_HANDOFF_REASON_CODES,
+  computeDarfHandoffFingerprint,
+  buildDarfHandoffPlan,
+} from './darf-handoff';
+export type {
+  DarfGenerationMode,
+  DarfGenerationStatus,
+  DarfHandoffReasonCode,
+  OfficialDarfDestination,
+  DarfHandoffPreparedValues,
+  DarfHandoffPlan,
+  DarfAdjustmentSnapshot,
+  BuildDarfHandoffPlanInput,
+} from './darf-handoff';

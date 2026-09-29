@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Param,
   Query,
@@ -33,14 +34,32 @@ import { RecordTaxPaymentUseCase } from '../../application/fiscal/record-tax-pay
 import { GetTaxPaymentAdjustmentUseCase } from '../../application/fiscal/get-tax-payment-adjustment.use-case';
 import { GetTaxPaymentSummaryUseCase } from '../../application/fiscal/get-tax-payment-summary.use-case';
 import { SettleTaxPaymentAggregationUseCase } from '../../application/fiscal/settle-tax-payment-aggregation.use-case';
+import { GetDarfReadinessUseCase } from '../../application/fiscal/get-darf-readiness.use-case';
+import { CreateDarfHandoffUseCase } from '../../application/fiscal/create-darf-handoff.use-case';
+import {
+  GetDarfGenerationUseCase,
+  ListDarfGenerationsUseCase,
+} from '../../application/fiscal/darf-generation-query.use-case';
+import {
+  GetTaxpayerIdentityUseCase,
+  RecordTaxpayerIdentityUseCase,
+} from '../../application/fiscal/taxpayer-identity.use-case';
 import { ZodValidationPipe } from '../../common/pipes';
 import {
   AdjustmentQuery,
   AdjustmentQuerySchema,
+  DarfHandoffBody,
+  DarfHandoffBodySchema,
+  DarfReadinessQuery,
+  DarfReadinessQuerySchema,
+  ListDarfGenerationsQuery,
+  ListDarfGenerationsQuerySchema,
   ListTaxObligationsQuery,
   ListTaxObligationsQuerySchema,
   RecordTaxPaymentBody,
   RecordTaxPaymentBodySchema,
+  RecordTaxpayerIdentityBody,
+  RecordTaxpayerIdentityBodySchema,
   SettleTaxPaymentAggregationBody,
   SettleTaxPaymentAggregationBodySchema,
 } from './dto/tax-obligation.dto';
@@ -98,6 +117,18 @@ export class FiscalController {
     private readonly getTaxPaymentSummaryUseCase: GetTaxPaymentSummaryUseCase,
     @Inject(SettleTaxPaymentAggregationUseCase)
     private readonly settleTaxPaymentAggregationUseCase: SettleTaxPaymentAggregationUseCase,
+    @Inject(GetDarfReadinessUseCase)
+    private readonly getDarfReadinessUseCase: GetDarfReadinessUseCase,
+    @Inject(CreateDarfHandoffUseCase)
+    private readonly createDarfHandoffUseCase: CreateDarfHandoffUseCase,
+    @Inject(GetDarfGenerationUseCase)
+    private readonly getDarfGenerationUseCase: GetDarfGenerationUseCase,
+    @Inject(ListDarfGenerationsUseCase)
+    private readonly listDarfGenerationsUseCase: ListDarfGenerationsUseCase,
+    @Inject(GetTaxpayerIdentityUseCase)
+    private readonly getTaxpayerIdentityUseCase: GetTaxpayerIdentityUseCase,
+    @Inject(RecordTaxpayerIdentityUseCase)
+    private readonly recordTaxpayerIdentityUseCase: RecordTaxpayerIdentityUseCase,
   ) {}
 
   @Get('monthly/:competence')
@@ -456,5 +487,106 @@ export class FiscalController {
       competence,
     });
     return { data };
+  }
+
+  // --- Phase 4F: official DARF readiness, handoff & taxpayer identity ---
+
+  @Get('obligations/:id/darf-readiness')
+  @ApiOperation({
+    summary:
+      'Official DARF readiness for an obligation: prepared values (revenue code, PA, due date, principal, multa/juros, total) and the official Sicalc handoff. Atlas never generates the document.',
+  })
+  @ApiResponse({ status: 200, description: 'DARF readiness (may be USER_ACTION_REQUIRED/BLOCKED)' })
+  @ApiResponse({ status: 404, description: 'Tax obligation not found' })
+  async getDarfReadiness(
+    @Param('id') id: string,
+    @Query(new ZodValidationPipe(DarfReadinessQuerySchema)) query: DarfReadinessQuery,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    return {
+      data: await this.getDarfReadinessUseCase.execute({
+        userId: principal.userId,
+        obligationId: id,
+        paymentDate: query.paymentDate ?? null,
+      }),
+    };
+  }
+
+  @Post('obligations/:id/darf-handoff')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Materialize the official DARF interactive-handoff record (idempotent). Prepares exact values for the official Sicalc service; never generates a document, barcode, PIX or QR.',
+  })
+  @ApiResponse({ status: 200, description: 'Handoff record (USER_ACTION_REQUIRED or BLOCKED)' })
+  @ApiResponse({ status: 404, description: 'Tax obligation not found' })
+  async createDarfHandoff(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(DarfHandoffBodySchema)) body: DarfHandoffBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    return {
+      data: await this.createDarfHandoffUseCase.execute({
+        userId: principal.userId,
+        obligationId: id,
+        paymentDate: body.paymentDate ?? null,
+      }),
+    };
+  }
+
+  @Get('darfs')
+  @ApiOperation({ summary: 'List persisted DARF generation/handoff records.' })
+  async listDarfGenerations(
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Query(new ZodValidationPipe(ListDarfGenerationsQuerySchema))
+    query: ListDarfGenerationsQuery,
+  ) {
+    return {
+      data: await this.listDarfGenerationsUseCase.execute({
+        userId: principal.userId,
+        ...(query.status ? { status: query.status } : {}),
+        ...(query.obligationId ? { obligationId: query.obligationId } : {}),
+      }),
+    };
+  }
+
+  @Get('darfs/:id')
+  @ApiOperation({ summary: 'Get a persisted DARF generation/handoff record.' })
+  @ApiResponse({ status: 404, description: 'DARF generation record not found' })
+  async getDarfGeneration(
+    @Param('id') id: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    return { data: await this.getDarfGenerationUseCase.execute({ userId: principal.userId, id }) };
+  }
+
+  @Get('taxpayer-identity')
+  @ApiOperation({
+    summary: 'Get the taxpayer identity boundary (masked identifier only; never the raw CPF/CNPJ).',
+  })
+  async getTaxpayerIdentity(@CurrentPrincipal() principal: AuthenticatedPrincipal) {
+    return { data: await this.getTaxpayerIdentityUseCase.execute({ userId: principal.userId }) };
+  }
+
+  @Put('taxpayer-identity')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Record the taxpayer identity (validated and immediately masked; the raw CPF/CNPJ is never persisted or logged).',
+  })
+  @ApiResponse({ status: 200, description: 'Identity recorded (masked)' })
+  @ApiResponse({ status: 400, description: 'Invalid identifier' })
+  async recordTaxpayerIdentity(
+    @Body(new ZodValidationPipe(RecordTaxpayerIdentityBodySchema))
+    body: RecordTaxpayerIdentityBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    return {
+      data: await this.recordTaxpayerIdentityUseCase.execute({
+        userId: principal.userId,
+        identityType: body.identityType,
+        identifier: body.identifier,
+      }),
+    };
   }
 }

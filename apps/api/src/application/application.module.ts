@@ -40,6 +40,16 @@ import { RecordTaxPaymentUseCase } from './fiscal/record-tax-payment.use-case';
 import { GetTaxPaymentAdjustmentUseCase } from './fiscal/get-tax-payment-adjustment.use-case';
 import { GetTaxPaymentSummaryUseCase } from './fiscal/get-tax-payment-summary.use-case';
 import { SettleTaxPaymentAggregationUseCase } from './fiscal/settle-tax-payment-aggregation.use-case';
+import { GetDarfReadinessUseCase } from './fiscal/get-darf-readiness.use-case';
+import { CreateDarfHandoffUseCase } from './fiscal/create-darf-handoff.use-case';
+import {
+  GetDarfGenerationUseCase,
+  ListDarfGenerationsUseCase,
+} from './fiscal/darf-generation-query.use-case';
+import {
+  GetTaxpayerIdentityUseCase,
+  RecordTaxpayerIdentityUseCase,
+} from './fiscal/taxpayer-identity.use-case';
 import { SystemFiscalClock } from './fiscal/fiscal-clock';
 import { EMPTY_TAX_INPUT_ADAPTER_REGISTRY } from './fiscal/tax-input-source-adapter';
 import {
@@ -98,6 +108,12 @@ const USE_CASES = [
   GetTaxPaymentAdjustmentUseCase,
   GetTaxPaymentSummaryUseCase,
   SettleTaxPaymentAggregationUseCase,
+  GetDarfReadinessUseCase,
+  CreateDarfHandoffUseCase,
+  GetDarfGenerationUseCase,
+  ListDarfGenerationsUseCase,
+  GetTaxpayerIdentityUseCase,
+  RecordTaxpayerIdentityUseCase,
   GetPortfolioAiGroundingContextUseCase,
   GetPortfolioAssetAiGroundingContextUseCase,
   GetPortfolioTimelineAiGroundingContextUseCase,

@@ -30,6 +30,8 @@ model User {
   taxPaymentEvidence      TaxPaymentEvidenceRecord[]
   taxCarryForwardEntries  TaxCarryForwardEntry[]
   taxPaymentAggregations  TaxPaymentAggregation[]
+  taxpayerIdentity        TaxpayerIdentityRecord?
+  darfGenerationRecords   OfficialDarfGenerationRecord[]
 
   @@map("users")
 }
@@ -398,6 +400,7 @@ model TaxObligationRecord {
   payments      TaxPaymentEvidenceRecord[]
   carryForwardSources TaxCarryForwardEntry[]  @relation("CarryForwardSource")
   paymentAggregations TaxPaymentAggregation[] @relation("AggregationCurrentObligation")
+  darfGenerationRecords OfficialDarfGenerationRecord[] @relation("DarfGenerationObligation")
 
   @@unique([taxSubjectId, competence, liabilityFingerprint, revision], name: "tax_obligation_identity")
   @@index([taxSubjectId, competence])
@@ -533,4 +536,57 @@ model TaxPaymentAggregation {
   @@unique([taxSubjectId, revenueCode, targetCompetence, fingerprint], name: "tax_payment_aggregation_identity")
   @@index([taxSubjectId, revenueCode, targetCompetence])
   @@map("tax_payment_aggregations")
+}
+
+/// Phase 4F - taxpayer identity boundary. Stores ONLY a masked display form and
+/// an opaque HMAC reference; the raw CPF/CNPJ is never persisted (ADR-286).
+model TaxpayerIdentityRecord {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @unique @map("user_id") @db.Uuid
+  identityType      String   @map("identity_type") @db.VarChar(10)
+  maskedIdentifier  String   @map("masked_identifier") @db.VarChar(30)
+  secureReference   String   @map("secure_reference") @db.VarChar(64)
+  identityAvailable Boolean  @map("identity_available")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("taxpayer_identities")
+}
+
+/// Phase 4F - immutable official DARF generation/handoff record. Atlas does not
+/// generate the official document; the record captures the prepared handoff and
+/// its provenance. GENERATED is never equivalent to PAID (ADR-287, ADR-288).
+model OfficialDarfGenerationRecord {
+  id                      String    @id @default(uuid()) @db.Uuid
+  taxSubjectId            String    @map("tax_subject_id") @db.Uuid
+  taxObligationId         String?   @map("tax_obligation_id") @db.Uuid
+  taxPaymentAggregationId String?   @map("tax_payment_aggregation_id") @db.Uuid
+  generationMode          String    @map("generation_mode") @db.VarChar(40)
+  revenueCode             String    @map("revenue_code") @db.VarChar(10)
+  competence              String    @db.Char(7)
+  dueDate                 DateTime? @map("due_date") @db.Date
+  principalAmount         Decimal   @map("principal_amount") @db.Decimal(38, 18)
+  lateFeeAmount           Decimal?  @map("late_fee_amount") @db.Decimal(38, 18)
+  interestAmount          Decimal?  @map("interest_amount") @db.Decimal(38, 18)
+  totalAmount             Decimal   @map("total_amount") @db.Decimal(38, 18)
+  currency                String    @db.VarChar(3)
+  officialDocumentId      String?   @map("official_document_id") @db.VarChar(100)
+  officialReference       String?   @map("official_reference") @db.VarChar(255)
+  sourceSystem            String    @map("source_system") @db.VarChar(40)
+  status                  String    @db.VarChar(30)
+  version                 Int
+  fingerprint             String    @db.VarChar(64)
+  supersededById          String?   @map("superseded_by_id") @db.Uuid
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  taxSubject    User                 @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+  taxObligation TaxObligationRecord? @relation("DarfGenerationObligation", fields: [taxObligationId], references: [id])
+
+  @@unique([taxSubjectId, taxObligationId, fingerprint], name: "official_darf_generation_identity")
+  @@index([taxSubjectId, status])
+  @@index([taxSubjectId, taxObligationId])
+  @@map("official_darf_generation_records")
 }

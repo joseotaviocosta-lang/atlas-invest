@@ -17,3 +17,5 @@ export * from './official-late-fee.repository';
 export * from './tax-interest-rate.repository';
 export * from './tax-carry-forward.repository';
 export * from './tax-payment-aggregation.repository';
+export * from './taxpayer-identity.repository';
+export * from './official-darf-generation.repository';

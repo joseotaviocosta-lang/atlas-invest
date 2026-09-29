@@ -746,6 +746,95 @@ export interface ITaxCarryForwardRepository {
   markSuperseded(id: string, taxSubjectId: string): Promise<TaxCarryForwardEntryRow | null>;
 }
 
+// ---------------------------------------------------------------------------
+// Phase 4F — taxpayer identity & official DARF generation/handoff records
+// ---------------------------------------------------------------------------
+
+export interface TaxpayerIdentityRow {
+  id: string;
+  userId: string;
+  identityType: string;
+  /** Masked display form only (never the raw identifier). */
+  maskedIdentifier: string;
+  /** Opaque HMAC-SHA256 reference (never the raw identifier). */
+  secureReference: string;
+  identityAvailable: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface OfficialDarfGenerationRow {
+  id: string;
+  taxSubjectId: string;
+  taxObligationId: string | null;
+  taxPaymentAggregationId: string | null;
+  generationMode: string;
+  revenueCode: string;
+  competence: string;
+  dueDate: Date | null;
+  /** Exact decimal strings. */
+  principalAmount: string;
+  lateFeeAmount: string | null;
+  interestAmount: string | null;
+  totalAmount: string;
+  currency: string;
+  officialDocumentId: string | null;
+  officialReference: string | null;
+  sourceSystem: string;
+  status: string;
+  version: number;
+  fingerprint: string;
+  supersededById: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ITaxpayerIdentityRepository {
+  findByUserId(userId: string): Promise<TaxpayerIdentityRow | null>;
+  /** Upsert by user; stores only masked form + opaque reference (no raw PII). */
+  upsert(input: {
+    userId: string;
+    identityType: string;
+    maskedIdentifier: string;
+    secureReference: string;
+    identityAvailable: boolean;
+  }): Promise<TaxpayerIdentityRow>;
+}
+
+export interface IOfficialDarfGenerationRepository {
+  findById(id: string, taxSubjectId: string): Promise<OfficialDarfGenerationRow | null>;
+  list(
+    taxSubjectId: string,
+    filter?: { status?: string; obligationId?: string },
+  ): Promise<OfficialDarfGenerationRow[]>;
+  findLatestByIdentity(
+    taxSubjectId: string,
+    taxObligationId: string,
+    fingerprint: string,
+  ): Promise<OfficialDarfGenerationRow | null>;
+  /** Idempotent materialization; a changed fingerprint supersedes the previous record. */
+  materialize(input: {
+    taxSubjectId: string;
+    taxObligationId: string | null;
+    taxPaymentAggregationId: string | null;
+    generationMode: string;
+    revenueCode: string;
+    competence: string;
+    dueDate: Date | null;
+    principalAmount: string;
+    lateFeeAmount: string | null;
+    interestAmount: string | null;
+    totalAmount: string;
+    currency: string;
+    sourceSystem: string;
+    status: string;
+    fingerprint: string;
+  }): Promise<{
+    outcome: 'CREATED' | 'DUPLICATE' | 'SUPERSEDED';
+    record: OfficialDarfGenerationRow;
+  }>;
+}
+
 export interface ITaxPaymentAggregationRepository {
   findById(id: string, taxSubjectId: string): Promise<TaxPaymentAggregationRow | null>;
   findLatestForCompetence(

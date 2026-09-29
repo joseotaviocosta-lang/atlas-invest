@@ -55,3 +55,45 @@ export const SettleTaxPaymentAggregationBodySchema = z.object({
   sourceReference: z.string().min(1).max(255).optional(),
 });
 export type SettleTaxPaymentAggregationBody = z.infer<typeof SettleTaxPaymentAggregationBodySchema>;
+
+/**
+ * Phase 4F — official DARF handoff preparation. Optional payment date drives the
+ * 4D late-charge preview for overdue obligations. Atlas never generates the
+ * official document.
+ */
+export const DarfHandoffBodySchema = z.object({
+  paymentDate: civilDate.optional(),
+});
+export type DarfHandoffBody = z.infer<typeof DarfHandoffBodySchema>;
+
+export const DarfReadinessQuerySchema = z.object({
+  paymentDate: civilDate.optional(),
+});
+export type DarfReadinessQuery = z.infer<typeof DarfReadinessQuerySchema>;
+
+export const ListDarfGenerationsQuerySchema = z.object({
+  status: z
+    .enum([
+      'PREPARATION_READY',
+      'USER_ACTION_REQUIRED',
+      'GENERATING',
+      'GENERATED',
+      'FAILED',
+      'SUPERSEDED',
+      'EXPIRED',
+      'BLOCKED',
+    ])
+    .optional(),
+  obligationId: z.string().uuid().optional(),
+});
+export type ListDarfGenerationsQuery = z.infer<typeof ListDarfGenerationsQuerySchema>;
+
+/**
+ * Phase 4F — taxpayer identity boundary. The raw identifier is validated and
+ * immediately reduced to a masked form + opaque reference; it is never stored.
+ */
+export const RecordTaxpayerIdentityBodySchema = z.object({
+  identityType: z.enum(['CPF', 'CNPJ']),
+  identifier: z.string().min(11).max(20),
+});
+export type RecordTaxpayerIdentityBody = z.infer<typeof RecordTaxpayerIdentityBodySchema>;

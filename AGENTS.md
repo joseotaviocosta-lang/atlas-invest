@@ -1687,3 +1687,30 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Perguntas fiscais continuam `UNSUPPORTED_TAX` com provedor 0.
 10. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
     - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4/4B.5/4C.2/4D.2 permanecem inalterados e invioláveis.
+
+---
+
+## 57. Regras de Geração Oficial de DARF e Handoff (Fase 4F)
+
+1. **SÓ A RECEITA/SICALC PRODUZ O DARF OFICIAL (ADR-284):**
+   - Somente a saída do serviço oficial Receita Federal/Sicalc pode ser chamada de "DARF oficial". O Atlas nunca rotula um PDF próprio como oficial.
+2. **DARFPREPARATIONV2 É A ENTRADA; SEM RECÁLCULO (ADR-287):**
+   - A camada de geração/entrega consome `DarfPreparationV2`/elegibilidade (4E) e o ajuste 4D; é proibido recalcular base, perdas, SELIC ou carry-forward.
+3. **GERADO NÃO É PAGO (ADR-287):**
+   - `GENERATED`/`USER_ACTION_REQUIRED` nunca implica pagamento. Evidência de pagamento (`TaxPaymentEvidence`) permanece separada e obrigatória.
+4. **CAPTCHA/AUTENTICAÇÃO NUNCA SÃO BURLADOS (ADR-289):**
+   - Proibido OCR, resolução de captcha, replay de sessão, automação de DOM ou scraping de fluxo autenticado. Interação do usuário é `USER_ACTION_REQUIRED`.
+5. **ENDPOINTS DE NAVEGADOR NÃO SÃO API SUPORTADA (ADR-285):**
+   - Endpoints internos do Sicalc não são tratados como integração de produção. Não há prefill de URL fabricado.
+6. **PARIDADE OFICIAL FALHA FECHADO (ADR-290):**
+   - Quando houver recálculo oficial programático, divergência de principal/multa/juros/total ⇒ `BLOCKED` (`PARITY_MISMATCH`). Nesta fase, paridade programática é `N/A` (modo interativo).
+7. **IDENTIDADE FORA DO TAX-ENGINE (ADR-286):**
+   - CPF/CNPJ bruto nunca entra no `@atlas/tax-engine`, logs, telemetria, trace ou IA. Persistência apenas mascarada + referência HMAC.
+8. **DOCUMENTOS OFICIAIS SÃO PRIVADOS E IMUTÁVEIS (ADR-288/291):**
+   - Registros são append-only; sem sobrescrita. Documento oficial (quando existir) é privado, com SHA-256 e autorização.
+9. **SEM FAKE PDF/BARCODE/PIX/QR (ADR-284):**
+   - Proibido gerar PDF, código de barras, PIX, QR ou linha digitável sintéticos; sem auto-pagamento e sem integração bancária.
+10. **AI PERMANECE DESABILITADA PARA IMPOSTO:**
+    - Perguntas fiscais continuam `UNSUPPORTED_TAX` com provedor 0.
+11. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+    - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4/4B.5/4C.2/4D.2/4E permanecem inalterados e invioláveis.
