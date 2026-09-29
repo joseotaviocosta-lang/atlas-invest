@@ -15,3 +15,5 @@ export * from './tax-obligation.repository';
 export * from './tax-payment-evidence.repository';
 export * from './official-late-fee.repository';
 export * from './tax-interest-rate.repository';
+export * from './tax-carry-forward.repository';
+export * from './tax-payment-aggregation.repository';

@@ -24,3 +24,7 @@ export * from './federal-late-payment-registry';
 export * from './late-fee-authority-provider';
 export * from './tax-payment-adjustment.read-model';
 export * from './get-tax-payment-adjustment.use-case';
+export * from './minimum-darf-registry';
+export * from './tax-payment-summary.read-model';
+export * from './get-tax-payment-summary.use-case';
+export * from './settle-tax-payment-aggregation.use-case';

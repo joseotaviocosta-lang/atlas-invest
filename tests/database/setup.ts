@@ -40,7 +40,7 @@ export async function cleanDatabase(): Promise<void> {
   // it is seeded by migration and has no FK to `users`. Obligations and payment
   // evidence cascade from `users`.
   await prisma.$executeRawUnsafe(`
-    TRUNCATE TABLE "tax_payment_evidence", "tax_obligations", "ai_conversation_messages", "ai_conversations", "password_reset_tokens", "sessions", "transactions", "accounts", "portfolios", "assets", "institutions", "users" CASCADE;
+    TRUNCATE TABLE "tax_carry_forward_entries", "tax_payment_aggregations", "tax_payment_evidence", "tax_obligations", "ai_conversation_messages", "ai_conversations", "password_reset_tokens", "sessions", "transactions", "accounts", "portfolios", "assets", "institutions", "users" CASCADE;
   `);
 }
 

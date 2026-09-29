@@ -28,6 +28,8 @@ model User {
   fiiTaxEligibilityFacts  FiiTaxEligibilityFactRecord[]
   taxObligations          TaxObligationRecord[]
   taxPaymentEvidence      TaxPaymentEvidenceRecord[]
+  taxCarryForwardEntries  TaxCarryForwardEntry[]
+  taxPaymentAggregations  TaxPaymentAggregation[]
 
   @@map("users")
 }
@@ -394,6 +396,8 @@ model TaxObligationRecord {
   taxSubject    User                      @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
   deadlineEntry FederalTaxDeadlineEntry?  @relation(fields: [deadlineEntryId], references: [id])
   payments      TaxPaymentEvidenceRecord[]
+  carryForwardSources TaxCarryForwardEntry[]  @relation("CarryForwardSource")
+  paymentAggregations TaxPaymentAggregation[] @relation("AggregationCurrentObligation")
 
   @@unique([taxSubjectId, competence, liabilityFingerprint, revision], name: "tax_obligation_identity")
   @@index([taxSubjectId, competence])
@@ -468,4 +472,65 @@ model TaxInterestRateSnapshot {
   @@unique([indexName, referenceMonth, version], name: "tax_interest_rate_snapshot_identity")
   @@index([indexName, referenceMonth])
   @@map("tax_interest_rate_snapshots")
+}
+
+/// Phase 4E - deferred sub-minimum federal tax amounts (immutable facts).
+/// A below-minimum obligation produces an `OPEN` entry; it is consumed exactly
+/// once when the accumulated same-revenue-code total reaches the minimum
+/// (ADR-279, ADR-281). Corrections supersede the entry, never rewrite history.
+model TaxCarryForwardEntry {
+  id                      String    @id @default(uuid()) @db.Uuid
+  taxSubjectId            String    @map("tax_subject_id") @db.Uuid
+  sourceObligationId      String    @map("source_obligation_id") @db.Uuid
+  sourceCompetence        String    @map("source_competence") @db.Char(7)
+  revenueCode             String    @map("revenue_code") @db.VarChar(10)
+  currency                String    @db.VarChar(3)
+  amount                  Decimal   @db.Decimal(38, 18)
+  status                  String    @db.VarChar(20)
+  targetCompetence        String?   @map("target_competence") @db.Char(7)
+  consumedByAggregationId String?   @map("consumed_by_aggregation_id") @db.Uuid
+  consumedAt              DateTime? @map("consumed_at") @db.Timestamptz(6)
+  ruleId                  String    @map("rule_id") @db.VarChar(100)
+  ruleVersion             String    @map("rule_version") @db.VarChar(30)
+  fingerprint             String    @db.VarChar(64)
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  taxSubject            User                  @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+  sourceObligation      TaxObligationRecord   @relation("CarryForwardSource", fields: [sourceObligationId], references: [id], onDelete: Cascade)
+  consumedByAggregation TaxPaymentAggregation? @relation("AggregationConsumedEntries", fields: [consumedByAggregationId], references: [id])
+
+  @@unique([sourceObligationId, ruleId, ruleVersion], name: "tax_carry_forward_source_identity")
+  @@index([taxSubjectId, revenueCode, status])
+  @@index([taxSubjectId, revenueCode, targetCompetence])
+  @@map("tax_carry_forward_entries")
+}
+
+/// Phase 4E - derived payment aggregation unit (current competence + open
+/// same-code carry-forward). Never recalculates tax (ADR-279, ADR-280).
+model TaxPaymentAggregation {
+  id                  String    @id @default(uuid()) @db.Uuid
+  taxSubjectId        String    @map("tax_subject_id") @db.Uuid
+  revenueCode         String    @map("revenue_code") @db.VarChar(10)
+  targetCompetence    String    @map("target_competence") @db.Char(7)
+  currency            String    @db.VarChar(3)
+  currentAmount       Decimal   @map("current_amount") @db.Decimal(38, 18)
+  carryForwardAmount  Decimal   @map("carry_forward_amount") @db.Decimal(38, 18)
+  totalPayable        Decimal   @map("total_payable") @db.Decimal(38, 18)
+  minimumThreshold    Decimal   @map("minimum_threshold") @db.Decimal(38, 18)
+  sourceEntryIds      Json      @map("source_entry_ids")
+  currentObligationId String?   @map("current_obligation_id") @db.Uuid
+  dueDate             DateTime? @map("due_date") @db.Date
+  status              String    @db.VarChar(20)
+  ruleId              String    @map("rule_id") @db.VarChar(100)
+  ruleVersion         String    @map("rule_version") @db.VarChar(30)
+  fingerprint         String    @db.VarChar(64)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  taxSubject        User                   @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+  currentObligation TaxObligationRecord?   @relation("AggregationCurrentObligation", fields: [currentObligationId], references: [id])
+  consumedEntries   TaxCarryForwardEntry[] @relation("AggregationConsumedEntries")
+
+  @@unique([taxSubjectId, revenueCode, targetCompetence, fingerprint], name: "tax_payment_aggregation_identity")
+  @@index([taxSubjectId, revenueCode, targetCompetence])
+  @@map("tax_payment_aggregations")
 }

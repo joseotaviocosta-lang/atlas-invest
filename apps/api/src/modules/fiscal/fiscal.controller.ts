@@ -31,6 +31,8 @@ import {
 } from '../../application/fiscal/tax-obligation-query.use-case';
 import { RecordTaxPaymentUseCase } from '../../application/fiscal/record-tax-payment.use-case';
 import { GetTaxPaymentAdjustmentUseCase } from '../../application/fiscal/get-tax-payment-adjustment.use-case';
+import { GetTaxPaymentSummaryUseCase } from '../../application/fiscal/get-tax-payment-summary.use-case';
+import { SettleTaxPaymentAggregationUseCase } from '../../application/fiscal/settle-tax-payment-aggregation.use-case';
 import { ZodValidationPipe } from '../../common/pipes';
 import {
   AdjustmentQuery,
@@ -39,6 +41,8 @@ import {
   ListTaxObligationsQuerySchema,
   RecordTaxPaymentBody,
   RecordTaxPaymentBodySchema,
+  SettleTaxPaymentAggregationBody,
+  SettleTaxPaymentAggregationBodySchema,
 } from './dto/tax-obligation.dto';
 import {
   RecordFiiMetadataBody,
@@ -90,6 +94,10 @@ export class FiscalController {
     private readonly recordTaxPaymentUseCase: RecordTaxPaymentUseCase,
     @Inject(GetTaxPaymentAdjustmentUseCase)
     private readonly getTaxPaymentAdjustmentUseCase: GetTaxPaymentAdjustmentUseCase,
+    @Inject(GetTaxPaymentSummaryUseCase)
+    private readonly getTaxPaymentSummaryUseCase: GetTaxPaymentSummaryUseCase,
+    @Inject(SettleTaxPaymentAggregationUseCase)
+    private readonly settleTaxPaymentAggregationUseCase: SettleTaxPaymentAggregationUseCase,
   ) {}
 
   @Get('monthly/:competence')
@@ -158,6 +166,26 @@ export class FiscalController {
     return { data };
   }
 
+  @Get('monthly/:competence/payment-summary')
+  @ApiOperation({
+    summary:
+      'Minimum-DARF payment eligibility and aggregation for a competence: current amount, carry-forward amount, total payable, minimum threshold, source breakdown and due date. Below-minimum amounts are deferred to the same revenue code (never discarded). No official DARF is generated.',
+  })
+  @ApiParam({ name: 'competence', description: 'Civil competence in canonical YYYY-MM format' })
+  @ApiResponse({ status: 200, description: 'Payment eligibility summary' })
+  @ApiResponse({ status: 400, description: 'Invalid competence' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  async getTaxPaymentSummary(
+    @Param('competence') competence: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.getTaxPaymentSummaryUseCase.forCompetence({
+      userId: principal.userId,
+      competence,
+    });
+    return { data };
+  }
+
   @Get('obligations')
   @ApiOperation({
     summary: 'List persisted tax obligations for the authenticated tax subject.',
@@ -203,6 +231,53 @@ export class FiscalController {
         paymentDate: query.paymentDate,
       }),
     };
+  }
+
+  @Get('obligations/:id/payment-eligibility')
+  @ApiOperation({
+    summary:
+      'Minimum-DARF payment eligibility for a single obligation: current amount, carry-forward amount, total payable, minimum threshold and due date. Below-minimum amounts are deferred to the same revenue code.',
+  })
+  @ApiResponse({ status: 200, description: 'Payment eligibility' })
+  @ApiResponse({ status: 404, description: 'Tax obligation not found' })
+  async getTaxPaymentEligibility(
+    @Param('id') id: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    return {
+      data: await this.getTaxPaymentSummaryUseCase.forObligation({
+        userId: principal.userId,
+        obligationId: id,
+      }),
+    };
+  }
+
+  @Post('payment-aggregations/:id/payments')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Settle an aggregated payable amount (current + carry-forward) with exact MANUAL_CONFIRMED evidence. Consumes the source carry-forward entries exactly once. Never generates an official DARF or auto-pays.',
+  })
+  @ApiResponse({ status: 200, description: 'Settled (SETTLED/ALREADY_SETTLED)' })
+  @ApiResponse({ status: 400, description: 'Invalid payment or not payable' })
+  @ApiResponse({ status: 404, description: 'Aggregation not found' })
+  @ApiResponse({ status: 409, description: 'Conflicting payment or carry-forward consumption' })
+  async settleTaxPaymentAggregation(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(SettleTaxPaymentAggregationBodySchema))
+    body: SettleTaxPaymentAggregationBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.settleTaxPaymentAggregationUseCase.execute({
+      userId: principal.userId,
+      aggregationId: id,
+      paidAt: body.paidAt,
+      amount: body.amount,
+      currency: body.currency,
+      sourceType: body.sourceType,
+      sourceReference: body.sourceReference ?? null,
+    });
+    return { data };
   }
 
   @Post('obligations/:id/payments')

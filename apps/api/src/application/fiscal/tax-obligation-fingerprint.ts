@@ -41,6 +41,15 @@ export function fingerprintLiability(input: {
   return createHash('sha256').update(payload, 'utf8').digest('hex');
 }
 
+/**
+ * Phase 4E — sha256 hash of a canonical domain fingerprint (carry-forward
+ * entry / payment aggregation). The canonical fingerprint is computed purely in
+ * `@atlas/tax-engine`; the persisted identity is its sha256 hex digest.
+ */
+export function hashCanonicalFingerprint(canonical: string): string {
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
+}
+
 /** Deterministic fingerprint for manual payment evidence idempotency. */
 export function fingerprintPaymentEvidence(input: {
   obligationId: string;

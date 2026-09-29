@@ -112,6 +112,10 @@ export class TaxObligationRepository implements ITaxObligationRepository {
     row: TaxObligationRow,
     input: Parameters<ITaxObligationRepository['materialize']>[0],
   ): boolean {
+    // Operational payment status (OPEN → PAID) is intentionally NOT part of the
+    // immutable liability binding: re-materializing an unchanged liability after
+    // payment must return the existing revision (DUPLICATE) instead of creating
+    // a spurious revision that would "un-pay" the obligation.
     return (
       row.taxBucket === input.taxBucket &&
       row.revenueCode === input.revenueCode &&
@@ -119,7 +123,6 @@ export class TaxObligationRepository implements ITaxObligationRepository {
       row.principalAmount === input.principalAmount &&
       row.currency === input.currency &&
       isoDate(row.dueDate) === isoDate(input.dueDate) &&
-      row.status === input.status &&
       row.reasonCode === input.reasonCode &&
       row.darfReadiness === input.darfReadiness &&
       row.darfReadinessReason === input.darfReadinessReason

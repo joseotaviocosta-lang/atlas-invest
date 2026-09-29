@@ -662,3 +662,112 @@ export interface ITaxInterestRateRepository {
     version: number;
   }): Promise<{ outcome: 'CREATED' | 'DUPLICATE'; record: TaxInterestRateRow }>;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4E — minimum DARF carry-forward & payment aggregation
+// ---------------------------------------------------------------------------
+
+export type CarryForwardWriteOutcome = 'CREATED' | 'DUPLICATE';
+export type AggregationWriteOutcome = 'CREATED' | 'DUPLICATE';
+export type CarryForwardConsumptionOutcome = 'CONSUMED' | 'ALREADY_CONSUMED' | 'NOT_FOUND';
+
+export interface TaxCarryForwardEntryRow {
+  id: string;
+  taxSubjectId: string;
+  sourceObligationId: string;
+  sourceCompetence: string;
+  revenueCode: string;
+  currency: string;
+  /** Exact decimal string. */
+  amount: string;
+  status: string;
+  targetCompetence: string | null;
+  consumedByAggregationId: string | null;
+  consumedAt: Date | null;
+  ruleId: string;
+  ruleVersion: string;
+  fingerprint: string;
+  createdAt: Date;
+}
+
+export interface TaxPaymentAggregationRow {
+  id: string;
+  taxSubjectId: string;
+  revenueCode: string;
+  targetCompetence: string;
+  currency: string;
+  /** Exact decimal strings. */
+  currentAmount: string;
+  carryForwardAmount: string;
+  totalPayable: string;
+  minimumThreshold: string;
+  sourceEntryIds: string[];
+  currentObligationId: string | null;
+  dueDate: Date | null;
+  status: string;
+  ruleId: string;
+  ruleVersion: string;
+  fingerprint: string;
+  createdAt: Date;
+}
+
+export interface ITaxCarryForwardRepository {
+  findById(id: string, taxSubjectId: string): Promise<TaxCarryForwardEntryRow | null>;
+  /** OPEN entries of a revenue code targeted at or before `competence`. */
+  listOpenForCompetence(
+    taxSubjectId: string,
+    revenueCode: string,
+    competence: string,
+  ): Promise<TaxCarryForwardEntryRow[]>;
+  listBySubject(
+    taxSubjectId: string,
+    filter?: { revenueCode?: string },
+  ): Promise<TaxCarryForwardEntryRow[]>;
+  /** Idempotent by source identity `(sourceObligationId, ruleId, ruleVersion)`. */
+  createEntry(input: {
+    taxSubjectId: string;
+    sourceObligationId: string;
+    sourceCompetence: string;
+    revenueCode: string;
+    currency: string;
+    amount: string;
+    targetCompetence: string | null;
+    ruleId: string;
+    ruleVersion: string;
+    fingerprint: string;
+  }): Promise<{ outcome: CarryForwardWriteOutcome; record: TaxCarryForwardEntryRow }>;
+  /** Explicit, exactly-once consumption inside a single transaction. */
+  consumeEntries(input: {
+    taxSubjectId: string;
+    entryIds: readonly string[];
+    aggregationId: string;
+    consumedAt: Date;
+  }): Promise<{ outcome: CarryForwardConsumptionOutcome; consumed: number }>;
+  markSuperseded(id: string, taxSubjectId: string): Promise<TaxCarryForwardEntryRow | null>;
+}
+
+export interface ITaxPaymentAggregationRepository {
+  findById(id: string, taxSubjectId: string): Promise<TaxPaymentAggregationRow | null>;
+  findLatestForCompetence(
+    taxSubjectId: string,
+    revenueCode: string,
+    competence: string,
+  ): Promise<TaxPaymentAggregationRow | null>;
+  create(input: {
+    taxSubjectId: string;
+    revenueCode: string;
+    targetCompetence: string;
+    currency: string;
+    currentAmount: string;
+    carryForwardAmount: string;
+    totalPayable: string;
+    minimumThreshold: string;
+    sourceEntryIds: readonly string[];
+    currentObligationId: string | null;
+    dueDate: Date | null;
+    status: string;
+    ruleId: string;
+    ruleVersion: string;
+    fingerprint: string;
+  }): Promise<{ outcome: AggregationWriteOutcome; record: TaxPaymentAggregationRow }>;
+}

@@ -74,6 +74,23 @@ export function fiscalCompetenceFromDate(date: LocalDate): FiscalCompetence {
   return Object.freeze({ year: date.year, month: date.month, value: `${date.year}-${month}` });
 }
 
+/**
+ * Immediately subsequent civil competence (`YYYY-MM` → next calendar month).
+ * Returns `null` for malformed input. Used by the minimum-DARF carry-forward
+ * rule ("período de apuração subsequente").
+ */
+export function nextFiscalCompetence(competence: string): string | null {
+  const parsed = parseFiscalCompetence(competence);
+  if (!parsed) return null;
+  let year = parsed.year;
+  let month = parsed.month + 1;
+  if (month > 12) {
+    month = 1;
+    year += 1;
+  }
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}`;
+}
+
 /** Compares two competences chronologically. */
 export function compareFiscalCompetence(a: FiscalCompetence, b: FiscalCompetence): -1 | 0 | 1 {
   if (a.value < b.value) return -1;

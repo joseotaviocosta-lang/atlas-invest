@@ -42,3 +42,16 @@ export const AdjustmentQuerySchema = z.object({
   paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 export type AdjustmentQuery = z.infer<typeof AdjustmentQuerySchema>;
+
+/**
+ * Phase 4E — settlement of an aggregated payable amount (current + carry
+ * forward). Exact full payment only; `MANUAL_CONFIRMED` is the only source.
+ */
+export const SettleTaxPaymentAggregationBodySchema = z.object({
+  paidAt: civilDate,
+  amount: decimal,
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  sourceType: z.enum(['MANUAL_CONFIRMED']),
+  sourceReference: z.string().min(1).max(255).optional(),
+});
+export type SettleTaxPaymentAggregationBody = z.infer<typeof SettleTaxPaymentAggregationBodySchema>;

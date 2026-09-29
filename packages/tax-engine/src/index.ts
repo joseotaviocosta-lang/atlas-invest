@@ -63,6 +63,7 @@ export {
   fiscalCompetenceFromString,
   fiscalCompetenceFromDate,
   compareFiscalCompetence,
+  nextFiscalCompetence,
   fiscalCompetenceRange,
   isWithinCompetence,
 } from './competence';
@@ -218,3 +219,42 @@ export type {
   TaxPaymentAdjustment,
   BuildTaxPaymentAdjustmentInput,
 } from './late-payment';
+
+// --- Phase 4E: minimum DARF & same-revenue-code carry-forward ---
+export {
+  MINIMUM_DARF_RULE_STATUSES,
+  MINIMUM_DARF_COMPARISON,
+  MINIMUM_DARF_DEFERRED_DUE_DATE_POLICY,
+  MINIMUM_DARF_RESOLUTION_OUTCOMES,
+  DARF_PAYMENT_ELIGIBILITY_STATUSES,
+  DARF_PAYMENT_ELIGIBILITY_REASON_CODES,
+  resolveMinimumDarfRule,
+  isBelowMinimumDarf,
+  computeDarfEligibilityFingerprint,
+  buildDarfPaymentEligibility,
+} from './minimum-darf';
+export type {
+  MinimumDarfRuleStatus,
+  MinimumDarfComparison,
+  MinimumDarfDeferredDueDatePolicy,
+  MinimumDarfRuleSet,
+  MinimumDarfResolutionOutcome,
+  MinimumDarfRuleResolution,
+  DarfPaymentEligibilityStatus,
+  DarfPaymentEligibilityReasonCode,
+  DarfEligibilitySourceBreakdown,
+  DarfPaymentEligibility,
+  CarryForwardCandidate,
+  BuildDarfPaymentEligibilityInput,
+} from './minimum-darf';
+
+export {
+  TAX_CARRY_FORWARD_STATUSES,
+  computeCarryForwardFingerprint,
+  buildCarryForwardEntry,
+  isConsumableCarryForwardEntry,
+} from './carry-forward';
+export type { TaxCarryForwardStatus, TaxCarryForwardEntry } from './carry-forward';
+
+export { computeAggregationFingerprint, buildTaxPaymentAggregation } from './payment-aggregation';
+export type { TaxPaymentAggregation, AggregationFingerprintInput } from './payment-aggregation';

@@ -1661,3 +1661,29 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Perguntas fiscais continuam `UNSUPPORTED_TAX` com provedor 0.
 10. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
     - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4/4B.5/4C.2 permanecem inalterados e invioláveis.
+
+---
+
+## 56. Regras de DARF Mínimo e Carry-Forward (Fase 4E)
+
+1. **MINIMUM-DARF NUNCA ALTERA A RESPONSABILIDADE TRIBUTÁRIA (ADR-278/279):**
+   - A lógica de mínimo DARF afeta exclusivamente elegibilidade de pagamento e agregação.
+   - `MonthlyTaxLiability`, `TaxObligation.principalAmount` e `TaxPaymentAdjustment.updatedAmount` permanecem inalterados.
+2. **VALORES ABAIXO DO MÍNIMO NUNCA SÃO DESCARTADOS NEM ZERADOS (ADR-279):**
+   - Um valor estritamente inferior a R$ 10,00 gera um fato `TaxCarryForwardEntry` (`OPEN`); nunca é marcado `PAID` e nunca é reescrito para `0`.
+3. **CARRY-FORWARD É EXPLÍCITO E IMUTÁVEL (ADR-281):**
+   - Entradas são fatos históricos imutáveis; correções geram `SUPERSEDED`; não há `delete`. Re-materialização é idempotente por `(sourceObligationId, ruleId, ruleVersion)`.
+4. **AGREGAÇÃO CRUZADA ENTRE CÓDIGOS DE RECEITA É PROIBIDA (ADR-280):**
+   - O valor abaixo do mínimo só é adicionado ao **mesmo código de receita** ("de mesmo código"). Código divergente ⇒ `BLOCKED` (`CROSS_REVENUE_CODE_NOT_ALLOWED`); moeda divergente ⇒ `BLOCKED` (`CURRENCY_MISMATCH`); sem FX.
+5. **CONSUMO É EXATAMENTE-UMA-VEZ (ADR-281):**
+   - Apenas entradas `OPEN` participam; o consumo é atômico (all-or-nothing) e marca `CONSUMED` + `consumedByAggregationId` + `consumedAt`. Concorrência não consome a mesma entrada duas vezes.
+6. **VENCIMENTO E ACÉSCIMOS (ADR-282):**
+   - O montante acumulado vence no prazo do **último** período de apuração. Valores validamente adiados **não** acumulam multa/juros; acréscimos só conforme regra verificada (4D). Pagamento tardio do montante agregado falha fechado sem snapshot oficial.
+7. **AUSÊNCIA DE REGRA/MÍNIMO FALHA FECHADO (ADR-278):**
+   - Sem `MinimumDarfRuleSet` `VERIFIED` efetiva ⇒ `MISSING_MINIMUM_RULE` / `BLOCKED`; ambiguidade ⇒ `AMBIGUOUS_MINIMUM_RULE`. Nenhum valor é estimado.
+8. **GERAÇÃO DE DARF OFICIAL PERMANECE FORA DE ESCOPO (ADR-283):**
+   - `DarfPreparationV2` é aditivo e expõe apenas dados estruturados; proibido barcode, QR, PIX, linha digitável, número de documento, auto-pagamento ou integração bancária.
+9. **AI PERMANECE DESABILITADA PARA IMPOSTO:**
+   - Perguntas fiscais continuam `UNSUPPORTED_TAX` com provedor 0.
+10. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+    - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4/4B.5/4C.2/4D.2 permanecem inalterados e invioláveis.

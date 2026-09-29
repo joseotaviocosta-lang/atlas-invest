@@ -16,6 +16,8 @@ import {
   TaxPaymentEvidenceRepository,
   OfficialLateFeeRepository,
   TaxInterestRateRepository,
+  TaxCarryForwardRepository,
+  TaxPaymentAggregationRepository,
 } from '@atlas/database';
 import {
   PRISMA_CLIENT,
@@ -34,6 +36,8 @@ import {
   TAX_PAYMENT_EVIDENCE_REPOSITORY,
   OFFICIAL_LATE_FEE_REPOSITORY,
   TAX_INTEREST_RATE_REPOSITORY,
+  TAX_CARRY_FORWARD_REPOSITORY,
+  TAX_PAYMENT_AGGREGATION_REPOSITORY,
 } from './tokens';
 
 type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
@@ -120,6 +124,16 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
       useFactory: (prisma: AtlasPrismaClient) => new TaxInterestRateRepository(prisma),
       inject: [PRISMA_CLIENT],
     },
+    {
+      provide: TAX_CARRY_FORWARD_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new TaxCarryForwardRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
+    {
+      provide: TAX_PAYMENT_AGGREGATION_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new TaxPaymentAggregationRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
   ],
   exports: [
     PRISMA_CLIENT,
@@ -138,6 +152,8 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     TAX_PAYMENT_EVIDENCE_REPOSITORY,
     OFFICIAL_LATE_FEE_REPOSITORY,
     TAX_INTEREST_RATE_REPOSITORY,
+    TAX_CARRY_FORWARD_REPOSITORY,
+    TAX_PAYMENT_AGGREGATION_REPOSITORY,
   ],
 })
 export class DatabaseModule {}

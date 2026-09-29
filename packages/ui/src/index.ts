@@ -32,6 +32,7 @@ export * from './view-models/fiscal-monthly.view-model';
 export * from './view-models/fiscal-liability.view-model';
 export * from './view-models/fiscal-input-readiness.view-model';
 export * from './view-models/fiscal-obligations.view-model';
+export * from './view-models/payment-eligibility.view-model';
 
 import { colors } from './tokens/colors';
 import { spacing } from './tokens/spacing';
