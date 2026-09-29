@@ -24,7 +24,19 @@ import {
   ResolveTaxInputConflictUseCase,
   type TaxInputEntity,
 } from '../../application/fiscal/resolve-tax-input-conflict.use-case';
+import { MaterializeTaxObligationUseCase } from '../../application/fiscal/materialize-tax-obligation.use-case';
+import {
+  GetTaxObligationUseCase,
+  ListTaxObligationsUseCase,
+} from '../../application/fiscal/tax-obligation-query.use-case';
+import { RecordTaxPaymentUseCase } from '../../application/fiscal/record-tax-payment.use-case';
 import { ZodValidationPipe } from '../../common/pipes';
+import {
+  ListTaxObligationsQuery,
+  ListTaxObligationsQuerySchema,
+  RecordTaxPaymentBody,
+  RecordTaxPaymentBodySchema,
+} from './dto/tax-obligation.dto';
 import {
   RecordFiiMetadataBody,
   RecordFiiMetadataBodySchema,
@@ -65,6 +77,14 @@ export class FiscalController {
     private readonly listTaxInputsUseCase: ListTaxInputsUseCase,
     @Inject(ResolveTaxInputConflictUseCase)
     private readonly resolveTaxInputConflictUseCase: ResolveTaxInputConflictUseCase,
+    @Inject(MaterializeTaxObligationUseCase)
+    private readonly materializeTaxObligationUseCase: MaterializeTaxObligationUseCase,
+    @Inject(GetTaxObligationUseCase)
+    private readonly getTaxObligationUseCase: GetTaxObligationUseCase,
+    @Inject(ListTaxObligationsUseCase)
+    private readonly listTaxObligationsUseCase: ListTaxObligationsUseCase,
+    @Inject(RecordTaxPaymentUseCase)
+    private readonly recordTaxPaymentUseCase: RecordTaxPaymentUseCase,
   ) {}
 
   @Get('monthly/:competence')
@@ -106,6 +126,84 @@ export class FiscalController {
     const data = await this.getMonthlyTaxLiabilityUseCase.execute({
       userId: principal.userId,
       competence,
+    });
+    return { data };
+  }
+
+  @Get('monthly/:competence/obligation')
+  @ApiOperation({
+    summary:
+      'Materialize (idempotent) and return the operational TaxObligation for a competence using the official direct deadline registry. Never recalculates tax; fails closed when no official deadline entry exists.',
+  })
+  @ApiParam({ name: 'competence', description: 'Civil competence in canonical YYYY-MM format' })
+  @ApiResponse({
+    status: 200,
+    description: 'Tax obligation (may be BLOCKED/PROVISIONAL/OPEN/NO_PAYMENT_DUE)',
+  })
+  @ApiResponse({ status: 400, description: 'Invalid competence' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  async getMonthlyTaxObligation(
+    @Param('competence') competence: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.materializeTaxObligationUseCase.execute({
+      userId: principal.userId,
+      competence,
+    });
+    return { data };
+  }
+
+  @Get('obligations')
+  @ApiOperation({
+    summary: 'List persisted tax obligations for the authenticated tax subject.',
+  })
+  @ApiResponse({ status: 200, description: 'Tax obligations' })
+  async listTaxObligations(
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Query(new ZodValidationPipe(ListTaxObligationsQuerySchema)) query: ListTaxObligationsQuery,
+  ) {
+    return {
+      data: await this.listTaxObligationsUseCase.execute({ userId: principal.userId, ...query }),
+    };
+  }
+
+  @Get('obligations/:id')
+  @ApiOperation({ summary: 'Get a persisted tax obligation and its manual payment evidence.' })
+  @ApiResponse({ status: 200, description: 'Tax obligation' })
+  @ApiResponse({ status: 404, description: 'Tax obligation not found' })
+  async getTaxObligation(
+    @Param('id') id: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    return { data: await this.getTaxObligationUseCase.execute({ userId: principal.userId, id }) };
+  }
+
+  @Post('obligations/:id/payments')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Record MANUAL_CONFIRMED payment evidence for a tax obligation. Exact decimal; full payment only. Never generates an official DARF or auto-pays.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Recorded (CREATED/DUPLICATE) and obligation marked PAID',
+  })
+  @ApiResponse({ status: 400, description: 'Invalid payment evidence or obligation not payable' })
+  @ApiResponse({ status: 404, description: 'Tax obligation not found' })
+  @ApiResponse({ status: 409, description: 'Conflicting payment evidence for the same source' })
+  async recordTaxPayment(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(RecordTaxPaymentBodySchema)) body: RecordTaxPaymentBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.recordTaxPaymentUseCase.execute({
+      userId: principal.userId,
+      obligationId: id,
+      paidAt: body.paidAt,
+      amount: body.amount,
+      currency: body.currency,
+      sourceType: body.sourceType,
+      sourceReference: body.sourceReference ?? null,
     });
     return { data };
   }

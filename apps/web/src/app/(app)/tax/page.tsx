@@ -19,6 +19,7 @@ import {
 } from '@atlas/ui';
 import { Card, Skeleton, ErrorState, EmptyState, PageHeader, SectionHeader } from '@/components/ui';
 import { TaxInputEntry } from '@/components/fiscal/TaxInputEntry';
+import { TaxObligationSection } from '@/components/fiscal/TaxObligationSection';
 
 function currentCompetence(): string {
   const now = new Date();
@@ -487,6 +488,8 @@ function FiscalContent() {
               </Card>
             </div>
           )}
+
+          <TaxObligationSection competence={competence} />
 
           <TaxInputEntry
             competence={competence}

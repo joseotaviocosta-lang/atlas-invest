@@ -39,3 +39,11 @@ export class UnsupportedTaxOperationError extends TaxEngineError {
     this.name = 'UnsupportedTaxOperationError';
   }
 }
+
+/** Raised when a federal tax deadline entry is structurally invalid (ADR-263). */
+export class InvalidTaxDeadlineEntryError extends TaxEngineError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidTaxDeadlineEntryError';
+  }
+}

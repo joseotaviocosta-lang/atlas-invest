@@ -31,8 +31,20 @@ import {
 } from './fiscal/record-tax-inputs.use-case';
 import { ListTaxInputsUseCase } from './fiscal/list-tax-inputs.use-case';
 import { ResolveTaxInputConflictUseCase } from './fiscal/resolve-tax-input-conflict.use-case';
+import { MaterializeTaxObligationUseCase } from './fiscal/materialize-tax-obligation.use-case';
+import {
+  GetTaxObligationUseCase,
+  ListTaxObligationsUseCase,
+} from './fiscal/tax-obligation-query.use-case';
+import { RecordTaxPaymentUseCase } from './fiscal/record-tax-payment.use-case';
+import { SystemFiscalClock } from './fiscal/fiscal-clock';
 import { EMPTY_TAX_INPUT_ADAPTER_REGISTRY } from './fiscal/tax-input-source-adapter';
-import { TAX_INPUT_ADAPTER_REGISTRY, TAX_INPUT_PROVIDER, TAX_RULE_REGISTRY } from './fiscal/tokens';
+import {
+  FISCAL_CLOCK,
+  TAX_INPUT_ADAPTER_REGISTRY,
+  TAX_INPUT_PROVIDER,
+  TAX_RULE_REGISTRY,
+} from './fiscal/tokens';
 import { PRODUCTION_TAX_RULE_REGISTRY } from './fiscal/fiscal-rule-registry';
 import { GetPortfolioAiGroundingContextUseCase } from './ai/get-portfolio-ai-grounding-context.use-case';
 import { GetPortfolioAssetAiGroundingContextUseCase } from './ai/get-portfolio-asset-ai-grounding-context.use-case';
@@ -76,6 +88,10 @@ const USE_CASES = [
   RecordFiiTaxEligibilityFactsUseCase,
   ListTaxInputsUseCase,
   ResolveTaxInputConflictUseCase,
+  MaterializeTaxObligationUseCase,
+  GetTaxObligationUseCase,
+  ListTaxObligationsUseCase,
+  RecordTaxPaymentUseCase,
   GetPortfolioAiGroundingContextUseCase,
   GetPortfolioAssetAiGroundingContextUseCase,
   GetPortfolioTimelineAiGroundingContextUseCase,
@@ -100,7 +116,14 @@ const USE_CASES = [
     { provide: TAX_RULE_REGISTRY, useValue: PRODUCTION_TAX_RULE_REGISTRY },
     { provide: TAX_INPUT_PROVIDER, useClass: PersistedTaxInputProvider },
     { provide: TAX_INPUT_ADAPTER_REGISTRY, useValue: EMPTY_TAX_INPUT_ADAPTER_REGISTRY },
+    { provide: FISCAL_CLOCK, useClass: SystemFiscalClock },
   ],
-  exports: [...USE_CASES, TAX_RULE_REGISTRY, TAX_INPUT_PROVIDER, TAX_INPUT_ADAPTER_REGISTRY],
+  exports: [
+    ...USE_CASES,
+    TAX_RULE_REGISTRY,
+    TAX_INPUT_PROVIDER,
+    TAX_INPUT_ADAPTER_REGISTRY,
+    FISCAL_CLOCK,
+  ],
 })
 export class ApplicationModule {}

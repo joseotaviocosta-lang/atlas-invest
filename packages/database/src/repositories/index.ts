@@ -10,3 +10,6 @@ export * from './password-reset-token.repository';
 export * from './ai-conversation.repository';
 export * from './market-intelligence.repository';
 export * from './tax-input.repository';
+export * from './federal-tax-deadline.repository';
+export * from './tax-obligation.repository';
+export * from './tax-payment-evidence.repository';

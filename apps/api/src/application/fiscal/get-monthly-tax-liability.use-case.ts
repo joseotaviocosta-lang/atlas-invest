@@ -8,6 +8,7 @@ import {
   replayMonthlyTaxLiability,
   type CanonicalRealizedResult,
   type FiscalEvent,
+  type MonthlyTaxLiability,
   type TaxRuleSet,
   type TaxWithholdingCredit,
 } from '@atlas/tax-engine';
@@ -53,6 +54,20 @@ export class GetMonthlyTaxLiabilityUseCase {
     userId: string;
     competence: string;
   }): Promise<MonthlyTaxLiabilityReadModel> {
+    const requested = await this.compute(params);
+    const competence = requested.competence.value;
+    const inProgress = competence >= currentCompetence();
+    const readModel = mapMonthlyTaxLiabilityToReadModel(requested);
+    return inProgress && !readModel.limitations.includes('IN_PROGRESS')
+      ? { ...readModel, limitations: [...readModel.limitations, 'IN_PROGRESS'] }
+      : readModel;
+  }
+
+  /**
+   * Computes the canonical domain MonthlyTaxLiability (Phase 4C.2 consumes this
+   * to materialize operational tax obligations without recalculating tax).
+   */
+  async compute(params: { userId: string; competence: string }): Promise<MonthlyTaxLiability> {
     const competence = parseFiscalCompetence(params.competence);
     if (!competence) {
       throw new BadRequestException({
@@ -160,10 +175,6 @@ export class GetMonthlyTaxLiabilityUseCase {
       });
     }
 
-    const inProgress = competence.value >= currentCompetence();
-    const readModel = mapMonthlyTaxLiabilityToReadModel(requested);
-    return inProgress && !readModel.limitations.includes('IN_PROGRESS')
-      ? { ...readModel, limitations: [...readModel.limitations, 'IN_PROGRESS'] }
-      : readModel;
+    return requested;
   }
 }

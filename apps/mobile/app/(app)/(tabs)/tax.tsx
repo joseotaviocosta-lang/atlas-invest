@@ -7,12 +7,15 @@ import {
   mapToFiscalMonthlyViewModel,
   mapToMonthlyTaxLiabilityViewModel,
   mapToTaxInputReadinessViewModel,
+  mapToTaxObligationViewModel,
   fiscalMonthlyQueryKey,
   taxLiabilityQueryKey,
   taxInputReadinessQueryKey,
+  taxObligationQueryKey,
   type RawFiscalMonthlyState,
   type RawMonthlyTaxLiability,
   type RawTaxInputReadiness,
+  type RawTaxObligation,
 } from '@atlas/ui';
 import {
   Screen,
@@ -79,6 +82,21 @@ export default function TaxScreen() {
   const inputReadiness = useMemo(
     () => mapToTaxInputReadinessViewModel(inputReadinessData ?? null),
     [inputReadinessData],
+  );
+
+  const { data: obligationData } = useQuery({
+    queryKey: taxObligationQueryKey(competence),
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: RawTaxObligation }>(
+        `/api/v1/fiscal/monthly/${competence}/obligation`,
+      );
+      return res.data;
+    },
+  });
+
+  const obligation = useMemo(
+    () => mapToTaxObligationViewModel(obligationData ?? null),
+    [obligationData],
   );
 
   return (
@@ -282,6 +300,32 @@ export default function TaxScreen() {
                 {inputReadiness.issueLabels.length > 0 && (
                   <Text style={styles.warning}>
                     Pendências: {inputReadiness.issueLabels.join(' · ')}
+                  </Text>
+                )}
+              </Card>
+            )}
+
+            {obligation && (
+              <Card>
+                <Text style={styles.sectionTitle}>Obrigações</Text>
+                <View style={styles.categoryHeader}>
+                  <Text style={styles.categoryTitle}>
+                    {obligation.competenceLabel} · {obligation.bucketLabel}
+                  </Text>
+                  <Text style={[styles.categoryCapability, { color: obligation.statusColor }]}>
+                    {obligation.statusLabel}
+                  </Text>
+                </View>
+                <Text style={styles.meta}>Valor principal: {obligation.principalFormatted}</Text>
+                <Text style={styles.meta}>Vencimento: {obligation.dueDateFormatted}</Text>
+                <Text style={styles.meta}>Código de receita: {obligation.revenueCode ?? '—'}</Text>
+                <Text style={styles.meta}>
+                  Dados para pagamento: {obligation.darfReadinessLabel}
+                </Text>
+                {obligation.sourceNote && (
+                  <Text style={styles.meta}>
+                    {obligation.sourceNote}
+                    {obligation.sourceDocument ? ` — ${obligation.sourceDocument}` : ''}
                   </Text>
                 )}
               </Card>

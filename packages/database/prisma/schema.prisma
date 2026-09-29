@@ -26,6 +26,8 @@ model User {
   taxTradeClassifications TaxTradeClassificationRecord[]
   taxWithholdingInputs    TaxWithholdingInputRecord[]
   fiiTaxEligibilityFacts  FiiTaxEligibilityFactRecord[]
+  taxObligations          TaxObligationRecord[]
+  taxPaymentEvidence      TaxPaymentEvidenceRecord[]
 
   @@map("users")
 }
@@ -331,4 +333,95 @@ model FiiTaxEligibilityFactRecord {
   @@unique([taxSubjectId, assetId, sourceType, sourceReference, asOfDate], name: "fii_tax_eligibility_identity")
   @@index([taxSubjectId, assetId, asOfDate])
   @@map("fii_tax_eligibility_fact_records")
+}
+
+/// Phase 4C.2 — official federal tax deadline registry (direct authority).
+/// Reference data seeded from the official RFB Agenda Tributária / ADE CORAT.
+/// Immutable/versioned: a Receita correction creates a new version and marks the
+/// previous one SUPERSEDED (ADR-262, ADR-263). At most one active VERIFIED entry
+/// per (revenue_code, competence) is enforced by a partial unique index in the
+/// migration.
+model FederalTaxDeadlineEntry {
+  id                String   @id @default(uuid()) @db.Uuid
+  revenueCode       String   @map("revenue_code") @db.VarChar(10)
+  taxBucket         String   @map("tax_bucket") @db.VarChar(30)
+  competence        String   @db.Char(7)
+  dueDate           DateTime @map("due_date") @db.Date
+  status            String   @db.VarChar(20)
+  sourceAuthority   String   @map("source_authority") @db.VarChar(100)
+  sourceDocument    String   @map("source_document") @db.VarChar(200)
+  sourceReference   String   @map("source_reference") @db.VarChar(500)
+  sourcePublishedAt DateTime @map("source_published_at") @db.Date
+  verifiedAt        DateTime @map("verified_at") @db.Date
+  version           Int
+  supersedesEntryId String?  @map("supersedes_entry_id") @db.Uuid
+  metadata          Json?
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  obligations TaxObligationRecord[]
+
+  @@unique([revenueCode, competence, version], name: "federal_tax_deadline_version_identity")
+  @@index([revenueCode, competence, status])
+  @@map("federal_tax_deadline_entries")
+}
+
+/// Phase 4C.2 — derived operational tax obligation. Never recalculates tax.
+/// Materialized from a canonical MonthlyTaxLiability + a verified deadline entry
+/// (ADR-264). Immutable per revision; liability changes supersede the previous
+/// revision (ADR-267).
+model TaxObligationRecord {
+  id                   String    @id @default(uuid()) @db.Uuid
+  taxSubjectId         String    @map("tax_subject_id") @db.Uuid
+  competence           String    @db.Char(7)
+  taxBucket            String?   @map("tax_bucket") @db.VarChar(30)
+  revenueCode          String?   @map("revenue_code") @db.VarChar(10)
+  liabilityFingerprint String    @map("liability_fingerprint") @db.VarChar(64)
+  revision             Int
+  deadlineEntryId      String?   @map("deadline_entry_id") @db.Uuid
+  principalAmount      Decimal?  @map("principal_amount") @db.Decimal(38, 18)
+  currency             String?   @db.VarChar(3)
+  dueDate              DateTime? @map("due_date") @db.Date
+  status               String    @db.VarChar(30)
+  reasonCode           String?   @map("reason_code") @db.VarChar(50)
+  darfReadiness        String    @map("darf_readiness") @db.VarChar(20)
+  darfReadinessReason  String?   @map("darf_readiness_reason") @db.VarChar(50)
+  dataQuality          String    @map("data_quality") @db.VarChar(20)
+  supersededById       String?   @map("superseded_by_id") @db.Uuid
+  provenance           Json
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  taxSubject    User                      @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+  deadlineEntry FederalTaxDeadlineEntry?  @relation(fields: [deadlineEntryId], references: [id])
+  payments      TaxPaymentEvidenceRecord[]
+
+  @@unique([taxSubjectId, competence, liabilityFingerprint, revision], name: "tax_obligation_identity")
+  @@index([taxSubjectId, competence])
+  @@index([taxSubjectId, status])
+  @@map("tax_obligations")
+}
+
+/// Phase 4C.2 — manual payment evidence (operational only). Never mutates the
+/// tax liability (ADR-266). `MANUAL_CONFIRMED` is the only supported source.
+model TaxPaymentEvidenceRecord {
+  id              String   @id @default(uuid()) @db.Uuid
+  obligationId    String   @map("obligation_id") @db.Uuid
+  taxSubjectId    String   @map("tax_subject_id") @db.Uuid
+  paidAt          DateTime @map("paid_at") @db.Date
+  amount          Decimal  @db.Decimal(38, 18)
+  currency        String   @db.VarChar(3)
+  sourceType      String   @map("source_type") @db.VarChar(30)
+  sourceReference String?  @map("source_reference") @db.VarChar(255)
+  confirmedAt     DateTime @map("confirmed_at") @db.Timestamptz(6)
+  status          String   @db.VarChar(20)
+  fingerprint     String   @db.VarChar(64)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  obligation TaxObligationRecord @relation(fields: [obligationId], references: [id], onDelete: Cascade)
+  taxSubject User                @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+
+  @@unique([obligationId, sourceReference], name: "tax_payment_evidence_source_identity")
+  @@unique([obligationId, fingerprint], name: "tax_payment_evidence_fingerprint_identity")
+  @@index([taxSubjectId, obligationId])
+  @@map("tax_payment_evidence")
 }

@@ -36,8 +36,11 @@ export function getTestPrismaClient(): PrismaClient {
 
 export async function cleanDatabase(): Promise<void> {
   const prisma = getTestPrismaClient();
+  // Reference data (`federal_tax_deadline_entries`) is intentionally preserved:
+  // it is seeded by migration and has no FK to `users`. Obligations and payment
+  // evidence cascade from `users`.
   await prisma.$executeRawUnsafe(`
-    TRUNCATE TABLE "ai_conversation_messages", "ai_conversations", "password_reset_tokens", "sessions", "transactions", "accounts", "portfolios", "assets", "institutions", "users" CASCADE;
+    TRUNCATE TABLE "tax_payment_evidence", "tax_obligations", "ai_conversation_messages", "ai_conversations", "password_reset_tokens", "sessions", "transactions", "accounts", "portfolios", "assets", "institutions", "users" CASCADE;
   `);
 }
 

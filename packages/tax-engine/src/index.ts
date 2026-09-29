@@ -25,6 +25,7 @@ export {
   InvalidTaxRuleSetError,
   InvalidFiscalCompetenceError,
   UnsupportedTaxOperationError,
+  InvalidTaxDeadlineEntryError,
 } from './errors';
 
 export {
@@ -142,3 +143,52 @@ export type {
   TaxInputReadiness,
   ValidationResult,
 } from './tax-inputs';
+
+// --- Phase 4C.2: direct federal tax deadline registry & tax obligations ---
+export {
+  TAX_OBLIGATION_BUCKETS,
+  PRODUCTION_REVENUE_CODE_MAPPINGS,
+  isTaxObligationBucket,
+  resolveRevenueCodeForBucket,
+  resolveObligationBucketForCategory,
+} from './revenue-codes';
+export type { TaxObligationBucket } from './revenue-codes';
+
+export {
+  FEDERAL_TAX_DEADLINE_STATUSES,
+  FEDERAL_TAX_DEADLINE_RESOLUTION_OUTCOMES,
+  isCanonicalCivilDate,
+  isCanonicalCompetence,
+  validateFederalTaxDeadlineEntry,
+  activeVerifiedDeadlineEntries,
+  resolveFederalTaxDeadline,
+} from './deadlines';
+export type {
+  FederalTaxDeadlineStatus,
+  FederalTaxDeadlineEntry,
+  FederalTaxDeadlineResolutionOutcome,
+  FederalTaxDeadlineResolution,
+} from './deadlines';
+
+export {
+  TAX_OBLIGATION_STATUSES,
+  TAX_OBLIGATION_BASE_STATUSES,
+  TAX_OBLIGATION_REASON_CODES,
+  DARF_READINESS_STATUSES,
+  TAX_PAYMENT_EVIDENCE_SOURCES,
+  TAX_PAYMENT_EVIDENCE_STATUSES,
+  materializeTaxObligation,
+  deriveObligationDisplayStatus,
+  validateTaxPaymentEvidence,
+} from './obligations';
+export type {
+  TaxObligationStatus,
+  TaxObligationBaseStatus,
+  TaxObligationReasonCode,
+  DarfReadinessStatus,
+  TaxPaymentEvidenceSource,
+  TaxPaymentEvidenceStatus,
+  TaxObligationPlan,
+  MaterializeTaxObligationInput,
+  PaymentValidationResult,
+} from './obligations';

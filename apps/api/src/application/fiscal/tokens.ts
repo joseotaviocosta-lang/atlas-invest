@@ -1,3 +1,4 @@
 export const TAX_RULE_REGISTRY = Symbol('TAX_RULE_REGISTRY');
 export const TAX_INPUT_PROVIDER = Symbol('TAX_INPUT_PROVIDER');
 export const TAX_INPUT_ADAPTER_REGISTRY = Symbol('TAX_INPUT_ADAPTER_REGISTRY');
+export const FISCAL_CLOCK = Symbol('FISCAL_CLOCK');

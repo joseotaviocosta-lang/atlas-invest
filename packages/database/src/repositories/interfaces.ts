@@ -442,3 +442,148 @@ export interface ITaxInputRepository {
     input: { action: TaxInputResolutionAction; resolutionSource: string; taxSubjectId: string },
   ): Promise<FiiTaxEligibilityRow | null>;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4C.2 — direct federal tax deadline registry, obligations & payments
+// ---------------------------------------------------------------------------
+
+export type DeadlineRegistryWriteOutcome = 'CREATED' | 'DUPLICATE' | 'CONFLICT';
+export type ObligationWriteOutcome = 'CREATED' | 'DUPLICATE' | 'SUPERSEDED';
+export type PaymentWriteOutcome = 'CREATED' | 'DUPLICATE' | 'CONFLICT';
+
+export interface FederalTaxDeadlineRow {
+  id: string;
+  revenueCode: string;
+  taxBucket: string;
+  competence: string;
+  dueDate: Date;
+  status: string;
+  sourceAuthority: string;
+  sourceDocument: string;
+  sourceReference: string;
+  sourcePublishedAt: Date;
+  verifiedAt: Date;
+  version: number;
+  supersedesEntryId: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: Date;
+}
+
+export interface TaxObligationRow {
+  id: string;
+  taxSubjectId: string;
+  competence: string;
+  taxBucket: string | null;
+  revenueCode: string | null;
+  liabilityFingerprint: string;
+  revision: number;
+  deadlineEntryId: string | null;
+  /** Exact decimal string, or null when no payable principal exists. */
+  principalAmount: string | null;
+  currency: string | null;
+  dueDate: Date | null;
+  status: string;
+  reasonCode: string | null;
+  darfReadiness: string;
+  darfReadinessReason: string | null;
+  dataQuality: string;
+  supersededById: string | null;
+  provenance: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TaxPaymentEvidenceRow {
+  id: string;
+  obligationId: string;
+  taxSubjectId: string;
+  paidAt: Date;
+  /** Exact decimal string. */
+  amount: string;
+  currency: string;
+  sourceType: string;
+  sourceReference: string | null;
+  confirmedAt: Date;
+  status: string;
+  fingerprint: string;
+  createdAt: Date;
+}
+
+export interface IFederalTaxDeadlineRepository {
+  /** All entries, newest version first (used for resolution + audit). */
+  listAll(): Promise<FederalTaxDeadlineRow[]>;
+  listByRevenueCodeAndCompetence(
+    revenueCode: string,
+    competence: string,
+  ): Promise<FederalTaxDeadlineRow[]>;
+  findById(id: string): Promise<FederalTaxDeadlineRow | null>;
+  /** Inserts a new immutable version. Fails closed on duplicate version. */
+  createEntry(input: {
+    id?: string;
+    revenueCode: string;
+    taxBucket: string;
+    competence: string;
+    dueDate: Date;
+    status: string;
+    sourceAuthority: string;
+    sourceDocument: string;
+    sourceReference: string;
+    sourcePublishedAt: Date;
+    verifiedAt: Date;
+    version: number;
+    supersedesEntryId: string | null;
+    metadata?: Record<string, unknown> | null;
+  }): Promise<{ outcome: DeadlineRegistryWriteOutcome; record: FederalTaxDeadlineRow }>;
+  /** Marks a previous version as superseded by a new entry (immutable history). */
+  markSuperseded(id: string, supersededByEntryId: string): Promise<FederalTaxDeadlineRow | null>;
+}
+
+export interface ITaxObligationRepository {
+  findById(id: string, taxSubjectId: string): Promise<TaxObligationRow | null>;
+  list(
+    taxSubjectId: string,
+    filter?: { competence?: string; status?: string; bucket?: string },
+  ): Promise<TaxObligationRow[]>;
+  findLatestByIdentity(
+    taxSubjectId: string,
+    competence: string,
+    liabilityFingerprint: string,
+  ): Promise<TaxObligationRow | null>;
+  /** Idempotent materialization: same binding => DUPLICATE; changed => new revision. */
+  materialize(input: {
+    taxSubjectId: string;
+    competence: string;
+    taxBucket: string | null;
+    revenueCode: string | null;
+    liabilityFingerprint: string;
+    deadlineEntryId: string | null;
+    principalAmount: string | null;
+    currency: string | null;
+    dueDate: Date | null;
+    status: string;
+    reasonCode: string | null;
+    darfReadiness: string;
+    darfReadinessReason: string | null;
+    dataQuality: string;
+    provenance: Record<string, unknown>;
+  }): Promise<{ outcome: ObligationWriteOutcome; record: TaxObligationRow }>;
+  markPaid(id: string, taxSubjectId: string): Promise<TaxObligationRow | null>;
+  markReconciliationRequired(id: string, taxSubjectId: string): Promise<TaxObligationRow | null>;
+}
+
+export interface ITaxPaymentEvidenceRepository {
+  listByObligation(obligationId: string, taxSubjectId: string): Promise<TaxPaymentEvidenceRow[]>;
+  findById(id: string, taxSubjectId: string): Promise<TaxPaymentEvidenceRow | null>;
+  record(input: {
+    obligationId: string;
+    taxSubjectId: string;
+    paidAt: Date;
+    amount: string;
+    currency: string;
+    sourceType: string;
+    sourceReference: string | null;
+    confirmedAt: Date;
+    status: string;
+    fingerprint: string;
+  }): Promise<{ outcome: PaymentWriteOutcome; record: TaxPaymentEvidenceRow }>;
+}

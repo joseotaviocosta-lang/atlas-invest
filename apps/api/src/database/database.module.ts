@@ -11,6 +11,9 @@ import {
   PasswordResetTokenRepository,
   AiConversationRepository,
   TaxInputRepository,
+  FederalTaxDeadlineRepository,
+  TaxObligationRepository,
+  TaxPaymentEvidenceRepository,
 } from '@atlas/database';
 import {
   PRISMA_CLIENT,
@@ -24,6 +27,9 @@ import {
   PASSWORD_RESET_TOKEN_REPOSITORY,
   AI_CONVERSATION_REPOSITORY,
   TAX_INPUT_REPOSITORY,
+  FEDERAL_TAX_DEADLINE_REPOSITORY,
+  TAX_OBLIGATION_REPOSITORY,
+  TAX_PAYMENT_EVIDENCE_REPOSITORY,
 } from './tokens';
 
 type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
@@ -85,6 +91,21 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
       useFactory: (prisma: AtlasPrismaClient) => new TaxInputRepository(prisma),
       inject: [PRISMA_CLIENT],
     },
+    {
+      provide: FEDERAL_TAX_DEADLINE_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new FederalTaxDeadlineRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
+    {
+      provide: TAX_OBLIGATION_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new TaxObligationRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
+    {
+      provide: TAX_PAYMENT_EVIDENCE_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new TaxPaymentEvidenceRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
   ],
   exports: [
     PRISMA_CLIENT,
@@ -98,6 +119,9 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     PASSWORD_RESET_TOKEN_REPOSITORY,
     AI_CONVERSATION_REPOSITORY,
     TAX_INPUT_REPOSITORY,
+    FEDERAL_TAX_DEADLINE_REPOSITORY,
+    TAX_OBLIGATION_REPOSITORY,
+    TAX_PAYMENT_EVIDENCE_REPOSITORY,
   ],
 })
 export class DatabaseModule {}

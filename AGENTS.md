@@ -1607,3 +1607,29 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Mesmo com responsabilidade de produção ativa, a IA continua `UNSUPPORTED_TAX` com provedor 0. Sem DARF, pagamento, IRPF, Receita ou otimização.
 9. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
    - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4 permanecem inalterados e invioláveis.
+
+---
+
+## 54. Arquitetura e Invariantes de Obrigações Tributárias e Vencimento Direto (Fase 4C.2)
+
+1. **AUTORIDADE DE PRAZO POR REGISTRO OFICIAL DIRETO (ADR-262):**
+   - O vencimento de tributo federal vem exclusivamente do `FederalTaxDeadlineRegistry` (Agenda Tributária RFB + ADE CORAT), endereçado por `(revenueCode, competence)`.
+   - É proibido reconstruir "dia útil" ou calendário genérico de negócios na Fase 4C.2 (ADR-268).
+2. **ENTRADAS IMUTÁVEIS E VERSIONADAS (ADR-263):**
+   - `FederalTaxDeadlineEntry` é imutável; correção da Receita cria nova versão e marca a anterior `SUPERSEDED`. No máximo uma `VERIFIED` ativa por `(revenueCode, competence)`.
+   - Apenas entradas `VERIFIED` produzem obrigação pagável; ausência → `MISSING_OFFICIAL_DEADLINE`; ambiguidade → falha fechada.
+3. **RESPONSABILIDADE ≠ OBRIGAÇÃO (ADR-264):**
+   - `MonthlyTaxLiability` permanece a autoridade de cálculo; `TaxObligation` é estado operacional derivado e nunca recalcula imposto.
+   - Só `COMPLETE` positiva gera obrigação pagável; zero → `NO_PAYMENT_DUE`; `PARTIAL`/`BLOCKED`/bucket não suportado/atividade mista → `BLOCKED` (sem total consolidado enganoso).
+4. **DARF READINESS ≠ GERAÇÃO DE DARF (ADR-265):**
+   - O Atlas expõe apenas prontidão de dados (`READY|PARTIAL|BLOCKED|NOT_REQUIRED`); é proibido gerar documento oficial, código de barras, QR, PIX ou número de documento.
+5. **EVIDÊNCIA DE PAGAMENTO SEPARADA (ADR-266):**
+   - `TaxPaymentEvidence` é manual (`MANUAL_CONFIRMED`), integral, decimal exata e idempotente; nunca altera a responsabilidade tributária. Sem sincronização bancária, sem parcial/sobrepagamento, sem crédito/estorno automático.
+6. **SUPERSESSÃO E RECONCILIAÇÃO (ADR-267):**
+   - Mudança de responsabilidade cria nova revisão e supersede a anterior; obrigação paga alterada → `RECONCILIATION_REQUIRED` com pagamento preservado.
+7. **OVERDUE É APENAS STATUS (ADR-269):**
+   - `OVERDUE` deriva de vencimento oficial + relógio civil injetado + estado de pagamento. Sem multa, juros, Selic ou valor atualizado.
+8. **AI PERMANECE DESABILITADA PARA IMPOSTO:**
+   - Perguntas fiscais continuam `UNSUPPORTED_TAX` com provedor 0 (sem "quanto devo pagar", "quando vence", "qual código DARF").
+9. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+   - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4/4B.5 permanecem inalterados e invioláveis.
