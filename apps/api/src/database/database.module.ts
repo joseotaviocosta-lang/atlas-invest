@@ -14,6 +14,8 @@ import {
   FederalTaxDeadlineRepository,
   TaxObligationRepository,
   TaxPaymentEvidenceRepository,
+  OfficialLateFeeRepository,
+  TaxInterestRateRepository,
 } from '@atlas/database';
 import {
   PRISMA_CLIENT,
@@ -30,6 +32,8 @@ import {
   FEDERAL_TAX_DEADLINE_REPOSITORY,
   TAX_OBLIGATION_REPOSITORY,
   TAX_PAYMENT_EVIDENCE_REPOSITORY,
+  OFFICIAL_LATE_FEE_REPOSITORY,
+  TAX_INTEREST_RATE_REPOSITORY,
 } from './tokens';
 
 type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
@@ -106,6 +110,16 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
       useFactory: (prisma: AtlasPrismaClient) => new TaxPaymentEvidenceRepository(prisma),
       inject: [PRISMA_CLIENT],
     },
+    {
+      provide: OFFICIAL_LATE_FEE_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new OfficialLateFeeRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
+    {
+      provide: TAX_INTEREST_RATE_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new TaxInterestRateRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
   ],
   exports: [
     PRISMA_CLIENT,
@@ -122,6 +136,8 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     FEDERAL_TAX_DEADLINE_REPOSITORY,
     TAX_OBLIGATION_REPOSITORY,
     TAX_PAYMENT_EVIDENCE_REPOSITORY,
+    OFFICIAL_LATE_FEE_REPOSITORY,
+    TAX_INTEREST_RATE_REPOSITORY,
   ],
 })
 export class DatabaseModule {}

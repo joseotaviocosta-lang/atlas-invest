@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import {
   themeTokens,
+  formatCurrency,
   mapToFiscalMonthlyViewModel,
   mapToMonthlyTaxLiabilityViewModel,
   mapToTaxInputReadinessViewModel,
@@ -30,6 +31,14 @@ import { apiClient, ApiError } from '../../../src/api/client';
 function currentCompetence(): string {
   const now = new Date();
   return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+}
+
+interface MobileAdjustment {
+  status: string;
+  reasonCode: string | null;
+  lateFeeAmount: { amount: string; currency: string } | null;
+  interestAmount: { amount: string; currency: string } | null;
+  updatedAmount: { amount: string; currency: string } | null;
 }
 
 function shiftCompetence(competence: string, delta: number): string {
@@ -98,6 +107,18 @@ export default function TaxScreen() {
     () => mapToTaxObligationViewModel(obligationData ?? null),
     [obligationData],
   );
+
+  const paymentDate = new Date().toISOString().slice(0, 10);
+  const { data: adjustmentData } = useQuery({
+    queryKey: ['fiscal-adjustment', obligationData?.id ?? '', paymentDate],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: MobileAdjustment }>(
+        `/api/v1/fiscal/obligations/${obligationData!.id}/adjustment?paymentDate=${paymentDate}`,
+      );
+      return res.data;
+    },
+    enabled: Boolean(obligationData),
+  });
 
   return (
     <Screen>
@@ -327,6 +348,34 @@ export default function TaxScreen() {
                     {obligation.sourceNote}
                     {obligation.sourceDocument ? ` — ${obligation.sourceDocument}` : ''}
                   </Text>
+                )}
+                {adjustmentData?.status === 'READY' && adjustmentData.updatedAmount && (
+                  <>
+                    <Text style={styles.meta}>
+                      Multa:{' '}
+                      {formatCurrency(
+                        adjustmentData.lateFeeAmount?.amount ?? null,
+                        adjustmentData.lateFeeAmount?.currency ?? 'BRL',
+                      )}
+                    </Text>
+                    <Text style={styles.meta}>
+                      Juros:{' '}
+                      {formatCurrency(
+                        adjustmentData.interestAmount?.amount ?? null,
+                        adjustmentData.interestAmount?.currency ?? 'BRL',
+                      )}
+                    </Text>
+                    <Text style={styles.meta}>
+                      Valor atualizado:{' '}
+                      {formatCurrency(
+                        adjustmentData.updatedAmount.amount,
+                        adjustmentData.updatedAmount.currency,
+                      )}
+                    </Text>
+                  </>
+                )}
+                {adjustmentData?.status === 'BLOCKED' && (
+                  <Text style={styles.warning}>Atualização do valor indisponível.</Text>
                 )}
               </Card>
             )}

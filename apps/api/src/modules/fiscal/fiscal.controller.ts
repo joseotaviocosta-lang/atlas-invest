@@ -30,8 +30,11 @@ import {
   ListTaxObligationsUseCase,
 } from '../../application/fiscal/tax-obligation-query.use-case';
 import { RecordTaxPaymentUseCase } from '../../application/fiscal/record-tax-payment.use-case';
+import { GetTaxPaymentAdjustmentUseCase } from '../../application/fiscal/get-tax-payment-adjustment.use-case';
 import { ZodValidationPipe } from '../../common/pipes';
 import {
+  AdjustmentQuery,
+  AdjustmentQuerySchema,
   ListTaxObligationsQuery,
   ListTaxObligationsQuerySchema,
   RecordTaxPaymentBody,
@@ -85,6 +88,8 @@ export class FiscalController {
     private readonly listTaxObligationsUseCase: ListTaxObligationsUseCase,
     @Inject(RecordTaxPaymentUseCase)
     private readonly recordTaxPaymentUseCase: RecordTaxPaymentUseCase,
+    @Inject(GetTaxPaymentAdjustmentUseCase)
+    private readonly getTaxPaymentAdjustmentUseCase: GetTaxPaymentAdjustmentUseCase,
   ) {}
 
   @Get('monthly/:competence')
@@ -176,6 +181,28 @@ export class FiscalController {
     @CurrentPrincipal() principal: AuthenticatedPrincipal,
   ) {
     return { data: await this.getTaxObligationUseCase.execute({ userId: principal.userId, id }) };
+  }
+
+  @Get('obligations/:id/adjustment')
+  @ApiOperation({
+    summary:
+      'Preview the overdue late fee and interest (updated payable amount) for an obligation at an explicit payment date. Non-mutating; fails closed without official authority/rates.',
+  })
+  @ApiResponse({ status: 200, description: 'Overdue adjustment preview' })
+  @ApiResponse({ status: 400, description: 'Invalid paymentDate' })
+  @ApiResponse({ status: 404, description: 'Tax obligation not found' })
+  async getTaxPaymentAdjustment(
+    @Param('id') id: string,
+    @Query(new ZodValidationPipe(AdjustmentQuerySchema)) query: AdjustmentQuery,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    return {
+      data: await this.getTaxPaymentAdjustmentUseCase.execute({
+        userId: principal.userId,
+        obligationId: id,
+        paymentDate: query.paymentDate,
+      }),
+    };
   }
 
   @Post('obligations/:id/payments')

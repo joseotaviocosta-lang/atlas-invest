@@ -7,12 +7,25 @@ import {
   colors,
   spacing,
   borderRadius,
+  formatCurrency,
   mapToTaxObligationViewModel,
   taxObligationQueryKey,
   taxObligationsQueryKey,
   type RawTaxObligation,
 } from '@atlas/ui';
 import { Card, Skeleton, EmptyState, SectionHeader } from '@/components/ui';
+
+interface RawAdjustment {
+  status: string;
+  reasonCode: string | null;
+  principalAmount: { amount: string; currency: string } | null;
+  lateFeeAmount: { amount: string; currency: string } | null;
+  interestAmount: { amount: string; currency: string } | null;
+  updatedAmount: { amount: string; currency: string } | null;
+  dueDate: string | null;
+  paymentDate: string;
+  authority: { source: string };
+}
 
 /**
  * Phase 4C.2 — Obrigações (tax obligations) section.
@@ -27,6 +40,7 @@ export function TaxObligationSection({ competence }: { competence: string }) {
   const [payDate, setPayDate] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [adjustDate, setAdjustDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: taxObligationQueryKey(competence),
@@ -54,6 +68,18 @@ export function TaxObligationSection({ competence }: { competence: string }) {
 
   const obligation = useMemo(() => mapToTaxObligationViewModel(data ?? null), [data]);
   const raw = data ?? null;
+
+  const { data: adjustment } = useQuery({
+    queryKey: ['fiscal-adjustment', raw?.id ?? '', adjustDate],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: RawAdjustment }>(
+        `/api/v1/fiscal/obligations/${raw!.id}/adjustment?paymentDate=${adjustDate}`,
+      );
+      return res.data;
+    },
+    enabled: Boolean(raw) && /^\d{4}-\d{2}-\d{2}$/.test(adjustDate),
+    staleTime: 30_000,
+  });
 
   async function confirmPayment() {
     if (!raw || !raw.principalAmount || !raw.currency) return;
@@ -242,6 +268,128 @@ export function TaxObligationSection({ competence }: { competence: string }) {
           {message && (
             <div style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginTop: '6px' }}>
               {message}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {raw && (
+        <Card style={{ padding: `${spacing.base}px`, marginBottom: `${spacing.sm}px` }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: `${spacing.sm}px`,
+              flexWrap: 'wrap',
+            }}
+          >
+            <strong style={{ color: colors.textPrimary }}>Valor atualizado (atraso)</strong>
+            <div style={{ display: 'flex', gap: `${spacing.sm}px`, alignItems: 'center' }}>
+              <label
+                htmlFor="adjust-date"
+                style={{ fontSize: '0.8125rem', color: colors.textSecondary }}
+              >
+                Data prevista para pagamento
+              </label>
+              <input
+                id="adjust-date"
+                type="date"
+                value={adjustDate}
+                onChange={(e) => setAdjustDate(e.target.value)}
+                style={{
+                  padding: `${spacing.xs}px ${spacing.sm}px`,
+                  borderRadius: `${borderRadius.md}px`,
+                  border: `1px solid ${colors.border}`,
+                  fontSize: '0.8125rem',
+                  color: colors.textPrimary,
+                  backgroundColor: colors.surface,
+                  minHeight: '44px',
+                }}
+              />
+            </div>
+          </div>
+
+          {adjustment?.status === 'READY' && adjustment.updatedAmount && (
+            <>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                  gap: `${spacing.sm}px`,
+                  marginTop: `${spacing.sm}px`,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+                    Valor original
+                  </div>
+                  <div style={{ fontWeight: 700, color: colors.textPrimary }}>
+                    {adjustment.principalAmount
+                      ? formatCurrency(
+                          adjustment.principalAmount.amount,
+                          adjustment.principalAmount.currency,
+                        )
+                      : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: colors.textSecondary }}>Multa</div>
+                  <div style={{ fontWeight: 700, color: colors.textPrimary }}>
+                    {adjustment.lateFeeAmount
+                      ? formatCurrency(
+                          adjustment.lateFeeAmount.amount,
+                          adjustment.lateFeeAmount.currency,
+                        )
+                      : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: colors.textSecondary }}>Juros</div>
+                  <div style={{ fontWeight: 700, color: colors.textPrimary }}>
+                    {adjustment.interestAmount
+                      ? formatCurrency(
+                          adjustment.interestAmount.amount,
+                          adjustment.interestAmount.currency,
+                        )
+                      : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+                    Valor atualizado
+                  </div>
+                  <div style={{ fontWeight: 700, color: colors.textPrimary }}>
+                    {formatCurrency(
+                      adjustment.updatedAmount.amount,
+                      adjustment.updatedAmount.currency,
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontSize: '0.75rem', color: colors.textMuted, marginTop: '4px' }}>
+                Cálculo com base em dados oficiais da Receita/Sicalc.
+              </div>
+            </>
+          )}
+
+          {adjustment?.status === 'NOT_LATE' && (
+            <div
+              style={{
+                fontSize: '0.8125rem',
+                color: colors.textSecondary,
+                marginTop: `${spacing.sm}px`,
+              }}
+            >
+              Sem acréscimos para esta data (dentro do prazo).
+            </div>
+          )}
+
+          {adjustment?.status === 'BLOCKED' && (
+            <div
+              style={{ fontSize: '0.8125rem', color: colors.warning, marginTop: `${spacing.sm}px` }}
+            >
+              Não foi possível calcular o valor atualizado com segurança ({adjustment.reasonCode}).
             </div>
           )}
         </Card>

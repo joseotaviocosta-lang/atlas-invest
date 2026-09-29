@@ -192,3 +192,29 @@ export type {
   MaterializeTaxObligationInput,
   PaymentValidationResult,
 } from './obligations';
+
+// --- Phase 4D.2: overdue tax adjustment (late fee + interest) ---
+export {
+  LATE_PAYMENT_ROUNDING_MODES,
+  LATE_PAYMENT_INTEREST_METHODS,
+  TAX_PAYMENT_ADJUSTMENT_STATUSES,
+  TAX_PAYMENT_ADJUSTMENT_REASON_CODES,
+  isCivilDate,
+  roundHalfEven,
+  monthsBetween,
+  daysBetweenInclusive,
+  buildTaxPaymentAdjustment,
+  computeAdjustmentFingerprint,
+} from './late-payment';
+export type {
+  LatePaymentRoundingMode,
+  LatePaymentInterestMethod,
+  TaxPaymentAdjustmentStatus,
+  TaxPaymentAdjustmentReasonCode,
+  LatePaymentRuleSet,
+  OfficialLateFeeAuthority,
+  OfficialInterestRate,
+  TaxPaymentAdjustmentTraceEntry,
+  TaxPaymentAdjustment,
+  BuildTaxPaymentAdjustmentInput,
+} from './late-payment';

@@ -37,3 +37,8 @@ export const ListTaxObligationsQuerySchema = z.object({
   bucket: z.enum(['FII_SALE']).optional(),
 });
 export type ListTaxObligationsQuery = z.infer<typeof ListTaxObligationsQuerySchema>;
+
+export const AdjustmentQuerySchema = z.object({
+  paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+export type AdjustmentQuery = z.infer<typeof AdjustmentQuerySchema>;

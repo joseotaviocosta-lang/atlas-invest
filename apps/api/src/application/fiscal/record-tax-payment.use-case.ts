@@ -11,6 +11,7 @@ import { TAX_OBLIGATION_REPOSITORY, TAX_PAYMENT_EVIDENCE_REPOSITORY } from '../.
 import { fingerprintPaymentEvidence } from './tax-obligation-fingerprint';
 import { FISCAL_CLOCK } from './tokens';
 import type { FiscalClock } from './fiscal-clock';
+import { GetTaxPaymentAdjustmentUseCase } from './get-tax-payment-adjustment.use-case';
 import { mapObligationToReadModel, type TaxObligationReadModel } from './tax-obligation.read-model';
 
 function isoDate(value: Date | null): string | null {
@@ -34,6 +35,8 @@ export class RecordTaxPaymentUseCase {
     @Inject(TAX_PAYMENT_EVIDENCE_REPOSITORY)
     private readonly paymentRepository: ITaxPaymentEvidenceRepository,
     @Inject(FISCAL_CLOCK) private readonly clock: FiscalClock,
+    @Inject(GetTaxPaymentAdjustmentUseCase)
+    private readonly adjustmentUseCase: GetTaxPaymentAdjustmentUseCase,
   ) {}
 
   async execute(params: {
@@ -61,6 +64,27 @@ export class RecordTaxPaymentUseCase {
 
     const now = this.clock.today();
     const sourceReference = params.sourceReference ?? null;
+
+    // For an overdue obligation the accepted amount must match the verified
+    // updated payable amount (principal + late fee + interest), never the bare
+    // principal (ADR-276).
+    const dueDate = isoDate(row.dueDate);
+    let expectedAmount = row.principalAmount;
+    if (dueDate && params.paidAt > dueDate) {
+      const adjustment = await this.adjustmentUseCase.execute({
+        userId: params.userId,
+        obligationId: row.id,
+        paymentDate: params.paidAt,
+      });
+      if (adjustment.status !== 'READY' || !adjustment.updatedAmount) {
+        throw new BadRequestException({
+          message: `Overdue amount for obligation '${row.id}' could not be verified.`,
+          code: 'TAX_PAYMENT.ADJUSTMENT_UNAVAILABLE',
+        });
+      }
+      expectedAmount = adjustment.updatedAmount.amount;
+    }
+
     const validation = validateTaxPaymentEvidence(
       {
         paidAt: params.paidAt,
@@ -71,9 +95,9 @@ export class RecordTaxPaymentUseCase {
         confirmedAt: now,
       },
       {
-        principalAmount: row.principalAmount,
+        principalAmount: expectedAmount,
         currency: row.currency,
-        dueDate: isoDate(row.dueDate),
+        dueDate,
       },
       now,
     );

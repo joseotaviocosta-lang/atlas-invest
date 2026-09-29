@@ -425,3 +425,47 @@ model TaxPaymentEvidenceRecord {
   @@index([taxSubjectId, obligationId])
   @@map("tax_payment_evidence")
 }
+
+/// Phase 4D.2 — immutable official Sicalc late-fee snapshots. Authoritative for
+/// the business-day-sensitive late-fee amount/percent (no generic holiday
+/// calendar). Corrections create a new version (ADR-271).
+model OfficialLateFeeSnapshot {
+  id                String   @id @default(uuid()) @db.Uuid
+  municipalityCode  String   @map("municipality_code") @db.VarChar(10)
+  dueDate           DateTime @map("due_date") @db.Date
+  paymentDate       DateTime @map("payment_date") @db.Date
+  principalAmount   Decimal  @map("principal_amount") @db.Decimal(38, 18)
+  lateFeeAmount     Decimal  @map("late_fee_amount") @db.Decimal(38, 18)
+  lateFeePercent    Decimal  @map("late_fee_percent") @db.Decimal(38, 18)
+  startBusinessDate DateTime? @map("start_business_date") @db.Date
+  sourceSystem      String   @map("source_system") @db.VarChar(30)
+  sourceReference   String   @map("source_reference") @db.VarChar(500)
+  sourceRetrievedAt DateTime @map("source_retrieved_at") @db.Timestamptz(6)
+  verifiedAt        DateTime @map("verified_at") @db.Timestamptz(6)
+  version           Int
+  fingerprint       String   @db.VarChar(64)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([municipalityCode, dueDate, paymentDate, principalAmount, version], name: "official_late_fee_snapshot_identity")
+  @@index([municipalityCode, dueDate, paymentDate])
+  @@map("official_late_fee_snapshots")
+}
+
+/// Phase 4D.2 — immutable official monthly SELIC rate snapshots. Source: RFB
+/// Sicalc/RFB acts only; missing rate fails closed (ADR-272).
+model TaxInterestRateSnapshot {
+  id              String   @id @default(uuid()) @db.Uuid
+  indexName       String   @map("index_name") @db.VarChar(30)
+  referenceMonth  String   @map("reference_month") @db.Char(7)
+  ratePercent     Decimal  @map("rate_percent") @db.Decimal(38, 18)
+  sourceAuthority String   @map("source_authority") @db.VarChar(100)
+  sourceReference String   @map("source_reference") @db.VarChar(500)
+  sourceRetrievedAt DateTime @map("source_retrieved_at") @db.Timestamptz(6)
+  verifiedAt      DateTime @map("verified_at") @db.Timestamptz(6)
+  version         Int
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([indexName, referenceMonth, version], name: "tax_interest_rate_snapshot_identity")
+  @@index([indexName, referenceMonth])
+  @@map("tax_interest_rate_snapshots")
+}

@@ -20,3 +20,7 @@ export * from './tax-obligation.read-model';
 export * from './materialize-tax-obligation.use-case';
 export * from './tax-obligation-query.use-case';
 export * from './record-tax-payment.use-case';
+export * from './federal-late-payment-registry';
+export * from './late-fee-authority-provider';
+export * from './tax-payment-adjustment.read-model';
+export * from './get-tax-payment-adjustment.use-case';

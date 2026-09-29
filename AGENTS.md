@@ -1633,3 +1633,31 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Perguntas fiscais continuam `UNSUPPORTED_TAX` com provedor 0 (sem "quanto devo pagar", "quando vence", "qual código DARF").
 9. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
    - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4/4B.5 permanecem inalterados e invioláveis.
+
+---
+
+## 55. Arquitetura e Invariantes de Ajuste por Atraso (Fase 4D.2)
+
+1. **PRINCIPAL ORIGINAL IMUTÁVEL (ADR-274):**
+   - `TaxObligation.principalAmount` nunca é alterado. `TaxPaymentAdjustment.updatedAmount` é um valor derivado para uma `paymentDate` explícita (date-only). Nenhum `Date.now()` oculto no domínio.
+2. **CAMADA DERIVADA SEPARADA (ADR-270):**
+   - Multa e juros são camada derivada de atraso; nunca recalculam a responsabilidade tributária (4B/4C permanecem congelados).
+3. **AUTORIDADE HÍBRIDA (ADR-270/271/272):**
+   - Motor local determinístico para fórmula/teto/juros/acumulação SELIC/arredondamento/composição.
+   - Snapshot oficial do Sicalc (`OfficialLateFeeSnapshot`) é autoridade para a multa sensível ao dia útil de início; paridade local obrigatória.
+   - Snapshot oficial da SELIC (`TaxInterestRateSnapshot`) é obrigatório; fonte exclusivamente oficial.
+   - Ausência de autoridade/taxa → falha fechada (`MISSING_LATE_FEE_AUTHORITY`, `MISSING_OFFICIAL_INTEREST_RATE`, `AUTHORITY_PARITY_MISMATCH`).
+4. **ARREDONDAMENTO HALF-EVEN (ADR-273):**
+   - `ROUND_HALF_EVEN` a 2 casas, por componente; `updatedAmount = principal + multa + juros`. Sem `Number`/`Math.round`; zero float.
+5. **JUROS = SOMA SIMPLES SELIC + 1% (ADR-272):**
+   - Meses estritamente entre vencimento e pagamento, +1% no mês do pagamento; sem juros no mesmo mês; sem capitalização; sem vazamento de taxas futuras.
+6. **SEM CALENDÁRIO GENÉRICO (ADR-275):**
+   - Proibido `isBusinessDay`, feriados municipais/estaduais/nacionais, Carnaval ou Corpus Christi no Atlas. O dia útil de início vem do snapshot oficial.
+7. **PAGAMENTO EM ATRASO (ADR-276):**
+   - Obrigação vencida só aceita pagamento igual ao valor atualizado verificado; principal isolado é rejeitado (nunca `PAID` silencioso). Sem crédito/estorno automático; evidência de pagamento preservada.
+8. **DARF MÍNIMO DIFERIDO (ADR-277):**
+   - A regra de mínimo (R$ 10,00) é `DARF_ONLY_BLOCKER` e não é ativada; carry-forward não implementado.
+9. **AI PERMANECE DESABILITADA PARA IMPOSTO:**
+   - Perguntas fiscais continuam `UNSUPPORTED_TAX` com provedor 0.
+10. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+    - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4/4B.5/4C.2 permanecem inalterados e invioláveis.

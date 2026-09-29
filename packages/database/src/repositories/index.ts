@@ -13,3 +13,5 @@ export * from './tax-input.repository';
 export * from './federal-tax-deadline.repository';
 export * from './tax-obligation.repository';
 export * from './tax-payment-evidence.repository';
+export * from './official-late-fee.repository';
+export * from './tax-interest-rate.repository';

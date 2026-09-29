@@ -587,3 +587,78 @@ export interface ITaxPaymentEvidenceRepository {
     fingerprint: string;
   }): Promise<{ outcome: PaymentWriteOutcome; record: TaxPaymentEvidenceRow }>;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4D.2 — official late-fee authority & SELIC rate snapshots
+// ---------------------------------------------------------------------------
+
+export interface OfficialLateFeeRow {
+  id: string;
+  municipalityCode: string;
+  dueDate: Date;
+  paymentDate: Date;
+  /** Exact decimal string. */
+  principalAmount: string;
+  lateFeeAmount: string;
+  lateFeePercent: string;
+  startBusinessDate: Date | null;
+  sourceSystem: string;
+  sourceReference: string;
+  sourceRetrievedAt: Date;
+  verifiedAt: Date;
+  version: number;
+  fingerprint: string;
+  createdAt: Date;
+}
+
+export interface TaxInterestRateRow {
+  id: string;
+  indexName: string;
+  referenceMonth: string;
+  /** Exact decimal string. */
+  ratePercent: string;
+  sourceAuthority: string;
+  sourceReference: string;
+  sourceRetrievedAt: Date;
+  verifiedAt: Date;
+  version: number;
+  createdAt: Date;
+}
+
+export interface IOfficialLateFeeRepository {
+  findLatest(input: {
+    municipalityCode: string;
+    dueDate: Date;
+    paymentDate: Date;
+    principalAmount: string;
+  }): Promise<OfficialLateFeeRow | null>;
+  create(input: {
+    municipalityCode: string;
+    dueDate: Date;
+    paymentDate: Date;
+    principalAmount: string;
+    lateFeeAmount: string;
+    lateFeePercent: string;
+    startBusinessDate: Date | null;
+    sourceSystem: string;
+    sourceReference: string;
+    sourceRetrievedAt: Date;
+    verifiedAt: Date;
+    version: number;
+    fingerprint: string;
+  }): Promise<{ outcome: 'CREATED' | 'DUPLICATE'; record: OfficialLateFeeRow }>;
+}
+
+export interface ITaxInterestRateRepository {
+  listByIndexAndMonths(indexName: string, months: readonly string[]): Promise<TaxInterestRateRow[]>;
+  create(input: {
+    indexName: string;
+    referenceMonth: string;
+    ratePercent: string;
+    sourceAuthority: string;
+    sourceReference: string;
+    sourceRetrievedAt: Date;
+    verifiedAt: Date;
+    version: number;
+  }): Promise<{ outcome: 'CREATED' | 'DUPLICATE'; record: TaxInterestRateRow }>;
+}
