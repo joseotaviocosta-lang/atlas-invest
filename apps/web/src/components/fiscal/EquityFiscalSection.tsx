@@ -55,13 +55,15 @@ function CategoryCard({
   title,
   category,
   showMatchedQuantity,
+  testId,
 }: {
   title: string;
   category: EquityCategoryVM;
   showMatchedQuantity: boolean;
+  testId: string;
 }) {
   return (
-    <Card style={{ padding: `${spacing.base}px` }}>
+    <Card style={{ padding: `${spacing.base}px` }} data-testid={testId}>
       <strong style={{ color: colors.textPrimary, fontSize: '1rem' }}>{title}</strong>
       <div style={{ marginTop: `${spacing.xs}px` }}>
         <Field label="Situação da isenção" value={category.exemptionLabel} />
@@ -100,7 +102,10 @@ function ElectionDecision({
   onChoose: (value: EquityElectionValue) => void;
 }) {
   return (
-    <Card style={{ padding: `${spacing.base}px`, marginTop: `${spacing.base}px` }}>
+    <Card
+      style={{ padding: `${spacing.base}px`, marginTop: `${spacing.base}px` }}
+      data-testid="equity-election"
+    >
       <strong style={{ color: colors.textPrimary, fontSize: '1rem' }}>
         {required ? 'Reconhecer este prejuízo para compensação futura?' : 'Compensação futura'}
       </strong>
@@ -109,7 +114,10 @@ function ElectionDecision({
           ? 'Este mês teve prejuízo em operações comuns dentro do limite de isenção. Para considerar esse prejuízo na compensação de meses futuros, confirme sua opção.'
           : 'Você pode alterar sua opção de reconhecimento deste prejuízo.'}
       </p>
-      <div style={{ fontSize: '0.8125rem', color: colors.textMuted, marginTop: '4px' }}>
+      <div
+        style={{ fontSize: '0.8125rem', color: colors.textMuted, marginTop: '4px' }}
+        data-testid="equity-election-status"
+      >
         Situação atual: <strong style={{ color: colors.textPrimary }}>{statusLabel}</strong>
       </div>
       <div
@@ -126,6 +134,7 @@ function ElectionDecision({
           variant="primary"
           onClick={() => onChoose('DECLARE_FOR_CARRYFORWARD')}
           aria-pressed={currentValue === 'DECLARE_FOR_CARRYFORWARD'}
+          data-testid="equity-election-declare"
           style={{ minHeight: '44px' }}
         >
           Reconhecer prejuízo
@@ -134,6 +143,7 @@ function ElectionDecision({
           variant="outline"
           onClick={() => onChoose('DO_NOT_DECLARE')}
           aria-pressed={currentValue === 'DO_NOT_DECLARE'}
+          data-testid="equity-election-decline"
           style={{ minHeight: '44px' }}
         >
           Não reconhecer
@@ -169,7 +179,7 @@ export function EquityFiscalSection({
   const viewModel = mapToEquityFiscalViewModel(equity ?? null);
 
   return (
-    <div style={{ marginTop: `${spacing.xl}px` }}>
+    <div style={{ marginTop: `${spacing.xl}px` }} data-testid="equity-fiscal-section">
       <SectionHeader
         title="Ações"
         description="Apuração mensal de renda variável derivada do livro-razão (servidor)"
@@ -193,7 +203,7 @@ export function EquityFiscalSection({
       )}
 
       {viewModel && viewModel.blocked && (
-        <Card style={{ padding: `${spacing.base}px` }}>
+        <Card style={{ padding: `${spacing.base}px` }} data-testid="equity-blocked">
           <div role="status" style={{ color: colors.warning, fontWeight: 600 }}>
             Dados insuficientes para concluir
           </div>
@@ -204,7 +214,7 @@ export function EquityFiscalSection({
       )}
 
       {viewModel && !viewModel.blocked && !viewModel.hasActivity && (
-        <Card style={{ padding: `${spacing.xl}px` }}>
+        <Card style={{ padding: `${spacing.xl}px` }} data-testid="equity-empty">
           <EmptyState
             title="Sem operações de ações nesta competência"
             description="Não há operações de renda variável registradas para o mês selecionado."
@@ -225,11 +235,13 @@ export function EquityFiscalSection({
               title="Operações comuns"
               category={viewModel.normal}
               showMatchedQuantity={false}
+              testId="equity-normal-card"
             />
             <CategoryCard
               title="Day trade"
               category={viewModel.dayTrade}
               showMatchedQuantity={true}
+              testId="equity-day-trade-card"
             />
           </div>
 
@@ -280,6 +292,7 @@ export function EquityFiscalSection({
           <Button
             variant="outline"
             onClick={() => setPendingValue(null)}
+            data-testid="equity-election-cancel"
             style={{ minHeight: '44px' }}
           >
             Cancelar
@@ -288,6 +301,7 @@ export function EquityFiscalSection({
             variant="primary"
             isLoading={mutation.isPending}
             onClick={() => pendingValue && mutation.mutate(pendingValue)}
+            data-testid="equity-election-confirm"
             style={{ minHeight: '44px', borderRadius: `${borderRadius.md}px` }}
           >
             Confirmar

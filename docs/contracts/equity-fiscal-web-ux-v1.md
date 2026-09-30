@@ -51,3 +51,16 @@ A seção de FII existente permanece inalterada.
 ## Fora de escopo
 
 IRRF, 6015, DARF, IRPF anual, IA fiscal.
+
+## Cobertura de browser (Fase 4G.2A.1c.1)
+
+A suíte de browser real (`pnpm test:equity-fiscal-web:e2e`, Playwright) cobre, nos
+viewports Desktop (1440x900), Tablet (768x1024) e Mobile (390x844):
+
+- A–K: isenção, mês tributável, decisão obrigatória, declarar, recusar, revisão,
+  bloqueio por ativo desconhecido, bloqueio por custo ausente, erro de servidor,
+  mês vazio e coexistência com FII;
+- L: **sem overflow horizontal** no viewport estreito e modal de confirmação
+  totalmente visível/utilizável;
+- o corpo do `PUT` contém apenas `{ value }` (nunca `taxSubjectId`);
+- após a mutação, ocorre refetch do read model no servidor.
