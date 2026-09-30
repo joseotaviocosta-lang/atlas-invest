@@ -19,3 +19,4 @@ export * from './tax-carry-forward.repository';
 export * from './tax-payment-aggregation.repository';
 export * from './taxpayer-identity.repository';
 export * from './official-darf-generation.repository';
+export * from './tax-compensation-election.repository';

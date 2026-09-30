@@ -860,3 +860,48 @@ export interface ITaxPaymentAggregationRepository {
     fingerprint: string;
   }): Promise<{ outcome: AggregationWriteOutcome; record: TaxPaymentAggregationRow }>;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4G.2A.1a — tax compensation election persistence (immutable revisions)
+// ---------------------------------------------------------------------------
+
+export type TaxCompensationElectionWriteOutcome = 'CREATED' | 'DUPLICATE';
+
+export interface TaxCompensationElectionRow {
+  id: string;
+  taxSubjectId: string;
+  competence: string;
+  electionType: string;
+  value: string;
+  version: number;
+  source: string;
+  supersedesId: string | null;
+  fingerprint: string;
+  createdAt: Date;
+}
+
+export interface ITaxCompensationElectionRepository {
+  /** Current effective revision (highest version), or null when none exists. */
+  findCurrent(input: {
+    taxSubjectId: string;
+    competence: string;
+    electionType: string;
+  }): Promise<TaxCompensationElectionRow | null>;
+  /** Full immutable revision history in ascending version order. */
+  listHistory(input: {
+    taxSubjectId: string;
+    competence: string;
+    electionType: string;
+  }): Promise<TaxCompensationElectionRow[]>;
+  /**
+   * Appends a revision. Same value as current → idempotent DUPLICATE (no new
+   * version); different value → new monotonic version superseding the previous.
+   */
+  putRevision(input: {
+    taxSubjectId: string;
+    competence: string;
+    electionType: string;
+    value: string;
+    source: string;
+  }): Promise<{ outcome: TaxCompensationElectionWriteOutcome; record: TaxCompensationElectionRow }>;
+}

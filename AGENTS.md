@@ -1714,3 +1714,32 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
     - Perguntas fiscais continuam `UNSUPPORTED_TAX` com provedor 0.
 11. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
     - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4/4B.5/4C.2/4D.2/4E permanecem inalterados e invioláveis.
+
+---
+
+## 58. Persistência da Eleição de Compensação Tributária (Fase 4G.2A.1a)
+
+1. **REVISÕES IMUTÁVEIS (ADR-292):**
+   - Linhas de `tax_compensation_elections` são imutáveis; nunca há `UPDATE` semântico de `value`.
+   - Mudança de eleição **insere** nova revisão com `version` monotônica e `supersedesId` apontando para a anterior.
+2. **IDENTIDADE LÓGICA E DE REVISÃO:**
+   - Identidade lógica: `(taxSubjectId, competence, electionType)`.
+   - Identidade de revisão: `(taxSubjectId, competence, electionType, version)`.
+3. **MESMO VALOR É IDEMPOTENTE:**
+   - Se o valor corrente já é igual ao solicitado, nenhuma nova revisão é criada.
+4. **VALOR DIFERENTE CRIA REVISÃO:**
+   - Exatamente uma nova revisão, preservando integralmente o histórico.
+5. **REVISÃO CORRENTE POR VERSÃO:**
+   - A revisão corrente é resolvida pela maior `version`, nunca por `createdAt`.
+6. **FONTE MANUAL_CONFIRMED:**
+   - Apenas `MANUAL_CONFIRMED` nesta fase; sem fonte heurística.
+7. **SEM CPF:**
+   - `TaxSubjectId` é opaco; nenhum CPF/CNPJ bruto é persistido.
+8. **FINGERPRINT SEMÂNTICO:**
+   - Determinístico sobre `taxSubjectId|competence|electionType|value|version|source`; independente de `id`/`createdAt`.
+9. **CONCORRÊNCIA MONOTÔNICA:**
+   - A `UNIQUE (tax_subject_id, competence, election_type, version)` é a barreira; retry otimista limitado preserva histórico monotônico e sem versão duplicada.
+10. **ESCOPO E ANTI-ESCOPO:**
+    - Esta fase é persistência-only: sem API, sem web/mobile, sem integração de leitura mensal, sem IRRF, sem composição 6015 e sem DARF de ações.
+11. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+    - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4/4B.5/4C.2/4D.2/4E/4F permanecem inalterados e invioláveis.

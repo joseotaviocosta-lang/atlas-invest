@@ -32,6 +32,7 @@ model User {
   taxPaymentAggregations  TaxPaymentAggregation[]
   taxpayerIdentity        TaxpayerIdentityRecord?
   darfGenerationRecords   OfficialDarfGenerationRecord[]
+  taxCompensationElections TaxCompensationElectionRecord[]
 
   @@map("users")
 }
@@ -589,4 +590,27 @@ model OfficialDarfGenerationRecord {
   @@index([taxSubjectId, status])
   @@index([taxSubjectId, taxObligationId])
   @@map("official_darf_generation_records")
+}
+
+/// Phase 4G.2A.1a - persisted, immutable tax-compensation election revisions.
+/// One logical election identity is `(taxSubjectId, competence, electionType)`;
+/// each change inserts a new monotonic `version` (never an in-place update).
+/// Same value is idempotent. Source is `MANUAL_CONFIRMED` only.
+model TaxCompensationElectionRecord {
+  id           String   @id @default(uuid()) @db.Uuid
+  taxSubjectId String   @map("tax_subject_id") @db.Uuid
+  competence   String   @db.Char(7)
+  electionType String   @map("election_type") @db.VarChar(60)
+  value        String   @db.VarChar(30)
+  version      Int
+  source       String   @db.VarChar(30)
+  supersedesId String?  @map("supersedes_id") @db.Uuid
+  fingerprint  String   @db.VarChar(64)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+
+  @@unique([taxSubjectId, competence, electionType, version], name: "tax_compensation_election_revision_identity")
+  @@index([taxSubjectId, competence, electionType])
+  @@map("tax_compensation_elections")
 }
