@@ -79,6 +79,8 @@
     "test:tax-compensation-election-persistence": "vitest run --config vitest.database.config.ts tests/database/tax-compensation-election-persistence.test.ts",
     "test:tax-compensation-election-persistence:scale": "vitest run --config vitest.database.config.ts tests/database/tax-compensation-election-scale.test.ts",
     "test:equity-election-api": "vitest run --config vitest.fiscal-api.config.ts tests/fiscal-api/equity-election-api.test.ts",
+    "test:equity-monthly-fiscal-replay": "vitest run --config vitest.fiscal-api.config.ts tests/fiscal-api/equity-monthly-fiscal-replay.test.ts",
+    "test:equity-monthly-fiscal-replay:scale": "vitest run --config vitest.fiscal-api.config.ts tests/fiscal-api/equity-monthly-fiscal-replay-scale.test.ts",
     "test:api": "vitest run --config vitest.api.config.ts",
     "test:auth": "vitest run --config vitest.auth.config.ts",
     "test:mobile": "vitest run --config vitest.mobile.config.ts",

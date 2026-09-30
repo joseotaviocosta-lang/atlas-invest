@@ -894,6 +894,14 @@ export interface ITaxCompensationElectionRepository {
     electionType: string;
   }): Promise<TaxCompensationElectionRow[]>;
   /**
+   * Current effective revision per competence for a subject+type (bulk read;
+   * avoids one query per competence during historical replay).
+   */
+  listCurrentBySubject(input: {
+    taxSubjectId: string;
+    electionType: string;
+  }): Promise<TaxCompensationElectionRow[]>;
+  /**
    * Appends a revision. Same value as current → idempotent DUPLICATE (no new
    * version); different value → new monotonic version superseding the previous.
    */

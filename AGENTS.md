@@ -1764,3 +1764,32 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - IRRF, composição 6015, mínimo DARF, DARF de ações e UX web/mobile permanecem fora desta fase.
 8. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
    - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4/4B.5/4C.2/4D.2/4E/4F e a persistência de eleição (4G.2A.1a) permanecem inalterados e invioláveis.
+
+---
+
+## 60. Replay Mensal Fiscal de Ações (Fase 4G.2A.1b.1)
+
+1. **LEDGER É A FONTE DA VERDADE (ADR-294):**
+   - A leitura mensal fiscal de ações mapeia `BUY`/`SELL` do livro-razão; snapshots de posição **nunca** são fonte da verdade.
+2. **IDENTIDADE DE INSTITUIÇÃO NO DAY TRADE:**
+   - O day trade usa `account.institutionId`; contas distintas do **mesmo** intermediário compartilham identidade e podem casar.
+   - Intermediários distintos nunca casam; instituição ausente **bloqueia**.
+3. **MATCHER CONGELADO:**
+   - Reutiliza-se `classifyEquityTradesForTax`; proibida reimplementação de classificação.
+4. **CUSTO BASE AUTORITATIVO:**
+   - Legs normais usam a disposição realizada canônica rateada por quantidade (decimal exato).
+   - O custo do day trade vem do leg de compra casado, nunca do custo médio de estoque pré-existente.
+   - Custo desconhecido **bloqueia** (nunca zero).
+5. **REPLAY CRONOLÓGICO E BUCKETS ISOLADOS:**
+   - Prejuízos normais e day trade são transportados separadamente; nunca se cruzam.
+6. **ELEIÇÃO POR COMPETÊNCIA:**
+   - Eleições persistidas são injetadas competência a competência; ausente → `ELECTION_REQUIRED`.
+   - Revisão em M afeta M e seguintes; **nunca** altera M-1.
+7. **FAIL-CLOSED:**
+   - Ativo desconhecido, instituição ausente, custo ausente, falha do matcher e competência anterior bloqueada produzem `BLOCKED`, sem isenção afirmada nem prejuízo fabricado.
+8. **SEM MATEMÁTICA NO CLIENTE E SEM PRISMA NO MOTOR:**
+   - Todos os valores são strings decimais exatas fornecidas pelo servidor; o motor puro não acessa Prisma nem rede.
+9. **ANTI-ESCOPO 4G.2A.1b.1:**
+   - IRRF, composição 6015, mínimo DARF, DARF de ações e UX web/mobile permanecem fora.
+10. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+    - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4/4B.5/4C.2/4D.2/4E/4F/4G.2A.1a/4G.2A.1b permanecem inalterados e invioláveis.

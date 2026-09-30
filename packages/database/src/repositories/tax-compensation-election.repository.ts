@@ -123,6 +123,24 @@ export class TaxCompensationElectionRepository implements ITaxCompensationElecti
     return rows.map((row) => this.map(row));
   }
 
+  async listCurrentBySubject(input: {
+    taxSubjectId: string;
+    electionType: string;
+  }): Promise<TaxCompensationElectionRow[]> {
+    const rows = await this.prisma.taxCompensationElectionRecord.findMany({
+      where: {
+        taxSubjectId: input.taxSubjectId,
+        electionType: input.electionType,
+      },
+      orderBy: [{ competence: 'asc' }, { version: 'desc' }],
+    });
+    const byCompetence = new Map<string, TaxCompensationElectionRow>();
+    for (const row of rows) {
+      if (!byCompetence.has(row.competence)) byCompetence.set(row.competence, this.map(row));
+    }
+    return [...byCompetence.values()];
+  }
+
   async putRevision(input: {
     taxSubjectId: string;
     competence: string;
