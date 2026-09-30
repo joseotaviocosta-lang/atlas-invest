@@ -273,6 +273,25 @@ export {
 export type { TaxpayerIdentityType, TaxpayerIdentityReference } from './taxpayer-identity';
 
 export {
+  EQUITY_TAX_CATEGORIES,
+  EQUITY_LEG_CLASSIFICATIONS,
+  EQUITY_TRADE_CLASSIFICATION_OUTCOMES,
+  EQUITY_TAX_PROJECTION_VERSION,
+  EquityTradeClassificationError,
+  classifyEquityTradesForTax,
+  assertEquityLegQuantityConservation,
+} from './equity-day-trade';
+export type {
+  EquityTaxCategory,
+  EquityLegClassification,
+  EquityTradeClassificationOutcome,
+  EquityExecution,
+  EquityTaxLeg,
+  EquityTradeClassificationSummary,
+  EquityTradeClassificationResult,
+} from './equity-day-trade';
+
+export {
   DARF_GENERATION_MODES,
   DARF_GENERATION_STATUSES,
   DARF_HANDOFF_REASON_CODES,
