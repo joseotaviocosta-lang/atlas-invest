@@ -1793,3 +1793,22 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - IRRF, composição 6015, mínimo DARF, DARF de ações e UX web/mobile permanecem fora.
 10. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
     - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4/4B.5/4C.2/4D.2/4E/4F/4G.2A.1a/4G.2A.1b permanecem inalterados e invioláveis.
+
+---
+
+## 61. Fechamento do Replay Mensal Fiscal de Ações (Fase 4G.2A.1b.2)
+
+1. **INSTITUIÇÃO AUSENTE BLOQUEIA (ADR-294):**
+   - Execução de renda variável sem identidade canônica de instituição resolve em `BLOCKED` com `MISSING_INSTITUTION_IDENTITY`; nunca se adivinha instituição nem se usa `accountId` como substituto; nenhum resultado parcial `COMPLETE` é emitido.
+2. **METADADOS DE ATIVO EM LOTE:**
+   - A leitura mensal resolve todos os `assetId` distintos com uma única consulta (`IAssetRepository.findByIds`); proibido 1 consulta por ativo.
+3. **CONTA/INSTITUIÇÃO EM LOTE:**
+   - O mapeamento conta→instituição é feito por carteira (em memória), sem consulta por execução.
+4. **ELEIÇÕES EM LOTE:**
+   - As eleições são carregadas em lote (`listCurrentBySubject`), nunca 1 consulta por competência.
+5. **ZERO N+1:**
+   - Sem consulta por trade, por leg, por ativo ou por mês.
+6. **SEM DRIFT SEMÂNTICO:**
+   - Matcher, núcleo mensal, eleição, prejuízos e custo base permanecem inalterados.
+7. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+   - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4/4B.5/4C.2/4D.2/4E/4F/4G.2A.1a/4G.2A.1b.1 permanecem inalterados e invioláveis.

@@ -89,3 +89,13 @@ afirmada) e nenhum prejuízo fabricado é transportado.
 ## Fora de escopo
 
 IRRF, composição 6015, mínimo DARF, DARF de ações, UI web/mobile.
+
+## Orçamento de consultas
+
+- **Ledger**: 1 consulta por carteira.
+- **Metadados de ativo**: 1 consulta em lote para todos os `assetId` distintos
+  (`IAssetRepository.findByIds`), nunca 1 consulta por ativo.
+- **Conta/instituição**: 1 consulta por carteira (mapeamento em memória).
+- **Custo base**: 0 consultas adicionais (reutiliza o replay do Portfolio Engine).
+- **Eleições**: 1 consulta em lote (`listCurrentBySubject`), nunca 1 por competência.
+- Sem consultas por trade, por leg, por ativo ou por mês (zero N+1).

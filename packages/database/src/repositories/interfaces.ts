@@ -16,6 +16,8 @@ export interface PaginationOptions {
 
 export interface IAssetRepository {
   findById(id: string): Promise<Asset | null>;
+  /** Batch lookup by ids in a single query (avoids per-asset queries). */
+  findByIds(ids: readonly string[]): Promise<Asset[]>;
   findByTicker(ticker: string): Promise<Asset | null>;
   findByTickerAndExchange(ticker: string, exchange: string): Promise<Asset | null>;
   /** All canonical assets sharing a ticker (ambiguity detection, Phase 3Z). */

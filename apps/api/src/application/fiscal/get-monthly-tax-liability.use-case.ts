@@ -145,9 +145,10 @@ export class GetMonthlyTaxLiabilityUseCase {
       if (assetId) assetIds.add(String(assetId));
     }
     const assetTypeByAssetId = new Map<string, string>();
-    for (const assetId of assetIds) {
-      const asset = await this.assetRepository.findById(assetId);
-      if (asset) assetTypeByAssetId.set(assetId, asset.type);
+    // Single batched metadata query for all distinct asset ids (no per-asset query).
+    const assets = await this.assetRepository.findByIds([...assetIds]);
+    for (const asset of assets) {
+      assetTypeByAssetId.set(String(asset.id), asset.type);
     }
 
     return {

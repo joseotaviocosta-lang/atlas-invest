@@ -12,6 +12,12 @@ export class AssetRepository implements IAssetRepository {
     return raw ? AssetMapper.toDomain(raw) : null;
   }
 
+  async findByIds(ids: readonly string[]): Promise<Asset[]> {
+    if (ids.length === 0) return [];
+    const raws = await this.prisma.asset.findMany({ where: { id: { in: [...ids] } } });
+    return raws.map((raw) => AssetMapper.toDomain(raw));
+  }
+
   async findByTicker(ticker: string): Promise<Asset | null> {
     const normalized = ticker.trim().toUpperCase();
     const raw = await this.prisma.asset.findFirst({ where: { ticker: normalized } });
