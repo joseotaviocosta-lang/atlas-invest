@@ -295,6 +295,7 @@ model TaxWithholdingInputRecord {
   competence      String    @db.Char(7)
   economicDate    DateTime  @map("economic_date") @db.Date
   category        String    @db.VarChar(50)
+  withholdingCategory String? @map("withholding_category") @db.VarChar(30)
   amount          Decimal?  @db.Decimal(38, 18)
   currency        String    @db.VarChar(3)
   status          String    @db.VarChar(20)

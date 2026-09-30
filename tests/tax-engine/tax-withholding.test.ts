@@ -15,6 +15,7 @@ const withholding = (over: Partial<TaxWithholdingInput> = {}): TaxWithholdingInp
   economicDate: LocalDate.from('2026-09-10'),
   competence: fiscalCompetenceFromString('2026-09'),
   category: 'BRAZILIAN_EQUITY',
+  withholdingCategory: 'EQUITY_NORMAL',
   currency: 'BRL',
   amount: Money.from('12.34', 'BRL'),
   status: 'CONFIRMED',

@@ -234,6 +234,7 @@ export class TaxInputRepository implements ITaxInputRepository {
     competence: string;
     economicDate: Date;
     category: string;
+    withholdingCategory: string | null;
     amount: Prisma.Decimal | null;
     currency: string;
     status: string;
@@ -251,6 +252,7 @@ export class TaxInputRepository implements ITaxInputRepository {
       competence: row.competence,
       economicDate: row.economicDate,
       category: row.category,
+      withholdingCategory: row.withholdingCategory,
       amount: row.amount === null ? null : row.amount.toString(),
       currency: row.currency,
       status: row.status,
@@ -276,6 +278,7 @@ export class TaxInputRepository implements ITaxInputRepository {
       competence: input.competence,
       economicDate: input.economicDate,
       category: input.category,
+      withholdingCategory: input.withholdingCategory,
       amount: input.amount === null ? null : new Prisma.Decimal(input.amount),
       currency: input.currency,
       status: input.status,

@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from '@nes
 import { LocalDate, Money } from '@atlas/domain';
 import {
   parseFiscalCompetence,
+  isTaxWithholdingCategory,
   validateFiiTaxEligibilityFacts,
   validateTaxTradeClassification,
   validateTaxWithholdingInput,
@@ -151,6 +152,7 @@ export class RecordWithholdingInputUseCase {
     competence: string;
     economicDate: string;
     category: string;
+    withholdingCategory?: string;
     amount: string | null;
     currency: string;
     status: string;
@@ -164,6 +166,15 @@ export class RecordWithholdingInputUseCase {
     if (!params.sourceReference || params.sourceReference.length > 255)
       badInput('sourceReference is required and must be ≤ 255 chars');
     if (!/^[A-Z]{3}$/.test(params.currency)) badInput('currency must be an explicit ISO-4217 code');
+    if (params.category === 'BRAZILIAN_EQUITY') {
+      if (!isTaxWithholdingCategory(params.withholdingCategory)) {
+        badInput(
+          'withholdingCategory is required for BRAZILIAN_EQUITY and must be EQUITY_NORMAL or EQUITY_DAY_TRADE',
+        );
+      }
+    } else if (params.withholdingCategory !== undefined) {
+      badInput('withholdingCategory is only supported for BRAZILIAN_EQUITY');
+    }
 
     let amount: Money | undefined;
     if (params.status === 'UNKNOWN') {
@@ -187,6 +198,12 @@ export class RecordWithholdingInputUseCase {
       economicDate: LocalDate.from(params.economicDate),
       competence,
       category: params.category as TaxWithholdingInput['category'],
+      ...(params.withholdingCategory
+        ? {
+            withholdingCategory:
+              params.withholdingCategory as TaxWithholdingInput['withholdingCategory'],
+          }
+        : {}),
       currency: params.currency,
       ...(amount ? { amount } : {}),
       status: params.status as TaxWithholdingInput['status'],
@@ -200,6 +217,7 @@ export class RecordWithholdingInputUseCase {
       competence: competence.value,
       economicDate,
       category: params.category,
+      withholdingCategory: params.withholdingCategory ?? null,
       amount: amount ? amount.amount : null,
       currency: params.currency,
       status: params.status,
@@ -208,6 +226,7 @@ export class RecordWithholdingInputUseCase {
       fingerprint: fingerprintWithholding({
         competence: competence.value,
         category: params.category,
+        withholdingCategory: params.withholdingCategory ?? null,
         amount: amount ? amount.amount : null,
         currency: params.currency,
         status: params.status,

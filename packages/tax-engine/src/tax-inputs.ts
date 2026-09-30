@@ -91,6 +91,28 @@ export const TAX_WITHHOLDING_SOURCE_TYPES = [
 ] as const;
 export type TaxWithholdingSourceType = (typeof TAX_WITHHOLDING_SOURCE_TYPES)[number];
 
+/**
+ * Phase 4G.2B.0 — withholding treatment category (IRRF pool classifier).
+ *
+ * Separate from `TaxAssetCategory`: `BRAZILIAN_EQUITY` is the broad asset
+ * category, while this discriminator identifies the IRRF pool
+ * (`EQUITY_NORMAL` → EQUITY_NORMAL_IRRF, `EQUITY_DAY_TRADE` → EQUITY_DAY_TRADE_IRRF).
+ * It must be explicit source data — never inferred from free text or amounts.
+ */
+export const TAX_WITHHOLDING_CATEGORIES = ['EQUITY_NORMAL', 'EQUITY_DAY_TRADE'] as const;
+export type TaxWithholdingCategory = (typeof TAX_WITHHOLDING_CATEGORIES)[number];
+
+export function isTaxWithholdingCategory(value: unknown): value is TaxWithholdingCategory {
+  return (
+    typeof value === 'string' && (TAX_WITHHOLDING_CATEGORIES as readonly string[]).includes(value)
+  );
+}
+
+/** Brazilian equity IRRF requires an explicit withholding category (fail-closed otherwise). */
+export function requiresWithholdingCategory(category: TaxAssetCategory): boolean {
+  return category === 'BRAZILIAN_EQUITY';
+}
+
 export interface TaxWithholdingInput {
   readonly id: string;
   readonly taxSubjectId?: string;
@@ -99,6 +121,8 @@ export interface TaxWithholdingInput {
   readonly economicDate: LocalDate;
   readonly competence: FiscalCompetence;
   readonly category: TaxAssetCategory;
+  /** Explicit IRRF pool classifier. Required for `BRAZILIAN_EQUITY` evidence. */
+  readonly withholdingCategory?: TaxWithholdingCategory;
   readonly currency: string;
   /** Exact amount; required unless status is UNKNOWN (never fabricated). */
   readonly amount?: Money;
@@ -119,6 +143,15 @@ export function validateTaxWithholdingInput(input: TaxWithholdingInput): Validat
     errors.push(`Unknown withholding status '${input.status}'`);
   }
   if (input.currency.trim().length === 0) errors.push('currency is explicit and required');
+  if (requiresWithholdingCategory(input.category)) {
+    if (input.withholdingCategory === undefined) {
+      errors.push('withholdingCategory is required for BRAZILIAN_EQUITY withholding evidence');
+    } else if (!isTaxWithholdingCategory(input.withholdingCategory)) {
+      errors.push(`Unknown withholdingCategory '${input.withholdingCategory}'`);
+    }
+  } else if (input.withholdingCategory !== undefined) {
+    errors.push('withholdingCategory is only supported for BRAZILIAN_EQUITY withholding evidence');
+  }
   if (input.status === 'UNKNOWN') {
     if (input.amount !== undefined) {
       errors.push('UNKNOWN withholding must not carry an amount');

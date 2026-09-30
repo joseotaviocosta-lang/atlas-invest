@@ -42,6 +42,7 @@ describe('API Integration: tax input conflict resolution (Phase 4B.4)', () => {
         competence: '2026-09',
         economicDate: '2026-09-10',
         category: 'BRAZILIAN_EQUITY',
+        withholdingCategory: 'EQUITY_NORMAL',
         amount,
         currency: 'BRL',
         status: 'CONFIRMED',

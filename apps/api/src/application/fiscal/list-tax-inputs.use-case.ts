@@ -34,6 +34,7 @@ export class ListTaxInputsUseCase {
       competence: row.competence,
       economicDate: isoDate(row.economicDate),
       category: row.category,
+      withholdingCategory: row.withholdingCategory,
       amount: row.amount,
       currency: row.currency,
       status: row.status,

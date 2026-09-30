@@ -19,6 +19,7 @@ export const RecordWithholdingBodySchema = z.object({
   competence,
   economicDate: civilDate,
   category: z.enum(['BRAZILIAN_EQUITY', 'FII', 'ETF', 'BDR', 'FIXED_INCOME', 'UNKNOWN']),
+  withholdingCategory: z.enum(['EQUITY_NORMAL', 'EQUITY_DAY_TRADE']).optional(),
   amount: decimal.nullable().optional(),
   currency,
   status: z.enum(['CONFIRMED', 'UNVERIFIED', 'UNKNOWN']),

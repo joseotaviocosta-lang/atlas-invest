@@ -67,6 +67,12 @@ export class PersistedTaxInputProvider implements TaxInputProvider {
       economicDate: toLocalDate(row.economicDate),
       competence: fiscalCompetenceFromString(row.competence),
       category: row.category as TaxWithholdingInput['category'],
+      ...(row.withholdingCategory
+        ? {
+            withholdingCategory:
+              row.withholdingCategory as TaxWithholdingInput['withholdingCategory'],
+          }
+        : {}),
       currency: row.currency,
       ...(row.amount !== null ? { amount: Money.from(row.amount, row.currency) } : {}),
       // A conflicted withholding is not confirmed for calculation purposes.

@@ -350,6 +350,8 @@ export interface TaxWithholdingRow {
   competence: string;
   economicDate: Date;
   category: string;
+  /** Explicit IRRF pool classifier (null on legacy rows). */
+  withholdingCategory: string | null;
   /** Exact decimal string, or null when status is UNKNOWN. */
   amount: string | null;
   currency: string;
@@ -407,6 +409,7 @@ export interface ITaxInputRepository {
     competence: string;
     economicDate: Date;
     category: string;
+    withholdingCategory: string | null;
     amount: string | null;
     currency: string;
     status: string;

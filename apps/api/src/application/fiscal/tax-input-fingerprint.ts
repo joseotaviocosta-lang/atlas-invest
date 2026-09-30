@@ -30,13 +30,14 @@ export function fingerprintTradeClassification(input: {
 export function fingerprintWithholding(input: {
   competence: string;
   category: string;
+  withholdingCategory?: string | null;
   amount: string | null;
   currency: string;
   status: string;
   sourceType: string;
   sourceReference: string;
 }): string {
-  return digest([
+  const parts: (string | null)[] = [
     input.competence,
     input.category,
     input.amount,
@@ -44,7 +45,12 @@ export function fingerprintWithholding(input: {
     input.status,
     input.sourceType,
     input.sourceReference,
-  ]);
+  ];
+  // Phase 4G.2B.0 — versioned extension: the explicit withholding discriminator is
+  // part of semantic identity only when present, so legacy fingerprints (no
+  // discriminator) are preserved byte-for-byte.
+  if (input.withholdingCategory) parts.push(`wc:${input.withholdingCategory}`);
+  return digest(parts);
 }
 
 export function fingerprintFiiEligibility(input: {

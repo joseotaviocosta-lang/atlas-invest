@@ -53,3 +53,10 @@ reproduzida não duplica crédito.
 O IRRF vem exclusivamente de entrada canônica explícita com `category`
 (`EQUITY_NORMAL`/`EQUITY_DAY_TRADE`) e `amount`. Nunca é inferido do imposto
 devido. Ausência de entrada é tratada como ausência (não estimada).
+
+## Pré-requisito de integração (Fase 4G.2B.0)
+
+A evidência de retenção de produção deve carregar o discriminador explícito
+`withholdingCategory ∈ { EQUITY_NORMAL, EQUITY_DAY_TRADE }` quando
+`category = BRAZILIAN_EQUITY` (ver `tax-withholding-classification-v1`). Sem ele,
+a categoria fica `BLOCKED`/`UNKNOWN` — nunca classificada por inferência.

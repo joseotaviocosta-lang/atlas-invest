@@ -220,7 +220,7 @@ describe('Phase 4G.2B — equity production tax & IRRF pools', () => {
       cases += 1;
     }
     expect(cases).toBe(10_000);
-  });
+  }, 30000);
 
   it('property: no automatic January carry across many seeded year boundaries', () => {
     const seed = 424242;

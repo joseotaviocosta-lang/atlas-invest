@@ -1864,3 +1864,26 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
     - 6015, mínimo DARF, vencimento, atraso, Sicalc, IRPF anual e IA fiscal permanecem fora.
 11. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
     - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A–4G.2A permanecem inalterados e invioláveis.
+
+---
+
+## 64. Classificação Canônica de Retenção de Renda Variável (Fase 4G.2B.0)
+
+1. **TAXASSETCATEGORY NÃO É CLASSIFICADOR DE POOL DE IRRF (ADR-299):**
+   - `category` é a categoria ampla do ativo; `withholdingCategory` é o classificador explícito do pool de IRRF.
+2. **EVIDÊNCIA DE EQUITY EXIGE `withholdingCategory`:**
+   - `BRAZILIAN_EQUITY` exige `withholdingCategory ∈ { EQUITY_NORMAL, EQUITY_DAY_TRADE }`.
+3. **DADOS DE ORIGEM EXPLÍCITOS:**
+   - `EQUITY_NORMAL` e `EQUITY_DAY_TRADE` são dados de origem; nunca inferidos.
+4. **SEM INFERÊNCIA POR TEXTO:**
+   - `sourceReference` nunca é parseado para classificação fiscal.
+5. **FALHA FECHADA:**
+   - Discriminador ausente/ambíguo bloqueia o replay de IRRF de produção; nunca vira zero.
+6. **LEGADO LEGÍVEL E INCOMPLETO:**
+   - Registros sem discriminador permanecem legíveis com `withholdingCategory: null`; sem backfill destrutivo.
+7. **FINGERPRINT:**
+   - O discriminador compõe a identidade semântica quando presente; fingerprints legados são preservados.
+8. **ANTI-ESCOPO 4G.2B.0:**
+   - Integração do IRRF no replay mensal, extensão do read model, web/mobile, 6015 e DARF permanecem fora.
+9. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+   - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A–4G.2B permanecem inalterados e invioláveis.
