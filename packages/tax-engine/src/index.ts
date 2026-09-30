@@ -273,6 +273,31 @@ export {
 export type { TaxpayerIdentityType, TaxpayerIdentityReference } from './taxpayer-identity';
 
 export {
+  EQUITY_LOSS_CATEGORIES,
+  EQUITY_MONTHLY_EXEMPTION_STATUSES,
+  TAX_COMPENSATION_ELECTION_VALUES,
+  TAX_COMPENSATION_ELECTION_TYPES,
+  EQUITY_ASSET_ELIGIBILITIES,
+  EQUITY_MONTHLY_EXEMPTION_THRESHOLD,
+  EQUITY_MONTHLY_CORE_RULE_VERSION,
+  computeEquityMonthlyTaxCore,
+  computeTaxCompensationElectionFingerprint,
+} from './equity-monthly-tax-core';
+export type {
+  EquityLossCategory,
+  EquityMonthlyExemptionStatus,
+  TaxCompensationElectionValue,
+  TaxCompensationElectionType,
+  EquityAssetEligibility,
+  EquitySellLeg,
+  EquityCategoryMonthlyResult,
+  EquityMonthlyExemptionEvaluation,
+  EquityMonthlyTaxCoreInput,
+  EquityMonthlyTaxCoreResult,
+  TaxCompensationElection,
+} from './equity-monthly-tax-core';
+
+export {
   EQUITY_TAX_CATEGORIES,
   EQUITY_LEG_CLASSIFICATIONS,
   EQUITY_TRADE_CLASSIFICATION_OUTCOMES,
