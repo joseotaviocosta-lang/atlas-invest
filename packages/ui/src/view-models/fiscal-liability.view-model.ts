@@ -5,6 +5,7 @@ import {
   fiscalQualityIssueLabel,
   type FiscalMoney,
 } from './fiscal-monthly.view-model';
+import type { RawEquityMonthlyFiscal } from './equity-fiscal.view-model';
 
 /**
  * Monthly tax liability view-model (Phase 4B, ADR-240).
@@ -74,6 +75,8 @@ export interface RawMonthlyTaxLiability {
   calculationVersion: string;
   engineVersion: string;
   limitations: string[];
+  /** Additive equity monthly fiscal read (Phase 4G.2A.1b.1). */
+  equity?: RawEquityMonthlyFiscal | null;
   traceSummary: Array<{
     stage: string;
     operation: string;

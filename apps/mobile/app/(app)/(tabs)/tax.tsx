@@ -29,6 +29,7 @@ import {
   ErrorState,
 } from '../../../src/components/ui';
 import { apiClient, ApiError } from '../../../src/api/client';
+import { EquityFiscalCard } from '../../../src/components/fiscal/EquityFiscalCard';
 
 /** Allowlisted official origin for the Sicalc handoff (open-redirect defense). */
 const OFFICIAL_DARF_ORIGIN = 'https://sicalc.receita.fazenda.gov.br/';
@@ -261,6 +262,8 @@ export default function TaxScreen() {
                 </Text>
               </Card>
             )}
+
+            <EquityFiscalCard equity={liabilityData?.equity ?? null} />
 
             {liability && liability.categories.length > 0 && (
               <Card>

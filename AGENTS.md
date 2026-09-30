@@ -1812,3 +1812,28 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Matcher, núcleo mensal, eleição, prejuízos e custo base permanecem inalterados.
 7. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
    - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4/4B.5/4C.2/4D.2/4E/4F/4G.2A.1a/4G.2A.1b.1 permanecem inalterados e invioláveis.
+
+---
+
+## 62. UX Fiscal de Ações Web/Mobile (Fase 4G.2A.1c)
+
+1. **A UI FISCAL NUNCA CALCULA IMPOSTO (ADR-295):**
+   - A UI de ações apenas formata e rotula valores do read model do servidor; proibido comparar limiar, calcular prejuízo, base tributável, isenção ou classificar day trade no cliente.
+2. **VALORES MENSAIS VÊM DO SERVIDOR:**
+   - Todos os campos de `equityNormal`, `equityDayTrade` e `equityCompensationElection` são strings decimais exatas fornecidas pelo servidor.
+3. **MUTAÇÃO DE ELEIÇÃO ENVIA APENAS `value`:**
+   - O `PUT` de eleição nunca envia `taxSubjectId`; o escopo vem do principal autenticado.
+4. **REFETCH APÓS MUTAÇÃO:**
+   - Após o `PUT`, o read model mensal é re-buscado no servidor; proibida mutação otimista de saldos.
+5. **WEB É A SUPERFÍCIE DE MUTAÇÃO DESTA FASE:**
+   - A decisão de eleição é feita exclusivamente na web, com confirmação explícita.
+6. **MOBILE É SOMENTE-LEITURA:**
+   - O mobile exibe valores e o estado da eleição e orienta concluir a decisão na web; sem botão de mutação.
+7. **ESTADOS BLOQUEADOS NUNCA VIRAM ZERO:**
+   - `BLOCKED` exibe mensagem por `reasonCode`; vazio e erro têm estados próprios; nunca se fabricam valores zero.
+8. **FII PERMANECE INALTERADO:**
+   - A seção de FII continua intacta; a seção de ações é aditiva.
+9. **ANTI-ESCOPO 4G.2A.1c:**
+   - IRRF, composição 6015, DARF, IRPF anual e IA fiscal permanecem fora.
+10. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+    - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A–4G.2A.1b permanecem inalterados e invioláveis.

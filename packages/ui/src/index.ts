@@ -30,6 +30,7 @@ export * from './view-models/portfolio-ai-explanation.view-model';
 export * from './view-models/portfolio-ai-conversation.view-model';
 export * from './view-models/fiscal-monthly.view-model';
 export * from './view-models/fiscal-liability.view-model';
+export * from './view-models/equity-fiscal.view-model';
 export * from './view-models/fiscal-input-readiness.view-model';
 export * from './view-models/fiscal-obligations.view-model';
 export * from './view-models/payment-eligibility.view-model';

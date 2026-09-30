@@ -20,6 +20,7 @@ import {
 import { Card, Skeleton, ErrorState, EmptyState, PageHeader, SectionHeader } from '@/components/ui';
 import { TaxInputEntry } from '@/components/fiscal/TaxInputEntry';
 import { TaxObligationSection } from '@/components/fiscal/TaxObligationSection';
+import { EquityFiscalSection } from '@/components/fiscal/EquityFiscalSection';
 
 function currentCompetence(): string {
   const now = new Date();
@@ -44,7 +45,13 @@ function FiscalContent() {
 
   const viewModel = useMemo(() => mapToFiscalMonthlyViewModel(data ?? null), [data]);
 
-  const { data: liabilityData } = useQuery({
+  const {
+    data: liabilityData,
+    isLoading: liabilityLoading,
+    isError: liabilityError,
+    error: liabilityErrorObj,
+    refetch: refetchLiability,
+  } = useQuery({
     queryKey: taxLiabilityQueryKey(competence),
     queryFn: async () => {
       const res = await apiClient.get<{ data: RawMonthlyTaxLiability }>(
@@ -413,12 +420,23 @@ function FiscalContent() {
             </div>
           )}
 
+          <EquityFiscalSection
+            competence={competence}
+            equity={liabilityData?.equity ?? null}
+            isLoading={liabilityLoading}
+            isError={liabilityError}
+            errorMessage={(liabilityErrorObj as ApiError)?.message}
+            onRefetch={() => {
+              void refetchLiability();
+            }}
+          />
+
           {inputReadiness && (
             <div style={{ marginTop: `${spacing.xl}px` }}>
               <SectionHeader
                 title="Dados necessários para apuração"
                 description={`Competência ${inputReadiness.competenceLabel}`}
-              />
+              />{' '}
               <Card style={{ padding: `${spacing.base}px` }}>
                 {inputReadiness.rows.map((row) => (
                   <div
