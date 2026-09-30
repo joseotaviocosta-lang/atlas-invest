@@ -298,6 +298,29 @@ export type {
 } from './equity-monthly-tax-core';
 
 export {
+  EQUITY_TAX_RULE_IDS,
+  EQUITY_TAX_RULE_VERSION,
+  EQUITY_TAX_RULE_EFFECTIVE_FROM,
+  EQUITY_TAX_RATE_PERCENTAGE,
+  EQUITY_IRRF_RATE_PERCENTAGE,
+  EQUITY_IRRF_POOL_IDS,
+  EQUITY_IRRF_YEAR_END_STATE,
+  EQUITY_PRODUCTION_TAX_VERSION,
+  EQUITY_PRODUCTION_TAX_RULES,
+  replayEquityProductionTax,
+  computeEquityProductionTaxForMonth,
+  applyEquityIrrfCredit,
+} from './equity-production-tax';
+export type {
+  EquityIrrfYearEndState,
+  EquityIrrfWithholdingEntry,
+  EquityIrrfCategoryState,
+  EquityProductionTaxMonthInput,
+  EquityProductionTaxMonthResult,
+  EquityProductionTaxRule,
+} from './equity-production-tax';
+
+export {
   EQUITY_TAX_CATEGORIES,
   EQUITY_LEG_CLASSIFICATIONS,
   EQUITY_TRADE_CLASSIFICATION_OUTCOMES,

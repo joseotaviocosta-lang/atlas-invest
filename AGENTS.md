@@ -1837,3 +1837,30 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - IRRF, composição 6015, DARF, IRPF anual e IA fiscal permanecem fora.
 10. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
     - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A–4G.2A.1b permanecem inalterados e invioláveis.
+
+---
+
+## 63. Regras de Produção e Pools de IRRF de Renda Variável (Fase 4G.2B)
+
+1. **ALÍQUOTA NORMAL 15% (ADR-296):**
+   - O imposto bruto de operações comuns é `base × 15%`, calculado no servidor (`@atlas/tax-engine`); proibido no cliente.
+2. **ALÍQUOTA DAY TRADE 20%:**
+   - O imposto bruto de day trade é `base × 20%`, sem isenção mensal.
+3. **POOLS DE IRRF ISOLADOS POR CATEGORIA:**
+   - `EQUITY_NORMAL_IRRF` (0,005%) e `EQUITY_DAY_TRADE_IRRF` (1%) são separados; mesmo código de receita ≠ mesmo pool.
+4. **IRRF NUNCA CRUZA CATEGORIA:**
+   - IRRF normal nunca reduz day trade nem FII; IRRF day trade nunca reduz normal nem FII.
+5. **IRRF APÓS PREJUÍZO E IMPOSTO BRUTO:**
+   - O IRRF aplica-se após a compensação de prejuízo da categoria e o cálculo do imposto bruto; nunca é consumido quando o imposto bruto é zero.
+6. **SEM USO DUPLO:**
+   - Cada evidência de retenção carrega `fingerprint` estável; reutilizar a mesma evidência não duplica crédito.
+7. **FRONTEIRA DE ANO TERMINAL (ADR-297):**
+   - Em dezembro, o saldo residual normal vira `AVAILABLE_FOR_ANNUAL_ADJUSTMENT` e o day trade `AVAILABLE_FOR_RESTITUTION`; sem carry automático para janeiro.
+8. **IMPOSTO LÍQUIDO DE CATEGORIA (ADR-298):**
+   - `netTaxBefore6015Aggregation` não é o valor final do DARF; composição 6015, mínimo e vencimento permanecem fora desta fase.
+9. **UI SEM MATEMÁTICA FISCAL:**
+   - A UI exibe alíquota, imposto bruto, IRRF e imposto líquido fornecidos pelo servidor; sem cálculo no cliente.
+10. **ANTI-ESCOPO 4G.2B:**
+    - 6015, mínimo DARF, vencimento, atraso, Sicalc, IRPF anual e IA fiscal permanecem fora.
+11. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+    - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A–4G.2A permanecem inalterados e invioláveis.
