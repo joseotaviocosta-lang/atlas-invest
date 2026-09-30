@@ -53,3 +53,9 @@ export const ResolveTaxInputConflictBodySchema = z.object({
   resolutionSource: z.string().min(1).max(255).optional(),
 });
 export type ResolveTaxInputConflictBody = z.infer<typeof ResolveTaxInputConflictBodySchema>;
+
+// Phase 4G.2A.1b — compensation election for exempt-month normal-loss recognition.
+export const PutEquityExemptLossElectionBodySchema = z.object({
+  value: z.enum(['DECLARE_FOR_CARRYFORWARD', 'DO_NOT_DECLARE']),
+});
+export type PutEquityExemptLossElectionBody = z.infer<typeof PutEquityExemptLossElectionBodySchema>;

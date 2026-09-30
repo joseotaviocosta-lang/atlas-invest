@@ -14,6 +14,10 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { GetMonthlyTaxStateUseCase } from '../../application/fiscal/get-monthly-tax-state.use-case';
 import { GetMonthlyTaxLiabilityUseCase } from '../../application/fiscal/get-monthly-tax-liability.use-case';
+import {
+  GetTaxCompensationElectionUseCase,
+  PutTaxCompensationElectionUseCase,
+} from '../../application/fiscal/tax-compensation-election.use-case';
 import { GetTaxInputReadinessUseCase } from '../../application/fiscal/get-tax-input-readiness.use-case';
 import {
   RecordFiiTaxEligibilityFactsUseCase,
@@ -72,6 +76,8 @@ import {
   RecordWithholdingBodySchema,
   ResolveTaxInputConflictBody,
   ResolveTaxInputConflictBodySchema,
+  PutEquityExemptLossElectionBody,
+  PutEquityExemptLossElectionBodySchema,
 } from './dto/tax-input.dto';
 import { CurrentPrincipal, AuthenticatedPrincipal } from '../../auth';
 
@@ -91,6 +97,10 @@ export class FiscalController {
     private readonly getMonthlyTaxStateUseCase: GetMonthlyTaxStateUseCase,
     @Inject(GetMonthlyTaxLiabilityUseCase)
     private readonly getMonthlyTaxLiabilityUseCase: GetMonthlyTaxLiabilityUseCase,
+    @Inject(GetTaxCompensationElectionUseCase)
+    private readonly getTaxCompensationElectionUseCase: GetTaxCompensationElectionUseCase,
+    @Inject(PutTaxCompensationElectionUseCase)
+    private readonly putTaxCompensationElectionUseCase: PutTaxCompensationElectionUseCase,
     @Inject(GetTaxInputReadinessUseCase)
     private readonly getTaxInputReadinessUseCase: GetTaxInputReadinessUseCase,
     @Inject(RecordTradeClassificationUseCase)
@@ -172,6 +182,50 @@ export class FiscalController {
       competence,
     });
     return { data };
+  }
+
+  @Get('monthly/:competence/elections/equity-exempt-loss')
+  @ApiOperation({
+    summary:
+      'Get the current persisted compensation election for exempt-month normal equity loss recognition. The tax subject is derived from the authenticated principal; no client-supplied subject is accepted.',
+  })
+  @ApiParam({ name: 'competence', description: 'Civil competence in canonical YYYY-MM format' })
+  @ApiResponse({ status: 200, description: 'Election (MISSING/DECLARED/NOT_DECLARED)' })
+  @ApiResponse({ status: 400, description: 'Invalid competence' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  async getEquityExemptLossElection(
+    @Param('competence') competence: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.getTaxCompensationElectionUseCase.execute({
+      userId: principal.userId,
+      competence,
+    });
+    return { data };
+  }
+
+  @Put('monthly/:competence/elections/equity-exempt-loss')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Persist a compensation-election revision for exempt-month normal equity loss recognition. Same value is idempotent; a changed value creates a new immutable revision.',
+  })
+  @ApiParam({ name: 'competence', description: 'Civil competence in canonical YYYY-MM format' })
+  @ApiResponse({ status: 200, description: 'Current effective revision (created: true/false)' })
+  @ApiResponse({ status: 400, description: 'Invalid competence or election value' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  async putEquityExemptLossElection(
+    @Param('competence') competence: string,
+    @Body(new ZodValidationPipe(PutEquityExemptLossElectionBodySchema))
+    body: PutEquityExemptLossElectionBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.putTaxCompensationElectionUseCase.execute({
+      userId: principal.userId,
+      competence,
+      value: body.value,
+    });
+    return { data: { ...result.election, created: result.created } };
   }
 
   @Get('monthly/:competence/obligation')

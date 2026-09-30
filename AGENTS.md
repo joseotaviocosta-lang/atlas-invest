@@ -1743,3 +1743,24 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
     - Esta fase é persistência-only: sem API, sem web/mobile, sem integração de leitura mensal, sem IRRF, sem composição 6015 e sem DARF de ações.
 11. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
     - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4/4B.5/4C.2/4D.2/4E/4F permanecem inalterados e invioláveis.
+
+---
+
+## 59. API da Eleição de Compensação Tributária (Fase 4G.2A.1b)
+
+1. **ESCOPO PELO PRINCIPAL AUTENTICADO (ADR-293):**
+   - A API de eleição nunca aceita `taxSubjectId` do cliente; o sujeito é resolvido exclusivamente pelo principal autenticado.
+2. **ANTI-ENUMERAÇÃO:**
+   - Acesso a escopo de terceiros equivale, por construção, a `404`; nunca `403`.
+3. **COMPETENCE CANÔNICA:**
+   - `YYYY-MM` validada por `parseFiscalCompetence`; inválida → `400 FISCAL.INVALID_COMPETENCE`.
+4. **VALORES EXPLÍCITOS:**
+   - `DECLARE_FOR_CARRYFORWARD` | `DO_NOT_DECLARE`; sem coerção → `400 FISCAL.INVALID_ELECTION_VALUE`.
+5. **IDEMPOTÊNCIA E REVISÃO:**
+   - Mesmo valor → `created: false`; valor diferente → nova revisão imutável com `created: true`.
+6. **SEM CÁLCULO FISCAL NA API:**
+   - A API apenas lê/persiste a eleição; o controller não acessa Prisma diretamente (controller → caso de uso → porta de repositório).
+7. **ANTI-ESCOPO 4G.2A.1b:**
+   - IRRF, composição 6015, mínimo DARF, DARF de ações e UX web/mobile permanecem fora desta fase.
+8. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+   - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A/4B/4B.2/4B.3/4B.4/4B.5/4C.2/4D.2/4E/4F e a persistência de eleição (4G.2A.1a) permanecem inalterados e invioláveis.

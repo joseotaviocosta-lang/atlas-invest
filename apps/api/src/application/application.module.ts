@@ -22,6 +22,10 @@ import { RunPortfolioScenarioUseCase } from './performance/run-portfolio-scenari
 import { GetPortfolioIntelligenceSummaryUseCase } from './performance/get-portfolio-intelligence-summary.use-case';
 import { GetMonthlyTaxStateUseCase } from './fiscal/get-monthly-tax-state.use-case';
 import { GetMonthlyTaxLiabilityUseCase } from './fiscal/get-monthly-tax-liability.use-case';
+import {
+  GetTaxCompensationElectionUseCase,
+  PutTaxCompensationElectionUseCase,
+} from './fiscal/tax-compensation-election.use-case';
 import { GetTaxInputReadinessUseCase } from './fiscal/get-tax-input-readiness.use-case';
 import { PersistedTaxInputProvider } from './fiscal/persisted-tax-input-provider';
 import {
@@ -95,6 +99,8 @@ const USE_CASES = [
   GetPortfolioIntelligenceSummaryUseCase,
   GetMonthlyTaxStateUseCase,
   GetMonthlyTaxLiabilityUseCase,
+  GetTaxCompensationElectionUseCase,
+  PutTaxCompensationElectionUseCase,
   GetTaxInputReadinessUseCase,
   RecordTradeClassificationUseCase,
   RecordWithholdingInputUseCase,
