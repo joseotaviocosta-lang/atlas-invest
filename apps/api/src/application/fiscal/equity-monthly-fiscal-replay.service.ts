@@ -112,8 +112,12 @@ function sumWithholding(
   category: EquityLossCategory,
 ): string {
   let total = Money.zero('BRL');
+  const seen = new Set<string>();
   for (const entry of entries) {
     if (entry.category !== category) continue;
+    // Double-use protection: the same evidence fingerprint is credited once.
+    if (seen.has(entry.fingerprint)) continue;
+    seen.add(entry.fingerprint);
     total = total.add(Money.from(entry.amount, 'BRL'));
   }
   return total.amount;
