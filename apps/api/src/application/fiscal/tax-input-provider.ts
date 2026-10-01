@@ -21,6 +21,8 @@ export interface TaxInputProvider {
     taxSubjectId: string,
     competence: string,
   ): Promise<readonly TaxWithholdingInput[]>;
+  /** Bulk load of all withholding evidence for the subject (single query; replay range). */
+  getAllWithholdingInputs(taxSubjectId: string): Promise<readonly TaxWithholdingInput[]>;
   getFiiEligibilityFacts(
     taxSubjectId: string,
     assetIds: readonly string[],
@@ -33,6 +35,9 @@ export class EmptyTaxInputProvider implements TaxInputProvider {
     return [];
   }
   async getWithholdingInputs(): Promise<readonly TaxWithholdingInput[]> {
+    return [];
+  }
+  async getAllWithholdingInputs(): Promise<readonly TaxWithholdingInput[]> {
     return [];
   }
   async getFiiEligibilityFacts(): Promise<readonly FiiTaxEligibilityFacts[]> {

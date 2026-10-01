@@ -2,13 +2,21 @@ import { Money } from '@atlas/domain';
 import type { Transaction } from '@atlas/domain';
 import {
   EQUITY_MONTHLY_EXEMPTION_THRESHOLD,
+  EQUITY_TAX_RATE_PERCENTAGE,
+  EQUITY_TAX_RULE_IDS,
+  EQUITY_TAX_RULE_VERSION,
   EquityTradeClassificationError,
+  applyEquityIrrfCredit,
   classifyEquityTradesForTax,
   computeEquityMonthlyTaxCore,
   resolveTaxAssetCategory,
   type CanonicalRealizedResult,
   type EquityAssetEligibility,
   type EquityExecution,
+  type EquityIrrfCategoryState,
+  type EquityIrrfWithholdingEntry,
+  type EquityIrrfYearEndState,
+  type EquityLossCategory,
   type EquityMonthlyTaxCoreResult,
   type EquitySellLeg,
   type EquityTaxLeg,
@@ -30,6 +38,10 @@ export interface EquityMonthlyReplayInput {
   readonly institutionByAccountId: ReadonlyMap<string, string>;
   readonly canonicalRealizedByTransactionId: ReadonlyMap<string, CanonicalRealizedResult>;
   readonly electionByCompetence: ReadonlyMap<string, EquityElectionSnapshot>;
+  /** Canonical equity IRRF evidence per competence (explicit category, never inferred). */
+  readonly withholdingByCompetence?: ReadonlyMap<string, readonly EquityIrrfWithholdingEntry[]>;
+  /** Competences blocked by missing/ambiguous equity withholding classification. */
+  readonly blockedWithholdingByCompetence?: ReadonlySet<string>;
 }
 
 export interface EquityCategoryReadModel {
@@ -46,6 +58,16 @@ export interface EquityCategoryReadModel {
   readonly closingLoss: string;
   readonly taxableBaseBeforeRate: string;
   readonly electionStatus: string;
+  readonly taxRate: string;
+  readonly grossTax: string;
+  readonly irrfOpening: string;
+  readonly irrfCurrent: string;
+  readonly irrfUsed: string;
+  readonly irrfClosing: string;
+  readonly irrfTerminalStatus: EquityIrrfYearEndState | null;
+  readonly netTaxBefore6015Aggregation: string;
+  readonly ruleId: string;
+  readonly ruleVersion: string;
 }
 
 export interface EquityCompensationElectionReadModel {
@@ -68,6 +90,49 @@ export interface EquityMonthlyFiscalReadModel {
 
 function competenceOf(tradeDate: string): string {
   return tradeDate.slice(0, 7);
+}
+
+function yearOf(competence: string): string {
+  return competence.slice(0, 4);
+}
+
+function isDecember(competence: string): boolean {
+  return competence.slice(5, 7) === '12';
+}
+
+/** Exact gross tax = base × rate%. */
+function grossTaxFor(base: string, category: EquityLossCategory): string {
+  if (!Money.from(base, 'BRL').isPositive()) return Money.zero('BRL').amount;
+  return Money.from(base, 'BRL').multiply(EQUITY_TAX_RATE_PERCENTAGE[category]).divide('100')
+    .amount;
+}
+
+function sumWithholding(
+  entries: readonly EquityIrrfWithholdingEntry[],
+  category: EquityLossCategory,
+): string {
+  let total = Money.zero('BRL');
+  for (const entry of entries) {
+    if (entry.category !== category) continue;
+    total = total.add(Money.from(entry.amount, 'BRL'));
+  }
+  return total.amount;
+}
+
+function irrfForMonth(input: {
+  category: EquityLossCategory;
+  competence: string;
+  base: string;
+  opening: string;
+  withholding: readonly EquityIrrfWithholdingEntry[];
+}): EquityIrrfCategoryState {
+  return applyEquityIrrfCredit({
+    category: input.category,
+    competence: input.competence,
+    grossTax: grossTaxFor(input.base, input.category),
+    opening: input.opening,
+    current: sumWithholding(input.withholding, input.category),
+  });
 }
 
 function eligibilityOf(assetType: string | undefined): EquityAssetEligibility {
@@ -224,21 +289,42 @@ export function computeEquityMonthlyFiscalRead(
   for (const key of blockByCompetence.keys())
     if (key <= input.requestedCompetence) competences.add(key);
   for (const key of unknownCompetences) if (key <= input.requestedCompetence) competences.add(key);
+  for (const key of input.withholdingByCompetence?.keys() ?? []) {
+    if (key <= input.requestedCompetence) competences.add(key);
+  }
+  for (const key of input.blockedWithholdingByCompetence ?? []) {
+    if (key <= input.requestedCompetence) competences.add(key);
+  }
   const ordered = [...competences].sort();
 
   let carryNormal = Money.zero('BRL').amount;
   let carryDayTrade = Money.zero('BRL').amount;
+  let carryNormalIrrf = Money.zero('BRL').amount;
+  let carryDayTradeIrrf = Money.zero('BRL').amount;
+  let previousYear: string | null = null;
   let priorBlocked = false;
   let requestedCore: EquityMonthlyTaxCoreResult | null = null;
   let requestedBlockReason: string | null = null;
   let requestedMatchedQuantity = '0';
+  let requestedNormalIrrf: EquityIrrfCategoryState | null = null;
+  let requestedDayTradeIrrf: EquityIrrfCategoryState | null = null;
 
   for (const competence of ordered) {
+    const year = yearOf(competence);
+    if (previousYear !== null && year !== previousYear) {
+      carryNormalIrrf = Money.zero('BRL').amount;
+      carryDayTradeIrrf = Money.zero('BRL').amount;
+    }
+    previousYear = year;
+
     const directBlock = blockByCompetence.get(competence) ?? null;
     const unknownBlock = unknownCompetences.has(competence)
       ? 'UNKNOWN_ASSET_TAX_CLASSIFICATION'
       : null;
-    const ownReason = directBlock ?? unknownBlock;
+    const withholdingBlock = input.blockedWithholdingByCompetence?.has(competence)
+      ? 'INCOMPLETE_WITHHOLDING_CLASSIFICATION'
+      : null;
+    const ownReason = directBlock ?? unknownBlock ?? withholdingBlock;
     if (priorBlocked) {
       if (competence === input.requestedCompetence) {
         requestedBlockReason = ownReason ?? 'PRIOR_COMPETENCE_BLOCKED';
@@ -266,8 +352,32 @@ export function computeEquityMonthlyFiscalRead(
       priorBlocked = true;
       continue;
     }
+    const withholding = input.withholdingByCompetence?.get(competence) ?? [];
+    const normalIrrf = irrfForMonth({
+      category: 'EQUITY_NORMAL',
+      competence,
+      base: core.normal.taxableBaseBeforeRate,
+      opening: carryNormalIrrf,
+      withholding,
+    });
+    const dayTradeIrrf = irrfForMonth({
+      category: 'EQUITY_DAY_TRADE',
+      competence,
+      base: core.dayTrade.taxableBaseBeforeRate,
+      opening: carryDayTradeIrrf,
+      withholding,
+    });
+    if (competence === input.requestedCompetence) {
+      requestedNormalIrrf = normalIrrf;
+      requestedDayTradeIrrf = dayTradeIrrf;
+    }
     carryNormal = core.normal.closingLoss;
     carryDayTrade = core.dayTrade.closingLoss;
+    // December residual IRRF is terminal → no carry into the next calendar year.
+    carryNormalIrrf = isDecember(competence) ? Money.zero('BRL').amount : normalIrrf.irrfClosing;
+    carryDayTradeIrrf = isDecember(competence)
+      ? Money.zero('BRL').amount
+      : dayTradeIrrf.irrfClosing;
   }
 
   if (!requestedCore) {
@@ -280,6 +390,23 @@ export function computeEquityMonthlyFiscalRead(
       openingDayTradeLoss: Money.zero('BRL').amount,
     });
   }
+  if (!requestedNormalIrrf || !requestedDayTradeIrrf) {
+    const withholding = input.withholdingByCompetence?.get(input.requestedCompetence) ?? [];
+    requestedNormalIrrf = irrfForMonth({
+      category: 'EQUITY_NORMAL',
+      competence: input.requestedCompetence,
+      base: requestedCore.normal.taxableBaseBeforeRate,
+      opening: Money.zero('BRL').amount,
+      withholding,
+    });
+    requestedDayTradeIrrf = irrfForMonth({
+      category: 'EQUITY_DAY_TRADE',
+      competence: input.requestedCompetence,
+      base: requestedCore.dayTrade.taxableBaseBeforeRate,
+      opening: Money.zero('BRL').amount,
+      withholding,
+    });
+  }
 
   return toReadModel(
     input.requestedCompetence,
@@ -287,6 +414,8 @@ export function computeEquityMonthlyFiscalRead(
     requestedBlockReason,
     requestedMatchedQuantity,
     input.electionByCompetence.get(input.requestedCompetence) ?? null,
+    requestedNormalIrrf,
+    requestedDayTradeIrrf,
   );
 }
 
@@ -383,13 +512,16 @@ function groupByCompetence(
 
 function blockedReadModel(competence: string, reasonCode: string): EquityMonthlyFiscalReadModel {
   const zero = Money.zero('BRL').amount;
-  const category: EquityCategoryReadModel = {
+  const blockedCategory = (
+    category: EquityLossCategory,
+    matched: string | null,
+  ): EquityCategoryReadModel => ({
     status: 'BLOCKED',
     reasonCode,
     grossSales: zero,
-    threshold: EQUITY_MONTHLY_EXEMPTION_THRESHOLD,
+    threshold: category === 'EQUITY_NORMAL' ? EQUITY_MONTHLY_EXEMPTION_THRESHOLD : null,
     exemptionStatus: 'NOT_APPLICABLE',
-    matchedQuantity: null,
+    matchedQuantity: matched,
     currentResult: zero,
     openingLoss: zero,
     lossAdded: zero,
@@ -397,13 +529,23 @@ function blockedReadModel(competence: string, reasonCode: string): EquityMonthly
     closingLoss: zero,
     taxableBaseBeforeRate: zero,
     electionStatus: 'NOT_REQUIRED',
-  };
+    taxRate: EQUITY_TAX_RATE_PERCENTAGE[category],
+    grossTax: zero,
+    irrfOpening: zero,
+    irrfCurrent: zero,
+    irrfUsed: zero,
+    irrfClosing: zero,
+    irrfTerminalStatus: null,
+    netTaxBefore6015Aggregation: zero,
+    ruleId: EQUITY_TAX_RULE_IDS[category],
+    ruleVersion: EQUITY_TAX_RULE_VERSION,
+  });
   return {
     competence,
     status: 'BLOCKED',
     reasonCode,
-    normal: category,
-    dayTrade: { ...category, matchedQuantity: '0' },
+    normal: blockedCategory('EQUITY_NORMAL', null),
+    dayTrade: blockedCategory('EQUITY_DAY_TRADE', '0'),
     compensationElection: {
       required: false,
       status: 'NOT_REQUIRED',
@@ -421,14 +563,18 @@ function toReadModel(
   blockReason: string | null,
   matchedQuantity: string,
   election: EquityElectionSnapshot | null,
+  normalIrrf: EquityIrrfCategoryState,
+  dayTradeIrrf: EquityIrrfCategoryState,
 ): EquityMonthlyFiscalReadModel {
   const blocked = blockReason !== null;
   const status: EquityMonthlyFiscalReadModel['status'] = blocked ? 'BLOCKED' : core.overallStatus;
   const reasonCode = blocked ? blockReason : core.reasonCode;
+  const zero = Money.zero('BRL').amount;
 
   const category = (
     source: EquityMonthlyTaxCoreResult['normal'],
     matched: string | null,
+    irrf: EquityIrrfCategoryState,
   ): EquityCategoryReadModel => ({
     status,
     reasonCode,
@@ -443,6 +589,17 @@ function toReadModel(
     closingLoss: source.closingLoss,
     taxableBaseBeforeRate: source.taxableBaseBeforeRate,
     electionStatus: source.electionStatus,
+    taxRate: irrf.ratePercentage,
+    // A blocked month never presents an authoritative tax/IRRF conclusion.
+    grossTax: blocked ? zero : irrf.grossTax,
+    irrfOpening: blocked ? zero : irrf.irrfOpening,
+    irrfCurrent: blocked ? zero : irrf.irrfCurrent,
+    irrfUsed: blocked ? zero : irrf.irrfUsed,
+    irrfClosing: blocked ? zero : irrf.irrfClosing,
+    irrfTerminalStatus: blocked ? null : irrf.yearEndState,
+    netTaxBefore6015Aggregation: blocked ? zero : irrf.netTaxBefore6015Aggregation,
+    ruleId: irrf.ruleId,
+    ruleVersion: irrf.ruleVersion,
   });
 
   const electionStatus = core.normal.electionStatus;
@@ -450,8 +607,8 @@ function toReadModel(
     competence,
     status,
     reasonCode,
-    normal: category(core.normal, null),
-    dayTrade: category(core.dayTrade, matchedQuantity),
+    normal: category(core.normal, null, normalIrrf),
+    dayTrade: category(core.dayTrade, matchedQuantity, dayTradeIrrf),
     compensationElection: {
       required: electionStatus === 'ELECTION_REQUIRED',
       status: electionStatus,

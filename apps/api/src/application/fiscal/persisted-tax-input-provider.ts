@@ -59,7 +59,31 @@ export class PersistedTaxInputProvider implements TaxInputProvider {
     competence: string,
   ): Promise<readonly TaxWithholdingInput[]> {
     const rows = await this.repository.listWithholdings(taxSubjectId, competence);
-    return rows.map((row) => ({
+    return rows.map((row) => this.mapWithholding(row));
+  }
+
+  async getAllWithholdingInputs(taxSubjectId: string): Promise<readonly TaxWithholdingInput[]> {
+    const rows = await this.repository.listWithholdings(taxSubjectId);
+    return rows.map((row) => this.mapWithholding(row));
+  }
+
+  private mapWithholding(row: {
+    id: string;
+    taxSubjectId: string;
+    sourceReference: string;
+    sourceType: string;
+    economicDate: Date;
+    competence: string;
+    category: string;
+    withholdingCategory: string | null;
+    currency: string;
+    amount: string | null;
+    status: string;
+    conflictStatus: string;
+    createdAt: Date;
+    confirmedAt: Date | null;
+  }): TaxWithholdingInput {
+    return {
       id: row.id,
       taxSubjectId: row.taxSubjectId,
       sourceReference: row.sourceReference,
@@ -86,7 +110,7 @@ export class PersistedTaxInputProvider implements TaxInputProvider {
         ...(row.confirmedAt ? { manualConfirmedAt: row.confirmedAt.toISOString() } : {}),
         effectiveCompetence: row.competence,
       },
-    }));
+    };
   }
 
   async getFiiEligibilityFacts(

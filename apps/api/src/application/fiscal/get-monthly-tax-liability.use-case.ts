@@ -13,6 +13,7 @@ import {
   projectFiscalEvents,
   replayMonthlyTaxLiability,
   type CanonicalRealizedResult,
+  type EquityIrrfWithholdingEntry,
   type FiscalEvent,
   type MonthlyTaxLiability,
   type TaxCompensationElectionValue,
@@ -252,6 +253,31 @@ export class GetMonthlyTaxLiabilityUseCase {
         fingerprint: row.fingerprint,
       });
     }
+
+    // Bulk-load canonical equity IRRF evidence (single query) and classify it by
+    // the explicit withholdingCategory. Never inferred; legacy/ambiguous equity
+    // evidence blocks the competence.
+    const withholdingInputs = await this.taxInputProvider.getAllWithholdingInputs(userId);
+    const withholdingByCompetence = new Map<string, EquityIrrfWithholdingEntry[]>();
+    const blockedWithholdingByCompetence = new Set<string>();
+    for (const input of withholdingInputs) {
+      if (input.category !== 'BRAZILIAN_EQUITY') continue; // FII and others unchanged
+      if (input.status !== 'CONFIRMED') continue; // only confirmed credits
+      const key = input.competence.value;
+      const category = input.withholdingCategory;
+      if ((category === 'EQUITY_NORMAL' || category === 'EQUITY_DAY_TRADE') && input.amount) {
+        const list = withholdingByCompetence.get(key) ?? [];
+        list.push({
+          category,
+          amount: input.amount.amount,
+          fingerprint: `${input.sourceType}:${input.sourceReference}:${category}`,
+        });
+        withholdingByCompetence.set(key, list);
+      } else {
+        blockedWithholdingByCompetence.add(key);
+      }
+    }
+
     return computeEquityMonthlyFiscalRead({
       taxSubjectId: userId,
       requestedCompetence: competence,
@@ -260,6 +286,8 @@ export class GetMonthlyTaxLiabilityUseCase {
       institutionByAccountId: context.institutionByAccountId,
       canonicalRealizedByTransactionId: context.canonicalRealizedByTransactionId,
       electionByCompetence,
+      withholdingByCompetence,
+      blockedWithholdingByCompetence,
     });
   }
 }

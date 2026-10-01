@@ -1887,3 +1887,26 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Integração do IRRF no replay mensal, extensão do read model, web/mobile, 6015 e DARF permanecem fora.
 9. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
    - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A–4G.2B permanecem inalterados e invioláveis.
+
+---
+
+## 65. Integração do IRRF de Renda Variável no Replay Mensal (Fase 4G.2B.1)
+
+1. **WITHHOLDINGCATEGORY → POOL (ADR-296/ADR-299):**
+   - `BRAZILIAN_EQUITY + EQUITY_NORMAL` alimenta `EQUITY_NORMAL_IRRF`; `BRAZILIAN_EQUITY + EQUITY_DAY_TRADE` alimenta `EQUITY_DAY_TRADE_IRRF`; nunca inferido.
+2. **LEGADO/AMBÍGUO BLOQUEIA:**
+   - Evidência de equity sem discriminador confiável bloqueia a competência (`INCOMPLETE_WITHHOLDING_CLASSIFICATION`); nunca vira zero fabricado.
+3. **REGRAS DE PRODUÇÃO VIA REGISTRO:**
+   - O replay real resolve `BR-EQUITY-NORMAL`/`BR-EQUITY-DAY-TRADE` do registro de produção; sem constantes diretas na aplicação.
+4. **EVIDÊNCIA EM LOTE:**
+   - A retenção é carregada em lote (1 consulta); sem consulta por trade, leg, ativo ou mês.
+5. **SEM MATEMÁTICA NO CLIENTE:**
+   - A UI exibe alíquota, imposto bruto, IRRF e imposto líquido fornecidos pelo servidor; sem cálculo.
+6. **IMPOSTO LÍQUIDO DE CATEGORIA ≠ DARF FINAL (ADR-298):**
+   - `netTaxBefore6015Aggregation` é da categoria; o DARF final será consolidado em etapa posterior.
+7. **BLOQUEIO NÃO APRESENTA CONCLUSÃO:**
+   - Mês bloqueado zera imposto/IRRF/líquido e não apresenta estado terminal.
+8. **ANTI-ESCOPO 4G.2B.1:**
+   - 6015, mínimo DARF, vencimento, atraso, Sicalc, IRPF anual e IA fiscal permanecem fora.
+9. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+   - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A–4G.2B.0 permanecem inalterados e invioláveis.
