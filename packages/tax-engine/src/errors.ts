@@ -47,3 +47,43 @@ export class InvalidTaxDeadlineEntryError extends TaxEngineError {
     this.name = 'InvalidTaxDeadlineEntryError';
   }
 }
+
+/** Raised when a calendar year is outside allowed range or invalid. */
+export class InvalidCalendarYearError extends TaxEngineError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidCalendarYearError';
+  }
+}
+
+/** Raised when a declaration exercise year is outside allowed range or invalid. */
+export class InvalidDeclarationExerciseError extends TaxEngineError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidDeclarationExerciseError';
+  }
+}
+
+/** Raised when an annual tax period cannot be constructed or is invalid. */
+export class InvalidAnnualTaxPeriodError extends TaxEngineError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidAnnualTaxPeriodError';
+  }
+}
+
+/** Raised when an annual opening position input is structurally or semantically invalid. */
+export class InvalidAnnualOpeningPositionError extends TaxEngineError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidAnnualOpeningPositionError';
+  }
+}
+
+/** Raised when an annual position computation is blocked due to incomplete data. */
+export class AnnualPositionBlockedError extends TaxEngineError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AnnualPositionBlockedError';
+  }
+}

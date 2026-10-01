@@ -26,6 +26,11 @@ export {
   InvalidFiscalCompetenceError,
   UnsupportedTaxOperationError,
   InvalidTaxDeadlineEntryError,
+  InvalidCalendarYearError,
+  InvalidDeclarationExerciseError,
+  InvalidAnnualTaxPeriodError,
+  InvalidAnnualOpeningPositionError,
+  AnnualPositionBlockedError,
 } from './errors';
 
 export {
@@ -379,3 +384,5 @@ export type {
   DarfAdjustmentSnapshot,
   BuildDarfHandoffPlanInput,
 } from './darf-handoff';
+
+export * from './annual-irpf';

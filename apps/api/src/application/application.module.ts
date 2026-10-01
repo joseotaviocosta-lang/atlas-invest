@@ -54,6 +54,10 @@ import {
   GetTaxpayerIdentityUseCase,
   RecordTaxpayerIdentityUseCase,
 } from './fiscal/taxpayer-identity.use-case';
+import { GetAnnualPositionReportUseCase } from './fiscal/get-annual-position-report.use-case';
+import { RecordAnnualOpeningPositionUseCase } from './fiscal/record-annual-opening-position.use-case';
+import { ListAnnualOpeningPositionsUseCase } from './fiscal/list-annual-opening-positions.use-case';
+import { ConfirmAnnualOpeningPositionUseCase } from './fiscal/confirm-annual-opening-position.use-case';
 import { SystemFiscalClock } from './fiscal/fiscal-clock';
 import { EMPTY_TAX_INPUT_ADAPTER_REGISTRY } from './fiscal/tax-input-source-adapter';
 import {
@@ -120,6 +124,10 @@ const USE_CASES = [
   ListDarfGenerationsUseCase,
   GetTaxpayerIdentityUseCase,
   RecordTaxpayerIdentityUseCase,
+  GetAnnualPositionReportUseCase,
+  RecordAnnualOpeningPositionUseCase,
+  ListAnnualOpeningPositionsUseCase,
+  ConfirmAnnualOpeningPositionUseCase,
   GetPortfolioAiGroundingContextUseCase,
   GetPortfolioAssetAiGroundingContextUseCase,
   GetPortfolioTimelineAiGroundingContextUseCase,

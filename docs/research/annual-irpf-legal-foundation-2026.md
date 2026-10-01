@@ -125,6 +125,12 @@ losses, IRRF or 6015 (Phase 4H §16).
 
 ---
 
+## 5.1. Evidence retention and storage rules
+
+Atlas must preserve tax evidence according to the applicable legal, regulatory and audit-retention requirements for each artifact type. Five-year tax decadence/prescription periods are relevant legal context but are not treated as a universal storage-retention rule. Exact retention requirements remain source-specific and must be confirmed before enforcing automatic deletion.
+
+---
+
 ## 6. Open questions (must not be frozen as production rules)
 
 1. Exact **numeric grupo/código** for ações, FII, ETF/BDR in Bens e Direitos

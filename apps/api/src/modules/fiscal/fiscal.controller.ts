@@ -48,7 +48,19 @@ import {
   GetTaxpayerIdentityUseCase,
   RecordTaxpayerIdentityUseCase,
 } from '../../application/fiscal/taxpayer-identity.use-case';
+import { GetAnnualPositionReportUseCase } from '../../application/fiscal/get-annual-position-report.use-case';
+import { RecordAnnualOpeningPositionUseCase } from '../../application/fiscal/record-annual-opening-position.use-case';
+import { ListAnnualOpeningPositionsUseCase } from '../../application/fiscal/list-annual-opening-positions.use-case';
+import { ConfirmAnnualOpeningPositionUseCase } from '../../application/fiscal/confirm-annual-opening-position.use-case';
 import { ZodValidationPipe } from '../../common/pipes';
+import {
+  AnnualPositionsQuery,
+  AnnualPositionsQuerySchema,
+  ListAnnualOpeningPositionsQuery,
+  ListAnnualOpeningPositionsQuerySchema,
+  RecordAnnualOpeningPositionBody,
+  RecordAnnualOpeningPositionBodySchema,
+} from './dto/annual-position.dto';
 import {
   AdjustmentQuery,
   AdjustmentQuerySchema,
@@ -139,6 +151,14 @@ export class FiscalController {
     private readonly getTaxpayerIdentityUseCase: GetTaxpayerIdentityUseCase,
     @Inject(RecordTaxpayerIdentityUseCase)
     private readonly recordTaxpayerIdentityUseCase: RecordTaxpayerIdentityUseCase,
+    @Inject(GetAnnualPositionReportUseCase)
+    private readonly getAnnualPositionReportUseCase: GetAnnualPositionReportUseCase,
+    @Inject(RecordAnnualOpeningPositionUseCase)
+    private readonly recordAnnualOpeningPositionUseCase: RecordAnnualOpeningPositionUseCase,
+    @Inject(ListAnnualOpeningPositionsUseCase)
+    private readonly listAnnualOpeningPositionsUseCase: ListAnnualOpeningPositionsUseCase,
+    @Inject(ConfirmAnnualOpeningPositionUseCase)
+    private readonly confirmAnnualOpeningPositionUseCase: ConfirmAnnualOpeningPositionUseCase,
   ) {}
 
   @Get('monthly/:competence')
@@ -642,5 +662,96 @@ export class FiscalController {
         identifier: body.identifier,
       }),
     };
+  }
+
+  // --- Phase 4H.2: Annual IRPF Period & Year-End Position Foundation ---
+
+  @Get('annual/:calendarYear/positions')
+  @ApiOperation({
+    summary:
+      'Get authoritative annual positions at December 31st of the calendar year with historical acquisition cost (never market valuation). Fails closed on incomplete cost basis or overlaps.',
+  })
+  @ApiParam({ name: 'calendarYear', description: 'Economic calendar year (e.g. 2025)' })
+  @ApiResponse({ status: 200, description: 'Annual position report' })
+  @ApiResponse({ status: 400, description: 'Invalid calendar year or input' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async getAnnualPositions(
+    @Param('calendarYear') calendarYear: string,
+    @Query(new ZodValidationPipe(AnnualPositionsQuerySchema)) query: AnnualPositionsQuery,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const year = parseInt(calendarYear, 10);
+    const data = await this.getAnnualPositionReportUseCase.execute({
+      taxSubjectId: principal.userId,
+      portfolioId: query.portfolioId,
+      calendarYear: year,
+    });
+    return { data };
+  }
+
+  @Get('annual/opening-positions')
+  @ApiOperation({
+    summary: 'List canonical pre-Atlas opening position inputs for the authenticated investor.',
+  })
+  @ApiResponse({ status: 200, description: 'List of opening positions' })
+  async listAnnualOpeningPositions(
+    @Query(new ZodValidationPipe(ListAnnualOpeningPositionsQuerySchema))
+    query: ListAnnualOpeningPositionsQuery,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.listAnnualOpeningPositionsUseCase.execute({
+      taxSubjectId: principal.userId,
+      portfolioId: query.portfolioId,
+      status: query.status,
+    });
+    return { data };
+  }
+
+  @Post('annual/opening-positions')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary:
+      'Record or supersede a canonical opening position input for pre-Atlas holdings (with revision tracking and idempotency).',
+  })
+  @ApiResponse({ status: 201, description: 'Opening position recorded' })
+  @ApiResponse({ status: 400, description: 'Invalid opening position input' })
+  @ApiResponse({ status: 404, description: 'Portfolio, account or asset not found' })
+  async recordAnnualOpeningPosition(
+    @Body(new ZodValidationPipe(RecordAnnualOpeningPositionBodySchema))
+    body: RecordAnnualOpeningPositionBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.recordAnnualOpeningPositionUseCase.execute({
+      taxSubjectId: principal.userId,
+      portfolioId: body.portfolioId,
+      accountId: body.accountId,
+      assetId: body.assetId,
+      effectiveDate: body.effectiveDate,
+      quantity: body.quantity,
+      totalHistoricalCost: body.totalHistoricalCost,
+      currency: body.currency,
+      source: body.source,
+      status: body.status,
+      notes: body.notes,
+    });
+    return { data: result.position, meta: { outcome: result.outcome } };
+  }
+
+  @Post('annual/opening-positions/:id/confirm')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Explicitly confirm a draft opening position input.',
+  })
+  @ApiResponse({ status: 200, description: 'Opening position confirmed' })
+  @ApiResponse({ status: 404, description: 'Opening position not found' })
+  async confirmAnnualOpeningPosition(
+    @Param('id') id: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.confirmAnnualOpeningPositionUseCase.execute({
+      id,
+      taxSubjectId: principal.userId,
+    });
+    return { data };
   }
 }

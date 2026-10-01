@@ -33,6 +33,7 @@ model User {
   taxpayerIdentity        TaxpayerIdentityRecord?
   darfGenerationRecords   OfficialDarfGenerationRecord[]
   taxCompensationElections TaxCompensationElectionRecord[]
+  annualOpeningPositions  AnnualOpeningPositionInputRecord[]
 
   @@map("users")
 }
@@ -103,6 +104,7 @@ model Portfolio {
   accounts        Account[]
   transactions    Transaction[]
   aiConversations AiConversation[]
+  annualOpeningPositions AnnualOpeningPositionInputRecord[]
 
   @@index([userId])
   @@map("portfolios")
@@ -121,6 +123,7 @@ model Account {
   portfolio   Portfolio     @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   institution Institution   @relation(fields: [institutionId], references: [id], onDelete: Restrict)
   transactions Transaction[]
+  annualOpeningPositions AnnualOpeningPositionInputRecord[]
 
   @@unique([id, portfolioId])
   @@index([portfolioId])
@@ -141,6 +144,7 @@ model Asset {
   transactions            Transaction[]
   marketIntelligenceLinks MarketIntelligenceAssetLink[]
   fiiTaxEligibilityFacts  FiiTaxEligibilityFactRecord[]
+  annualOpeningPositions  AnnualOpeningPositionInputRecord[]
 
   @@unique([ticker, exchange])
   @@index([ticker])
@@ -614,4 +618,38 @@ model TaxCompensationElectionRecord {
   @@unique([taxSubjectId, competence, electionType, version], name: "tax_compensation_election_revision_identity")
   @@index([taxSubjectId, competence, electionType])
   @@map("tax_compensation_elections")
+}
+
+/// Phase 4H.2 - canonical opening position input record for pre-Atlas holdings.
+/// One logical identity is `(taxSubjectId, portfolioId, accountId, assetId, revision)`.
+/// Superseded records maintain full audit history.
+model AnnualOpeningPositionInputRecord {
+  id                  String    @id @default(uuid()) @db.Uuid
+  taxSubjectId        String    @map("tax_subject_id") @db.Uuid
+  portfolioId         String    @map("portfolio_id") @db.Uuid
+  accountId           String    @map("account_id") @db.Uuid
+  assetId             String    @map("asset_id") @db.Uuid
+  effectiveDate       DateTime  @map("effective_date") @db.Date
+  quantity            Decimal   @db.Decimal(38, 18)
+  totalHistoricalCost Decimal   @map("total_historical_cost") @db.Decimal(38, 18)
+  currency            String    @db.VarChar(3)
+  source              String    @db.VarChar(40)
+  status              String    @db.VarChar(30)
+  revision            Int
+  fingerprint         String    @db.VarChar(64)
+  notes               String?   @db.Text
+  supersedesId        String?   @map("supersedes_id") @db.Uuid
+  confirmedAt         DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  taxSubject User      @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+  portfolio  Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  account    Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  asset      Asset     @relation(fields: [assetId], references: [id], onDelete: Restrict)
+
+  @@unique([taxSubjectId, portfolioId, accountId, assetId, revision], name: "annual_opening_position_revision_identity", map: "annual_opening_pos_rev_uniq")
+  @@index([taxSubjectId, portfolioId, accountId, assetId, status], map: "annual_opening_pos_lookup_idx")
+  @@index([taxSubjectId, status], map: "annual_opening_pos_subj_status_idx")
+  @@map("annual_opening_position_inputs")
 }

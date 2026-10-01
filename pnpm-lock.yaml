@@ -596,6 +596,9 @@ importers:
       '@atlas/domain':
         specifier: workspace:*
         version: link:../domain
+      '@atlas/portfolio-engine':
+        specifier: workspace:*
+        version: link:../portfolio-engine
     devDependencies:
       '@atlas/config':
         specifier: workspace:*

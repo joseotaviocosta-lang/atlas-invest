@@ -73,3 +73,7 @@ não entram em produção.
 Geração/envio de declaração, automação Receita/GCAP/ReVar/PGD, Tax AI
 (`UNSUPPORTED_TAX`, 0 chamadas), IRPF de ETF/BDR/opções/futuros/cripto e regimes
 de ativos no exterior.
+
+## 10. Retenção e Preservação Probatória
+
+Atlas must preserve tax evidence according to the applicable legal, regulatory and audit-retention requirements for each artifact type. Five-year tax decadence/prescription periods are relevant legal context but are not treated as a universal storage-retention rule. Exact retention requirements remain source-specific and must be confirmed before enforcing automatic deletion.

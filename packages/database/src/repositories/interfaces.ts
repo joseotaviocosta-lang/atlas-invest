@@ -918,3 +918,64 @@ export interface ITaxCompensationElectionRepository {
     source: string;
   }): Promise<{ outcome: TaxCompensationElectionWriteOutcome; record: TaxCompensationElectionRow }>;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4H.2 — annual opening position persistence (immutable revisions)
+// ---------------------------------------------------------------------------
+
+export type AnnualOpeningPositionWriteOutcome = 'CREATED' | 'IDEMPOTENT_CONFIRMED' | 'SUPERSEDED';
+
+export interface AnnualOpeningPositionRow {
+  id: string;
+  taxSubjectId: string;
+  portfolioId: string;
+  accountId: string;
+  assetId: string;
+  effectiveDate: Date;
+  quantity: string;
+  totalHistoricalCost: string;
+  currency: string;
+  source: string;
+  status: string;
+  revision: number;
+  fingerprint: string;
+  notes: string | null;
+  supersedesId: string | null;
+  confirmedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IAnnualOpeningPositionRepository {
+  findById(id: string): Promise<AnnualOpeningPositionRow | null>;
+  findCurrentByAsset(input: {
+    taxSubjectId: string;
+    portfolioId: string;
+    accountId: string;
+    assetId: string;
+  }): Promise<AnnualOpeningPositionRow | null>;
+  listByPortfolio(input: {
+    taxSubjectId: string;
+    portfolioId: string;
+    status?: string;
+  }): Promise<AnnualOpeningPositionRow[]>;
+  listBySubject(input: {
+    taxSubjectId: string;
+    status?: string;
+  }): Promise<AnnualOpeningPositionRow[]>;
+  create(input: {
+    id?: string;
+    taxSubjectId: string;
+    portfolioId: string;
+    accountId: string;
+    assetId: string;
+    effectiveDate: Date;
+    quantity: string;
+    totalHistoricalCost: string;
+    currency: string;
+    source: string;
+    status?: string;
+    notes?: string;
+  }): Promise<{ outcome: AnnualOpeningPositionWriteOutcome; record: AnnualOpeningPositionRow }>;
+  confirm(id: string, taxSubjectId: string): Promise<AnnualOpeningPositionRow | null>;
+}

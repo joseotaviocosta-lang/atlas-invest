@@ -22,6 +22,7 @@ import { TaxInputEntry } from '@/components/fiscal/TaxInputEntry';
 import { TaxObligationSection } from '@/components/fiscal/TaxObligationSection';
 import { EquityFiscalSection } from '@/components/fiscal/EquityFiscalSection';
 import { Composed6015Section } from '@/components/fiscal/Composed6015Section';
+import { AnnualPositionsSection } from '@/components/fiscal/AnnualPositionsSection';
 
 function currentCompetence(): string {
   const now = new Date();
@@ -31,6 +32,20 @@ function currentCompetence(): string {
 
 function FiscalContent() {
   const [competence, setCompetence] = useState(currentCompetence());
+
+  const { data: portfoliosData } = useQuery({
+    queryKey: ['portfolios'],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: Array<{ id: string; name: string }> }>(
+        '/api/v1/portfolios',
+      );
+      return res.data;
+    },
+    staleTime: 60_000,
+  });
+
+  const selectedPortfolioId =
+    portfoliosData && portfoliosData.length > 0 ? portfoliosData[0]!.id : null;
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: fiscalMonthlyQueryKey(competence),
@@ -524,6 +539,8 @@ function FiscalContent() {
             }
             onSaved={() => refetch()}
           />
+
+          <AnnualPositionsSection portfolioId={selectedPortfolioId} />
 
           <div
             style={{

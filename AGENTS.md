@@ -1960,3 +1960,28 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Sem geracao/envio de declaracao, automacao Receita/GCAP/ReVar/PGD, captcha, certificados, IRPF de ETF/BDR/opcoes/futuros/cripto, ativos no exterior, ou habilitacao de Tax AI (permanece `UNSUPPORTED_TAX`, 0 chamadas).
 10. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
     - Portfolio Engine, AI (3Q-3Z), Market Intelligence e as fundacoes fiscais 4A-4G permanecem inalterados e inviolaveis.
+
+---
+
+## 68. Invariantes de Posições Anuais e Histórico de Abertura (Fase 4H.2)
+
+1. **PROJEÇÃO VIA REPLAY DO PORTFOLIO ENGINE (ADR-303):**
+   - O relatório anual de posições (`AnnualPositionReport`) projeta o estado de custódia e custo de aquisição exclusivamente executando `PortfolioReplayEngine.replay(transactions, portfolioId, { asOfDate: YYYY-12-31 })`.
+   - É terminantemente proibido duplicar a lógica de cálculo de preço médio ou saldo de custódia na camada fiscal.
+2. **CUSTO HISTÓRICO DE AQUISIÇÃO OBRIGATÓRIO (ADR-303):**
+   - A declaração de Bens e Direitos em 31/12 adota estritamente o custo histórico de aquisição (`totalHistoricalCost`).
+   - É terminantemente proibido utilizar cotação, mark-to-market ou valor de mercado como valor patrimonial declarado.
+3. **DESCONHECIDO NUNCA É ZERO:**
+   - Se o custo de aquisição for desconhecido (`costBasisStatus = INCOMPLETE`), o valor retornado é `null` (nunca `"0"` ou `R$ 0,00`) e o ativo é classificado como `BLOCKED` com `UNKNOWN_COST_BASIS`.
+4. **POLÍTICA DE POSIÇÃO ZERO:**
+   - Ativos com quantidade zerada (`quantity.isZero()`) em 31/12 são estritamente omitidos da listagem de bens em custódia.
+5. **ENTRADA CANÔNICA DE POSIÇÃO DE ABERTURA PRÉ-ATLAS (ADR-302):**
+   - Posições de abertura (`AnnualOpeningPositionInput`) estabelecem base de custódia e custo histórico para holdings anteriores ao início do livro-razão no Atlas.
+   - Identidade lógica `(taxSubjectId, portfolioId, accountId, assetId, revision)`; revisões subsequentes incrementam `revision` de forma monotônica e marcam a anterior como `SUPERSEDED`.
+   - Submissões com conteúdo idêntico são idempotentes via `fingerprint` SHA-256 (`IDEMPOTENT_CONFIRMED`).
+6. **INVARIANTE ANTI-SOBREPOSIÇÃO (ADR-302):**
+   - Se existirem transações no livro-razão com `tradeDate <= openingPosition.effectiveDate` para o mesmo ativo, a aplicação da posição de abertura é bloqueada (`OVERLAPPING_OPENING_AND_LEDGER_HISTORY`).
+7. **CONFIRMAÇÃO EXPLÍCITA:**
+   - Posições em rascunho (`DRAFT`) exigem confirmação explícita antes da aplicação; posições não confirmadas geram status `REQUIRES_CONFIRMATION` (`UNCONFIRMED_OPENING_POSITION`).
+8. **ZERO CÁLCULOS FINANCEIROS NA UI:**
+   - As interfaces Web/Mobile apenas exibem os dados estruturados pelo servidor ("Custo histórico em 31/12", badges de completude, códigos de bloqueio).

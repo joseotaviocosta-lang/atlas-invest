@@ -20,3 +20,4 @@ export * from './tax-payment-aggregation.repository';
 export * from './taxpayer-identity.repository';
 export * from './official-darf-generation.repository';
 export * from './tax-compensation-election.repository';
+export * from './annual-opening-position.repository';
