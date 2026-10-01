@@ -6,6 +6,7 @@ export {
   createDeclarationExercise,
   parseDeclarationExercise,
   resolveDeclarationExercise,
+  resolveOrdinaryDeclarationExercise,
   createAnnualTaxPeriod,
 } from './annual-period';
 export type { CalendarYear, DeclarationExercise, AnnualTaxPeriod } from './annual-period';

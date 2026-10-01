@@ -82,7 +82,10 @@ export function buildAnnualPositionReport(
         })())
       : input.calendarYear;
 
-  const period: AnnualTaxPeriod = createAnnualTaxPeriod(calendarYear, input.declarationExercise);
+  const period: AnnualTaxPeriod = createAnnualTaxPeriod(
+    calendarYear,
+    input.declarationExercise,
+  );
   const cutoffDate = period.endDate; // YYYY-12-31
 
   // Filter transactions for this portfolio

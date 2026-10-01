@@ -128,25 +128,15 @@ describe('Phase 4H.2 — Annual Positions Query Budget & Batching (Real App Path
 
     // Classify recorded queries by category
     const categories = {
-      session: recordedQueries.filter(
-        (q) => q.query.includes('sessions') || q.query.includes('users'),
-      ).length,
+      session: recordedQueries.filter((q) => q.query.includes('sessions') || q.query.includes('users')).length,
       portfolio: recordedQueries.filter((q) => q.query.includes('portfolios')).length,
       transactions: recordedQueries.filter((q) => q.query.includes('transactions')).length,
-      openingPositions: recordedQueries.filter((q) =>
-        q.query.includes('annual_opening_position_inputs'),
-      ).length,
+      openingPositions: recordedQueries.filter((q) => q.query.includes('annual_opening_position_inputs')).length,
       assets: recordedQueries.filter((q) => q.query.includes('assets')).length,
       other: 0,
       total: recordedQueries.length,
     };
-    categories.other =
-      categories.total -
-      (categories.session +
-        categories.portfolio +
-        categories.transactions +
-        categories.openingPositions +
-        categories.assets);
+    categories.other = categories.total - (categories.session + categories.portfolio + categories.transactions + categories.openingPositions + categories.assets);
 
     // Assert strictly bounded queries and ZERO N+1
     expect(categories.transactions).toBe(1); // 1 single batch query for ALL transactions
