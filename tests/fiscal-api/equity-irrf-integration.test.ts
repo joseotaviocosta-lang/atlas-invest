@@ -80,6 +80,10 @@ function run(
   ledgers: Ledger[],
   withholdingByCompetence: Map<string, EquityIrrfWithholdingEntry[]>,
   blockedWithholdingByCompetence = new Set<string>(),
+  electionByCompetence = new Map<
+    string,
+    { value: 'DECLARE_FOR_CARRYFORWARD' | 'DO_NOT_DECLARE'; version: number; fingerprint: string }
+  >(),
 ) {
   const transactions = ledgers.flatMap((l) => l.transactions);
   const canonical = new Map<string, CanonicalRealizedResult>();
@@ -91,7 +95,7 @@ function run(
     assetTypeByAssetId: new Map([[ASSET, 'STOCK']]),
     institutionByAccountId: new Map([[ACCOUNT, INSTITUTION]]),
     canonicalRealizedByTransactionId: canonical,
-    electionByCompetence: new Map(),
+    electionByCompetence,
     withholdingByCompetence,
     blockedWithholdingByCompetence,
   });
@@ -269,6 +273,41 @@ describe('Phase 4G.2B.1 — equity IRRF integration into real monthly replay', (
     expect(result.dayTrade.irrfUsed).toBe('10');
     expect(result.normal.irrfClosing).toBe('0');
     expect(result.dayTrade.irrfClosing).toBe('0');
+  });
+
+  it('O. election revision deterministically changes downstream base and IRRF usage', () => {
+    const m = normal('2026-08', '200', '180', '100'); // exempt loss 2000
+    const mNext = normal('2026-09', '270', '300', '100'); // taxable gain 3000
+    const withholding = new Map([['2026-09', [wh('EQUITY_NORMAL', '200', 'n-sep')]]]);
+
+    const declared = run(
+      '2026-09',
+      [m, mNext],
+      withholding,
+      new Set(),
+      new Map([['2026-08', { value: 'DECLARE_FOR_CARRYFORWARD', version: 1, fingerprint: 'e1' }]]),
+    );
+    expect(declared.normal.openingLoss).toBe('2000');
+    expect(declared.normal.lossConsumed).toBe('2000');
+    expect(declared.normal.taxableBaseBeforeRate).toBe('1000');
+    expect(declared.normal.grossTax).toBe('150');
+    expect(declared.normal.irrfUsed).toBe('150');
+    expect(declared.normal.netTaxBefore6015Aggregation).toBe('0');
+    expect(declared.normal.irrfClosing).toBe('50');
+
+    const declined = run(
+      '2026-09',
+      [m, mNext],
+      withholding,
+      new Set(),
+      new Map([['2026-08', { value: 'DO_NOT_DECLARE', version: 2, fingerprint: 'e2' }]]),
+    );
+    expect(declined.normal.openingLoss).toBe('0');
+    expect(declined.normal.taxableBaseBeforeRate).toBe('3000');
+    expect(declined.normal.grossTax).toBe('450');
+    expect(declined.normal.irrfUsed).toBe('200');
+    expect(declined.normal.netTaxBefore6015Aggregation).toBe('250');
+    expect(declined.normal.irrfClosing).toBe('0');
   });
 
   it('Q. different institutions do not cross-match day trade; IRRF stays category-driven', () => {

@@ -89,6 +89,8 @@
     "test:equity-election-api": "vitest run --config vitest.fiscal-api.config.ts tests/fiscal-api/equity-election-api.test.ts",
     "test:equity-monthly-fiscal-replay": "vitest run --config vitest.fiscal-api.config.ts tests/fiscal-api/equity-monthly-fiscal-replay.test.ts",
     "test:equity-tax-rules:e2e": "vitest run --config vitest.fiscal-api.config.ts tests/fiscal-api/equity-irrf-integration.test.ts",
+    "test:equity-tax-rules:real-e2e": "vitest run --config vitest.fiscal-api.config.ts tests/fiscal-api/equity-irrf-real-e2e.test.ts",
+    "test:equity-tax-rules:scale": "vitest run --config vitest.fiscal-api.config.ts tests/fiscal-api/equity-tax-rules-scale.test.ts",
     "test:equity-monthly-fiscal-replay:scale": "vitest run --config vitest.fiscal-api.config.ts tests/fiscal-api/equity-monthly-fiscal-replay-scale.test.ts",
     "test:equity-monthly-fiscal-replay:missing-institution": "vitest run --config vitest.fiscal-api.config.ts tests/fiscal-api/equity-monthly-fiscal-replay-missing-institution.test.ts",
     "test:asset-metadata-batching": "vitest run --config vitest.database.config.ts tests/database/asset-metadata-batching.test.ts",
