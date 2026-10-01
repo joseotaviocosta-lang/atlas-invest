@@ -17,7 +17,7 @@ import {
   createTaxSubjectId,
   InvalidCalendarYearError,
   InvalidDeclarationExerciseError,
-  resolveDeclarationExercise,
+  resolveOrdinaryDeclarationExercise,
 } from '@atlas/tax-engine';
 import { uuidFor } from './helpers';
 
@@ -750,24 +750,128 @@ describe('Phase 4H.2 — Annual IRPF Period & Position Fixtures (A through W)', 
     expect(pos.openingPositionId).toBe(uuidFor('op-2'));
   });
 
-  it('Fixture T: Temporal types validation (CalendarYear vs DeclarationExercise)', () => {
-    const calYear = createCalendarYear(2025);
-    const exercise = resolveDeclarationExercise(calYear);
-    expect(Number(calYear)).toBe(2025);
-    expect(Number(exercise)).toBe(2026);
+  it('Fixture T: Temporal domain validation — Independent types & ordinary resolution (§7 A-G)', () => {
+    // A. CalendarYear 2025 constructible
+    const cal2025 = createCalendarYear(2025);
+    expect(Number(cal2025)).toBe(2025);
 
-    const period = createAnnualTaxPeriod(calYear);
-    expect(period.calendarYear).toBe(calYear);
-    expect(period.declarationExercise).toBe(exercise);
-    expect(period.startDate.toString()).toBe('2025-01-01');
-    expect(period.endDate.toString()).toBe('2025-12-31');
-  });
+    // B. DeclarationExercise 2026 constructible
+    const exec2026 = createDeclarationExercise(2026);
+    expect(Number(exec2026)).toBe(2026);
 
-  it('Fixture U: Rejection of invalid calendar years (< 1900 or > 2100)', () => {
+    // C. DeclarationExercise 2027 constructible independently
+    const exec2027 = createDeclarationExercise(2027);
+    expect(Number(exec2027)).toBe(2027);
+
+    // D. CalendarYear != DeclarationExercise distinct concept
+    expect(Number(cal2025)).not.toBe(Number(exec2026));
+
+    // E. Ordinary 2025 -> 2026 mapping where rule resolver applies
+    const resolvedExec = resolveOrdinaryDeclarationExercise(cal2025);
+    expect(Number(resolvedExec)).toBe(2026);
+
+    // Explicit custom declaration exercise support in AnnualTaxPeriod
+    const periodCustom = createAnnualTaxPeriod(cal2025, exec2027);
+    expect(periodCustom.calendarYear).toBe(cal2025);
+    expect(periodCustom.declarationExercise).toBe(exec2027);
+
+    // F. Invalid year bounds rejected (< 1900 or > 2100 or non-integer)
     expect(() => createCalendarYear(1899)).toThrow(InvalidCalendarYearError);
     expect(() => createCalendarYear(2101)).toThrow(InvalidCalendarYearError);
     expect(() => createCalendarYear(2025.5)).toThrow(InvalidCalendarYearError);
     expect(() => createDeclarationExercise(1899)).toThrow(InvalidDeclarationExerciseError);
+    expect(() => createDeclarationExercise(2101)).toThrow(InvalidDeclarationExerciseError);
+
+    // G. Timezone independence: dates constructed via LocalDate fromParts
+    const period = createAnnualTaxPeriod(cal2025);
+    expect(period.startDate.toString()).toBe('2025-01-01');
+    expect(period.endDate.toString()).toBe('2025-12-31');
+  });
+
+  it('Fixture U: Mixed asset support (§11) — Stock & FII are COMPLETE, BDR & ETF are UNSUPPORTED_ASSET_CLASS (BLOCKED)', () => {
+    const stockId = createAssetId(uuidFor('asset-stock-petr4'));
+    const fiiId = createAssetId(uuidFor('asset-fii-knri11'));
+    const bdrId = createAssetId(uuidFor('asset-bdr-aapl34'));
+    const etfId = createAssetId(uuidFor('asset-etf-bova11'));
+
+    const buyStock = TransactionFactory.createBuy({
+      id: uuidFor('tx-stock'),
+      portfolioId: String(portfolioId),
+      accountId: String(accountId),
+      assetId: String(stockId),
+      tradeDate: '2025-01-10',
+      quantity: '100',
+      unitPrice: '30.00',
+      currency: 'BRL',
+    });
+    const buyFii = TransactionFactory.createBuy({
+      id: uuidFor('tx-fii'),
+      portfolioId: String(portfolioId),
+      accountId: String(accountId),
+      assetId: String(fiiId),
+      tradeDate: '2025-02-10',
+      quantity: '10',
+      unitPrice: '150.00',
+      currency: 'BRL',
+    });
+    const buyBdr = TransactionFactory.createBuy({
+      id: uuidFor('tx-bdr'),
+      portfolioId: String(portfolioId),
+      accountId: String(accountId),
+      assetId: String(bdrId),
+      tradeDate: '2025-03-10',
+      quantity: '50',
+      unitPrice: '50.00',
+      currency: 'BRL',
+    });
+    const buyEtf = TransactionFactory.createBuy({
+      id: uuidFor('tx-etf'),
+      portfolioId: String(portfolioId),
+      accountId: String(accountId),
+      assetId: String(etfId),
+      tradeDate: '2025-04-10',
+      quantity: '20',
+      unitPrice: '100.00',
+      currency: 'BRL',
+    });
+
+    const report = buildAnnualPositionReport({
+      taxSubjectId,
+      portfolioId,
+      calendarYear: 2025,
+      transactions: [buyStock, buyFii, buyBdr, buyEtf],
+      assetMetadataResolver: (id) => {
+        if (String(id) === String(stockId)) return { ticker: 'PETR4', category: 'BRAZILIAN_EQUITY' };
+        if (String(id) === String(fiiId)) return { ticker: 'KNRI11', category: 'FII' };
+        if (String(id) === String(bdrId)) return { ticker: 'AAPL34', category: 'BDR' };
+        if (String(id) === String(etfId)) return { ticker: 'BOVA11', category: 'ETF' };
+        return undefined;
+      },
+    });
+
+    expect(report.positions).toHaveLength(4);
+    const stockPos = report.positions.find((p) => String(p.assetId) === String(stockId))!;
+    const fiiPos = report.positions.find((p) => String(p.assetId) === String(fiiId))!;
+    const bdrPos = report.positions.find((p) => String(p.assetId) === String(bdrId))!;
+    const etfPos = report.positions.find((p) => String(p.assetId) === String(etfId))!;
+
+    expect(stockPos.completenessStatus).toBe('COMPLETE');
+    expect(stockPos.blockingReasons).toHaveLength(0);
+
+    expect(fiiPos.completenessStatus).toBe('COMPLETE');
+    expect(fiiPos.blockingReasons).toHaveLength(0);
+
+    expect(bdrPos.completenessStatus).toBe('BLOCKED');
+    expect(bdrPos.blockingReasons).toContain('UNSUPPORTED_ASSET_CLASS');
+    expect(bdrPos.quantity.toString()).toBe('50'); // economic quantity preserved!
+
+    expect(etfPos.completenessStatus).toBe('BLOCKED');
+    expect(etfPos.blockingReasons).toContain('UNSUPPORTED_ASSET_CLASS');
+    expect(etfPos.quantity.toString()).toBe('20'); // economic quantity preserved!
+
+    expect(report.summary.completenessStatus).toBe('PARTIAL');
+    expect(report.summary.completePositionsCount).toBe(2);
+    expect(report.summary.blockedPositionsCount).toBe(2);
   });
 
   it('Fixture V: Zero cost asset (donation/free share) -> totalHistoricalCost is Money.zero, not null', () => {
@@ -838,5 +942,80 @@ describe('Phase 4H.2 — Annual IRPF Period & Position Fixtures (A through W)', 
     expect(pos.trace.corporateActionCount).toBe(1);
     expect(pos.trace.openingPositionApplied).toBe(false);
     expect(pos.trace.provenanceSummary).toContain('2 ledger transactions (1 corporate actions)');
+  });
+
+  it('Fixture X: Subscription (subscrição) with unit price -> quantity increased and total cost aggregated', () => {
+    const buy = TransactionFactory.createBuy({
+      id: uuidFor('tx-buy-sub'),
+      portfolioId: String(portfolioId),
+      accountId: String(accountId),
+      assetId: String(assetIdA),
+      tradeDate: '2025-01-10',
+      quantity: '100',
+      unitPrice: '20.00',
+      currency: 'BRL',
+    });
+    const sub = TransactionFactory.createSubscription({
+      id: uuidFor('tx-sub-1'),
+      portfolioId: String(portfolioId),
+      accountId: String(accountId),
+      assetId: String(assetIdA),
+      tradeDate: '2025-05-10',
+      quantity: '20',
+      unitPrice: '15.00',
+      currency: 'BRL',
+    });
+
+    const report = buildAnnualPositionReport({
+      taxSubjectId,
+      portfolioId,
+      calendarYear: 2025,
+      transactions: [buy, sub],
+    });
+
+    expect(report.positions).toHaveLength(1);
+    const pos = report.positions[0]!;
+    expect(pos.quantity.toString()).toBe('120');
+    expect(pos.totalHistoricalCost?.amount).toBe('2300'); // 2000 + 300
+    expect(pos.completenessStatus).toBe('COMPLETE');
+  });
+
+  it('Fixture Y: Overlapping opening position and ledger transactions -> fails closed with OVERLAPPING_OPENING_AND_LEDGER_HISTORY', () => {
+    const op = createAnnualOpeningPosition({
+      id: uuidFor('op-overlap'),
+      taxSubjectId,
+      portfolioId,
+      accountId,
+      assetId: assetIdA,
+      effectiveDate: LocalDate.from('2024-12-31'),
+      quantity: Quantity.from('100'),
+      totalHistoricalCost: Money.from('2000', 'BRL'),
+      currency: 'BRL',
+      status: 'CONFIRMED',
+      source: 'MANUAL_CONFIRMED',
+    });
+    const priorBuy = TransactionFactory.createBuy({
+      id: uuidFor('tx-prior-buy'),
+      portfolioId: String(portfolioId),
+      accountId: String(accountId),
+      assetId: String(assetIdA),
+      tradeDate: '2024-10-10', // prior to opening effective date
+      quantity: '50',
+      unitPrice: '20.00',
+      currency: 'BRL',
+    });
+
+    const report = buildAnnualPositionReport({
+      taxSubjectId,
+      portfolioId,
+      calendarYear: 2025,
+      transactions: [priorBuy],
+      openingPositions: [op],
+    });
+
+    expect(report.positions).toHaveLength(1);
+    const pos = report.positions[0]!;
+    expect(pos.completenessStatus).toBe('BLOCKED');
+    expect(pos.blockingReasons).toContain('OVERLAPPING_OPENING_AND_LEDGER_HISTORY');
   });
 });

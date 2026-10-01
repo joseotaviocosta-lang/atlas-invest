@@ -38,17 +38,16 @@ describe('API Integration: tax obligations & direct deadline registry (Phase 4C.
   });
 
   async function session(userId: string): Promise<string> {
-    const existing = await prisma.user.findUnique({ where: { id: userId } });
-    if (!existing) {
-      await prisma.user.create({
-        data: {
-          id: userId,
-          email: `${userId}@atlas.dev`,
-          name: 'T',
-          passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$dummy$abcdefghijklmnopqrstuvwxyz0123456789',
-        },
-      });
-    }
+    await prisma.user.upsert({
+      where: { id: userId },
+      create: {
+        id: userId,
+        email: `${userId}@atlas.dev`,
+        name: 'T',
+        passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$dummy$abcdefghijklmnopqrstuvwxyz0123456789',
+      },
+      update: {},
+    });
     const { token } = await createAuthenticatedUserSession(userId);
     return token;
   }

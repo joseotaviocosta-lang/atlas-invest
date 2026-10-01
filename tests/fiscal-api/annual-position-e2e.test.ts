@@ -56,7 +56,7 @@ describe('API Integration: Annual IRPF Period & Year-End Positions E2E (Phase 4H
   async function setupPortfolio(
     userId: string,
     ticker = 'PETR4',
-    type: 'EQUITY' | 'FII' = 'EQUITY',
+    type: 'STOCK' | 'FII' = 'STOCK',
   ) {
     const token = await session(userId);
     const portfolioRes = await request(app.getHttpServer())
@@ -339,5 +339,199 @@ describe('API Integration: Annual IRPF Period & Year-End Positions E2E (Phase 4H
     expect(listRes.body.data).toHaveLength(1);
     expect(listRes.body.data[0].revision).toBe(2);
     expect(listRes.body.data[0].totalHistoricalCost).toBe('4500');
+  });
+
+  it('Scenario 5: Corporate Action Split in Real API E2E -> quantity doubles, cost preserved, status COMPLETE', async () => {
+    const { token, portfolioId, accountId, assetId } = await setupPortfolio(
+      '00000000-0000-4000-8000-000000000005',
+      'MGLU3',
+    );
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        accountId,
+        assetId,
+        type: 'BUY',
+        currency: 'BRL',
+        tradeDate: '2025-02-10',
+        quantity: '100',
+        unitPrice: '40.00',
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        accountId,
+        assetId,
+        type: 'SPLIT',
+        currency: 'BRL',
+        tradeDate: '2025-06-15',
+        factor: '2',
+      })
+      .expect(201);
+
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/fiscal/annual/2025/positions?portfolioId=${portfolioId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.data.positions).toHaveLength(1);
+    const pos = res.body.data.positions[0];
+    expect(pos.quantity).toBe('200');
+    expect(pos.totalHistoricalCost).toBe('4000');
+    expect(pos.averageHistoricalCost).toBe('20');
+    expect(pos.completenessStatus).toBe('COMPLETE');
+  });
+
+  it('Scenario 6: Partial Sale in Real API E2E -> remaining quantity and proportional cost, status COMPLETE', async () => {
+    const { token, portfolioId, accountId, assetId } = await setupPortfolio(
+      '00000000-0000-4000-8000-000000000006',
+      'RENT3',
+    );
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        accountId,
+        assetId,
+        type: 'BUY',
+        currency: 'BRL',
+        tradeDate: '2025-01-20',
+        quantity: '100',
+        unitPrice: '50.00',
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        accountId,
+        assetId,
+        type: 'SELL',
+        currency: 'BRL',
+        tradeDate: '2025-07-20',
+        quantity: '40',
+        unitPrice: '70.00',
+      })
+      .expect(201);
+
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/fiscal/annual/2025/positions?portfolioId=${portfolioId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.data.positions).toHaveLength(1);
+    const pos = res.body.data.positions[0];
+    expect(pos.quantity).toBe('60');
+    expect(pos.totalHistoricalCost).toBe('3000');
+    expect(pos.averageHistoricalCost).toBe('50');
+    expect(pos.completenessStatus).toBe('COMPLETE');
+  });
+
+  it('Scenario 7: Incomplete Cost Basis in Real API E2E -> totalHistoricalCost is null, status BLOCKED', async () => {
+    const { token, portfolioId, accountId, assetId } = await setupPortfolio(
+      '00000000-0000-4000-8000-000000000007',
+      'EGIE3',
+    );
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        accountId,
+        assetId,
+        type: 'TRANSFER_IN',
+        currency: 'BRL',
+        tradeDate: '2025-04-10',
+        quantity: '50',
+      })
+      .expect(201);
+
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/fiscal/annual/2025/positions?portfolioId=${portfolioId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.data.positions).toHaveLength(1);
+    const pos = res.body.data.positions[0];
+    expect(pos.quantity).toBe('50');
+    expect(pos.totalHistoricalCost).toBeNull();
+    expect(pos.averageHistoricalCost).toBeNull();
+    expect(pos.completenessStatus).toBe('BLOCKED');
+    expect(pos.blockingReasons).toContain('UNKNOWN_COST_BASIS');
+  });
+
+  it('Scenario 8: Mixed Asset Support in Real API E2E -> STOCK is COMPLETE, ETF & BDR are BLOCKED with UNSUPPORTED_ASSET_CLASS', async () => {
+    const userId = '00000000-0000-4000-8000-000000000008';
+    const token = await session(userId);
+    const pRes = await request(app.getHttpServer())
+      .post('/api/v1/portfolios')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Carteira Mista', baseCurrency: 'BRL', type: 'PERSONAL' })
+      .expect(201);
+    const portfolioId = pRes.body.data.id;
+
+    const inst = await request(app.getHttpServer())
+      .post('/api/v1/institutions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'BTG Pactual', type: 'BROKER', country: 'BR' })
+      .expect(201);
+
+    const accRes = await request(app.getHttpServer())
+      .post(`/api/v1/portfolios/${portfolioId}/accounts`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ institutionId: inst.body.data.id, name: 'Custódia Geral', currency: 'BRL' })
+      .expect(201);
+    const accountId = accRes.body.data.id;
+
+    // Create 1 Stock, 1 FII, 1 BDR, 1 ETF in database
+    const stock = Asset.create({ ticker: 'BBAS3', name: 'Banco do Brasil', type: 'STOCK', currency: 'BRL', exchange: 'B3' });
+    const fii = Asset.create({ ticker: 'HGLG11', name: 'CSHG Logística', type: 'FII', currency: 'BRL', exchange: 'B3' });
+    const bdr = Asset.create({ ticker: 'NVDC34', name: 'Nvidia BDR', type: 'BDR', currency: 'BRL', exchange: 'B3' });
+    const etf = Asset.create({ ticker: 'IVVB11', name: 'iShares S&P 500', type: 'ETF', currency: 'BRL', exchange: 'B3' });
+
+    for (const a of [stock, fii, bdr, etf]) {
+      await prisma.asset.create({
+        data: { id: a.id, ticker: a.ticker, name: a.name, type: a.type, currency: a.currency, exchange: a.exchange },
+      });
+      await request(app.getHttpServer())
+        .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          accountId,
+          assetId: a.id,
+          type: 'BUY',
+          currency: 'BRL',
+          tradeDate: '2025-03-01',
+          quantity: '10',
+          unitPrice: '50.00',
+        })
+        .expect(201);
+    }
+
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/fiscal/annual/2025/positions?portfolioId=${portfolioId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.data.positions).toHaveLength(4);
+    const stockPos = res.body.data.positions.find((p: { assetId: string }) => p.assetId === stock.id);
+    const fiiPos = res.body.data.positions.find((p: { assetId: string }) => p.assetId === fii.id);
+    const bdrPos = res.body.data.positions.find((p: { assetId: string }) => p.assetId === bdr.id);
+    const etfPos = res.body.data.positions.find((p: { assetId: string }) => p.assetId === etf.id);
+
+    expect(stockPos.completenessStatus).toBe('COMPLETE');
+    expect(fiiPos.completenessStatus).toBe('COMPLETE');
+    expect(bdrPos.completenessStatus).toBe('BLOCKED');
+    expect(bdrPos.blockingReasons).toContain('UNSUPPORTED_ASSET_CLASS');
+    expect(etfPos.completenessStatus).toBe('BLOCKED');
+    expect(etfPos.blockingReasons).toContain('UNSUPPORTED_ASSET_CLASS');
+    expect(res.body.data.summary.completenessStatus).toBe('PARTIAL');
   });
 });

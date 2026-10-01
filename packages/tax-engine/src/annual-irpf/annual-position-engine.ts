@@ -11,7 +11,7 @@ import {
 import { PortfolioReplayEngine, AppliedCorporateAction } from '@atlas/portfolio-engine';
 import { TaxSubjectId } from '../ids';
 import { TaxAssetCategory } from '../types';
-import { resolveTaxAssetCategory } from '../asset-classification';
+import { isTaxCategorySupportedInPhase4A, resolveTaxAssetCategory } from '../asset-classification';
 import { TAX_ENGINE_VERSION } from '../version';
 import {
   AnnualPosition,
@@ -25,6 +25,7 @@ import { AnnualOpeningPositionInput } from './annual-opening-position';
 import {
   AnnualTaxPeriod,
   CalendarYear,
+  DeclarationExercise,
   createAnnualTaxPeriod,
   parseCalendarYear,
 } from './annual-period';
@@ -42,6 +43,7 @@ export interface BuildAnnualPositionReportInput {
   readonly taxSubjectId: TaxSubjectId;
   readonly portfolioId: PortfolioId;
   readonly calendarYear: CalendarYear | number;
+  readonly declarationExercise?: DeclarationExercise | number;
   readonly transactions: readonly Transaction[];
   readonly openingPositions?: readonly AnnualOpeningPositionInput[];
   readonly assetMetadataResolver?: AssetMetadataResolver;
@@ -80,7 +82,7 @@ export function buildAnnualPositionReport(
         })())
       : input.calendarYear;
 
-  const period: AnnualTaxPeriod = createAnnualTaxPeriod(calendarYear);
+  const period: AnnualTaxPeriod = createAnnualTaxPeriod(calendarYear, input.declarationExercise);
   const cutoffDate = period.endDate; // YYYY-12-31
 
   // Filter transactions for this portfolio
@@ -209,7 +211,9 @@ export function buildAnnualPositionReport(
       blockingReasonsSet.add('UNKNOWN_COST_BASIS');
     }
 
-    if (metadata?.supported === false) {
+    const isCategorySupported = isTaxCategorySupportedInPhase4A(assetCategory);
+    const isExplicitlySupported = metadata?.supported ?? isCategorySupported;
+    if (!isCategorySupported || !isExplicitlySupported) {
       blockingReasonsSet.add('UNSUPPORTED_ASSET_CLASS');
     }
 

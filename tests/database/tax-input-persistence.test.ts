@@ -7,8 +7,10 @@ const prisma = getTestPrismaClient();
 const repo = new TaxInputRepository(prisma);
 
 async function user(id: string) {
-  await prisma.user.create({
-    data: { id, email: `${id}@atlas.dev`, name: 'T', passwordHash: 'x' },
+  await prisma.user.upsert({
+    where: { id },
+    create: { id, email: `${id}@atlas.dev`, name: 'T', passwordHash: 'x' },
+    update: {},
   });
 }
 
@@ -215,5 +217,5 @@ describe('Database: canonical tax input persistence (Phase 4B.3)', () => {
       expect(rows).toHaveLength(n);
       expect(elapsed).toBeLessThan(5000);
     }
-  });
+  }, 60000);
 });

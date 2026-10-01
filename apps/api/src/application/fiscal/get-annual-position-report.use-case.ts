@@ -21,6 +21,7 @@ import {
   createCalendarYear,
   createTaxSubjectId,
   isValidCalendarYear,
+  isTaxCategorySupportedInPhase4A,
   OpeningPositionSource,
   OpeningPositionStatus,
   resolveTaxAssetCategory,
@@ -128,10 +129,11 @@ export class GetAnnualPositionReportUseCase {
       assetMetadataResolver: (assetId: AssetId) => {
         const asset = assetMap.get(String(assetId));
         if (!asset) return undefined;
+        const category = resolveTaxAssetCategory(asset.type);
         return {
           ticker: asset.ticker,
-          category: resolveTaxAssetCategory(asset.type),
-          supported: true,
+          category,
+          supported: isTaxCategorySupportedInPhase4A(category),
         };
       },
     });

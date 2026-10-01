@@ -74,11 +74,23 @@ export function parseDeclarationExercise(value: unknown): DeclarationExercise | 
 }
 
 /**
- * Resolves the official Brazilian declaration exercise year for a calendar year.
- * In Brazilian tax law, Exercício = Ano-calendário + 1.
+ * Resolves the ordinary Brazilian declaration exercise year for a calendar year (Ano-calendário Y -> Exercício Y+1).
+ * In ordinary Brazilian DIRPF filing context, Exercício = Ano-calendário + 1.
  */
-export function resolveDeclarationExercise(calendarYear: CalendarYear): DeclarationExercise {
-  return createDeclarationExercise(calendarYear + 1);
+export function resolveOrdinaryDeclarationExercise(
+  calendarYear: CalendarYear | number,
+): DeclarationExercise {
+  const year = typeof calendarYear === 'number' ? calendarYear : (calendarYear as number);
+  return createDeclarationExercise(year + 1);
+}
+
+/**
+ * Alias for resolveOrdinaryDeclarationExercise for backward compatibility.
+ */
+export function resolveDeclarationExercise(
+  calendarYear: CalendarYear | number,
+): DeclarationExercise {
+  return resolveOrdinaryDeclarationExercise(calendarYear);
 }
 
 /**
@@ -96,14 +108,24 @@ export interface AnnualTaxPeriod {
 
 /**
  * Creates an immutable, canonical AnnualTaxPeriod for a given calendar year.
+ * An optional declaration exercise may be supplied; defaults to ordinary DIRPF (calendarYear + 1).
  */
-export function createAnnualTaxPeriod(yearInput: number | CalendarYear): AnnualTaxPeriod {
+export function createAnnualTaxPeriod(
+  yearInput: number | CalendarYear,
+  exerciseInput?: number | DeclarationExercise,
+): AnnualTaxPeriod {
   const calendarYear =
     typeof yearInput === 'number' && !isValidCalendarYear(yearInput)
       ? createCalendarYear(yearInput)
       : (yearInput as CalendarYear);
 
-  const declarationExercise = resolveDeclarationExercise(calendarYear);
+  const declarationExercise =
+    exerciseInput !== undefined
+      ? typeof exerciseInput === 'number' && !isValidDeclarationExercise(exerciseInput)
+        ? createDeclarationExercise(exerciseInput)
+        : (exerciseInput as DeclarationExercise)
+      : resolveOrdinaryDeclarationExercise(calendarYear);
+
   const startDate = LocalDate.fromParts(calendarYear, 1, 1);
   const endDate = LocalDate.fromParts(calendarYear, 12, 31);
 
