@@ -1935,3 +1935,28 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Web/Mobile apenas formatam o total composto e a trilha por categoria fornecidos pelo servidor.
 9. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
    - Portfolio Engine, AI (3Q-3Z), Market Intelligence e as fundacoes fiscais 4A-4G.2B permanecem inalterados e inviolaveis.
+
+---
+
+## 67. Fundacao do IRPF Anual (Fase 4H.1)
+
+1. **CAMADA DERIVADA, NAO MOTOR (ADR-301):**
+   - O IRPF anual e uma camada de leitura derivada do ledger imutavel + estado fiscal mensal (4A-4G); nunca um segundo motor de transacoes/posicoes nem uma segunda fonte da verdade.
+2. **NUNCA RECALCULA A FISCALIZACAO MENSAL:**
+   - O anual nao recalcula classificacao normal/day-trade, buckets de prejuizo, IRRF mensal, isencao mensal ou composicao 6015; apenas referencia e agrega fatos mensais ja apurados.
+3. **ANO-CALENDARIO != EXERCICIO (ADR-301):**
+   - `CalendarYear`, `DeclarationExercise` e `AnnualTaxPeriod` sao conceitos tipados distintos; nunca colapsar.
+4. **REGRA ANUAL POR ANO:**
+   - Regras anuais resolvem por `effectiveFrom`/`effectiveTo` + ano-calendario/exercicio; nao existe "regra tributaria atual" global. Regras PARTIAL/UNRESOLVED nao entram em producao.
+5. **DESCONHECIDO != ZERO:**
+   - `zero` / `unknown` / `not_applicable` / `missing` sao distintos; resultado anual incompleto falha fechado (`COMPLETE`/`PARTIAL`/`BLOCKED`/`REQUIRES_CONFIRMATION`).
+6. **PROVENIENCIA ANUAL:**
+   - Todo fato anual material e rastreavel a transacao do ledger, input fiscal, evidencia de retencao, evento corporativo, input manual confirmado ou versao de regra oficial.
+7. **IDENTIDADE E MOEDA:**
+   - `AssetId` e a identidade do ativo (ticker nunca); multi-moeda segregada ate conversao explicita.
+8. **SEGURANCA:**
+   - CPF nunca em log; sujeito passivo derivado do principal; isolamento cross-user.
+9. **ANTI-ESCOPO IRPF (Fase 4H):**
+   - Sem geracao/envio de declaracao, automacao Receita/GCAP/ReVar/PGD, captcha, certificados, IRPF de ETF/BDR/opcoes/futuros/cripto, ativos no exterior, ou habilitacao de Tax AI (permanece `UNSUPPORTED_TAX`, 0 chamadas).
+10. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+    - Portfolio Engine, AI (3Q-3Z), Market Intelligence e as fundacoes fiscais 4A-4G permanecem inalterados e inviolaveis.
