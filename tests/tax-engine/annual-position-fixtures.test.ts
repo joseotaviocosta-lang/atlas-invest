@@ -841,7 +841,8 @@ describe('Phase 4H.2 — Annual IRPF Period & Position Fixtures (A through W)', 
       calendarYear: 2025,
       transactions: [buyStock, buyFii, buyBdr, buyEtf],
       assetMetadataResolver: (id) => {
-        if (String(id) === String(stockId)) return { ticker: 'PETR4', category: 'BRAZILIAN_EQUITY' };
+        if (String(id) === String(stockId))
+          return { ticker: 'PETR4', category: 'BRAZILIAN_EQUITY' };
         if (String(id) === String(fiiId)) return { ticker: 'KNRI11', category: 'FII' };
         if (String(id) === String(bdrId)) return { ticker: 'AAPL34', category: 'BDR' };
         if (String(id) === String(etfId)) return { ticker: 'BOVA11', category: 'ETF' };

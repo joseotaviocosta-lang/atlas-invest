@@ -41,10 +41,8 @@ describe('Phase 4H.2 — Annual IRPF Period & Position Fuzz & Invariant Testing 
   const accountId = createAccountId(uuid('account-fuzz-seed'));
   const FUZZ_SEED = 133742;
 
-  it(
-    '10,000-Case Fuzz Matrix (Seed: 133742) — Verifies all 6 required annual invariants',
-    () => {
-      const rng = new SeededRng(FUZZ_SEED);
+  it('10,000-Case Fuzz Matrix (Seed: 133742) — Verifies all 6 required annual invariants', () => {
+    const rng = new SeededRng(FUZZ_SEED);
     const startMs = Date.now();
     let invariant1Passed = 0;
     let invariant2Passed = 0;
@@ -82,7 +80,9 @@ describe('Phase 4H.2 — Annual IRPF Period & Position Fuzz & Invariant Testing 
         transactions: [buy1],
       });
       expect(reportA.summary.completenessStatus).toBe(reportB.summary.completenessStatus);
-      expect(reportA.positions[0]!.quantity.toString()).toBe(reportB.positions[0]!.quantity.toString());
+      expect(reportA.positions[0]!.quantity.toString()).toBe(
+        reportB.positions[0]!.quantity.toString(),
+      );
       invariant1Passed++;
 
       // Invariant 2: Unknown cost basis never becomes zero or string "0"

@@ -53,11 +53,7 @@ describe('API Integration: Annual IRPF Period & Year-End Positions E2E (Phase 4H
     return token;
   }
 
-  async function setupPortfolio(
-    userId: string,
-    ticker = 'PETR4',
-    type: 'STOCK' | 'FII' = 'STOCK',
-  ) {
+  async function setupPortfolio(userId: string, ticker = 'PETR4', type: 'STOCK' | 'FII' = 'STOCK') {
     const token = await session(userId);
     const portfolioRes = await request(app.getHttpServer())
       .post('/api/v1/portfolios')
@@ -491,14 +487,45 @@ describe('API Integration: Annual IRPF Period & Year-End Positions E2E (Phase 4H
     const accountId = accRes.body.data.id;
 
     // Create 1 Stock, 1 FII, 1 BDR, 1 ETF in database
-    const stock = Asset.create({ ticker: 'BBAS3', name: 'Banco do Brasil', type: 'STOCK', currency: 'BRL', exchange: 'B3' });
-    const fii = Asset.create({ ticker: 'HGLG11', name: 'CSHG Logística', type: 'FII', currency: 'BRL', exchange: 'B3' });
-    const bdr = Asset.create({ ticker: 'NVDC34', name: 'Nvidia BDR', type: 'BDR', currency: 'BRL', exchange: 'B3' });
-    const etf = Asset.create({ ticker: 'IVVB11', name: 'iShares S&P 500', type: 'ETF', currency: 'BRL', exchange: 'B3' });
+    const stock = Asset.create({
+      ticker: 'BBAS3',
+      name: 'Banco do Brasil',
+      type: 'STOCK',
+      currency: 'BRL',
+      exchange: 'B3',
+    });
+    const fii = Asset.create({
+      ticker: 'HGLG11',
+      name: 'CSHG Logística',
+      type: 'FII',
+      currency: 'BRL',
+      exchange: 'B3',
+    });
+    const bdr = Asset.create({
+      ticker: 'NVDC34',
+      name: 'Nvidia BDR',
+      type: 'BDR',
+      currency: 'BRL',
+      exchange: 'B3',
+    });
+    const etf = Asset.create({
+      ticker: 'IVVB11',
+      name: 'iShares S&P 500',
+      type: 'ETF',
+      currency: 'BRL',
+      exchange: 'B3',
+    });
 
     for (const a of [stock, fii, bdr, etf]) {
       await prisma.asset.create({
-        data: { id: a.id, ticker: a.ticker, name: a.name, type: a.type, currency: a.currency, exchange: a.exchange },
+        data: {
+          id: a.id,
+          ticker: a.ticker,
+          name: a.name,
+          type: a.type,
+          currency: a.currency,
+          exchange: a.exchange,
+        },
       });
       await request(app.getHttpServer())
         .post(`/api/v1/portfolios/${portfolioId}/transactions`)
@@ -521,7 +548,9 @@ describe('API Integration: Annual IRPF Period & Year-End Positions E2E (Phase 4H
       .expect(200);
 
     expect(res.body.data.positions).toHaveLength(4);
-    const stockPos = res.body.data.positions.find((p: { assetId: string }) => p.assetId === stock.id);
+    const stockPos = res.body.data.positions.find(
+      (p: { assetId: string }) => p.assetId === stock.id,
+    );
     const fiiPos = res.body.data.positions.find((p: { assetId: string }) => p.assetId === fii.id);
     const bdrPos = res.body.data.positions.find((p: { assetId: string }) => p.assetId === bdr.id);
     const etfPos = res.body.data.positions.find((p: { assetId: string }) => p.assetId === etf.id);
