@@ -1910,3 +1910,28 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - 6015, mínimo DARF, vencimento, atraso, Sicalc, IRPF anual e IA fiscal permanecem fora.
 9. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
    - Portfolio Engine, AI (3Q–3Z), Market Intelligence e as fundações fiscais 4A–4G.2B.0 permanecem inalterados e invioláveis.
+
+---
+
+## 66. Composicao da Obrigacao 6015 e Integracao DARF (Fase 4G.2C)
+
+1. **TAXA POR CATEGORIA E COMPOSTA ANTES DA OBRIGACAO (ADR-300):**
+   - O imposto liquido e apurado por categoria (FII, EQUITY_NORMAL, EQUITY_DAY_TRADE) antes da composicao.
+   - A composicao `compose6015` apenas soma valores de categoria ja apurados; nunca recalcula aliquotas, base, prejuizo, IRRF, isencao ou election.
+2. **6015 AGREGA FII + OPERACOES COMUNS + DAY TRADE:**
+   - `FII net tax + EQUITY_NORMAL netTaxBefore6015Aggregation + EQUITY_DAY_TRADE netTaxBefore6015Aggregation = composicao 6015`.
+   - Ordem canonica: FII, EQUITY_NORMAL, EQUITY_DAY_TRADE.
+3. **PREJUIZO E IRRF NUNCA CRUZAM CATEGORIA (ADR-296/297):**
+   - A composicao nao mescla pools de IRRF nem buckets de prejuizo; apenas soma o imposto liquido final.
+4. **MINIMO DARF APLICA-SE APOS A AGREGACAO POR CODIGO DE RECEITA (ADR-278):**
+   - A regra de minimo (4E) e o carry-forward aplicam-se ao total mensal de 6015, nunca por categoria.
+5. **UMA OBRIGACAO POR (taxSubjectId, competence, 6015):**
+   - Nunca uma obrigacao por categoria; a identidade reutiliza a semantica 4C.
+6. **COMPONENTE BLOQUEADO BLOQUEIA A OBRIGACAO FINAL:**
+   - `BLOCKED`/`PARTIAL`, valor negativo, moeda divergente ou atividade fora do conjunto composto falham fechado; nunca se apresenta total parcial como final.
+7. **VENCIMENTO/ATRASO/DARF REUTILIZAM 4C/4D/4F:**
+   - Sem duplicar logica de data, multa/juros, minimo ou DARF/Sicalc.
+8. **A UI NUNCA AGREGA COMPONENTES:**
+   - Web/Mobile apenas formatam o total composto e a trilha por categoria fornecidos pelo servidor.
+9. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+   - Portfolio Engine, AI (3Q-3Z), Market Intelligence e as fundacoes fiscais 4A-4G.2B permanecem inalterados e inviolaveis.

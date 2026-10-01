@@ -126,7 +126,8 @@ function money(value: RawDarfMoney | null | undefined): string {
   return value ? formatCurrency(value.amount, value.currency) : '—';
 }
 
-function competenceLabel(competence: string): string {
+function competenceLabel(competence: string | null | undefined): string {
+  if (!competence) return '—';
   const [year, month] = competence.split('-');
   return `${month}/${year}`;
 }
@@ -135,7 +136,7 @@ export function mapToDarfHandoffViewModel(
   readiness: RawDarfReadiness | null,
   record: RawDarfGenerationRecord | null = null,
 ): DarfHandoffViewModel | null {
-  if (!readiness) return null;
+  if (!readiness || typeof readiness.competence !== 'string') return null;
   const status = STATUS[readiness.status] ?? {
     label: readiness.status,
     color: colors.textMuted,

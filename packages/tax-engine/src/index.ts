@@ -198,6 +198,25 @@ export type {
   PaymentValidationResult,
 } from './obligations';
 
+// --- Phase 4G.2C: 6015 revenue-code composition (FII + normal + day trade) ---
+export {
+  COMPOSED_6015_CATEGORIES,
+  COMPOSED_6015_BUCKET,
+  COMPOSED_6015_STATUSES,
+  COMPOSED_6015_REASON_CODES,
+  compose6015,
+} from './revenue-code-composition';
+export type {
+  Composed6015Category,
+  Composed6015Status,
+  Composed6015ReasonCode,
+  ComposedComponentStatus,
+  Composed6015ComponentInput,
+  Composed6015Component,
+  Compose6015Input,
+  Composed6015Result,
+} from './revenue-code-composition';
+
 // --- Phase 4D.2: overdue tax adjustment (late fee + interest) ---
 export {
   LATE_PAYMENT_ROUNDING_MODES,

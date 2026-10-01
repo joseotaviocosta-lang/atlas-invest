@@ -16,6 +16,7 @@ import { fingerprintLiability } from './tax-obligation-fingerprint';
 import { FISCAL_CLOCK } from './tokens';
 import type { FiscalClock } from './fiscal-clock';
 import { mapObligationToReadModel, type TaxObligationReadModel } from './tax-obligation.read-model';
+import { build6015Composition } from './equity-6015-composition';
 
 /**
  * Phase 4C.2 — materializes the operational TaxObligation for a competence from
@@ -46,9 +47,15 @@ export class MaterializeTaxObligationUseCase {
       });
     }
 
-    const liability = await this.getLiability.compute({
+    const { liability, equity } = await this.getLiability.computeWithEquity({
       userId: params.userId,
       competence: competence.value,
+    });
+
+    const composition = build6015Composition({
+      competence: competence.value,
+      liability,
+      equity,
     });
 
     const deadlineRows = await this.deadlineRepository.listAll();
@@ -63,6 +70,7 @@ export class MaterializeTaxObligationUseCase {
       deadlineEntries,
       now,
       inProgress,
+      composition,
     });
 
     const resolvedEntry = plan.deadlineEntryId
@@ -73,6 +81,7 @@ export class MaterializeTaxObligationUseCase {
       taxSubjectId: params.userId,
       competence: competence.value,
       liability,
+      composition,
     });
 
     const provenance: Record<string, unknown> = {
@@ -82,6 +91,24 @@ export class MaterializeTaxObligationUseCase {
       engineVersion: liability.engineVersion,
       calculationVersion: liability.calculationVersion,
       ruleVersions: liability.ruleVersions,
+      composition: {
+        revenueCode: composition.revenueCode,
+        status: composition.status,
+        reasonCode: composition.reasonCode,
+        currency: composition.currency,
+        total: composition.total,
+        fingerprint: composition.fingerprint,
+        components: composition.components.map((component) => ({
+          category: component.category,
+          status: component.status,
+          netCategoryTax: component.netCategoryTax,
+          currency: component.currency,
+          sourceRuleId: component.sourceRuleId,
+          sourceRuleVersion: component.sourceRuleVersion,
+          sourceFingerprint: component.sourceFingerprint,
+          traceReference: component.traceReference,
+        })),
+      },
       deadlineSource: resolvedEntry
         ? {
             entryId: resolvedEntry.id,

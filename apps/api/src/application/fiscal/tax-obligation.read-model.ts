@@ -46,6 +46,71 @@ export interface ObligationPaymentReadModel {
   readonly confirmedAt: string;
 }
 
+/**
+ * Phase 4G.2C — composed 6015 breakdown. Category-level detail is preserved
+ * even though the payment obligation is a single revenue-code amount. Exact
+ * decimal strings; `null` component amounts mean not authoritative (never "0").
+ */
+export interface ObligationCompositionComponentReadModel {
+  readonly category: string;
+  readonly label: string;
+  readonly status: string;
+  readonly netCategoryTax: ObligationMoneyReadModel | null;
+  readonly sourceRuleId: string | null;
+  readonly sourceRuleVersion: string | null;
+  readonly sourceFingerprint: string;
+  readonly traceReference: string | null;
+}
+
+export interface ObligationCompositionReadModel {
+  readonly revenueCode: string;
+  readonly status: string;
+  readonly reasonCode: string | null;
+  readonly currency: string;
+  readonly total: ObligationMoneyReadModel | null;
+  readonly components: readonly ObligationCompositionComponentReadModel[];
+  readonly fingerprint: string;
+}
+
+const COMPONENT_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  FII: 'FII',
+  EQUITY_NORMAL: 'Operações comuns',
+  EQUITY_DAY_TRADE: 'Day trade',
+});
+
+function readComposition(
+  provenance: Record<string, unknown>,
+): ObligationCompositionReadModel | null {
+  const raw = provenance.composition;
+  if (!raw || typeof raw !== 'object') return null;
+  const c = raw as Record<string, unknown>;
+  if (typeof c.revenueCode !== 'string' || typeof c.status !== 'string') return null;
+  const currency = typeof c.currency === 'string' ? c.currency : 'BRL';
+  const componentsRaw = Array.isArray(c.components) ? c.components : [];
+  const components = componentsRaw
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    .map((item) => ({
+      category: String(item.category ?? ''),
+      label: COMPONENT_LABELS[String(item.category ?? '')] ?? String(item.category ?? ''),
+      status: String(item.status ?? ''),
+      netCategoryTax:
+        typeof item.netCategoryTax === 'string' ? { amount: item.netCategoryTax, currency } : null,
+      sourceRuleId: typeof item.sourceRuleId === 'string' ? item.sourceRuleId : null,
+      sourceRuleVersion: typeof item.sourceRuleVersion === 'string' ? item.sourceRuleVersion : null,
+      sourceFingerprint: String(item.sourceFingerprint ?? ''),
+      traceReference: typeof item.traceReference === 'string' ? item.traceReference : null,
+    }));
+  return {
+    revenueCode: c.revenueCode,
+    status: c.status,
+    reasonCode: typeof c.reasonCode === 'string' ? c.reasonCode : null,
+    currency,
+    total: typeof c.total === 'string' ? { amount: c.total, currency } : null,
+    components,
+    fingerprint: typeof c.fingerprint === 'string' ? c.fingerprint : '',
+  };
+}
+
 export interface TaxObligationReadModel {
   readonly id: string;
   readonly competence: string;
@@ -64,6 +129,7 @@ export interface TaxObligationReadModel {
   readonly revision: number;
   readonly deadline: DeadlineSourceReadModel | null;
   readonly darfPreparation: DarfPreparationReadModel | null;
+  readonly composition: ObligationCompositionReadModel | null;
   readonly payments: readonly ObligationPaymentReadModel[];
   readonly supersededById: string | null;
   readonly createdAt: string;
@@ -156,6 +222,7 @@ export function mapObligationToReadModel(
     revision: row.revision,
     deadline,
     darfPreparation,
+    composition: readComposition((row.provenance ?? {}) as Record<string, unknown>),
     payments: payments.map(mapPaymentToReadModel),
     supersededById: row.supersededById,
     createdAt: row.createdAt.toISOString(),

@@ -4,7 +4,10 @@ import type {
   TaxCarryForwardEntry,
 } from '@atlas/tax-engine';
 import type { TaxCarryForwardEntryRow, TaxPaymentAggregationRow } from '@atlas/database';
-import type { TaxObligationReadModel } from './tax-obligation.read-model';
+import type {
+  TaxObligationReadModel,
+  ObligationCompositionReadModel,
+} from './tax-obligation.read-model';
 
 /**
  * Phase 4E — serializable read models for minimum-DARF payment eligibility,
@@ -110,6 +113,8 @@ export interface TaxPaymentAggregationReadModel {
 export interface TaxPaymentSummaryReadModel {
   readonly competence: string;
   readonly obligation: TaxObligationReadModel | null;
+  /** Phase 4G.2C — composed 6015 category breakdown (null when unavailable). */
+  readonly composition: ObligationCompositionReadModel | null;
   readonly eligibility: TaxPaymentEligibilityReadModel;
   readonly aggregation: TaxPaymentAggregationReadModel | null;
   readonly openCarryForwardEntries: readonly CarryForwardReadModel[];

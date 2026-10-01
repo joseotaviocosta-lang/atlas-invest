@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { MonthlyTaxLiability } from '@atlas/tax-engine';
+import type { Composed6015Result, MonthlyTaxLiability } from '@atlas/tax-engine';
 
 /**
  * Phase 4C.2 — deterministic liability fingerprint (ADR-264).
@@ -8,11 +8,16 @@ import type { MonthlyTaxLiability } from '@atlas/tax-engine';
  * inputs + resulting amounts) yields the same fingerprint; any change yields a
  * different one, which supersedes the previous obligation revision. Exact
  * decimal strings only — never IEEE-754.
+ *
+ * Phase 4G.2C — when a composed 6015 result is present its canonical fingerprint
+ * is folded in, so a change to any category component deterministically changes
+ * the obligation identity.
  */
 export function fingerprintLiability(input: {
   taxSubjectId: string;
   competence: string;
   liability: MonthlyTaxLiability;
+  composition?: Composed6015Result | null;
 }): string {
   const categories = [...input.liability.categories]
     .map((c) =>
@@ -37,6 +42,7 @@ export function fingerprintLiability(input: {
     categories.join(';'),
     input.liability.taxDue?.amount ?? '',
     input.liability.taxDue?.currency ?? '',
+    input.composition?.fingerprint ?? '',
   ].join('|');
   return createHash('sha256').update(payload, 'utf8').digest('hex');
 }

@@ -157,6 +157,7 @@ export class GetTaxPaymentSummaryUseCase {
       return {
         competence,
         obligation,
+        composition: obligation.composition,
         eligibility: mapEligibilityToReadModel({
           eligibility: emptyEligibility,
           rule: nothingDue ? productionRule : null,
@@ -266,6 +267,7 @@ export class GetTaxPaymentSummaryUseCase {
     return {
       competence,
       obligation,
+      composition: obligation.composition,
       eligibility: mapEligibilityToReadModel({
         eligibility,
         rule: ruleResolution.rule,

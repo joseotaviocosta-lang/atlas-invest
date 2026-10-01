@@ -7,6 +7,7 @@ import {
   resolveRevenueCodeForBucket,
   type TaxObligationBucket,
 } from './revenue-codes';
+import type { Composed6015Result } from './revenue-code-composition';
 
 /**
  * Phase 4C.2 — Tax Obligation operational state.
@@ -86,6 +87,13 @@ export interface MaterializeTaxObligationInput {
   readonly now: string;
   /** True when the competence is still open (current/future). */
   readonly inProgress: boolean;
+  /**
+   * Phase 4G.2C — composed revenue-code 6015 result (FII + normal equity + day
+   * trade). When present it supersedes `liability.taxDue` as the payable amount
+   * and carries the category breakdown; a blocked/partial composition fails
+   * closed exactly like a blocked/partial liability.
+   */
+  readonly composition?: Composed6015Result;
 }
 
 function categoryHasActivity(result: TaxCategoryMonthlyResult): boolean {
@@ -121,6 +129,86 @@ export function materializeTaxObligation(input: MaterializeTaxObligationInput): 
     darfReadinessReason: reasonCode,
     dataQuality: dataQualityOverride ?? (dataQuality === 'EMPTY' ? 'BLOCKED' : dataQuality),
   });
+
+  if (input.composition) {
+    const composition = input.composition;
+    const composedQuality: TaxObligationPlan['dataQuality'] =
+      composition.status === 'COMPLETE' ? 'COMPLETE' : dataQuality;
+
+    if (composition.status === 'BLOCKED') {
+      return blockedPlan('LIABILITY_BLOCKED', 'BLOCKED');
+    }
+    if (composition.status === 'PARTIAL') {
+      return blockedPlan('LIABILITY_PARTIAL', 'PARTIAL');
+    }
+
+    const composedMoney =
+      composition.total === null
+        ? Money.zero(composition.currency)
+        : Money.from(composition.total, composition.currency);
+    if (
+      composition.status === 'NO_ACTIVITY' ||
+      composition.total === null ||
+      !composedMoney.isPositive()
+    ) {
+      return {
+        bucket: null,
+        revenueCode: null,
+        status: 'NO_PAYMENT_DUE',
+        reasonCode: 'NO_TAX_DUE',
+        principalAmount: null,
+        currency: null,
+        dueDate: null,
+        deadlineEntryId: null,
+        darfReadiness: 'NOT_REQUIRED',
+        darfReadinessReason: 'NO_TAX_DUE',
+        dataQuality: composedQuality,
+      };
+    }
+
+    if (input.inProgress) {
+      return {
+        bucket: composition.bucket,
+        revenueCode: composition.revenueCode,
+        status: 'PROVISIONAL',
+        reasonCode: 'IN_PROGRESS_COMPETENCE',
+        principalAmount: composedMoney.amount,
+        currency: composition.currency,
+        dueDate: null,
+        deadlineEntryId: null,
+        darfReadiness: 'PARTIAL',
+        darfReadinessReason: 'IN_PROGRESS_COMPETENCE',
+        dataQuality: composedQuality,
+      };
+    }
+
+    const composedResolution = resolveFederalTaxDeadline({
+      entries: input.deadlineEntries,
+      revenueCode: composition.revenueCode,
+      competence: input.competence,
+    });
+    if (composedResolution.outcome !== 'RESOLVED' || !composedResolution.entry) {
+      return blockedPlan(
+        composedResolution.outcome === 'AMBIGUOUS_OFFICIAL_DEADLINE'
+          ? 'AMBIGUOUS_OFFICIAL_DEADLINE'
+          : 'MISSING_OFFICIAL_DEADLINE',
+      );
+    }
+
+    return {
+      bucket: composition.bucket,
+      revenueCode: composition.revenueCode,
+      status: 'OPEN',
+      reasonCode: null,
+      principalAmount: composedMoney.amount,
+      currency: composition.currency,
+      dueDate: composedResolution.entry.dueDate,
+      deadlineEntryId: composedResolution.entry.id,
+      darfReadiness: 'READY',
+      darfReadinessReason: null,
+      dataQuality: composedQuality,
+    };
+  }
 
   if (liability.status === 'NO_ACTIVITY') {
     return {

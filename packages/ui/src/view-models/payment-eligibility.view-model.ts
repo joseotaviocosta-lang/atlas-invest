@@ -1,5 +1,6 @@
 import { formatCurrency, formatDate } from '../formatters';
 import { colors } from '../tokens/colors';
+import type { RawComposed6015 } from './equity-6015-composition.view-model';
 
 /**
  * Minimum-DARF payment eligibility view-model (Phase 4E).
@@ -62,6 +63,15 @@ export interface RawPaymentEligibility {
 export interface RawTaxPaymentSummary {
   competence: string;
   eligibility: RawPaymentEligibility;
+  /** Phase 4G.2C — composed 6015 category breakdown. */
+  composition?: RawComposed6015 | null;
+  obligation?: {
+    id: string;
+    status: string;
+    baseStatus: string;
+    darfReadiness: string;
+    dueDate: string | null;
+  } | null;
   aggregation: { id: string; status: string; totalPayable: RawEligibilityMoney } | null;
   openCarryForwardEntries: readonly {
     id: string;
@@ -130,7 +140,8 @@ function money(value: RawEligibilityMoney | null | undefined): string {
   return value ? formatCurrency(value.amount, value.currency) : '—';
 }
 
-function competenceLabel(competence: string): string {
+function competenceLabel(competence: string | null | undefined): string {
+  if (!competence) return '—';
   const [year, month] = competence.split('-');
   return `${month}/${year}`;
 }
@@ -138,7 +149,7 @@ function competenceLabel(competence: string): string {
 export function mapToTaxPaymentEligibilityViewModel(
   data: RawTaxPaymentSummary | null,
 ): TaxPaymentEligibilityViewModel | null {
-  if (!data) return null;
+  if (!data || !data.eligibility) return null;
   const e = data.eligibility;
   const status = STATUS[e.status] ?? { label: e.status, color: colors.textMuted };
   const hasCarryForward = e.carryForwardAmount !== null && e.carryForwardAmount.amount !== '0';

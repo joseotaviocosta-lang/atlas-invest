@@ -14,11 +14,13 @@ import {
   taxLiabilityQueryKey,
   taxInputReadinessQueryKey,
   taxObligationQueryKey,
+  taxPaymentSummaryQueryKey,
   type RawDarfReadiness,
   type RawFiscalMonthlyState,
   type RawMonthlyTaxLiability,
   type RawTaxInputReadiness,
   type RawTaxObligation,
+  type RawTaxPaymentSummary,
 } from '@atlas/ui';
 import {
   Screen,
@@ -30,6 +32,7 @@ import {
 } from '../../../src/components/ui';
 import { apiClient, ApiError } from '../../../src/api/client';
 import { EquityFiscalCard } from '../../../src/components/fiscal/EquityFiscalCard';
+import { Composed6015Card } from '../../../src/components/fiscal/Composed6015Card';
 
 /** Allowlisted official origin for the Sicalc handoff (open-redirect defense). */
 const OFFICIAL_DARF_ORIGIN = 'https://sicalc.receita.fazenda.gov.br/';
@@ -113,6 +116,16 @@ export default function TaxScreen() {
     () => mapToTaxObligationViewModel(obligationData ?? null),
     [obligationData],
   );
+
+  const { data: paymentSummaryData } = useQuery({
+    queryKey: taxPaymentSummaryQueryKey(competence),
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: RawTaxPaymentSummary }>(
+        `/api/v1/fiscal/monthly/${competence}/payment-summary`,
+      );
+      return res.data;
+    },
+  });
 
   const paymentDate = new Date().toISOString().slice(0, 10);
   const { data: adjustmentData } = useQuery({
@@ -264,6 +277,8 @@ export default function TaxScreen() {
             )}
 
             <EquityFiscalCard equity={liabilityData?.equity ?? null} />
+
+            <Composed6015Card summary={paymentSummaryData ?? null} />
 
             {liability && liability.categories.length > 0 && (
               <Card>

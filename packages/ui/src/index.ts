@@ -34,6 +34,7 @@ export * from './view-models/equity-fiscal.view-model';
 export * from './view-models/fiscal-input-readiness.view-model';
 export * from './view-models/fiscal-obligations.view-model';
 export * from './view-models/payment-eligibility.view-model';
+export * from './view-models/equity-6015-composition.view-model';
 export * from './view-models/darf-handoff.view-model';
 
 import { colors } from './tokens/colors';

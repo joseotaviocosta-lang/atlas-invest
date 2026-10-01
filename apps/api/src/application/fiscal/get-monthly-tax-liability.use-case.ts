@@ -83,17 +83,32 @@ export class GetMonthlyTaxLiabilityUseCase {
     userId: string;
     competence: string;
   }): Promise<MonthlyTaxLiabilityReadModel & { equity: EquityMonthlyFiscalReadModel }> {
-    const context = await this.loadContext(params.userId);
-    const requested = await this.computeFromContext(context, params.userId, params.competence);
-    const competence = requested.competence.value;
+    const { liability, equity } = await this.computeWithEquity(params);
+    const competence = liability.competence.value;
     const inProgress = competence >= currentCompetence();
-    const readModel = mapMonthlyTaxLiabilityToReadModel(requested);
+    const readModel = mapMonthlyTaxLiabilityToReadModel(liability);
     const withProgress =
       inProgress && !readModel.limitations.includes('IN_PROGRESS')
         ? { ...readModel, limitations: [...readModel.limitations, 'IN_PROGRESS'] }
         : readModel;
-    const equity = await this.computeEquity(context, params.userId, competence);
     return { ...withProgress, equity };
+  }
+
+  /**
+   * Computes both the canonical MonthlyTaxLiability (FII / 4A-4B path) and the
+   * additive equity monthly fiscal read for a subject/competence, loading the
+   * fiscal context exactly once. Shared by the liability endpoint and the
+   * 4G.2C 6015 obligation composition — the ledger is never replayed twice for
+   * the same request.
+   */
+  async computeWithEquity(params: { userId: string; competence: string }): Promise<{
+    liability: MonthlyTaxLiability;
+    equity: EquityMonthlyFiscalReadModel;
+  }> {
+    const context = await this.loadContext(params.userId);
+    const liability = await this.computeFromContext(context, params.userId, params.competence);
+    const equity = await this.computeEquity(context, params.userId, liability.competence.value);
+    return { liability, equity };
   }
 
   /**

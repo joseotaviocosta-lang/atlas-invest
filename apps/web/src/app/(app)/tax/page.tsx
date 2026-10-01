@@ -21,6 +21,7 @@ import { Card, Skeleton, ErrorState, EmptyState, PageHeader, SectionHeader } fro
 import { TaxInputEntry } from '@/components/fiscal/TaxInputEntry';
 import { TaxObligationSection } from '@/components/fiscal/TaxObligationSection';
 import { EquityFiscalSection } from '@/components/fiscal/EquityFiscalSection';
+import { Composed6015Section } from '@/components/fiscal/Composed6015Section';
 
 function currentCompetence(): string {
   const now = new Date();
@@ -430,6 +431,8 @@ function FiscalContent() {
               void refetchLiability();
             }}
           />
+
+          <Composed6015Section competence={competence} />
 
           {inputReadiness && (
             <div style={{ marginTop: `${spacing.xl}px` }}>
