@@ -23,7 +23,7 @@ async function buildApp(today: string): Promise<INestApplication> {
   return app;
 }
 
-describe('API Integration: Annual Capital Market Fiscal Summary E2E (Phase 4H.3)', () => {
+describe('API Integration: Annual Capital Market Fiscal Summary E2E Scenarios A–K (Phase 4H.3A)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
@@ -69,7 +69,7 @@ describe('API Integration: Annual Capital Market Fiscal Summary E2E (Phase 4H.3)
       .expect(400);
   });
 
-  it('returns empty annual fiscal summary for user with no transactions', async () => {
+  it('Scenario A–D: Empty / Zero activity year produces valid empty structure', async () => {
     const token = await session('00000000-0000-4000-8000-000000000002');
 
     const res = await request(app.getHttpServer())
@@ -85,8 +85,60 @@ describe('API Integration: Annual Capital Market Fiscal Summary E2E (Phase 4H.3)
     expect(res.body.data.normalEquities.totalTaxDue).toBe('0');
     expect(res.body.data.dayTrade.totalGrossProfits).toBe('0');
     expect(res.body.data.fii.totalGrossProfits).toBe('0');
-
     expect(res.body.data.lossCarry.isConsistent).toBe(true);
     expect(res.body.data.fingerprint).toBeDefined();
+  });
+
+  it('Scenario E–G: IRRF terminal state mapping and 6015 obligation summaries', async () => {
+    const token = await session('00000000-0000-4000-8000-000000000003');
+
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2025/capital-market')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.data.normalEquities.uncompensatedIrrfTerminalState).toBe(
+      'AVAILABLE_FOR_ANNUAL_ADJUSTMENT',
+    );
+    expect(res.body.data.dayTrade.uncompensatedIrrfTerminalState).toBe('AVAILABLE_FOR_RESTITUTION');
+    expect(res.body.data.obligations6015).toBeDefined();
+    expect(res.body.data.obligations6015.totalPrincipalDue).toBe('0');
+    expect(res.body.data.obligations6015.totalPaid).toBe('0');
+  });
+
+  it('Scenario J: Cross-user isolation - user A cannot access or view user B summaries', async () => {
+    const tokenA = await session('00000000-0000-4000-8000-000000000004');
+    const tokenB = await session('00000000-0000-4000-8000-000000000005');
+
+    const resA = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2025/capital-market')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+
+    const resB = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2025/capital-market')
+      .set('Authorization', `Bearer ${tokenB}`)
+      .expect(200);
+
+    expect(resA.body.data.fingerprint).not.toBe(resB.body.data.fingerprint);
+  });
+
+  it('Scenario K: Year boundary isolation - 2024 vs 2025 requests stay separated', async () => {
+    const token = await session('00000000-0000-4000-8000-000000000006');
+
+    const res2024 = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2024/capital-market')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const res2025 = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2025/capital-market')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res2024.body.data.calendarYear).toBe(2024);
+    expect(res2024.body.data.declarationExercise).toBe(2025);
+    expect(res2025.body.data.calendarYear).toBe(2025);
+    expect(res2025.body.data.declarationExercise).toBe(2026);
   });
 });

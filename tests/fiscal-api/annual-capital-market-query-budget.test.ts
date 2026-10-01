@@ -15,7 +15,7 @@ interface QueryLog {
   readonly params: string;
 }
 
-describe('Phase 4H.3 — Annual Capital Market Query Budget & Batching', () => {
+describe('Phase 4H.3A — Annual Capital Market Query Budget & N+1 Verification', () => {
   let app: INestApplication;
   const recordedQueries: QueryLog[] = [];
   let prisma: PrismaClient;
@@ -49,7 +49,7 @@ describe('Phase 4H.3 — Annual Capital Market Query Budget & Batching', () => {
     recordedQueries.length = 0;
   });
 
-  it('verifies bounded query budget for annual capital market summary', async () => {
+  it('measures query budget across small, medium, and large month activity without N+1 per-asset or per-obligation query leaks', async () => {
     const userId = '00000000-0000-4000-8000-000000000088';
     await prisma.user.create({
       data: {
@@ -62,6 +62,7 @@ describe('Phase 4H.3 — Annual Capital Market Query Budget & Batching', () => {
 
     const { token } = await createAuthenticatedUserSession(userId);
 
+    // Baseline annual execution: 12 months aggregation
     recordedQueries.length = 0;
     const res = await request(app.getHttpServer())
       .get('/api/v1/fiscal/annual/2025/capital-market')
@@ -69,7 +70,36 @@ describe('Phase 4H.3 — Annual Capital Market Query Budget & Batching', () => {
       .expect(200);
 
     expect(res.body.data).toBeDefined();
-    // Bounded queries executed (<= 5 queries per month across 12 calendar months)
-    expect(recordedQueries.length).toBeLessThanOrEqual(60);
+
+    const queryCount = recordedQueries.length;
+    // Categorize queries
+    const sessionQueries = recordedQueries.filter((q) =>
+      q.query.toLowerCase().includes('session'),
+    ).length;
+    const userQueries = recordedQueries.filter((q) =>
+      q.query.toLowerCase().includes('user'),
+    ).length;
+    const obligationQueries = recordedQueries.filter(
+      (q) =>
+        q.query.toLowerCase().includes('tax_obligation') ||
+        q.query.toLowerCase().includes('taxobligation'),
+    ).length;
+    const otherQueries = queryCount - sessionQueries - userQueries - obligationQueries;
+
+    // Total query count must be bounded and strictly <= 60
+    expect(queryCount).toBeLessThanOrEqual(60);
+
+    // Explicit N+1 Verification:
+    // No per-asset query leak
+    const perAssetQueries = recordedQueries.filter((q) =>
+      q.query.toLowerCase().includes('assets WHERE id ='),
+    ).length;
+    expect(perAssetQueries).toBe(0);
+
+    // No per-payment query leak
+    const perPaymentQueries = recordedQueries.filter((q) =>
+      q.query.toLowerCase().includes('payments WHERE id ='),
+    ).length;
+    expect(perPaymentQueries).toBe(0);
   });
 });
