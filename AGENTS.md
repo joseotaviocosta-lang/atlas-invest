@@ -1985,3 +1985,27 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Posições em rascunho (`DRAFT`) exigem confirmação explícita antes da aplicação; posições não confirmadas geram status `REQUIRES_CONFIRMATION` (`UNCONFIRMED_OPENING_POSITION`).
 8. **ZERO CÁLCULOS FINANCEIROS NA UI:**
    - As interfaces Web/Mobile apenas exibem os dados estruturados pelo servidor ("Custo histórico em 31/12", badges de completude, códigos de bloqueio).
+
+---
+
+## 69. Invariantes do Resumo Anual de Renda Variável (Fase 4H.3)
+
+1. **PURE DETERMINISTIC ANNUAL AGGREGATION (ADR-304):**
+   - O `buildAnnualCapitalMarketSummary` consolida deterministica e puramente os 12 meses do ano-calendário (`Janeiro` a `Dezembro`), sem I/O, sem dependência de persistência ou rede.
+2. **ZERO RECOMPUTAÇÃO DE REGRAS TRIBUTÁRIAS MENSAIS:**
+   - O resumo anual consome estritamente as apurações mensais autoritativas de 4G (isenção de R$ 20k, alíquotas de 15% e 20%, matching FIFO de day trade e compensação mensal de prejuízos). É terminantemente proibido recalcular tributação mensal na camada anual.
+3. **SEGREGAÇÃO CATEGÓRICA ESTRITA:**
+   - Ações (Operações Comuns), Ações (Day Trade) e Fundos Imobiliários (FII) permanecem rigorosamente segregados em pools de apuração, prejuízos e créditos de IRRF.
+4. **DESTINAÇÃO TERMINAL DOS CRÉDITOS DE IRRF EM DEZEMBRO:**
+   - O saldo credor remanescente de IRRF de operações comuns em 31/Dez assume o estado terminal `AVAILABLE_FOR_ANNUAL_ADJUSTMENT` (Ajuste Anual).
+   - O saldo credor remanescente de IRRF de day trade em 31/Dez assume o estado terminal `AVAILABLE_FOR_RESTITUTION` (Restituição).
+   - Nenhum saldo de IRRF é transportado para Janeiro do ano-calendário subsequente.
+5. **CONTINUIDADE INTERANUAL DE PREJUÍZOS A COMPENSAR:**
+   - O prejuízo de encerramento em 31/Dez do ano $Y$ é exatamente o prejuízo de abertura em 01/Jan do ano $Y+1$.
+   - A invariante $\text{closingLossDecember} = \text{openingLossJanuary} + \text{totalLossAdded} - \text{totalLossConsumed}$ é satisfeita estritamente em todas as categorias.
+6. **SEMÂNTICA FAIL-CLOSED EM DADOS BLOQUEADOS:**
+   - Se qualquer mês do ano apresentar status `BLOCKED`, o status consolidado do ano é `BLOCKED`, os códigos de bloqueio são preservados e os agregados de resumo anual são definidos como `null` para evitar números corrompidos ou falsos zeros.
+7. **PRECISÃO DECIMAL ARBITRÁRIA (ZERO FLOATS):**
+   - Todos os cálculos e totalizações monetárias utilizam exclusivamente `Money` / `Decimal.js` com representação decimal canônica em strings.
+8. **ZERO CÁLCULOS NA UI (WEB E MOBILE):**
+   - As interfaces cliente apenas renderizam as tabelas mensais e cartões anuais serializados pelo servidor.

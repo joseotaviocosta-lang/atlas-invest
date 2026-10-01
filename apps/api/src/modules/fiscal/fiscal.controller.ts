@@ -49,6 +49,7 @@ import {
   RecordTaxpayerIdentityUseCase,
 } from '../../application/fiscal/taxpayer-identity.use-case';
 import { GetAnnualPositionReportUseCase } from '../../application/fiscal/get-annual-position-report.use-case';
+import { GetAnnualCapitalMarketSummaryUseCase } from '../../application/fiscal/get-annual-capital-market-summary.use-case';
 import { RecordAnnualOpeningPositionUseCase } from '../../application/fiscal/record-annual-opening-position.use-case';
 import { ListAnnualOpeningPositionsUseCase } from '../../application/fiscal/list-annual-opening-positions.use-case';
 import { ConfirmAnnualOpeningPositionUseCase } from '../../application/fiscal/confirm-annual-opening-position.use-case';
@@ -61,6 +62,11 @@ import {
   RecordAnnualOpeningPositionBody,
   RecordAnnualOpeningPositionBodySchema,
 } from './dto/annual-position.dto';
+import {
+  AnnualCapitalMarketParam,
+  AnnualCapitalMarketParamSchema,
+} from './dto/annual-capital-market.dto';
+
 import {
   AdjustmentQuery,
   AdjustmentQuerySchema,
@@ -153,6 +159,8 @@ export class FiscalController {
     private readonly recordTaxpayerIdentityUseCase: RecordTaxpayerIdentityUseCase,
     @Inject(GetAnnualPositionReportUseCase)
     private readonly getAnnualPositionReportUseCase: GetAnnualPositionReportUseCase,
+    @Inject(GetAnnualCapitalMarketSummaryUseCase)
+    private readonly getAnnualCapitalMarketSummaryUseCase: GetAnnualCapitalMarketSummaryUseCase,
     @Inject(RecordAnnualOpeningPositionUseCase)
     private readonly recordAnnualOpeningPositionUseCase: RecordAnnualOpeningPositionUseCase,
     @Inject(ListAnnualOpeningPositionsUseCase)
@@ -751,6 +759,25 @@ export class FiscalController {
     const data = await this.confirmAnnualOpeningPositionUseCase.execute({
       id,
       taxSubjectId: principal.userId,
+    });
+    return { data };
+  }
+
+  @Get('annual/:calendarYear/capital-market')
+  @ApiOperation({
+    summary:
+      'Get authoritative annual fiscal summary for capital-market operations (normal equities, day trade, FII, loss carry continuity, 6015 obligations).',
+  })
+  @ApiParam({ name: 'calendarYear', description: 'Economic calendar year (e.g. 2025)' })
+  @ApiResponse({ status: 200, description: 'Annual capital market fiscal summary' })
+  @ApiResponse({ status: 400, description: 'Invalid calendar year or input' })
+  async getAnnualCapitalMarketSummary(
+    @Param(new ZodValidationPipe(AnnualCapitalMarketParamSchema)) params: AnnualCapitalMarketParam,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.getAnnualCapitalMarketSummaryUseCase.execute({
+      taxSubjectId: principal.userId,
+      calendarYear: params.calendarYear,
     });
     return { data };
   }

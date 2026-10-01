@@ -37,6 +37,7 @@ export * from './view-models/payment-eligibility.view-model';
 export * from './view-models/equity-6015-composition.view-model';
 export * from './view-models/darf-handoff.view-model';
 export * from './view-models/annual-positions.view-model';
+export * from './view-models/annual-capital-market.view-model';
 
 import { colors } from './tokens/colors';
 import { spacing } from './tokens/spacing';

@@ -44,3 +44,24 @@ export type {
   AssetMetadataResolver,
   BuildAnnualPositionReportInput,
 } from './annual-position-engine';
+
+export type {
+  AnnualMonthlyCategorySnapshot,
+  AnnualMonthlyDarf6015Snapshot,
+  AnnualMonthlyFiscalSnapshot,
+  AnnualNormalEquitySummary,
+  AnnualDayTradeSummary,
+  AnnualFiiSummary,
+  AnnualCategoryLossContinuity,
+  AnnualLossCarrySummary,
+  Annual6015Summary,
+  AnnualCapitalMarketFiscalSummary,
+} from './annual-capital-market-summary';
+
+export { buildAnnualCapitalMarketSummary } from './annual-capital-market-summary-engine';
+export type {
+  MonthlyCategoryInputData,
+  MonthlyDarf6015InputData,
+  MonthlyFiscalInputData,
+  BuildAnnualCapitalMarketSummaryInput,
+} from './annual-capital-market-summary-engine';
