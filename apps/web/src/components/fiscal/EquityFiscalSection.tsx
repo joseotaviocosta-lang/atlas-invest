@@ -10,6 +10,7 @@ import {
   mapToEquityFiscalViewModel,
   equityElectionActionLabel,
   equityElectionConsequenceLabel,
+  EQUITY_NET_TAX_DISCLAIMER,
   type RawEquityMonthlyFiscal,
   type EquityCategoryVM,
   type EquityElectionValue,
@@ -83,6 +84,21 @@ function CategoryCard({
           label="Base tributável antes de IRRF"
           value={category.taxableBaseBeforeRateFormatted}
         />
+        <Field label="Alíquota" value={category.taxRateFormatted} />
+        <Field label="Imposto bruto" value={category.grossTaxFormatted} />
+        <Field label="Crédito IRRF anterior" value={category.irrfOpeningFormatted} />
+        <Field label="IRRF do mês" value={category.irrfCurrentFormatted} />
+        <Field label="IRRF utilizado" value={category.irrfUsedFormatted} />
+        <Field label="Saldo de IRRF" value={category.irrfClosingFormatted} />
+        <Field label="Imposto líquido da categoria" value={category.netTaxFormatted} />
+        {category.irrfTerminalLabel && (
+          <p style={{ fontSize: '0.8125rem', color: colors.textMuted, marginTop: '6px' }}>
+            {category.irrfTerminalLabel}
+          </p>
+        )}
+        <p style={{ fontSize: '0.75rem', color: colors.textMuted, marginTop: '6px' }}>
+          {EQUITY_NET_TAX_DISCLAIMER}
+        </p>
       </div>
     </Card>
   );

@@ -38,6 +38,12 @@ function CategoryCard({
       <Row label="Prejuízo acumulado inicial" value={category.openingLossFormatted} />
       <Row label="Prejuízo acumulado final" value={category.closingLossFormatted} />
       <Row label="Base tributável antes de IRRF" value={category.taxableBaseBeforeRateFormatted} />
+      <Row label="Alíquota" value={category.taxRateFormatted} />
+      <Row label="Imposto bruto" value={category.grossTaxFormatted} />
+      <Row label="IRRF utilizado" value={category.irrfUsedFormatted} />
+      <Row label="Saldo de IRRF" value={category.irrfClosingFormatted} />
+      <Row label="Imposto líquido da categoria" value={category.netTaxFormatted} />
+      {category.irrfTerminalLabel && <Text style={styles.meta}>{category.irrfTerminalLabel}</Text>}
     </Card>
   );
 }

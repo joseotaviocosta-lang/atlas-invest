@@ -44,3 +44,16 @@ Dezembro residual: normal → `AVAILABLE_FOR_ANNUAL_ADJUSTMENT`, day trade →
 ## Fora de escopo
 
 6015, mínimo DARF, vencimento, atraso, Sicalc, IRPF anual, IA fiscal.
+
+## Rótulos de UI (Fase 4G.2B.1a)
+
+- Alíquota · Imposto bruto · Crédito IRRF anterior · IRRF do mês · IRRF utilizado ·
+  Saldo de IRRF · **Imposto líquido da categoria**.
+- Nunca rotular `netTaxBefore6015Aggregation` como "DARF final"/"Valor do DARF".
+- Aviso fixo: "O valor final do DARF será consolidado posteriormente com as demais
+  categorias do código 6015."
+- Estado terminal (informativo, sem ação): normal →
+  "Saldo de IRRF disponível para ajuste anual."; day trade →
+  "Saldo de IRRF disponível para restituição."
+- `BLOCKED` / `INCOMPLETE_WITHHOLDING_CLASSIFICATION`: estado bloqueado, sem
+  conclusão fiscal autoritativa.

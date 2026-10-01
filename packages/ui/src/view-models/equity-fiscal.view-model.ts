@@ -23,6 +23,16 @@ export interface RawEquityCategory {
   closingLoss: string;
   taxableBaseBeforeRate: string;
   electionStatus: string;
+  taxRate?: string;
+  grossTax?: string;
+  irrfOpening?: string;
+  irrfCurrent?: string;
+  irrfUsed?: string;
+  irrfClosing?: string;
+  irrfTerminalStatus?: string | null;
+  netTaxBefore6015Aggregation?: string;
+  ruleId?: string;
+  ruleVersion?: string;
 }
 
 export interface RawEquityCompensationElection {
@@ -59,6 +69,17 @@ export interface EquityCategoryVM {
   taxableBaseBeforeRateFormatted: string;
   matchedQuantityFormatted: string | null;
   electionStatus: string;
+  taxRateFormatted: string;
+  grossTaxFormatted: string;
+  irrfOpeningFormatted: string;
+  irrfCurrentFormatted: string;
+  irrfUsedFormatted: string;
+  irrfClosingFormatted: string;
+  netTaxFormatted: string;
+  irrfTerminalStatus: string | null;
+  irrfTerminalLabel: string | null;
+  ruleId: string | null;
+  ruleVersion: string | null;
 }
 
 export interface EquityFiscalVM {
@@ -109,6 +130,8 @@ export function equityBlockedReasonLabel(reasonCode: string | null): string {
       return 'Não foi possível classificar as operações deste mês.';
     case 'PRIOR_COMPETENCE_BLOCKED':
       return 'Um mês anterior tem dados insuficientes; o resultado não pode ser concluído.';
+    case 'INCOMPLETE_WITHHOLDING_CLASSIFICATION':
+      return 'Há retenção (IRRF) sem classificação suficiente; o resultado não pode ser concluído.';
     default:
       return 'Dados insuficientes para concluir.';
   }
@@ -139,6 +162,21 @@ export function equityElectionActionLabel(value: EquityElectionValue): string {
   return value === 'DECLARE_FOR_CARRYFORWARD' ? 'Reconhecer prejuízo' : 'Não reconhecer';
 }
 
+export function equityIrrfTerminalStatusLabel(status: string | null | undefined): string | null {
+  switch (status) {
+    case 'AVAILABLE_FOR_ANNUAL_ADJUSTMENT':
+      return 'Saldo de IRRF disponível para ajuste anual.';
+    case 'AVAILABLE_FOR_RESTITUTION':
+      return 'Saldo de IRRF disponível para restituição.';
+    default:
+      return null;
+  }
+}
+
+/** Canonical supporting copy: category net tax is not the final DARF. */
+export const EQUITY_NET_TAX_DISCLAIMER =
+  'O valor final do DARF será consolidado posteriormente com as demais categorias do código 6015.';
+
 function money(value: string, currency = 'BRL'): string {
   return formatCurrency(value, currency);
 }
@@ -159,6 +197,17 @@ function categoryVM(source: RawEquityCategory): EquityCategoryVM {
     matchedQuantityFormatted:
       source.matchedQuantity === null ? null : formatQuantity(source.matchedQuantity),
     electionStatus: source.electionStatus,
+    taxRateFormatted: source.taxRate ? `${source.taxRate}%` : '—',
+    grossTaxFormatted: money(source.grossTax ?? '0'),
+    irrfOpeningFormatted: money(source.irrfOpening ?? '0'),
+    irrfCurrentFormatted: money(source.irrfCurrent ?? '0'),
+    irrfUsedFormatted: money(source.irrfUsed ?? '0'),
+    irrfClosingFormatted: money(source.irrfClosing ?? '0'),
+    netTaxFormatted: money(source.netTaxBefore6015Aggregation ?? '0'),
+    irrfTerminalStatus: source.irrfTerminalStatus ?? null,
+    irrfTerminalLabel: equityIrrfTerminalStatusLabel(source.irrfTerminalStatus),
+    ruleId: source.ruleId ?? null,
+    ruleVersion: source.ruleVersion ?? null,
   };
 }
 
