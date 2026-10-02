@@ -9,4 +9,3 @@ export const AnnualInvestmentIncomeParamSchema = z.object({
 });
 
 export type AnnualInvestmentIncomeParam = z.infer<typeof AnnualInvestmentIncomeParamSchema>;
-

@@ -16,7 +16,7 @@ if (!process.env.DATABASE_TEST_URL && !process.env.DATABASE_URL) {
 export const TEST_DATABASE_URL =
   process.env.DATABASE_TEST_URL ||
   process.env.DATABASE_URL ||
-  'postgresql://atlas@localhost:5433/atlas_test?schema=public';
+  'postgresql://atlas:atlas@localhost:5433/atlas_test?schema=public';
 
 let testPrisma: PrismaClient | null = null;
 

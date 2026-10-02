@@ -28,6 +28,7 @@ export interface IncomeEventInputData {
   readonly paymentDate: string; // YYYY-MM-DD
   readonly grossAmount: string | Money;
   readonly withheldTaxAmount?: string | Money | null;
+  readonly monthlyPayerDividendTotal?: string | Money | null;
   readonly currency?: Currency;
   readonly fiiEligibility?: FiiEligibilityData;
   readonly source?: string;
@@ -143,32 +144,66 @@ export function classifyIncomeEvent(
         net = gross.subtract(withheld);
       } else {
         ruleId = 'R-DIV-2026';
-        ruleVersion = '2023-12-20-EC-132';
+        ruleVersion = '2025-12-30-LEI-DIV-2026';
         if (input.withheldTaxAmount !== undefined && input.withheldTaxAmount !== null) {
           withheld = toMoney(input.withheldTaxAmount, currency);
           net = gross.subtract(withheld);
           taxTreatment = withheld.isPositive() ? 'WITHHOLDING_EXCLUSIVE' : 'EXEMPT';
         } else {
-          // If no explicit withholding evidence, treat as standard exempt
-          withheld = Money.zero(currency);
-          net = gross;
-          taxTreatment = 'EXEMPT';
+          const threshold = Money.from('50000.00', currency);
+          const totalContext = input.monthlyPayerDividendTotal
+            ? toMoney(input.monthlyPayerDividendTotal, currency)
+            : gross;
+
+          if (totalContext.compare(threshold) <= 0) {
+            taxTreatment = 'EXEMPT';
+            withheld = Money.zero(currency);
+            net = gross;
+          } else {
+            taxTreatment = 'WITHHOLDING_EXCLUSIVE';
+            const excess = totalContext.subtract(threshold);
+            if (
+              input.monthlyPayerDividendTotal &&
+              toMoney(input.monthlyPayerDividendTotal, currency).isPositive()
+            ) {
+              const totalM = toMoney(input.monthlyPayerDividendTotal, currency);
+              const fraction = gross.divide(totalM.amount);
+              withheld = excess.multiply('0.10').multiply(fraction.amount);
+            } else {
+              withheld = excess.multiply('0.10');
+            }
+            net = gross.subtract(withheld);
+          }
         }
       }
       break;
     }
 
     case 'JCP': {
-      ruleId = 'R-JCP-ALL';
-      ruleVersion = '1995-12-26-LEI-9249';
-      taxTreatment = 'WITHHOLDING_EXCLUSIVE';
-      if (input.withheldTaxAmount !== undefined && input.withheldTaxAmount !== null) {
-        withheld = toMoney(input.withheldTaxAmount, currency);
-        net = gross.subtract(withheld);
+      if (paymentDate < '2026-01-01') {
+        ruleId = 'R-JCP-2025';
+        ruleVersion = '1995-12-26-LEI-9249';
+        taxTreatment = 'WITHHOLDING_EXCLUSIVE';
+        if (input.withheldTaxAmount !== undefined && input.withheldTaxAmount !== null) {
+          withheld = toMoney(input.withheldTaxAmount, currency);
+          net = gross.subtract(withheld);
+        } else {
+          // Authoritative statutory 15% rate on JCP for 2025
+          withheld = gross.multiply('0.15');
+          net = gross.subtract(withheld);
+        }
       } else {
-        // Authoritative statutory 15% rate on JCP via exact decimal multiplication
-        withheld = gross.multiply('0.15');
-        net = gross.subtract(withheld);
+        ruleId = 'R-JCP-2026';
+        ruleVersion = '2025-12-30-LEI-JCP-2026';
+        taxTreatment = 'WITHHOLDING_EXCLUSIVE';
+        if (input.withheldTaxAmount !== undefined && input.withheldTaxAmount !== null) {
+          withheld = toMoney(input.withheldTaxAmount, currency);
+          net = gross.subtract(withheld);
+        } else {
+          // Authoritative statutory 17.5% rate on JCP for 2026
+          withheld = gross.multiply('0.175');
+          net = gross.subtract(withheld);
+        }
       }
       break;
     }
@@ -255,10 +290,50 @@ export function buildAnnualInvestmentIncomeSummary(
   const collectedIssues = new Set<string>(input.qualityIssues ?? []);
   const collectedBlockingReasons = new Set<string>();
 
+  // For 2026 dividends, pre-calculate monthly totals per payer to evaluate threshold correctly across multiple events
+  const monthlyPayerDividendTotals = new Map<string, Money>();
+  for (const rawEvt of input.events) {
+    if (rawEvt.incomeType === 'DIVIDEND' && rawEvt.paymentDate >= '2026-01-01') {
+      let comp = '0000-00';
+      try {
+        const d = LocalDate.from(rawEvt.paymentDate);
+        comp = `${d.year}-${d.month.toString().padStart(2, '0')}`;
+      } catch {
+        comp = '0000-00';
+      }
+      const payerId = rawEvt.payerId ?? rawEvt.assetId;
+      const key = `${payerId}:${comp}`;
+      const currentGross = monthlyPayerDividendTotals.get(key) ?? Money.zero(currency);
+      const evtGross = toMoney(rawEvt.grossAmount, currency);
+      monthlyPayerDividendTotals.set(key, currentGross.add(evtGross));
+    }
+  }
+
   // Filter events belonging to target calendarYear and deduplicate by incomeEventId
   const eventMap = new Map<string, AnnualIncomeEvent>();
   for (const rawEvt of input.events) {
-    const classified = classifyIncomeEvent(rawEvt, currency);
+    let enriched = rawEvt;
+    if (
+      rawEvt.incomeType === 'DIVIDEND' &&
+      rawEvt.paymentDate >= '2026-01-01' &&
+      rawEvt.withheldTaxAmount === undefined
+    ) {
+      let comp = '0000-00';
+      try {
+        const d = LocalDate.from(rawEvt.paymentDate);
+        comp = `${d.year}-${d.month.toString().padStart(2, '0')}`;
+      } catch {
+        comp = '0000-00';
+      }
+      const payerId = rawEvt.payerId ?? rawEvt.assetId;
+      const key = `${payerId}:${comp}`;
+      const mTotal = monthlyPayerDividendTotals.get(key);
+      if (mTotal) {
+        enriched = { ...rawEvt, monthlyPayerDividendTotal: mTotal };
+      }
+    }
+
+    const classified = classifyIncomeEvent(enriched, currency);
     if (classified.calendarYear === calendarYear) {
       eventMap.set(classified.incomeEventId, classified);
     }
@@ -380,13 +455,15 @@ export function buildAnnualInvestmentIncomeSummary(
         if (evt.withheldTaxAmount) {
           jcpWithheld = jcpWithheld.add(evt.withheldTaxAmount);
           pRecord.jcpWithheld = pRecord.jcpWithheld.add(evt.withheldTaxAmount);
-          mSnap.jcpWithheld = mSnap.jcpWithheld.add(evt.withheldTaxAmount);
         }
         jcpCount++;
         if (evt.completenessStatus !== 'COMPLETE') jcpComplete = false;
 
         pRecord.jcpGross = pRecord.jcpGross.add(evt.grossAmount);
         mSnap.jcpGross = mSnap.jcpGross.add(evt.grossAmount);
+        if (evt.withheldTaxAmount) {
+          mSnap.jcpWithheld = mSnap.jcpWithheld.add(evt.withheldTaxAmount);
+        }
         break;
       }
       case 'FII_INCOME': {
@@ -404,120 +481,110 @@ export function buildAnnualInvestmentIncomeSummary(
     }
   }
 
-  // Build Payer Summaries sorted canonically by (payerDisplayName ASC, payerId ASC)
+  const totalGrossIncome = divGross.add(jcpGross).add(fiiGross);
+  const totalWithheldTax = divWithheld.add(jcpWithheld).add(fiiWithheld);
+
+  // Format Payers Summary
   const payers: AnnualIncomePayerSummary[] = Array.from(payerMap.values())
-    .map((p) =>
-      Object.freeze({
+    .sort((a, b) => a.payerDisplayName.localeCompare(b.payerDisplayName))
+    .map((p) => {
+      const totalGross = p.divGross.add(p.jcpGross).add(p.fiiGross);
+      const totalWithheld = p.jcpWithheld;
+      return Object.freeze({
         payerId: p.payerId,
         payerDisplayName: p.payerDisplayName,
         dividendGross: p.divGross,
         jcpGross: p.jcpGross,
         jcpWithheld: p.jcpWithheld,
         fiiIncomeGross: p.fiiGross,
-        totalGross: p.divGross.add(p.jcpGross).add(p.fiiGross),
-        totalWithheld: p.jcpWithheld,
-        isComplete: p.isComplete,
-      }),
-    )
-    .sort((a, b) => {
-      if (a.payerDisplayName !== b.payerDisplayName) {
-        return a.payerDisplayName.localeCompare(b.payerDisplayName);
-      }
-      return a.payerId.localeCompare(b.payerId);
-    });
-
-  // Build Monthly Snapshots (1..12)
-  const months: AnnualMonthlyIncomeSnapshot[] = [];
-  for (let m = 1; m <= 12; m++) {
-    const mm = m.toString().padStart(2, '0');
-    const competence = `${calendarYear}-${mm}`;
-    const snap = monthSnapshotsMap.get(m)!;
-    const totalGross = snap.dividendsGross.add(snap.jcpGross).add(snap.fiiIncomeGross);
-    const totalWithheld = snap.jcpWithheld;
-
-    months.push(
-      Object.freeze({
-        competence,
-        month: m,
-        dividendsGross: snap.dividendsGross,
-        jcpGross: snap.jcpGross,
-        jcpWithheld: snap.jcpWithheld,
-        fiiIncomeGross: snap.fiiIncomeGross,
         totalGross,
         totalWithheld,
-        eventCount: snap.eventCount,
+        isComplete: p.isComplete,
+      });
+    });
+
+  // Format 12 Monthly Snapshots
+  const months: AnnualMonthlyIncomeSnapshot[] = [];
+  for (let m = 1; m <= 12; m++) {
+    const s = monthSnapshotsMap.get(m)!;
+    const comp = `${calendarYear}-${m.toString().padStart(2, '0')}`;
+    const mTotalGross = s.dividendsGross.add(s.jcpGross).add(s.fiiIncomeGross);
+    const mTotalWithheld = s.jcpWithheld;
+    months.push(
+      Object.freeze({
+        competence: comp,
+        month: m,
+        dividendsGross: s.dividendsGross,
+        jcpGross: s.jcpGross,
+        jcpWithheld: s.jcpWithheld,
+        fiiIncomeGross: s.fiiIncomeGross,
+        totalGross: mTotalGross,
+        totalWithheld: mTotalWithheld,
+        eventCount: s.eventCount,
       }),
     );
   }
 
-  // Categories
-  const dividendsCategory: AnnualIncomeCategorySummary = Object.freeze({
+  // Determine overall status
+  let overallStatus: IncomeCompletenessStatus = 'COMPLETE';
+  if (collectedBlockingReasons.size > 0) {
+    overallStatus = 'BLOCKED';
+  } else if (!divComplete || !jcpComplete || !fiiComplete || collectedIssues.size > 0) {
+    overallStatus = 'REQUIRES_CONFIRMATION';
+  }
+
+  const isComplete = overallStatus === 'COMPLETE';
+
+  // Category Summaries
+  const divTreatmentSummary: IncomeTaxTreatment =
+    calendarYear < 2026
+      ? 'EXEMPT'
+      : divWithheld.isPositive()
+        ? 'WITHHOLDING_EXCLUSIVE'
+        : 'EXEMPT';
+
+  const jcpTreatmentSummary: IncomeTaxTreatment = 'WITHHOLDING_EXCLUSIVE';
+
+  const fiiTreatmentSummary: IncomeTaxTreatment = fiiComplete
+    ? 'EXEMPT'
+    : 'REQUIRES_CONFIRMATION';
+
+  const dividendsSummary: AnnualIncomeCategorySummary = Object.freeze({
     incomeType: 'DIVIDEND',
     totalGrossAmount: divGross,
     totalWithheldTax: divWithheld,
     totalNetAmount: divGross.subtract(divWithheld),
     eventCount: divCount,
-    taxTreatmentSummary: 'EXEMPT',
+    taxTreatmentSummary: divTreatmentSummary,
     isComplete: divComplete,
   });
 
-  const jcpCategory: AnnualIncomeCategorySummary = Object.freeze({
+  const jcpSummary: AnnualIncomeCategorySummary = Object.freeze({
     incomeType: 'JCP',
     totalGrossAmount: jcpGross,
     totalWithheldTax: jcpWithheld,
     totalNetAmount: jcpGross.subtract(jcpWithheld),
     eventCount: jcpCount,
-    taxTreatmentSummary: 'WITHHOLDING_EXCLUSIVE',
+    taxTreatmentSummary: jcpTreatmentSummary,
     isComplete: jcpComplete,
   });
 
-  const fiiCategory: AnnualIncomeCategorySummary = Object.freeze({
+  const fiiSummary: AnnualIncomeCategorySummary = Object.freeze({
     incomeType: 'FII_INCOME',
     totalGrossAmount: fiiGross,
     totalWithheldTax: fiiWithheld,
     totalNetAmount: fiiGross.subtract(fiiWithheld),
     eventCount: fiiCount,
-    taxTreatmentSummary: fiiComplete ? 'EXEMPT' : 'REQUIRES_CONFIRMATION',
+    taxTreatmentSummary: fiiTreatmentSummary,
     isComplete: fiiComplete,
   });
 
-  const totalGrossIncome = divGross.add(jcpGross).add(fiiGross);
-  const totalWithheldTax = divWithheld.add(jcpWithheld).add(fiiWithheld);
-
-  const isComplete =
-    collectedIssues.size === 0 &&
-    collectedBlockingReasons.size === 0 &&
-    divComplete &&
-    jcpComplete &&
-    fiiComplete;
-
-  let status: IncomeCompletenessStatus = 'COMPLETE';
-  if (collectedBlockingReasons.has('UNSUPPORTED_FOREIGN_CURRENCY_INCOME')) {
-    status = 'BLOCKED';
-  } else if (collectedBlockingReasons.has('FII_ELIGIBILITY_UNVERIFIED')) {
-    status = 'REQUIRES_CONFIRMATION';
-  } else if (!isComplete) {
-    status = 'PARTIAL';
-  }
-
-  const calculatedAt = new Date().toISOString();
-
-  // Canonical fingerprint
-  const fingerprintPayload = JSON.stringify({
-    taxSubjectId: input.taxSubjectId,
-    calendarYear,
-    declarationExercise,
-    currency,
-    dividends: { gross: divGross.amount, withheld: divWithheld.amount, count: divCount },
-    jcp: { gross: jcpGross.amount, withheld: jcpWithheld.amount, count: jcpCount },
-    fii: { gross: fiiGross.amount, withheld: fiiWithheld.amount, count: fiiCount },
-    totalGross: totalGrossIncome.amount,
-    totalWithheld: totalWithheldTax.amount,
-    payerCount: payers.length,
-    status,
-  });
-
-  const fingerprint = createHash('sha256').update(fingerprintPayload).digest('hex');
+  // Cryptographic Fingerprint
+  const fingerprint = createHash('sha256')
+    .update(
+      `${calendarYear}:${declarationExercise}:${totalGrossIncome.amount}:${totalWithheldTax.amount}:${divGross.amount}:${jcpGross.amount}:${jcpWithheld.amount}:${fiiGross.amount}:${overallStatus}:${sortedEvents.map((e) => e.sourceFingerprint).join('|')}`,
+    )
+    .digest('hex');
 
   return Object.freeze({
     calendarYear,
@@ -525,18 +592,18 @@ export function buildAnnualInvestmentIncomeSummary(
     taxSubjectId: input.taxSubjectId,
     currency,
     isComplete,
-    status,
-    qualityIssues: Object.freeze([...collectedIssues].sort()),
-    blockingReasons: Object.freeze([...collectedBlockingReasons].sort()),
-    dividends: dividendsCategory,
-    jcp: jcpCategory,
-    fiiIncome: fiiCategory,
+    status: overallStatus,
+    qualityIssues: Object.freeze(Array.from(collectedIssues)),
+    blockingReasons: Object.freeze(Array.from(collectedBlockingReasons)),
+    dividends: dividendsSummary,
+    jcp: jcpSummary,
+    fiiIncome: fiiSummary,
     totalGrossIncome,
     totalWithheldTax,
     payers: Object.freeze(payers),
     months: Object.freeze(months),
     events: Object.freeze(sortedEvents),
-    calculatedAt,
+    calculatedAt: new Date().toISOString(),
     fingerprint,
   });
 }

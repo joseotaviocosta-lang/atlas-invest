@@ -91,7 +91,11 @@ export function AnnualInvestmentIncomeSection() {
       {isError && (
         <ErrorState
           title="Erro ao carregar proventos"
-          message={error instanceof Error ? error.message : 'Não foi possível carregar os rendimentos anuais.'}
+          message={
+            error instanceof Error
+              ? error.message
+              : 'Não foi possível carregar os rendimentos anuais.'
+          }
           onRetry={() => refetch()}
         />
       )}
@@ -110,7 +114,8 @@ export function AnnualInvestmentIncomeSection() {
                 color: colors.textSecondary,
               }}
             >
-              Status: <strong>{viewModel.statusLabel}</strong>. Algumas informações de proventos requerem comprovação documental.
+              Status: <strong>{viewModel.statusLabel}</strong>. Algumas informações de proventos
+              requerem comprovação documental.
             </div>
           )}
 
@@ -124,7 +129,9 @@ export function AnnualInvestmentIncomeSection() {
           >
             {/* Dividends Card */}
             <Card style={{ padding: `${spacing.md}px` }}>
-              <div style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginBottom: '4px' }}>
+              <div
+                style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginBottom: '4px' }}
+              >
                 Dividendos Recebidos
               </div>
               <div style={{ fontSize: '1.25rem', fontWeight: 700, color: colors.positive }}>
@@ -137,20 +144,25 @@ export function AnnualInvestmentIncomeSection() {
 
             {/* JCP Card */}
             <Card style={{ padding: `${spacing.md}px` }}>
-              <div style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginBottom: '4px' }}>
+              <div
+                style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginBottom: '4px' }}
+              >
                 Juros sobre Capital Próprio (JCP)
               </div>
               <div style={{ fontSize: '1.25rem', fontWeight: 700, color: colors.textPrimary }}>
                 {viewModel.jcp.formattedGrossAmount}
               </div>
               <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '4px' }}>
-                IRRF Retido: <strong>{viewModel.jcp.formattedWithheldTax}</strong> ({viewModel.jcp.taxTreatmentLabel})
+                IRRF Retido: <strong>{viewModel.jcp.formattedWithheldTax}</strong> (
+                {viewModel.jcp.taxTreatmentLabel})
               </div>
             </Card>
 
             {/* FII Income Card */}
             <Card style={{ padding: `${spacing.md}px` }}>
-              <div style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginBottom: '4px' }}>
+              <div
+                style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginBottom: '4px' }}
+              >
                 Rendimentos de FII
               </div>
               <div style={{ fontSize: '1.25rem', fontWeight: 700, color: colors.positive }}>
@@ -165,13 +177,26 @@ export function AnnualInvestmentIncomeSection() {
           {/* Payers Table */}
           {viewModel.payers.length > 0 && (
             <Card style={{ padding: `${spacing.base}px` }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9375rem', color: colors.textPrimary, marginBottom: `${spacing.xs}px` }}>
+              <div
+                style={{
+                  fontWeight: 700,
+                  fontSize: '0.9375rem',
+                  color: colors.textPrimary,
+                  marginBottom: `${spacing.xs}px`,
+                }}
+              >
                 Discriminação por Fonte Pagadora
               </div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
                   <thead>
-                    <tr style={{ borderBottom: `1px solid ${colors.border}`, textAlign: 'left', color: colors.textSecondary }}>
+                    <tr
+                      style={{
+                        borderBottom: `1px solid ${colors.border}`,
+                        textAlign: 'left',
+                        color: colors.textSecondary,
+                      }}
+                    >
                       <th style={{ padding: `${spacing.xs}px` }}>Fonte Pagadora</th>
                       <th style={{ padding: `${spacing.xs}px` }}>Dividendos</th>
                       <th style={{ padding: `${spacing.xs}px` }}>JCP Bruto</th>
@@ -183,12 +208,16 @@ export function AnnualInvestmentIncomeSection() {
                   <tbody>
                     {viewModel.payers.map((p) => (
                       <tr key={p.payerId} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                        <td style={{ padding: `${spacing.xs}px`, fontWeight: 600 }}>{p.payerDisplayName}</td>
+                        <td style={{ padding: `${spacing.xs}px`, fontWeight: 600 }}>
+                          {p.payerDisplayName}
+                        </td>
                         <td style={{ padding: `${spacing.xs}px` }}>{p.formattedDividendGross}</td>
                         <td style={{ padding: `${spacing.xs}px` }}>{p.formattedJcpGross}</td>
                         <td style={{ padding: `${spacing.xs}px` }}>{p.formattedJcpWithheld}</td>
                         <td style={{ padding: `${spacing.xs}px` }}>{p.formattedFiiIncomeGross}</td>
-                        <td style={{ padding: `${spacing.xs}px`, fontWeight: 700 }}>{p.formattedTotalGross}</td>
+                        <td style={{ padding: `${spacing.xs}px`, fontWeight: 700 }}>
+                          {p.formattedTotalGross}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -199,13 +228,26 @@ export function AnnualInvestmentIncomeSection() {
 
           {/* 12 Months Distribution Table */}
           <Card style={{ padding: `${spacing.base}px` }}>
-            <div style={{ fontWeight: 700, fontSize: '0.9375rem', color: colors.textPrimary, marginBottom: `${spacing.xs}px` }}>
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: '0.9375rem',
+                color: colors.textPrimary,
+                marginBottom: `${spacing.xs}px`,
+              }}
+            >
               Evolução Mensal dos Proventos
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
                 <thead>
-                  <tr style={{ borderBottom: `1px solid ${colors.border}`, textAlign: 'left', color: colors.textSecondary }}>
+                  <tr
+                    style={{
+                      borderBottom: `1px solid ${colors.border}`,
+                      textAlign: 'left',
+                      color: colors.textSecondary,
+                    }}
+                  >
                     <th style={{ padding: `${spacing.xs}px` }}>Mês</th>
                     <th style={{ padding: `${spacing.xs}px` }}>Dividendos</th>
                     <th style={{ padding: `${spacing.xs}px` }}>JCP</th>
@@ -217,11 +259,15 @@ export function AnnualInvestmentIncomeSection() {
                 <tbody>
                   {viewModel.months.map((m) => (
                     <tr key={m.competence} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                      <td style={{ padding: `${spacing.xs}px`, fontWeight: 600 }}>{m.monthLabel}</td>
+                      <td style={{ padding: `${spacing.xs}px`, fontWeight: 600 }}>
+                        {m.monthLabel}
+                      </td>
                       <td style={{ padding: `${spacing.xs}px` }}>{m.formattedDividendsGross}</td>
                       <td style={{ padding: `${spacing.xs}px` }}>{m.formattedJcpGross}</td>
                       <td style={{ padding: `${spacing.xs}px` }}>{m.formattedFiiIncomeGross}</td>
-                      <td style={{ padding: `${spacing.xs}px`, fontWeight: 700 }}>{m.formattedTotalGross}</td>
+                      <td style={{ padding: `${spacing.xs}px`, fontWeight: 700 }}>
+                        {m.formattedTotalGross}
+                      </td>
                       <td style={{ padding: `${spacing.xs}px` }}>{m.eventCount}</td>
                     </tr>
                   ))}
@@ -234,4 +280,3 @@ export function AnnualInvestmentIncomeSection() {
     </div>
   );
 }
-
