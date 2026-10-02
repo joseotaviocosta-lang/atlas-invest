@@ -99,16 +99,17 @@ Unlike capital gains (which are subject to monthly trade matching, net profit de
 
 ## 3. Legal Matrix Summary
 
-| Rule ID          | Treatment                      | Rate  | Base                 | Threshold                   | Scope                                | Effective | Source                    |
-| ---------------- | ------------------------------ | ----- | -------------------- | --------------------------- | ------------------------------------ | --------- | ------------------------- |
-| R-DIV-2025       | EXEMPT                         | 0%    | N/A                  | N/A                         | All domestic dividends               | ≤ 2025    | Lei 9.249/95 Art. 10      |
-| R-DIV-TRANSITION | EXEMPT                         | 0%    | N/A                  | N/A                         | Pre-2026 profits with valid evidence | 2026-2028 | Lei 15.270/25 § 3º        |
-| R-DIV-2026       | EXEMPT / WITHHOLDING_EXCLUSIVE | 10%   | TOTAL monthly amount | > R$ 50.000 per payer/month | Same PJ → Same PF → Same month       | ≥ 2026    | Lei 15.270/25 Art. 6º-A   |
-| R-JCP-2025       | WITHHOLDING_EXCLUSIVE          | 15%   | Gross                | N/A                         | All JCP                              | ≤ 2025    | Lei 9.249/95 Art. 9º § 2º |
-| R-JCP-2026       | WITHHOLDING_EXCLUSIVE          | 17.5% | Gross                | N/A                         | All JCP                              | ≥ 2026    | Lei 14.789/23             |
-| R-FII-EXEMPT     | EXEMPT                         | 0%    | N/A                  | N/A                         | Eligible PF                          | All       | Lei 14.754/23             |
-| R-FII-TAXABLE    | WITHHOLDING_EXCLUSIVE          | 20%   | Gross                | N/A                         | Ineligible PF                        | All       | Lei 9.779/99              |
-| R-FII-UNVERIFIED | REQUIRES_CONFIRMATION          | —     | —                    | —                           | Unverified                           | All       | Lei 14.754/23             |
+| Rule ID                     | Treatment                      | Rate  | Base                 | Threshold                   | Scope                                | Effective | Source                    |
+| --------------------------- | ------------------------------ | ----- | -------------------- | --------------------------- | ------------------------------------ | --------- | ------------------------- |
+| R-DIV-2025                  | EXEMPT                         | 0%    | N/A                  | N/A                         | All domestic dividends               | ≤ 2025    | Lei 9.249/95 Art. 10      |
+| R-DIV-TRANSITION            | EXEMPT                         | 0%    | N/A                  | N/A                         | Pre-2026 profits with valid evidence | 2026-2028 | Lei 15.270/25 § 3º        |
+| R-DIV-TRANSITION-UNVERIFIED | REQUIRES_CONFIRMATION          | —     | —                    | —                           | Unverified transition claim          | 2026-2028 | Lei 15.270/25 § 3º        |
+| R-DIV-2026                  | EXEMPT / WITHHOLDING_EXCLUSIVE | 10%   | TOTAL monthly amount | > R$ 50.000 per payer/month | Same PJ → Same PF → Same month       | ≥ 2026    | Lei 15.270/25 Art. 6º-A   |
+| R-JCP-2025                  | WITHHOLDING_EXCLUSIVE          | 15%   | Gross                | N/A                         | All JCP                              | ≤ 2025    | Lei 9.249/95 Art. 9º § 2º |
+| R-JCP-2026                  | WITHHOLDING_EXCLUSIVE          | 17.5% | Gross                | N/A                         | All JCP                              | ≥ 2026    | Lei 14.789/23             |
+| R-FII-EXEMPT                | EXEMPT                         | 0%    | N/A                  | N/A                         | Eligible PF                          | All       | Lei 14.754/23             |
+| R-FII-TAXABLE               | WITHHOLDING_EXCLUSIVE          | 20%   | Gross                | N/A                         | Ineligible PF                        | All       | Lei 9.779/99              |
+| R-FII-UNVERIFIED            | REQUIRES_CONFIRMATION          | —     | —                    | —                           | Unverified                           | All       | Lei 14.754/23             |
 
 ---
 
@@ -120,4 +121,4 @@ Unlike capital gains (which are subject to monthly trade matching, net profit de
 4. **Zero Float IEEE 754 Math:** All figures use exact arbitrary-precision decimal strings (`Money`).
 5. **Total-Base Withholding:** 2026+ dividend withholding is on the TOTAL monthly amount, not the excess.
 6. **No Global Minimum Tax Engine:** Phase 4H.4 captures facts only; high-income minimum tax is out of scope.
-7. **Transition Fail-Closed:** Missing transition evidence defaults to ordinary 2026 rule.
+7. **Transition Fail-Closed:** Unconfirmed transition claims fail closed to `REQUIRES_CONFIRMATION` (`R-DIV-TRANSITION-UNVERIFIED`) with null withholding and `TRANSITION_ELIGIBILITY_UNCONFIRMED` blocking reason; ordinary dividends without transition claim or with explicit ineligibility evaluate under `R-DIV-2026`.

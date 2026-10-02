@@ -153,6 +153,13 @@ describe('Tax Engine: Annual Investment Income 10,000-Case Fuzz & Invariant Veri
               // Transition-eligible dividends in 2026 are exempt
               expect(classified.taxTreatment).toBe('EXEMPT');
               expect(classified.ruleId).toBe('R-DIV-TRANSITION');
+            } else if (
+              evt.dividendTransitionEvidence?.eligibilityStatus === 'REQUIRES_CONFIRMATION'
+            ) {
+              // Incomplete transition evidence fails closed to REQUIRES_CONFIRMATION
+              expect(classified.taxTreatment).toBe('REQUIRES_CONFIRMATION');
+              expect(classified.ruleId).toBe('R-DIV-TRANSITION-UNVERIFIED');
+              expect(classified.withheldTaxAmount).toBeNull();
             }
           } else if (evt.incomeType === 'JCP') {
             expect(classified.taxTreatment).toBe('WITHHOLDING_EXCLUSIVE');

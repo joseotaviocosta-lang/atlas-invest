@@ -105,10 +105,11 @@ export interface AnnualInvestmentIncomeSummary {
 1. **JCP Withholding Transition:**
    - Events with `paymentDate < '2026-01-01'` use 15.0% (`0.15`) statutory rate (`R-JCP-2025`).
    - Events with `paymentDate >= '2026-01-01'` use 17.5% (`0.175`) statutory rate (`R-JCP-2026`).
-2. **Dividend Exemption Threshold (2026, per Lei 15.270/2025 Art. 6º-A):**
+2. **Dividend Exemption Threshold & Transition Rules (2026, per Lei 15.270/2025 Art. 6º-A):**
    - Events with `paymentDate < '2026-01-01'` are 100% exempt (`R-DIV-2025`).
-   - Events with `paymentDate >= '2026-01-01'` and qualifying transition evidence (`R-DIV-TRANSITION`) are exempt.
-   - Events with `paymentDate >= '2026-01-01'` without transition eligibility evaluate monthly total per payer:
+   - Events with `paymentDate >= '2026-01-01'` with confirmed transition evidence (`eligibilityStatus === 'ELIGIBLE'`) are exempt (`R-DIV-TRANSITION`).
+   - Events with `paymentDate >= '2026-01-01'` with unconfirmed transition evidence (`eligibilityStatus === 'REQUIRES_CONFIRMATION'`) fail closed to `REQUIRES_CONFIRMATION` (`R-DIV-TRANSITION-UNVERIFIED`) with null withholding and blocking reason `TRANSITION_ELIGIBILITY_UNCONFIRMED`.
+   - Events with `paymentDate >= '2026-01-01'` without transition claim or explicitly `INELIGIBLE` evaluate monthly total per payer under ordinary `R-DIV-2026`:
      - Total <= R$ 50,000.00: 0% withholding (`EXEMPT`).
      - Total > R$ 50,000.00: 10% withholding on the **TOTAL** monthly amount (`WITHHOLDING_EXCLUSIVE`).
 3. **FII Exemption Fail-Closed:**

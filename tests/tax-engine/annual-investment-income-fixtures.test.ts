@@ -790,8 +790,8 @@ describe('Tax Engine: Annual Investment Income Fixtures A–AH (Phase 4H.4 / 4H.
     expect(classified.withheldTaxAmount?.amount).toBe('6000');
   });
 
-  // Fixture AG — TRANSITION REQUIRES_CONFIRMATION (incomplete evidence → fails closed)
-  it('Fixture AG — TRANSITION REQUIRES_CONFIRMATION: Incomplete evidence → ordinary R-DIV-2026 applies', () => {
+  // Fixture AG — TRANSITION REQUIRES_CONFIRMATION (unconfirmed evidence → fails closed)
+  it('Fixture AG — TRANSITION REQUIRES_CONFIRMATION: Unconfirmed evidence fails closed to REQUIRES_CONFIRMATION with null withholding', () => {
     const event: IncomeEventInputData = {
       incomeEventId: 'evt-ag-unconfirmed',
       incomeType: 'DIVIDEND',
@@ -804,10 +804,12 @@ describe('Tax Engine: Annual Investment Income Fixtures A–AH (Phase 4H.4 / 4H.
     };
 
     const classified = classifyIncomeEvent(event);
-    // REQUIRES_CONFIRMATION fails closed to ordinary rule
-    expect(classified.ruleId).toBe('R-DIV-2026');
-    expect(classified.taxTreatment).toBe('WITHHOLDING_EXCLUSIVE');
-    expect(classified.withheldTaxAmount?.amount).toBe('5500');
+    expect(classified.ruleId).toBe('R-DIV-TRANSITION-UNVERIFIED');
+    expect(classified.taxTreatment).toBe('REQUIRES_CONFIRMATION');
+    expect(classified.completenessStatus).toBe('REQUIRES_CONFIRMATION');
+    expect(classified.blockingReasons).toContain('TRANSITION_ELIGIBILITY_UNCONFIRMED');
+    expect(classified.withheldTaxAmount).toBeNull();
+    expect(classified.netAmount.amount).toBe('55000');
   });
 
   // Fixture AH — R$ 55,000 SAME PAYER MULTI-PAYMENT (30k + 25k = 55k → 5,500)
@@ -842,5 +844,55 @@ describe('Tax Engine: Annual Investment Income Fixtures A–AH (Phase 4H.4 / 4H.
     expect(summary.dividends.totalGrossAmount.amount).toBe('55000');
     expect(summary.dividends.totalWithheldTax.amount).toBe('5500');
     expect(summary.dividends.totalNetAmount.amount).toBe('49500');
+  });
+
+  // Fixture AI — UNKNOWN TRANSITION IN ANNUAL SUMMARY (Summary propagates REQUIRES_CONFIRMATION)
+  it('Fixture AI — UNKNOWN TRANSITION IN ANNUAL SUMMARY: Preserves uncertainty, marks status REQUIRES_CONFIRMATION', () => {
+    const event: IncomeEventInputData = {
+      incomeEventId: 'evt-ai-unknown',
+      incomeType: 'DIVIDEND',
+      assetId: 'asset-vale3',
+      payerId: 'asset-vale3',
+      payerDisplayName: 'VALE ON',
+      paymentDate: '2026-05-15',
+      grossAmount: '70000',
+      dividendTransitionEvidence: {
+        eligibilityStatus: 'REQUIRES_CONFIRMATION',
+      },
+    };
+
+    const summary = buildAnnualInvestmentIncomeSummary({
+      calendarYear: 2026,
+      taxSubjectId: 'user-1',
+      events: [event],
+    });
+
+    expect(summary.status).toBe('BLOCKED');
+    expect(summary.blockingReasons).toContain('TRANSITION_ELIGIBILITY_UNCONFIRMED');
+    expect(summary.isComplete).toBe(false);
+    expect(summary.dividends.isComplete).toBe(false);
+    expect(summary.dividends.taxTreatmentSummary).toBe('REQUIRES_CONFIRMATION');
+    expect(summary.dividends.totalGrossAmount.amount).toBe('70000');
+  });
+
+  // Fixture AJ — UNKNOWN TRANSITION BELOW THRESHOLD (preserves unconfirmed classification)
+  it('Fixture AJ — UNKNOWN TRANSITION BELOW THRESHOLD: Even when gross <= 50k, preserves unconfirmed status', () => {
+    const event: IncomeEventInputData = {
+      incomeEventId: 'evt-aj-below',
+      incomeType: 'DIVIDEND',
+      assetId: 'asset-petr4',
+      payerId: 'asset-petr4',
+      payerDisplayName: 'PETROBRAS PN',
+      paymentDate: '2026-02-10',
+      grossAmount: '20000',
+      dividendTransitionEvidence: {
+        eligibilityStatus: 'REQUIRES_CONFIRMATION',
+      },
+    };
+
+    const classified = classifyIncomeEvent(event);
+    expect(classified.taxTreatment).toBe('REQUIRES_CONFIRMATION');
+    expect(classified.ruleId).toBe('R-DIV-TRANSITION-UNVERIFIED');
+    expect(classified.withheldTaxAmount).toBeNull();
   });
 });

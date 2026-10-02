@@ -181,15 +181,27 @@ export function classifyIncomeEvent(
         const transition = input.dividendTransitionEvidence;
         if (transition && transition.eligibilityStatus === 'ELIGIBLE') {
           // Transitional exemption: pre-2026 profits distributed in 2026-2028
-          // per Lei 15.270/2025 transitional provisions
+          // per Lei 15.270/2025 transitional provisions (Art. 6º-A, § 3º da Lei 9.250/1995)
           ruleId = 'R-DIV-TRANSITION';
           ruleVersion = '2025-LEI-15270-TRANSITION';
           taxTreatment = 'EXEMPT';
           withheld = toMoney(input.withheldTaxAmount, currency);
           net = gross.subtract(withheld);
+        } else if (transition && transition.eligibilityStatus === 'REQUIRES_CONFIRMATION') {
+          // Unconfirmed transition evidence: fail closed to REQUIRES_CONFIRMATION
+          ruleId = 'R-DIV-TRANSITION-UNVERIFIED';
+          ruleVersion = '2025-LEI-15270-TRANSITION';
+          taxTreatment = 'REQUIRES_CONFIRMATION';
+          completenessStatus = 'REQUIRES_CONFIRMATION';
+          blockingReasons.push('TRANSITION_ELIGIBILITY_UNCONFIRMED');
+          withheld =
+            input.withheldTaxAmount !== undefined && input.withheldTaxAmount !== null
+              ? toMoney(input.withheldTaxAmount, currency)
+              : null;
+          net = withheld ? gross.subtract(withheld) : gross;
         } else {
           // Ordinary 2026+ rule: Lei 15.270/2025, Art. 6º-A of Lei 9.250/1995
-          // 10% IRRF on TOTAL monthly amount when > R$ 50.000,00 ("superior a")
+          // Applies when transition is explicitly INELIGIBLE or when no transition is claimed.
           ruleId = 'R-DIV-2026';
           ruleVersion = '2025-LEI-15270';
           if (input.withheldTaxAmount !== undefined && input.withheldTaxAmount !== null) {
@@ -601,7 +613,13 @@ export function buildAnnualInvestmentIncomeSummary(
 
   // Category Summaries
   const divTreatmentSummary: IncomeTaxTreatment =
-    calendarYear < 2026 ? 'EXEMPT' : divWithheld.isPositive() ? 'WITHHOLDING_EXCLUSIVE' : 'EXEMPT';
+    calendarYear < 2026
+      ? 'EXEMPT'
+      : !divComplete
+        ? 'REQUIRES_CONFIRMATION'
+        : divWithheld.isPositive()
+          ? 'WITHHOLDING_EXCLUSIVE'
+          : 'EXEMPT';
 
   const jcpTreatmentSummary: IncomeTaxTreatment = 'WITHHOLDING_EXCLUSIVE';
 
