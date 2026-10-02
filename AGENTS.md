@@ -2033,3 +2033,15 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - As interfaces Web e Mobile renderizam estritamente os resumos categóricos e listagens por fonte pagadora calculados pelo servidor.
 8. **TAX AI PERMANECE DESABILITADA:**
    - Consultas de IA sobre tributação de proventos permanecem categorizadas como `UNSUPPORTED_TAX` com 0 chamadas a provedores externos.
+9. **RETENÇÃO DE DIVIDENDOS 2026 SOBRE O TOTAL (LEI 15.270/2025):**
+   - O gatilho de R$ 50.000,00 mensais é apurado estritamente por mesma fonte pagadora (mesmo CNPJ) para o mesmo beneficiário (mesmo CPF) no mesmo mês-calendário.
+   - Ultrapassado o limite ("superior a R$ 50.000,00"), a alíquota de 10% de IRRF incide sobre o **TOTAL** do montante distribuído no mês, e **NUNCA** apenas sobre a parcela excedente.
+   - Múltiplos pagamentos no mesmo mês pela mesma fonte exigem recálculo cumulativo do imposto total devido, sem bitributação ou retenção duplicada.
+10. **ISOLAMENTO ENTRE FONTES PAGADORAS E MESES:**
+    - Fontes pagadoras distintas são avaliadas independentemente; não há contaminação cruzada de limites entre diferentes CNPJs.
+    - O limite de isenção de R$ 50.000,00 é mensal e zera a cada mês-calendário; é vedada qualquer substituição por limite anual.
+11. **REGRA DE TRANSIÇÃO DE LUCROS PRÉ-2026 (ART. 6º-A, § 3º):**
+    - Dividendos pagos a partir de 2026 referentes a lucros apurados até 31/12/2025 mantêm isenção apenas mediante comprovação documental estruturada de aprovação societária até 31/12/2025.
+    - É terminantemente proibida inferência por texto livre, ticker ou descrição; ausência de comprovação estruturada resulta em fail-closed (aplicação ordinária da regra de 2026).
+12. **DISTINÇÃO ESTRITA DE CATEGORIAS:**
+    - Dividendos (`DIVIDEND`), JCP (`JCP`) e Rendimentos de FII (`FII_INCOME`) constituem regimes tributários estanques e inconfundíveis entre si.

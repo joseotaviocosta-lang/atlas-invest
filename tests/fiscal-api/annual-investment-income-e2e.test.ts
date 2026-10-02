@@ -268,4 +268,3 @@ describe('API Integration: Annual Investment Income E2E Scenarios (Phase 4H.4 / 
     expect(res.body.data.payers).toHaveLength(0);
   });
 });
-

@@ -145,4 +145,3 @@ describe('Phase 4H.4 / 4H.4A — Annual Investment Income Query Budget & N+1 Ver
     expect(perAssetSingleQueries).toBe(0);
   });
 });
-

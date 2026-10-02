@@ -82,6 +82,9 @@ export {
   buildAnnualInvestmentIncomeSummary,
 } from './annual-investment-income-engine';
 export type {
+  FiiEligibilityData,
+  DividendTransitionEligibility,
+  DividendTransitionEvidence,
   IncomeEventInputData,
   BuildAnnualInvestmentIncomeSummaryInput,
 } from './annual-investment-income-engine';

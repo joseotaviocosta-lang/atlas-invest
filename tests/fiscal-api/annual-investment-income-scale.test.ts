@@ -92,23 +92,27 @@ describe('Phase 4H.4 / 4H.4A — Annual Investment Income Scale Suite (100 / 1k 
     expect(durationMs).toBeLessThan(1500);
   });
 
-  it('evaluates 50,000-event scale dataset within bounded execution budget', { timeout: 30000 }, () => {
-    const start = performance.now();
-    const events = generateIncomeEvents(50000, 2025);
-    const summary = buildAnnualInvestmentIncomeSummary({
-      calendarYear: 2025,
-      taxSubjectId: 'scale-user-50k',
-      events,
-    });
-    const durationMs = performance.now() - start;
+  it(
+    'evaluates 50,000-event scale dataset within bounded execution budget',
+    { timeout: 30000 },
+    () => {
+      const start = performance.now();
+      const events = generateIncomeEvents(50000, 2025);
+      const summary = buildAnnualInvestmentIncomeSummary({
+        calendarYear: 2025,
+        taxSubjectId: 'scale-user-50k',
+        events,
+      });
+      const durationMs = performance.now() - start;
 
-    const totalEvents =
-      summary.dividends.eventCount + summary.jcp.eventCount + summary.fiiIncome.eventCount;
-    expect(totalEvents).toBe(50000);
-    expect(summary.isComplete).toBe(true);
-    expect(summary.totalGrossIncome.amount).toBe('50000000');
-    expect(durationMs).toBeLessThan(10000);
-  });
+      const totalEvents =
+        summary.dividends.eventCount + summary.jcp.eventCount + summary.fiiIncome.eventCount;
+      expect(totalEvents).toBe(50000);
+      expect(summary.isComplete).toBe(true);
+      expect(summary.totalGrossIncome.amount).toBe('50000000');
+      expect(durationMs).toBeLessThan(10000);
+    },
+  );
 
   it('evaluates multi-annual simulation across 1, 5, 10, and 20 years', () => {
     const start = performance.now();
@@ -128,4 +132,3 @@ describe('Phase 4H.4 / 4H.4A — Annual Investment Income Scale Suite (100 / 1k 
     expect(durationMs).toBeLessThan(1000);
   });
 });
-

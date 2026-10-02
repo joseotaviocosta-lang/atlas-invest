@@ -6,7 +6,7 @@ import {
 } from '../../packages/tax-engine/src';
 import { Money } from '../../packages/domain/src';
 
-describe('Tax Engine: Annual Investment Income Fixtures A–Y (Phase 4H.4 / 4H.4A)', () => {
+describe('Tax Engine: Annual Investment Income Fixtures A–AH (Phase 4H.4 / 4H.4A.1)', () => {
   // Fixture A — 2025 DIVIDEND (Fully Exempt under Lei 9.249/95)
   it('Fixture A — 2025 DIVIDEND: Domestic dividend in 2025 is 100% exempt with 0% withholding', () => {
     const event: IncomeEventInputData = {
@@ -37,7 +37,7 @@ describe('Tax Engine: Annual Investment Income Fixtures A–Y (Phase 4H.4 / 4H.4
     expect(summary.isComplete).toBe(true);
   });
 
-  // Fixture B — 2026 DIVIDEND BELOW THRESHOLD
+  // Fixture B — 2026 DIVIDEND BELOW THRESHOLD (R$ 30,000 <= R$ 50,000)
   it('Fixture B — 2026 DIVIDEND BELOW THRESHOLD: Monthly dividend of R$ 30,000 <= R$ 50,000 is EXEMPT', () => {
     const event: IncomeEventInputData = {
       incomeEventId: 'evt-div-2026-below',
@@ -66,7 +66,7 @@ describe('Tax Engine: Annual Investment Income Fixtures A–Y (Phase 4H.4 / 4H.4
     expect(summary.dividends.totalNetAmount.amount).toBe('30000');
   });
 
-  // Fixture C — 2026 DIVIDEND EXACT THRESHOLD
+  // Fixture C — 2026 DIVIDEND EXACT THRESHOLD (R$ 50,000 — "superior a" means <= 50k is exempt)
   it('Fixture C — 2026 DIVIDEND EXACT THRESHOLD: Monthly dividend of exactly R$ 50,000.00 is EXEMPT', () => {
     const event: IncomeEventInputData = {
       incomeEventId: 'evt-div-2026-exact',
@@ -93,8 +93,9 @@ describe('Tax Engine: Annual Investment Income Fixtures A–Y (Phase 4H.4 / 4H.4
     expect(summary.dividends.totalWithheldTax.amount).toBe('0');
   });
 
-  // Fixture D — 2026 DIVIDEND ABOVE THRESHOLD
-  it('Fixture D — 2026 DIVIDEND ABOVE THRESHOLD: Monthly dividend of R$ 70,000 has 10% withholding on R$ 20,000 excess = R$ 2,000.00', () => {
+  // Fixture D — 2026 DIVIDEND ABOVE THRESHOLD (TOTAL-BASE per Lei 15.270/2025)
+  // R$ 70,000 > R$ 50,000 → 10% on TOTAL = R$ 7,000 (NOT R$ 2,000 excess-only)
+  it('Fixture D — 2026 DIVIDEND ABOVE THRESHOLD: R$ 70,000 → 10% on TOTAL = R$ 7,000', () => {
     const event: IncomeEventInputData = {
       incomeEventId: 'evt-div-2026-above',
       incomeType: 'DIVIDEND',
@@ -107,8 +108,9 @@ describe('Tax Engine: Annual Investment Income Fixtures A–Y (Phase 4H.4 / 4H.4
 
     const classified = classifyIncomeEvent(event);
     expect(classified.taxTreatment).toBe('WITHHOLDING_EXCLUSIVE');
-    expect(classified.withheldTaxAmount?.amount).toBe('2000');
-    expect(classified.netAmount.amount).toBe('68000');
+    expect(classified.ruleId).toBe('R-DIV-2026');
+    expect(classified.withheldTaxAmount?.amount).toBe('7000');
+    expect(classified.netAmount.amount).toBe('63000');
 
     const summary = buildAnnualInvestmentIncomeSummary({
       calendarYear: 2026,
@@ -117,12 +119,13 @@ describe('Tax Engine: Annual Investment Income Fixtures A–Y (Phase 4H.4 / 4H.4
     });
 
     expect(summary.dividends.totalGrossAmount.amount).toBe('70000');
-    expect(summary.dividends.totalWithheldTax.amount).toBe('2000');
-    expect(summary.dividends.totalNetAmount.amount).toBe('68000');
+    expect(summary.dividends.totalWithheldTax.amount).toBe('7000');
+    expect(summary.dividends.totalNetAmount.amount).toBe('63000');
   });
 
-  // Fixture E — SAME PAYER / SAME MONTH AGGREGATION
-  it('Fixture E — SAME PAYER / SAME MONTH: Two dividends of R$ 30,000 from same payer in same month (total R$ 60,000) trigger R$ 1,000 withholding', () => {
+  // Fixture E — SAME PAYER / SAME MONTH AGGREGATION (TOTAL-BASE)
+  // 30k + 30k = 60k > 50k → 10% on 60k = 6,000 (NOT 1,000 excess-only)
+  it('Fixture E — SAME PAYER / SAME MONTH: Two R$ 30k from same payer (total R$ 60k) → R$ 6,000 withholding', () => {
     const event1: IncomeEventInputData = {
       incomeEventId: 'evt-div-e1',
       incomeType: 'DIVIDEND',
@@ -149,8 +152,8 @@ describe('Tax Engine: Annual Investment Income Fixtures A–Y (Phase 4H.4 / 4H.4
     });
 
     expect(summary.dividends.totalGrossAmount.amount).toBe('60000');
-    expect(summary.dividends.totalWithheldTax.amount).toBe('1000');
-    expect(summary.dividends.totalNetAmount.amount).toBe('59000');
+    expect(summary.dividends.totalWithheldTax.amount).toBe('6000');
+    expect(summary.dividends.totalNetAmount.amount).toBe('54000');
   });
 
   // Fixture F — MULTIPLE PAYERS (Payer Isolation)
@@ -185,7 +188,7 @@ describe('Tax Engine: Annual Investment Income Fixtures A–Y (Phase 4H.4 / 4H.4
     expect(summary.payers).toHaveLength(2);
   });
 
-  // Fixture G — DIVIDEND WITHHOLDING (Gross vs Withholding Separate)
+  // Fixture G — DIVIDEND WITHHOLDING (Explicit evidence)
   it('Fixture G — DIVIDEND WITHHOLDING: Explicit withholding evidence is preserved and segregated', () => {
     const event: IncomeEventInputData = {
       incomeEventId: 'evt-g',
@@ -195,17 +198,17 @@ describe('Tax Engine: Annual Investment Income Fixtures A–Y (Phase 4H.4 / 4H.4
       payerDisplayName: 'BANCO DO BRASIL ON',
       paymentDate: '2026-08-20',
       grossAmount: '100000',
-      withheldTaxAmount: '5000',
+      withheldTaxAmount: '10000',
     };
 
     const classified = classifyIncomeEvent(event);
     expect(classified.grossAmount.amount).toBe('100000');
-    expect(classified.withheldTaxAmount?.amount).toBe('5000');
-    expect(classified.netAmount.amount).toBe('95000');
+    expect(classified.withheldTaxAmount?.amount).toBe('10000');
+    expect(classified.netAmount.amount).toBe('90000');
   });
 
   // Fixture H — MISSING DIVIDEND EVIDENCE / Fail-Closed
-  it('Fixture H — MISSING DIVIDEND EVIDENCE: Invalid date or unparseable event fails closed to BLOCKED', () => {
+  it('Fixture H — MISSING DIVIDEND EVIDENCE: Invalid date fails closed to BLOCKED', () => {
     const event: IncomeEventInputData = {
       incomeEventId: 'evt-h',
       incomeType: 'DIVIDEND',
@@ -274,7 +277,7 @@ describe('Tax Engine: Annual Investment Income Fixtures A–Y (Phase 4H.4 / 4H.4
   });
 
   // Fixture L — FII ELIGIBLE (Lei 11.033/04 Art. 3º III)
-  it('Fixture L — FII ELIGIBLE: Verified conditions (exchange listed, >=100 cotistas, <10% ownership) yields EXEMPT', () => {
+  it('Fixture L — FII ELIGIBLE: Verified conditions yields EXEMPT', () => {
     const event: IncomeEventInputData = {
       incomeEventId: 'evt-fii-l',
       incomeType: 'FII_INCOME',
@@ -313,7 +316,7 @@ describe('Tax Engine: Annual Investment Income Fixtures A–Y (Phase 4H.4 / 4H.4
   });
 
   // Fixture N — FII INELIGIBLE (Failed Condition -> WITHHOLDING_EXCLUSIVE)
-  it('Fixture N — FII INELIGIBLE: Closely held FII (<100 cotistas) is classified as WITHHOLDING_EXCLUSIVE', () => {
+  it('Fixture N — FII INELIGIBLE: Closely held FII is classified as WITHHOLDING_EXCLUSIVE', () => {
     const event: IncomeEventInputData = {
       incomeEventId: 'evt-fii-n',
       incomeType: 'FII_INCOME',
@@ -371,7 +374,7 @@ describe('Tax Engine: Annual Investment Income Fixtures A–Y (Phase 4H.4 / 4H.4
   });
 
   // Fixture P — SAME PAYER MULTIPLE MONTHS
-  it('Fixture P — SAME PAYER MULTIPLE MONTHS: Scoped monthly evaluation (Jan R$ 40k, Feb R$ 40k) preserves exemption', () => {
+  it('Fixture P — SAME PAYER MULTIPLE MONTHS: Monthly threshold resets (Jan R$ 40k, Feb R$ 40k) → both exempt', () => {
     const janEvt: IncomeEventInputData = {
       incomeEventId: 'evt-p1',
       incomeType: 'DIVIDEND',
@@ -398,7 +401,7 @@ describe('Tax Engine: Annual Investment Income Fixtures A–Y (Phase 4H.4 / 4H.4
   });
 
   // Fixture Q — DUPLICATE EVENT DEDUPLICATION
-  it('Fixture Q — DUPLICATE EVENT: Identical incomeEventId is deduplicated without double counting', () => {
+  it('Fixture Q — DUPLICATE EVENT: Identical incomeEventId is deduplicated', () => {
     const evt: IncomeEventInputData = {
       incomeEventId: 'evt-q-dup',
       incomeType: 'DIVIDEND',
@@ -451,7 +454,7 @@ describe('Tax Engine: Annual Investment Income Fixtures A–Y (Phase 4H.4 / 4H.4
   });
 
   // Fixture S — BLOCKED EVENT
-  it('Fixture S — BLOCKED EVENT: Unsupported foreign currency blocks the summary without emitting fake zero', () => {
+  it('Fixture S — BLOCKED EVENT: Unsupported foreign currency blocks the summary', () => {
     const usdEvt: IncomeEventInputData = {
       incomeEventId: 'evt-s-usd',
       incomeType: 'DIVIDEND',
@@ -567,16 +570,13 @@ describe('Tax Engine: Annual Investment Income Fixtures A–Y (Phase 4H.4 / 4H.4
       events,
     });
 
-    const sumPayers = summary.payers.reduce(
-      (acc, p) => acc.add(p.totalGross),
-      Money.zero('BRL'),
-    );
+    const sumPayers = summary.payers.reduce((acc, p) => acc.add(p.totalGross), Money.zero('BRL'));
     expect(sumPayers.amount).toBe(summary.totalGrossIncome.amount);
     expect(summary.totalGrossIncome.amount).toBe('9500');
   });
 
   // Fixture W — ZERO VS UNKNOWN WITHHOLDING
-  it('Fixture W — ZERO VS UNKNOWN WITHHOLDING: 0.00 withholding is distinct from unverified withholding', () => {
+  it('Fixture W — ZERO VS UNKNOWN WITHHOLDING: 0.00 withholding is distinct from unverified', () => {
     const unverifiedEvt: IncomeEventInputData = {
       incomeEventId: 'evt-w',
       incomeType: 'FII_INCOME',
@@ -607,7 +607,7 @@ describe('Tax Engine: Annual Investment Income Fixtures A–Y (Phase 4H.4 / 4H.4
   });
 
   // Fixture Y — EFFECTIVE-DATE TRANSITION (2025 vs 2026 JCP & Dividend Transition)
-  it('Fixture Y — EFFECTIVE-DATE TRANSITION: Seamless rule resolution across 2025 (JCP 15%, Div 0%) and 2026 (JCP 17.5%, Div threshold)', () => {
+  it('Fixture Y — EFFECTIVE-DATE TRANSITION: Seamless rule resolution across 2025/2026', () => {
     const jcp2025: IncomeEventInputData = {
       incomeEventId: 'evt-y1',
       incomeType: 'JCP',
@@ -632,5 +632,215 @@ describe('Tax Engine: Annual Investment Income Fixtures A–Y (Phase 4H.4 / 4H.4
     expect(class2026.ruleId).toBe('R-JCP-2026');
     expect(class2026.withheldTaxAmount?.amount).toBe('1750'); // 17.5%
   });
-});
 
+  // ===== NEW FIXTURES Z–AH (Phase 4H.4A.1) =====
+
+  // Fixture Z — THRESHOLD BOUNDARY: R$ 49,999.99
+  it('Fixture Z — R$ 49,999.99 BELOW THRESHOLD: no withholding', () => {
+    const event: IncomeEventInputData = {
+      incomeEventId: 'evt-z',
+      incomeType: 'DIVIDEND',
+      assetId: 'asset-petr4',
+      paymentDate: '2026-03-15',
+      grossAmount: '49999.99',
+    };
+    const classified = classifyIncomeEvent(event);
+    expect(classified.taxTreatment).toBe('EXEMPT');
+    expect(classified.withheldTaxAmount?.amount).toBe('0');
+    expect(classified.netAmount.amount).toBe('49999.99');
+  });
+
+  // Fixture AA — THRESHOLD BOUNDARY: R$ 50,000.01 (just above — "efeito degrau")
+  it('Fixture AA — R$ 50,000.01 JUST ABOVE THRESHOLD: 10% on TOTAL = R$ 5,000.001', () => {
+    const event: IncomeEventInputData = {
+      incomeEventId: 'evt-aa',
+      incomeType: 'DIVIDEND',
+      assetId: 'asset-petr4',
+      paymentDate: '2026-03-15',
+      grossAmount: '50000.01',
+    };
+    const classified = classifyIncomeEvent(event);
+    expect(classified.taxTreatment).toBe('WITHHOLDING_EXCLUSIVE');
+    expect(classified.ruleId).toBe('R-DIV-2026');
+    // 50000.01 * 0.10 = 5000.001
+    expect(classified.withheldTaxAmount?.amount).toBe('5000.001');
+    expect(classified.netAmount.amount).toBe('45000.009');
+  });
+
+  // Fixture AB — R$ 60,000 CANONICAL REGRESSION (spec Section 55 explicit)
+  it('Fixture AB — R$ 60,000 REGRESSION: withholding = R$ 6,000 (NOT R$ 1,000)', () => {
+    const event: IncomeEventInputData = {
+      incomeEventId: 'evt-ab',
+      incomeType: 'DIVIDEND',
+      assetId: 'asset-vale3',
+      paymentDate: '2026-04-10',
+      grossAmount: '60000',
+    };
+    const classified = classifyIncomeEvent(event);
+    expect(classified.withheldTaxAmount?.amount).toBe('6000');
+    expect(classified.netAmount.amount).toBe('54000');
+  });
+
+  // Fixture AC — SAME PAYER / THIRD PAYMENT (no double withholding)
+  // 30k + 25k + 10k = 65k → total withholding = 6,500 (10% of 65k)
+  it('Fixture AC — THREE PAYMENTS SAME PAYER/MONTH: 30k+25k+10k = 65k → R$ 6,500 total withholding', () => {
+    const events: IncomeEventInputData[] = [
+      {
+        incomeEventId: 'evt-ac1',
+        incomeType: 'DIVIDEND',
+        assetId: 'asset-bbas3',
+        payerId: 'asset-bbas3',
+        payerDisplayName: 'BANCO DO BRASIL ON',
+        paymentDate: '2026-09-05',
+        grossAmount: '30000',
+      },
+      {
+        incomeEventId: 'evt-ac2',
+        incomeType: 'DIVIDEND',
+        assetId: 'asset-bbas3',
+        payerId: 'asset-bbas3',
+        payerDisplayName: 'BANCO DO BRASIL ON',
+        paymentDate: '2026-09-15',
+        grossAmount: '25000',
+      },
+      {
+        incomeEventId: 'evt-ac3',
+        incomeType: 'DIVIDEND',
+        assetId: 'asset-bbas3',
+        payerId: 'asset-bbas3',
+        payerDisplayName: 'BANCO DO BRASIL ON',
+        paymentDate: '2026-09-25',
+        grossAmount: '10000',
+      },
+    ];
+
+    const summary = buildAnnualInvestmentIncomeSummary({
+      calendarYear: 2026,
+      taxSubjectId: 'user-1',
+      events,
+    });
+
+    expect(summary.dividends.totalGrossAmount.amount).toBe('65000');
+    expect(summary.dividends.totalWithheldTax.amount).toBe('6500');
+    expect(summary.dividends.totalNetAmount.amount).toBe('58500');
+  });
+
+  // Fixture AD — TRANSITION ELIGIBLE (pre-2026 profits with valid evidence)
+  it('Fixture AD — TRANSITION ELIGIBLE: 2026 dividend from pre-2026 profits with approval evidence → EXEMPT', () => {
+    const event: IncomeEventInputData = {
+      incomeEventId: 'evt-ad-transition',
+      incomeType: 'DIVIDEND',
+      assetId: 'asset-petr4',
+      payerId: 'asset-petr4',
+      payerDisplayName: 'PETROBRAS PN',
+      paymentDate: '2026-04-15',
+      grossAmount: '80000',
+      dividendTransitionEvidence: {
+        profitAccrualPeriodEnd: '2025-12-31',
+        distributionApprovalDate: '2025-12-20',
+        approvalDocumentReference: 'ATA-AGO-2025-12-20',
+        eligibilityStatus: 'ELIGIBLE',
+        evidenceSource: 'CORPORATE_FILING',
+      },
+    };
+
+    const classified = classifyIncomeEvent(event);
+    expect(classified.ruleId).toBe('R-DIV-TRANSITION');
+    expect(classified.taxTreatment).toBe('EXEMPT');
+    expect(classified.withheldTaxAmount?.amount).toBe('0');
+    expect(classified.netAmount.amount).toBe('80000');
+  });
+
+  // Fixture AE — TRANSITION UNKNOWN (missing evidence → fails closed)
+  it('Fixture AE — TRANSITION UNKNOWN: No transition evidence → ordinary R-DIV-2026 applies', () => {
+    const event: IncomeEventInputData = {
+      incomeEventId: 'evt-ae-no-transition',
+      incomeType: 'DIVIDEND',
+      assetId: 'asset-petr4',
+      paymentDate: '2026-06-15',
+      grossAmount: '80000',
+      // No dividendTransitionEvidence → fails closed to ordinary 2026 rule
+    };
+
+    const classified = classifyIncomeEvent(event);
+    expect(classified.ruleId).toBe('R-DIV-2026');
+    expect(classified.taxTreatment).toBe('WITHHOLDING_EXCLUSIVE');
+    // 80,000 * 10% = 8,000
+    expect(classified.withheldTaxAmount?.amount).toBe('8000');
+    expect(classified.netAmount.amount).toBe('72000');
+  });
+
+  // Fixture AF — TRANSITION INELIGIBLE (evidence fails → ordinary 2026)
+  it('Fixture AF — TRANSITION INELIGIBLE: Explicit INELIGIBLE evidence → ordinary R-DIV-2026', () => {
+    const event: IncomeEventInputData = {
+      incomeEventId: 'evt-af-ineligible',
+      incomeType: 'DIVIDEND',
+      assetId: 'asset-vale3',
+      paymentDate: '2026-07-15',
+      grossAmount: '60000',
+      dividendTransitionEvidence: {
+        profitAccrualPeriodEnd: '2026-06-30', // After 2025 cutoff
+        eligibilityStatus: 'INELIGIBLE',
+      },
+    };
+
+    const classified = classifyIncomeEvent(event);
+    expect(classified.ruleId).toBe('R-DIV-2026');
+    expect(classified.taxTreatment).toBe('WITHHOLDING_EXCLUSIVE');
+    expect(classified.withheldTaxAmount?.amount).toBe('6000');
+  });
+
+  // Fixture AG — TRANSITION REQUIRES_CONFIRMATION (incomplete evidence → fails closed)
+  it('Fixture AG — TRANSITION REQUIRES_CONFIRMATION: Incomplete evidence → ordinary R-DIV-2026 applies', () => {
+    const event: IncomeEventInputData = {
+      incomeEventId: 'evt-ag-unconfirmed',
+      incomeType: 'DIVIDEND',
+      assetId: 'asset-bbas3',
+      paymentDate: '2026-08-15',
+      grossAmount: '55000',
+      dividendTransitionEvidence: {
+        eligibilityStatus: 'REQUIRES_CONFIRMATION',
+      },
+    };
+
+    const classified = classifyIncomeEvent(event);
+    // REQUIRES_CONFIRMATION fails closed to ordinary rule
+    expect(classified.ruleId).toBe('R-DIV-2026');
+    expect(classified.taxTreatment).toBe('WITHHOLDING_EXCLUSIVE');
+    expect(classified.withheldTaxAmount?.amount).toBe('5500');
+  });
+
+  // Fixture AH — R$ 55,000 SAME PAYER MULTI-PAYMENT (30k + 25k = 55k → 5,500)
+  it('Fixture AH — MULTI-PAYMENT CROSSING: 30k + 25k = 55k → R$ 5,500 total withholding', () => {
+    const events: IncomeEventInputData[] = [
+      {
+        incomeEventId: 'evt-ah1',
+        incomeType: 'DIVIDEND',
+        assetId: 'asset-itub4',
+        payerId: 'asset-itub4',
+        payerDisplayName: 'ITAU UNIBANCO PN',
+        paymentDate: '2026-10-05',
+        grossAmount: '30000',
+      },
+      {
+        incomeEventId: 'evt-ah2',
+        incomeType: 'DIVIDEND',
+        assetId: 'asset-itub4',
+        payerId: 'asset-itub4',
+        payerDisplayName: 'ITAU UNIBANCO PN',
+        paymentDate: '2026-10-20',
+        grossAmount: '25000',
+      },
+    ];
+
+    const summary = buildAnnualInvestmentIncomeSummary({
+      calendarYear: 2026,
+      taxSubjectId: 'user-1',
+      events,
+    });
+
+    expect(summary.dividends.totalGrossAmount.amount).toBe('55000');
+    expect(summary.dividends.totalWithheldTax.amount).toBe('5500');
+    expect(summary.dividends.totalNetAmount.amount).toBe('49500');
+  });
+});

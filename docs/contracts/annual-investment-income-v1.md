@@ -3,7 +3,7 @@
 **Phase:** 4H.4 / 4H.4A — Annual Investment Income Summary  
 **Status:** Frozen  
 **Governing Domain:** `@atlas/tax-engine`  
-**API Resource:** `GET /api/v1/fiscal/annual/:calendarYear/income`  
+**API Resource:** `GET /api/v1/fiscal/annual/:calendarYear/income`
 
 ---
 
@@ -21,11 +21,7 @@ export type IncomeTaxTreatment =
   | 'REQUIRES_CONFIRMATION'
   | 'BLOCKED';
 
-export type IncomeCompletenessStatus =
-  | 'COMPLETE'
-  | 'PARTIAL'
-  | 'BLOCKED'
-  | 'REQUIRES_CONFIRMATION';
+export type IncomeCompletenessStatus = 'COMPLETE' | 'PARTIAL' | 'BLOCKED' | 'REQUIRES_CONFIRMATION';
 
 export interface AnnualIncomeEvent {
   readonly incomeEventId: string;
@@ -33,8 +29,8 @@ export interface AnnualIncomeEvent {
   readonly assetId: string;
   readonly payerId: string;
   readonly payerDisplayName: string;
-  readonly paymentDate: string;       // YYYY-MM-DD
-  readonly competence: string;        // YYYY-MM
+  readonly paymentDate: string; // YYYY-MM-DD
+  readonly competence: string; // YYYY-MM
   readonly calendarYear: number;
   readonly grossAmount: Money;
   readonly withheldTaxAmount: Money | null;
@@ -109,11 +105,12 @@ export interface AnnualInvestmentIncomeSummary {
 1. **JCP Withholding Transition:**
    - Events with `paymentDate < '2026-01-01'` use 15.0% (`0.15`) statutory rate (`R-JCP-2025`).
    - Events with `paymentDate >= '2026-01-01'` use 17.5% (`0.175`) statutory rate (`R-JCP-2026`).
-2. **Dividend Exemption Threshold (2026):**
+2. **Dividend Exemption Threshold (2026, per Lei 15.270/2025 Art. 6º-A):**
    - Events with `paymentDate < '2026-01-01'` are 100% exempt (`R-DIV-2025`).
-   - Events with `paymentDate >= '2026-01-01'` evaluate monthly total per payer:
+   - Events with `paymentDate >= '2026-01-01'` and qualifying transition evidence (`R-DIV-TRANSITION`) are exempt.
+   - Events with `paymentDate >= '2026-01-01'` without transition eligibility evaluate monthly total per payer:
      - Total <= R$ 50,000.00: 0% withholding (`EXEMPT`).
-     - Total > R$ 50,000.00: 10% withholding on the excess over R$ 50,000.00 (`WITHHOLDING_EXCLUSIVE`).
+     - Total > R$ 50,000.00: 10% withholding on the **TOTAL** monthly amount (`WITHHOLDING_EXCLUSIVE`).
 3. **FII Exemption Fail-Closed:**
    - Requires verification of exchange listing, >= 100 cotistas, and < 10% ownership.
    - Missing evidence produces `REQUIRES_CONFIRMATION` with `FII_ELIGIBILITY_UNVERIFIED`.
@@ -123,4 +120,3 @@ export interface AnnualInvestmentIncomeSummary {
    - `totalWithheldTax === dividends.withheld + jcp.withheld + fiiIncome.withheld`.
 5. **No Cross-User Leaks:**
    - All queries filter strictly by authenticated `taxSubjectId`. Cross-user access returns 404.
-

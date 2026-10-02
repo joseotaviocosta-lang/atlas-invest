@@ -19,6 +19,37 @@ export interface FiiEligibilityData {
   readonly isVerified?: boolean;
 }
 
+/**
+ * Structured evidence for the transitional exemption under Lei 15.270/2025.
+ *
+ * Profits/dividends accrued through 31/12/2025 whose distribution was formally
+ * approved by the company's competent body by 31/12/2025 retain full exemption
+ * when paid in calendar years 2026, 2027, or 2028.
+ *
+ * Missing evidence fails closed — the ordinary R-DIV-2026 rule applies.
+ */
+export type DividendTransitionEligibility =
+  | 'ELIGIBLE' // All required evidence confirmed
+  | 'INELIGIBLE' // Evidence explicitly disqualifies
+  | 'REQUIRES_CONFIRMATION'; // Evidence missing or incomplete
+
+export interface DividendTransitionEvidence {
+  /** Period to which profits relate (must be <= 2025) */
+  readonly profitAccrualPeriodEnd?: string; // YYYY-MM-DD or YYYY
+  /** Date the distribution was formally approved by the corporate body */
+  readonly distributionApprovalDate?: string; // YYYY-MM-DD
+  /** Reference to the approval document (e.g., ata de assembleia) */
+  readonly approvalDocumentReference?: string;
+  /** The approved distribution amount (optional, for audit) */
+  readonly approvedAmount?: string | Money;
+  /** Eligibility status (ELIGIBLE, INELIGIBLE, REQUIRES_CONFIRMATION) */
+  readonly eligibilityStatus: DividendTransitionEligibility;
+  /** Source of the evidence */
+  readonly evidenceSource?: string;
+  /** When the evidence was confirmed */
+  readonly confirmedAt?: string; // ISO 8601
+}
+
 export interface IncomeEventInputData {
   readonly incomeEventId: string;
   readonly incomeType: IncomeType;
@@ -31,6 +62,8 @@ export interface IncomeEventInputData {
   readonly monthlyPayerDividendTotal?: string | Money | null;
   readonly currency?: Currency;
   readonly fiiEligibility?: FiiEligibilityData;
+  /** Transition evidence for dividends paid in 2026+ relating to pre-2026 profits */
+  readonly dividendTransitionEvidence?: DividendTransitionEvidence;
   readonly source?: string;
   readonly sourceReference?: string;
 }
@@ -137,42 +170,65 @@ export function classifyIncomeEvent(
   switch (input.incomeType) {
     case 'DIVIDEND': {
       if (paymentDate < '2026-01-01') {
+        // Calendar year 2025 or earlier: full exemption under Lei 9.249/1995
         ruleId = 'R-DIV-2025';
         ruleVersion = '1995-12-26-LEI-9249';
         taxTreatment = 'EXEMPT';
         withheld = toMoney(input.withheldTaxAmount, currency);
         net = gross.subtract(withheld);
       } else {
-        ruleId = 'R-DIV-2026';
-        ruleVersion = '2025-12-30-LEI-DIV-2026';
-        if (input.withheldTaxAmount !== undefined && input.withheldTaxAmount !== null) {
+        // Calendar year 2026+: check transition eligibility first
+        const transition = input.dividendTransitionEvidence;
+        if (transition && transition.eligibilityStatus === 'ELIGIBLE') {
+          // Transitional exemption: pre-2026 profits distributed in 2026-2028
+          // per Lei 15.270/2025 transitional provisions
+          ruleId = 'R-DIV-TRANSITION';
+          ruleVersion = '2025-LEI-15270-TRANSITION';
+          taxTreatment = 'EXEMPT';
           withheld = toMoney(input.withheldTaxAmount, currency);
           net = gross.subtract(withheld);
-          taxTreatment = withheld.isPositive() ? 'WITHHOLDING_EXCLUSIVE' : 'EXEMPT';
         } else {
-          const threshold = Money.from('50000.00', currency);
-          const totalContext = input.monthlyPayerDividendTotal
-            ? toMoney(input.monthlyPayerDividendTotal, currency)
-            : gross;
-
-          if (totalContext.compare(threshold) <= 0) {
-            taxTreatment = 'EXEMPT';
-            withheld = Money.zero(currency);
-            net = gross;
-          } else {
-            taxTreatment = 'WITHHOLDING_EXCLUSIVE';
-            const excess = totalContext.subtract(threshold);
-            if (
-              input.monthlyPayerDividendTotal &&
-              toMoney(input.monthlyPayerDividendTotal, currency).isPositive()
-            ) {
-              const totalM = toMoney(input.monthlyPayerDividendTotal, currency);
-              const fraction = gross.divide(totalM.amount);
-              withheld = excess.multiply('0.10').multiply(fraction.amount);
-            } else {
-              withheld = excess.multiply('0.10');
-            }
+          // Ordinary 2026+ rule: Lei 15.270/2025, Art. 6º-A of Lei 9.250/1995
+          // 10% IRRF on TOTAL monthly amount when > R$ 50.000,00 ("superior a")
+          ruleId = 'R-DIV-2026';
+          ruleVersion = '2025-LEI-15270';
+          if (input.withheldTaxAmount !== undefined && input.withheldTaxAmount !== null) {
+            // Explicit withholding evidence from source — use as-is
+            withheld = toMoney(input.withheldTaxAmount, currency);
             net = gross.subtract(withheld);
+            taxTreatment = withheld.isPositive() ? 'WITHHOLDING_EXCLUSIVE' : 'EXEMPT';
+          } else {
+            // Compute withholding per Art. 6º-A: threshold is strictly "superior a"
+            const threshold = Money.from('50000', currency);
+            const totalContext = input.monthlyPayerDividendTotal
+              ? toMoney(input.monthlyPayerDividendTotal, currency)
+              : gross;
+
+            if (totalContext.compare(threshold) <= 0) {
+              // Monthly total <= R$ 50.000,00: fully exempt
+              taxTreatment = 'EXEMPT';
+              withheld = Money.zero(currency);
+              net = gross;
+            } else {
+              // Monthly total > R$ 50.000,00: 10% IRRF on the TOTAL (not the excess)
+              // § 1º: No deductions permitted from the base
+              // § 2º: Multiple payments recalculated over accumulated total
+              taxTreatment = 'WITHHOLDING_EXCLUSIVE';
+              if (
+                input.monthlyPayerDividendTotal &&
+                toMoney(input.monthlyPayerDividendTotal, currency).isPositive()
+              ) {
+                // Pro-rata allocation: this event's share of total monthly withholding
+                const totalM = toMoney(input.monthlyPayerDividendTotal, currency);
+                const totalWithholding = totalM.multiply('0.10');
+                const fraction = gross.divide(totalM.amount);
+                withheld = totalWithholding.multiply(fraction.amount);
+              } else {
+                // Single event is the entire monthly total
+                withheld = totalContext.multiply('0.10');
+              }
+              net = gross.subtract(withheld);
+            }
           }
         }
       }
@@ -369,6 +425,7 @@ export function buildAnnualInvestmentIncomeSummary(
       payerId: string;
       payerDisplayName: string;
       divGross: Money;
+      divWithheld: Money;
       jcpGross: Money;
       jcpWithheld: Money;
       fiiGross: Money;
@@ -381,6 +438,7 @@ export function buildAnnualInvestmentIncomeSummary(
     number,
     {
       dividendsGross: Money;
+      divWithheld: Money;
       jcpGross: Money;
       jcpWithheld: Money;
       fiiIncomeGross: Money;
@@ -391,6 +449,7 @@ export function buildAnnualInvestmentIncomeSummary(
   for (let m = 1; m <= 12; m++) {
     monthSnapshotsMap.set(m, {
       dividendsGross: Money.zero(currency),
+      divWithheld: Money.zero(currency),
       jcpGross: Money.zero(currency),
       jcpWithheld: Money.zero(currency),
       fiiIncomeGross: Money.zero(currency),
@@ -426,6 +485,7 @@ export function buildAnnualInvestmentIncomeSummary(
         payerId: evt.payerId,
         payerDisplayName: evt.payerDisplayName,
         divGross: Money.zero(currency),
+        divWithheld: Money.zero(currency),
         jcpGross: Money.zero(currency),
         jcpWithheld: Money.zero(currency),
         fiiGross: Money.zero(currency),
@@ -442,12 +502,16 @@ export function buildAnnualInvestmentIncomeSummary(
         divGross = divGross.add(evt.grossAmount);
         if (evt.withheldTaxAmount) {
           divWithheld = divWithheld.add(evt.withheldTaxAmount);
+          pRecord.divWithheld = pRecord.divWithheld.add(evt.withheldTaxAmount);
         }
         divCount++;
         if (evt.completenessStatus !== 'COMPLETE') divComplete = false;
 
         pRecord.divGross = pRecord.divGross.add(evt.grossAmount);
         mSnap.dividendsGross = mSnap.dividendsGross.add(evt.grossAmount);
+        if (evt.withheldTaxAmount) {
+          mSnap.divWithheld = mSnap.divWithheld.add(evt.withheldTaxAmount);
+        }
         break;
       }
       case 'JCP': {
@@ -489,7 +553,7 @@ export function buildAnnualInvestmentIncomeSummary(
     .sort((a, b) => a.payerDisplayName.localeCompare(b.payerDisplayName))
     .map((p) => {
       const totalGross = p.divGross.add(p.jcpGross).add(p.fiiGross);
-      const totalWithheld = p.jcpWithheld;
+      const totalWithheld = p.jcpWithheld.add(p.divWithheld);
       return Object.freeze({
         payerId: p.payerId,
         payerDisplayName: p.payerDisplayName,
@@ -509,7 +573,7 @@ export function buildAnnualInvestmentIncomeSummary(
     const s = monthSnapshotsMap.get(m)!;
     const comp = `${calendarYear}-${m.toString().padStart(2, '0')}`;
     const mTotalGross = s.dividendsGross.add(s.jcpGross).add(s.fiiIncomeGross);
-    const mTotalWithheld = s.jcpWithheld;
+    const mTotalWithheld = s.jcpWithheld.add(s.divWithheld);
     months.push(
       Object.freeze({
         competence: comp,
@@ -537,17 +601,11 @@ export function buildAnnualInvestmentIncomeSummary(
 
   // Category Summaries
   const divTreatmentSummary: IncomeTaxTreatment =
-    calendarYear < 2026
-      ? 'EXEMPT'
-      : divWithheld.isPositive()
-        ? 'WITHHOLDING_EXCLUSIVE'
-        : 'EXEMPT';
+    calendarYear < 2026 ? 'EXEMPT' : divWithheld.isPositive() ? 'WITHHOLDING_EXCLUSIVE' : 'EXEMPT';
 
   const jcpTreatmentSummary: IncomeTaxTreatment = 'WITHHOLDING_EXCLUSIVE';
 
-  const fiiTreatmentSummary: IncomeTaxTreatment = fiiComplete
-    ? 'EXEMPT'
-    : 'REQUIRES_CONFIRMATION';
+  const fiiTreatmentSummary: IncomeTaxTreatment = fiiComplete ? 'EXEMPT' : 'REQUIRES_CONFIRMATION';
 
   const dividendsSummary: AnnualIncomeCategorySummary = Object.freeze({
     incomeType: 'DIVIDEND',

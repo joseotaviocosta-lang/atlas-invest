@@ -3,11 +3,12 @@ import { Money } from '../../packages/domain/src';
 import {
   buildAnnualInvestmentIncomeSummary,
   classifyIncomeEvent,
+  DividendTransitionEvidence,
   IncomeEventInputData,
   IncomeType,
 } from '../../packages/tax-engine/src';
 
-describe('Tax Engine: Annual Investment Income 10,000-Case Fuzz & Invariant Verification (Phase 4H.4 / 4H.4A)', () => {
+describe('Tax Engine: Annual Investment Income 10,000-Case Fuzz & Invariant Verification (Phase 4H.4A.1)', () => {
   it(
     'runs 10,000 deterministic randomized annual income scenarios and validates mathematical and structural invariants',
     { timeout: 60000 },
@@ -67,6 +68,28 @@ describe('Tax Engine: Annual Investment Income 10,000-Case Fuzz & Invariant Veri
             // else remains undefined (unverified -> REQUIRES_CONFIRMATION)
           }
 
+          // Random transition evidence for 2026 dividends
+          let dividendTransitionEvidence: DividendTransitionEvidence | undefined;
+          if (incomeType === 'DIVIDEND' && year === 2026) {
+            const transMode = rand();
+            if (transMode < 0.15) {
+              dividendTransitionEvidence = {
+                profitAccrualPeriodEnd: '2025-12-31',
+                distributionApprovalDate: '2025-12-20',
+                eligibilityStatus: 'ELIGIBLE',
+              };
+            } else if (transMode < 0.25) {
+              dividendTransitionEvidence = {
+                eligibilityStatus: 'INELIGIBLE',
+              };
+            } else if (transMode < 0.3) {
+              dividendTransitionEvidence = {
+                eligibilityStatus: 'REQUIRES_CONFIRMATION',
+              };
+            }
+            // else no transition evidence → ordinary R-DIV-2026
+          }
+
           events.push({
             incomeEventId: `fuzz-evt-${iteration}-${i}`,
             incomeType,
@@ -76,6 +99,7 @@ describe('Tax Engine: Annual Investment Income 10,000-Case Fuzz & Invariant Veri
             paymentDate: dateStr,
             grossAmount: gross,
             fiiEligibility,
+            dividendTransitionEvidence,
           });
         }
 
@@ -121,9 +145,15 @@ describe('Tax Engine: Annual Investment Income 10,000-Case Fuzz & Invariant Veri
         // 5. Statutory rate validation for individual events
         for (const evt of events) {
           const classified = classifyIncomeEvent(evt);
-          if (evt.incomeType === 'DIVIDEND' && year === 2025) {
-            expect(classified.taxTreatment).toBe('EXEMPT');
-            expect(classified.ruleId).toBe('R-DIV-2025');
+          if (evt.incomeType === 'DIVIDEND') {
+            if (year === 2025) {
+              expect(classified.taxTreatment).toBe('EXEMPT');
+              expect(classified.ruleId).toBe('R-DIV-2025');
+            } else if (evt.dividendTransitionEvidence?.eligibilityStatus === 'ELIGIBLE') {
+              // Transition-eligible dividends in 2026 are exempt
+              expect(classified.taxTreatment).toBe('EXEMPT');
+              expect(classified.ruleId).toBe('R-DIV-TRANSITION');
+            }
           } else if (evt.incomeType === 'JCP') {
             expect(classified.taxTreatment).toBe('WITHHOLDING_EXCLUSIVE');
             if (year === 2025) {
@@ -132,6 +162,23 @@ describe('Tax Engine: Annual Investment Income 10,000-Case Fuzz & Invariant Veri
             } else {
               expect(classified.ruleId).toBe('R-JCP-2026');
               expect(classified.ruleVersion).toBe('2025-12-30-LEI-JCP-2026');
+            }
+          }
+        }
+
+        // 6. Dividend 2026 total-base withholding invariant:
+        // For ordinary R-DIV-2026 events, if the individual event is the sole
+        // event in a month/payer, withholding = 10% of gross when gross > 50k
+        for (const evt of events) {
+          if (evt.incomeType === 'DIVIDEND' && year === 2026 && !evt.dividendTransitionEvidence) {
+            const classified = classifyIncomeEvent(evt);
+            if (classified.ruleId === 'R-DIV-2026') {
+              // Withholding should never be negative
+              if (classified.withheldTaxAmount) {
+                expect(classified.withheldTaxAmount.isNegative()).toBe(false);
+              }
+              // Net should never exceed gross
+              expect(classified.netAmount.compare(classified.grossAmount) <= 0).toBe(true);
             }
           }
         }

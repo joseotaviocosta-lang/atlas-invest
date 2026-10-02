@@ -3,7 +3,7 @@
 **Status:** Accepted  
 **Date:** 2026-10-01  
 **Deciders:** Project Atlas Architecture Council  
-**Context:** Phase 4H.4 / 4H.4A — Annual Investment Income Summary  
+**Context:** Phase 4H.4 / 4H.4A — Annual Investment Income Summary
 
 ---
 
@@ -19,7 +19,7 @@ How should Project Atlas represent, classify, and aggregate these investment inc
 
 1. **Source of Truth:** The transaction ledger (`Transaction`) remains the single immutable source of truth.
 2. **Deterministic Replay:** The annual income summary is a pure projection without database persistence of derived totals.
-3. **Temporal Awareness:** Withholding rules and exemption thresholds change between 2025 and 2026 (JCP 15% -> 17.5%; Dividends 0% -> 10% on excess over R$ 50k/month per payer).
+3. **Temporal Awareness:** Withholding rules and exemption thresholds change between 2025 and 2026 (JCP 15% -> 17.5%; Dividends 0% -> 10% on TOTAL monthly amount when > R$ 50k/month per payer, per Lei 15.270/2025). Transitional exemption applies for pre-2026 profits with valid corporate approval evidence.
 4. **Payer-Level Integrity:** Aggregations must track paying sources by immutable `AssetId` and official issuer metadata (CNPJ/ticker).
 5. **Zero Floating Point Arithmetic:** All monetary operations are exact arbitrary-precision calculations via `Money` / `Decimal.js`.
 6. **No Scope Creep:** Do not calculate final annual IRPF liability or high-income global minimum tax in this phase.
@@ -50,4 +50,3 @@ The engine receives `IncomeEventInputData[]` filtered for the target calendar ye
   - Direct integration with Web and Mobile UI via dedicated view models.
 - **Negative / Trade-offs:**
   - Requires bulk-loading income transactions for the calendar year; bounded by `tests/fiscal-api/annual-investment-income-query-budget.test.ts` (<= 10 queries, zero N+1).
-
