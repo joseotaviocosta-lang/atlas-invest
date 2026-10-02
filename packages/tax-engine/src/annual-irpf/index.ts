@@ -65,3 +65,23 @@ export type {
   MonthlyFiscalInputData,
   BuildAnnualCapitalMarketSummaryInput,
 } from './annual-capital-market-summary-engine';
+
+export type {
+  IncomeType,
+  IncomeTaxTreatment,
+  IncomeCompletenessStatus,
+  AnnualIncomeEvent,
+  AnnualIncomeCategorySummary,
+  AnnualIncomePayerSummary,
+  AnnualMonthlyIncomeSnapshot,
+  AnnualInvestmentIncomeSummary,
+} from './annual-investment-income';
+
+export {
+  classifyIncomeEvent,
+  buildAnnualInvestmentIncomeSummary,
+} from './annual-investment-income-engine';
+export type {
+  IncomeEventInputData,
+  BuildAnnualInvestmentIncomeSummaryInput,
+} from './annual-investment-income-engine';

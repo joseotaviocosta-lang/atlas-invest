@@ -2009,3 +2009,27 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Todos os cálculos e totalizações monetárias utilizam exclusivamente `Money` / `Decimal.js` com representação decimal canônica em strings.
 8. **ZERO CÁLCULOS NA UI (WEB E MOBILE):**
    - As interfaces cliente apenas renderizam as tabelas mensais e cartões anuais serializados pelo servidor.
+
+---
+
+## 70. Invariantes de Rendimentos Anuais de Investimento (Fase 4H.4)
+
+1. **AUTORIDADE PURA E DETERMINÍSTICA DE RENDIMENTOS (ADR-047):**
+   - A agregação anual de rendimentos (`buildAnnualInvestmentIncomeSummary`) é estritamente pura, sem I/O, determinística e reprodutível.
+   - Consome eventos de proventos (`DIVIDEND`, `JCP`, `FII_INCOME`) do livro-razão imutável indexados pela data econômica de pagamento (`paymentDate`).
+2. **SEGREGAÇÃO ESTRITA ENTRE RENDA E GANHO DE CAPITAL:**
+   - Rendimentos de investimentos nunca alteram o custo médio de aquisição nem entram no cômputo de ganhos líquidos ou prejuízos de renda variável (4G/4H.3).
+   - O IRRF retido sobre JCP tem natureza definitiva/exclusiva na fonte e jamais pode ser compensado contra DARF mensal 6015 ou IRPF sobre ganho de capital.
+3. **PRECISÃO DECIMAL ARBITRÁRIA (ZERO FLOATS):**
+   - Todos os valores brutos (`grossAmount`), retenções na fonte (`withholdingTax`) e valores líquidos (`netAmount`) utilizam `Money` encapsulado em `@atlas/domain` e são serializados como strings decimais canônicas.
+4. **IDENTIDADE CANÔNICA DA FONTE PAGADORA (PAYER):**
+   - A fonte pagadora é identificada univocamente pelo `AssetId`, ticker e CNPJ da emissora. É terminantemente proibido agrupar fontes pagadoras por nomes de texto livre arbitrários.
+5. **FAIL-CLOSED EM CONDICIONANTES DE FII (LEI 14.754/23):**
+   - Rendimentos de FII só são classificados como `ISENTO_NAO_TRIBUTAVEL` com status `COMPLETE` se os requisitos do Art. 3º, III da Lei 11.033/04 (com redação da Lei 14.754/23: negociação exclusiva em bolsa/MBO, mínimo de 100 cotistas e titularidade < 10%) forem formalmente confirmados.
+   - Ausência de comprovação resulta compulsoriamente em status `REQUIRES_CONFIRMATION` com código `FII_ELIGIBILITY_UNVERIFIED`.
+6. **ORDENAÇÃO CANÔNICA E DEDUPLICAÇÃO:**
+   - Eventos de rendimento no ano são deduplicados por `incomeEventId` e ordenados de forma estável por `(paymentDate ASC, incomeType ASC, incomeEventId ASC)`.
+7. **ZERO CÁLCULOS TRIBUTÁRIOS NA UI (WEB E MOBILE):**
+   - As interfaces Web e Mobile renderizam estritamente os resumos categóricos e listagens por fonte pagadora calculados pelo servidor.
+8. **TAX AI PERMANECE DESABILITADA:**
+   - Consultas de IA sobre tributação de proventos permanecem categorizadas como `UNSUPPORTED_TAX` com 0 chamadas a provedores externos.

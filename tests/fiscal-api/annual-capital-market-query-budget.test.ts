@@ -84,7 +84,7 @@ describe('Phase 4H.3A — Annual Capital Market Query Budget & N+1 Verification'
         q.query.toLowerCase().includes('tax_obligation') ||
         q.query.toLowerCase().includes('taxobligation'),
     ).length;
-    const otherQueries = queryCount - sessionQueries - userQueries - obligationQueries;
+    const _otherQueries = queryCount - sessionQueries - userQueries - obligationQueries;
 
     // Total query count must be bounded and strictly <= 60
     expect(queryCount).toBeLessThanOrEqual(60);

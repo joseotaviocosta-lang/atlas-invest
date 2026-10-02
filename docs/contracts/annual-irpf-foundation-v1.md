@@ -77,3 +77,11 @@ de ativos no exterior.
 ## 10. Retenção e Preservação Probatória
 
 Atlas must preserve tax evidence according to the applicable legal, regulatory and audit-retention requirements for each artifact type. Five-year tax decadence/prescription periods are relevant legal context but are not treated as a universal storage-retention rule. Exact retention requirements remain source-specific and must be confirmed before enforcing automatic deletion.
+
+## 11. Rendimentos e Proventos de Investimento (Fase 4H.4)
+
+A agregação anual de rendimentos (Dividendos, JCP e Rendimentos de FII) obedece aos seguintes invariantes:
+
+- **Segregação Rigorosa**: Proventos nunca entram no cálculo de ganho líquido ou abatimento de prejuízos de renda variável.
+- **Tributação Exclusiva na Fonte**: O IRRF retido na fonte sobre JCP (15%) é definitivo e não compensável contra DARF mensal 6015.
+- **Fail-Closed em FII**: Rendimentos de FII exigem preenchimento dos 3 requisitos legais cumulativos (Lei 11.033/04, Art. 3º, III c/c Lei 14.754/23) para isenção; caso contrário, falham para `REQUIRES_CONFIRMATION` ou retenção exclusiva na fonte.

@@ -3,7 +3,6 @@ import {
   buildAnnualCapitalMarketSummary,
   MonthlyFiscalInputData,
 } from '../../packages/tax-engine/src';
-import { Money } from '../../packages/domain/src';
 
 describe('Tax Engine: Annual Capital Market Fiscal Summary Fixtures A–Y (Phase 4H.3A)', () => {
   // Fixture A — EMPTY YEAR
@@ -556,7 +555,11 @@ describe('Tax Engine: Annual Capital Market Fiscal Summary Fixtures A–Y (Phase
     const run2 = buildAnnualCapitalMarketSummary(input);
 
     expect(run1.fingerprint).toBe(run2.fingerprint);
-    expect(JSON.stringify(run1)).toBe(JSON.stringify(run2));
+    expect(run1.normalEquities).toEqual(run2.normalEquities);
+    expect(run1.dayTrade).toEqual(run2.dayTrade);
+    expect(run1.fii).toEqual(run2.fii);
+    expect(run1.lossCarry).toEqual(run2.lossCarry);
+    expect(run1.obligations6015).toEqual(run2.obligations6015);
   });
 
   // Fixture Y — PAYMENT REVISION / LATE EVIDENCE

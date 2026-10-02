@@ -23,6 +23,8 @@ import { TaxObligationSection } from '@/components/fiscal/TaxObligationSection';
 import { EquityFiscalSection } from '@/components/fiscal/EquityFiscalSection';
 import { Composed6015Section } from '@/components/fiscal/Composed6015Section';
 import { AnnualPositionsSection } from '@/components/fiscal/AnnualPositionsSection';
+import { AnnualCapitalMarketSection } from '@/components/fiscal/AnnualCapitalMarketSection';
+import { AnnualInvestmentIncomeSection } from '@/components/fiscal/AnnualInvestmentIncomeSection';
 
 function currentCompetence(): string {
   const now = new Date();
@@ -541,6 +543,8 @@ function FiscalContent() {
           />
 
           <AnnualPositionsSection portfolioId={selectedPortfolioId} />
+          <AnnualCapitalMarketSection />
+          <AnnualInvestmentIncomeSection />
 
           <div
             style={{

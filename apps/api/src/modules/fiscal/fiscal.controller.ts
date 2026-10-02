@@ -50,6 +50,7 @@ import {
 } from '../../application/fiscal/taxpayer-identity.use-case';
 import { GetAnnualPositionReportUseCase } from '../../application/fiscal/get-annual-position-report.use-case';
 import { GetAnnualCapitalMarketSummaryUseCase } from '../../application/fiscal/get-annual-capital-market-summary.use-case';
+import { GetAnnualInvestmentIncomeSummaryUseCase } from '../../application/fiscal/get-annual-investment-income-summary.use-case';
 import { RecordAnnualOpeningPositionUseCase } from '../../application/fiscal/record-annual-opening-position.use-case';
 import { ListAnnualOpeningPositionsUseCase } from '../../application/fiscal/list-annual-opening-positions.use-case';
 import { ConfirmAnnualOpeningPositionUseCase } from '../../application/fiscal/confirm-annual-opening-position.use-case';
@@ -66,6 +67,10 @@ import {
   AnnualCapitalMarketParam,
   AnnualCapitalMarketParamSchema,
 } from './dto/annual-capital-market.dto';
+import {
+  AnnualInvestmentIncomeParam,
+  AnnualInvestmentIncomeParamSchema,
+} from './dto/annual-investment-income.dto';
 
 import {
   AdjustmentQuery,
@@ -161,6 +166,8 @@ export class FiscalController {
     private readonly getAnnualPositionReportUseCase: GetAnnualPositionReportUseCase,
     @Inject(GetAnnualCapitalMarketSummaryUseCase)
     private readonly getAnnualCapitalMarketSummaryUseCase: GetAnnualCapitalMarketSummaryUseCase,
+    @Inject(GetAnnualInvestmentIncomeSummaryUseCase)
+    private readonly getAnnualInvestmentIncomeSummaryUseCase: GetAnnualInvestmentIncomeSummaryUseCase,
     @Inject(RecordAnnualOpeningPositionUseCase)
     private readonly recordAnnualOpeningPositionUseCase: RecordAnnualOpeningPositionUseCase,
     @Inject(ListAnnualOpeningPositionsUseCase)
@@ -776,6 +783,26 @@ export class FiscalController {
     @CurrentPrincipal() principal: AuthenticatedPrincipal,
   ) {
     const data = await this.getAnnualCapitalMarketSummaryUseCase.execute({
+      taxSubjectId: principal.userId,
+      calendarYear: params.calendarYear,
+    });
+    return { data };
+  }
+
+  @Get('annual/:calendarYear/income')
+  @ApiOperation({
+    summary:
+      'Get authoritative annual summary for investment income (dividends, JCP with 15% exclusive withholding, FII distributions).',
+  })
+  @ApiParam({ name: 'calendarYear', description: 'Economic calendar year (e.g. 2025)' })
+  @ApiResponse({ status: 200, description: 'Annual investment income summary' })
+  @ApiResponse({ status: 400, description: 'Invalid calendar year or input' })
+  async getAnnualInvestmentIncomeSummary(
+    @Param(new ZodValidationPipe(AnnualInvestmentIncomeParamSchema))
+    params: AnnualInvestmentIncomeParam,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.getAnnualInvestmentIncomeSummaryUseCase.execute({
       taxSubjectId: principal.userId,
       calendarYear: params.calendarYear,
     });

@@ -56,6 +56,7 @@ import {
 } from './fiscal/taxpayer-identity.use-case';
 import { GetAnnualPositionReportUseCase } from './fiscal/get-annual-position-report.use-case';
 import { GetAnnualCapitalMarketSummaryUseCase } from './fiscal/get-annual-capital-market-summary.use-case';
+import { GetAnnualInvestmentIncomeSummaryUseCase } from './fiscal/get-annual-investment-income-summary.use-case';
 import { RecordAnnualOpeningPositionUseCase } from './fiscal/record-annual-opening-position.use-case';
 import { ListAnnualOpeningPositionsUseCase } from './fiscal/list-annual-opening-positions.use-case';
 import { ConfirmAnnualOpeningPositionUseCase } from './fiscal/confirm-annual-opening-position.use-case';
@@ -127,6 +128,7 @@ const USE_CASES = [
   RecordTaxpayerIdentityUseCase,
   GetAnnualPositionReportUseCase,
   GetAnnualCapitalMarketSummaryUseCase,
+  GetAnnualInvestmentIncomeSummaryUseCase,
   RecordAnnualOpeningPositionUseCase,
   ListAnnualOpeningPositionsUseCase,
   ConfirmAnnualOpeningPositionUseCase,
