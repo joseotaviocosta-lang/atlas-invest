@@ -185,9 +185,9 @@ function categoryLabel(cat: string): string {
 }
 
 export function mapToAnnualPositionReportViewModel(
-  raw: RawAnnualPositionReport | null,
+  raw: RawAnnualPositionReport | null | undefined,
 ): AnnualPositionReportViewModel | null {
-  if (!raw) return null;
+  if (!raw || Array.isArray(raw) || typeof raw !== 'object' || !raw.summary) return null;
 
   const positions: AnnualPositionViewModel[] = (raw.positions ?? []).map((pos) => {
     const formattedTotal = pos.totalHistoricalCost

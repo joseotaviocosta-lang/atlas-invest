@@ -212,8 +212,9 @@ test.describe('Phase 4F — official Sicalc DARF handoff (real UI)', () => {
       if (/\/inputs\/(trade-classifications|withholdings|fii-metadata)/.test(url)) return json([]);
       if (/\/inputs\//.test(url)) return json(INPUT_READINESS);
       if (/\/obligations/.test(url)) return json([]);
+      if (/\/annual\//.test(url)) return json(null);
       if (/\/monthly\//.test(url)) return json(MONTHLY_STATE);
-      return json([]);
+      return json(null);
     });
 
     // Intercept the official destination so the popup does not hit the network.

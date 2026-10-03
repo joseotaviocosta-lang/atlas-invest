@@ -135,8 +135,19 @@ export interface RawAnnualInvestmentIncomeSummary {
 }
 
 export function formatAnnualInvestmentIncomeViewModel(
-  data: RawAnnualInvestmentIncomeSummary,
-): AnnualInvestmentIncomeViewModel {
+  data: RawAnnualInvestmentIncomeSummary | null | undefined,
+): AnnualInvestmentIncomeViewModel | null {
+  if (
+    !data ||
+    Array.isArray(data) ||
+    typeof data !== 'object' ||
+    !data.dividends ||
+    !data.jcp ||
+    !data.fiiIncome
+  ) {
+    return null;
+  }
+
   const cur = data.currency ?? 'BRL';
 
   let statusLabel = 'Completo';

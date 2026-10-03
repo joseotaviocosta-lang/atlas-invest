@@ -252,9 +252,18 @@ function statusLabel(status: string): string {
 }
 
 export function mapToAnnualCapitalMarketViewModel(
-  raw: RawAnnualCapitalMarketFiscalSummary | null,
+  raw: RawAnnualCapitalMarketFiscalSummary | null | undefined,
 ): AnnualCapitalMarketViewModel | null {
-  if (!raw) return null;
+  if (
+    !raw ||
+    Array.isArray(raw) ||
+    typeof raw !== 'object' ||
+    !raw.normalEquities ||
+    !raw.dayTrade ||
+    !raw.fii
+  ) {
+    return null;
+  }
   const currency = raw.currency ?? 'BRL';
 
   const months: AnnualMonthlySnapshotViewModel[] = (raw.months ?? []).map((m) => {

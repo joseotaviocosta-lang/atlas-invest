@@ -294,8 +294,9 @@ async function setupHarness(
     if (/\/inputs\//.test(url)) return json(INPUT_READINESS);
     if (/\/obligations/.test(url)) return json([]);
     if (/\/darfs/.test(url)) return json([]);
+    if (/\/annual\//.test(url)) return json(null);
     if (/\/monthly\//.test(url)) return json(MONTHLY_STATE);
-    return json([]);
+    return json(null);
   });
 
   return state;
