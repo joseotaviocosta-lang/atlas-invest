@@ -2087,7 +2087,7 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 4. **POLÍTICA DE STATUS PROVISÓRIO (REFORMA 2026+):**
    - Regras fiscais de novas leis (ex.: Lei 15.270/2025 para dividendos em 2026+) cujos programas IRPF oficiais ainda não possuem layout publicado pela RFB são categorizadas compulsoriamente com `mappingStatus: 'PROVISIONAL'`.
 5. **TRATAMENTO DE ATIVOS ALIENADOS NO ANO:**
-   - Ativos com posição positiva em 31/12/(Ano-1) que atingiram quantidade zero em 31/12/Ano são incluídos em *Bens e Direitos* (`POSICAO_ALIENADA_BENS_E_DIREITOS`) com `closingQuantity: "0"` e `closingTotalCost: "0.00"`.
+   - Ativos com posição positiva em 31/12/(Ano-1) que atingiram quantidade zero em 31/12/Ano são incluídos em _Bens e Direitos_ (`POSICAO_ALIENADA_BENS_E_DIREITOS`) com `closingQuantity: "0"` e `closingTotalCost: "0.00"`.
 6. **DECIMAIS PURAS (ZERO FLOATS):**
    - Todos os valores monetários e quantidades utilizam representações decimais arbitrárias e strings exatas.
 7. **ISOLAMENTO ANTI-ENUMERAÇÃO E ZERO CÁLCULOS NA UI:**
@@ -2095,4 +2095,3 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Web e Mobile apenas exibem as fichas, textos sugeridos e valores serializados pelo backend.
 8. **TAX AI PERMANECE DESABILITADA:**
    - Consultas de IA sobre reporte IRPF permanecem `UNSUPPORTED_TAX` com 0 chamadas a provedores.
-

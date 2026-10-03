@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAnnualTaxReportingPackage,
   ANNUAL_REPORTING_DISCLAIMER,
+  exportAnnualTaxReportingToCsv,
 } from '../../packages/tax-engine/src/annual-irpf';
 
 describe('Domain Unit: Annual Tax Reporting Engine Fixtures A–Z (Phase 4H.6)', () => {
@@ -670,5 +671,34 @@ describe('Domain Unit: Annual Tax Reporting Engine Fixtures A–Z (Phase 4H.6)',
     expect(isentosSection?.items).toHaveLength(2);
     expect(isentosSection?.items[0]?.payerId).toBe('11.111.111/0001-11');
     expect(isentosSection?.items[1]?.payerId).toBe('22.222.222/0001-22');
+  });
+
+  it('CSV Support Document Export generation test', () => {
+    const pkg = buildAnnualTaxReportingPackage({
+      taxSubjectId: 'user-csv-test',
+      calendarYear: 2025,
+      annualPositions: {
+        positions: [
+          {
+            assetId: 'asset-petr4',
+            ticker: 'PETR4',
+            assetType: 'BRAZILIAN_EQUITY',
+            closingQuantity: '100',
+            closingTotalCost: '3500.00',
+            openingQuantity: '100',
+            openingTotalCost: '3000.00',
+            costBasisStatus: 'COMPLETE',
+            isBlocked: false,
+          },
+        ],
+      },
+    });
+
+    const csv = exportAnnualTaxReportingToCsv(pkg);
+    expect(csv).toContain('PROJECT ATLAS - DOCUMENTO DE SUPORTE');
+    expect(csv).toContain('NÃO É UM ARQUIVO DE TRANSMISSÃO');
+    expect(csv).toContain('PETR4');
+    expect(csv).toContain('3500.00');
+    expect(csv).toContain('03-01');
   });
 });

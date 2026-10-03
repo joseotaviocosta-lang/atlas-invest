@@ -123,4 +123,4 @@ export { AnnualTaxReportingRuleRegistry } from './annual-tax-reporting-registry'
 export type { ReportingRuleMapping } from './annual-tax-reporting-registry';
 export { buildAnnualTaxReportingPackage } from './annual-tax-reporting-engine';
 export type { AnnualTaxReportingEngineInput } from './annual-tax-reporting-engine';
-
+export { exportAnnualTaxReportingToCsv } from './annual-tax-reporting-export';

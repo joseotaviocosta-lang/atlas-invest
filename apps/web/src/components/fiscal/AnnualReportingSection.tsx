@@ -34,10 +34,7 @@ export function AnnualReportingSection() {
     staleTime: 30_000,
   });
 
-  const viewModel = useMemo(
-    () => (data ? mapReportingPackageToViewModel(data) : null),
-    [data],
-  );
+  const viewModel = useMemo(() => (data ? mapReportingPackageToViewModel(data) : null), [data]);
 
   const displayedSections = useMemo(() => {
     if (!viewModel) return [];
@@ -129,6 +126,51 @@ export function AnnualReportingSection() {
                 {sec.title} ({sec.itemCount})
               </button>
             ))}
+
+            <button
+              data-testid="export-reporting-csv-btn"
+              onClick={async () => {
+                try {
+                  const res = await apiClient.get<string>(
+                    `/api/v1/fiscal/annual/${calendarYear}/reporting/export`,
+                    { headers: { Accept: 'text/csv' } },
+                  );
+                  const csvData =
+                    typeof res === 'string'
+                      ? res
+                      : typeof res === 'object' && res !== null && 'data' in res
+                        ? String((res as { data: unknown }).data)
+                        : '';
+                  const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.setAttribute('download', `atlas-suporte-irpf-${calendarYear}.csv`);
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  URL.revokeObjectURL(url);
+                } catch (e) {
+                  console.error('Falha ao exportar CSV:', e);
+                }
+              }}
+              style={{
+                marginLeft: 'auto',
+                padding: `${spacing.xs}px ${spacing.md}px`,
+                borderRadius: `${borderRadius.sm}px`,
+                border: `1px solid ${colors.border}`,
+                backgroundColor: colors.surface,
+                color: colors.accent,
+                fontSize: '0.8125rem',
+                cursor: 'pointer',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: `${spacing.xs}px`,
+              }}
+            >
+              📥 Exportar Guia (.CSV)
+            </button>
           </div>
         )}
       </div>
@@ -363,9 +405,7 @@ function ReportingSectionCard({
               style={{
                 padding: `${spacing.md}px`,
                 borderRadius: `${borderRadius.md}px`,
-                backgroundColor: item.isBlocked
-                  ? `${colors.negative}08`
-                  : colors.surfaceElevated,
+                backgroundColor: item.isBlocked ? `${colors.negative}08` : colors.surfaceElevated,
                 border: `1px solid ${item.isBlocked ? `${colors.negative}40` : colors.border}`,
                 cursor: 'pointer',
                 transition: 'all 0.15s ease-in-out',
@@ -530,10 +570,7 @@ function ItemDetailModal({
                 style={{
                   fontSize: '0.75rem',
                   fontWeight: 600,
-                  color:
-                    item.mappingStatusVariant === 'success'
-                      ? colors.positive
-                      : colors.warning,
+                  color: item.mappingStatusVariant === 'success' ? colors.positive : colors.warning,
                 }}
               >
                 {item.mappingStatusLabel}
@@ -646,7 +683,9 @@ function ItemDetailModal({
                   border: `1px solid ${colors.border}`,
                 }}
               >
-                <div style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>Custo Total</div>
+                <div style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>
+                  Custo Total
+                </div>
                 <div style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
                   R$ {item.costBasis}
                 </div>
@@ -661,7 +700,9 @@ function ItemDetailModal({
                   border: `1px solid ${colors.border}`,
                 }}
               >
-                <div style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>Valor Bruto</div>
+                <div style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>
+                  Valor Bruto
+                </div>
                 <div style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
                   R$ {item.grossAmount}
                 </div>
@@ -676,7 +717,9 @@ function ItemDetailModal({
                   border: `1px solid ${colors.border}`,
                 }}
               >
-                <div style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>Imposto Retido</div>
+                <div style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>
+                  Imposto Retido
+                </div>
                 <div style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
                   R$ {item.withheldAmount}
                 </div>
@@ -691,7 +734,9 @@ function ItemDetailModal({
                   border: `1px solid ${colors.border}`,
                 }}
               >
-                <div style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>Valor Líquido</div>
+                <div style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>
+                  Valor Líquido
+                </div>
                 <div style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
                   R$ {item.netAmount}
                 </div>
@@ -746,4 +791,3 @@ function ItemDetailModal({
     </div>
   );
 }
-

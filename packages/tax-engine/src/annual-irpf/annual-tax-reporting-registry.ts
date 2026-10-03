@@ -46,7 +46,8 @@ export class AnnualTaxReportingRuleRegistry {
       category: 'DIVIDENDOS_ISENTOS_ORDINARIOS',
       section: 'RENDIMENTOS_ISENTOS',
       officialCode: '09',
-      officialLabel: 'Rendimentos Isentos e Não Tributáveis - Código 09 (Lucros e dividendos recebidos)',
+      officialLabel:
+        'Rendimentos Isentos e Não Tributáveis - Código 09 (Lucros e dividendos recebidos)',
       defaultStatus: 'OFFICIAL',
       regulatoryBasis: 'Lei nº 9.249/1995, art. 10',
       version: '2026.1',
@@ -55,7 +56,8 @@ export class AnnualTaxReportingRuleRegistry {
       category: 'DIVIDENDOS_ISENTOS_TRANSICAO',
       section: 'RENDIMENTOS_ISENTOS',
       officialCode: '09',
-      officialLabel: 'Rendimentos Isentos - Código 09 (Dividendos Transição Pré-2026 - Lei 15.270/2025)',
+      officialLabel:
+        'Rendimentos Isentos - Código 09 (Dividendos Transição Pré-2026 - Lei 15.270/2025)',
       defaultStatus: 'PROVISIONAL',
       regulatoryBasis: 'Lei nº 15.270/2025',
       version: '2026.1',
@@ -64,7 +66,8 @@ export class AnnualTaxReportingRuleRegistry {
       category: 'FII_RENDIMENTOS_ISENTOS',
       section: 'RENDIMENTOS_ISENTOS',
       officialCode: '26',
-      officialLabel: 'Rendimentos Isentos e Não Tributáveis - Código 26 (Outros - Rendimentos de FII Isentos)',
+      officialLabel:
+        'Rendimentos Isentos e Não Tributáveis - Código 26 (Outros - Rendimentos de FII Isentos)',
       defaultStatus: 'OFFICIAL',
       regulatoryBasis: 'Lei nº 8.668/1993 e Lei nº 14.754/2023',
       version: '2026.1',
@@ -73,7 +76,8 @@ export class AnnualTaxReportingRuleRegistry {
       category: 'GANHO_ISENTO_ACOES_20K',
       section: 'RENDIMENTOS_ISENTOS',
       officialCode: '20',
-      officialLabel: 'Rendimentos Isentos - Código 20 (Ganhos líquidos em alienações de ações até R$ 20.000/mês)',
+      officialLabel:
+        'Rendimentos Isentos - Código 20 (Ganhos líquidos em alienações de ações até R$ 20.000/mês)',
       defaultStatus: 'OFFICIAL',
       regulatoryBasis: 'Lei nº 7.713/1988, art. 22',
       version: '2026.1',
@@ -84,7 +88,8 @@ export class AnnualTaxReportingRuleRegistry {
       category: 'JCP_TRIBUTACAO_EXCLUSIVA',
       section: 'RENDIMENTOS_EXCLUSIVOS',
       officialCode: '10',
-      officialLabel: 'Rendimentos Sujeitos à Tributação Exclusiva/Definitiva - Código 10 (Juros sobre capital próprio)',
+      officialLabel:
+        'Rendimentos Sujeitos à Tributação Exclusiva/Definitiva - Código 10 (Juros sobre capital próprio)',
       defaultStatus: 'OFFICIAL',
       regulatoryBasis: 'Lei nº 9.249/1995, art. 9º',
       version: '2026.1',
@@ -93,7 +98,8 @@ export class AnnualTaxReportingRuleRegistry {
       category: 'DIVIDENDOS_TRIBUTADOS_2026',
       section: 'RENDIMENTOS_EXCLUSIVOS',
       officialCode: 'TRIB_EXCL_DIV_2026',
-      officialLabel: 'Rendimentos Sujeitos à Tributação Exclusiva - Dividendos Tributados 2026 (Lei 15.270/2025)',
+      officialLabel:
+        'Rendimentos Sujeitos à Tributação Exclusiva - Dividendos Tributados 2026 (Lei 15.270/2025)',
       defaultStatus: 'PROVISIONAL',
       regulatoryBasis: 'Lei nº 15.270/2025',
       version: '2026.1',
@@ -219,4 +225,3 @@ export class AnnualTaxReportingRuleRegistry {
     return rule;
   }
 }
-

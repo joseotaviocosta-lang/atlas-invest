@@ -9,10 +9,7 @@ export type AnnualTaxReportingSection =
   | 'EVIDENCIAS_E_CONFIRMACOES';
 
 export type ReportingCategoryStatus =
-  | 'OFFICIAL'
-  | 'PROVISIONAL'
-  | 'REQUIRES_CONFIRMATION'
-  | 'UNSUPPORTED';
+  'OFFICIAL' | 'PROVISIONAL' | 'REQUIRES_CONFIRMATION' | 'UNSUPPORTED';
 
 export interface RawAnnualTaxReportingItem {
   readonly reportingItemId: string;
@@ -224,23 +221,25 @@ export function mapReportingPackageToViewModel(
 ): AnnualTaxReportingViewModel {
   const overallBadge = mapStatusToBadge(raw.overallStatus);
 
-  const sections: ReportingSectionVM[] = raw.sections.map((sec: RawAnnualTaxReportingSectionSummary) => {
-    const badge = mapStatusToBadge(sec.status);
-    const itemVMs = sec.items.map((i: RawAnnualTaxReportingItem) => mapReportingItemToVM(i));
-    const blockedCount = itemVMs.filter((i) => i.isBlocked).length;
-    return {
-      section: sec.section,
-      title: sec.title,
-      status: sec.status,
-      statusLabel: badge.label,
-      statusVariant: badge.variant,
-      itemCount: sec.itemCount,
-      blockedCount,
-      isComplete: sec.isComplete,
-      blockingReasons: sec.blockingReasons,
-      items: itemVMs,
-    };
-  });
+  const sections: ReportingSectionVM[] = raw.sections.map(
+    (sec: RawAnnualTaxReportingSectionSummary) => {
+      const badge = mapStatusToBadge(sec.status);
+      const itemVMs = sec.items.map((i: RawAnnualTaxReportingItem) => mapReportingItemToVM(i));
+      const blockedCount = itemVMs.filter((i) => i.isBlocked).length;
+      return {
+        section: sec.section,
+        title: sec.title,
+        status: sec.status,
+        statusLabel: badge.label,
+        statusVariant: badge.variant,
+        itemCount: sec.itemCount,
+        blockedCount,
+        isComplete: sec.isComplete,
+        blockingReasons: sec.blockingReasons,
+        items: itemVMs,
+      };
+    },
+  );
 
   const totalItemCount = sections.reduce((acc, s) => acc + s.itemCount, 0);
   const totalBlockedCount = sections.reduce((acc, s) => acc + s.blockedCount, 0);
@@ -259,9 +258,12 @@ export function mapReportingPackageToViewModel(
     sections,
     totalItemCount,
     totalBlockedCount,
-    blockedItems: (raw.blockedItems ?? []).map((i: RawAnnualTaxReportingItem) => mapReportingItemToVM(i)),
-    pendingConfirmations: (raw.pendingConfirmations ?? []).map((i: RawAnnualTaxReportingItem) => mapReportingItemToVM(i)),
+    blockedItems: (raw.blockedItems ?? []).map((i: RawAnnualTaxReportingItem) =>
+      mapReportingItemToVM(i),
+    ),
+    pendingConfirmations: (raw.pendingConfirmations ?? []).map((i: RawAnnualTaxReportingItem) =>
+      mapReportingItemToVM(i),
+    ),
     packageFingerprint: raw.packageFingerprint,
   };
 }
-

@@ -99,4 +99,3 @@ describe('Tax Engine: Annual Tax Reporting Scale & Performance Benchmark (Phase 
     expect(duration).toBeLessThan(3000);
   });
 });
-

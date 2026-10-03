@@ -57,7 +57,10 @@ export class GetAnnualInvestmentIncomeSummaryUseCase {
     for (const portfolio of portfolios) {
       const transactions = await this.transactionRepository.findByPortfolioId(portfolio.id);
       for (const tx of transactions) {
-        const txDate = tx.tradeDate.toString();
+        const txDate =
+          tx.tradeDate instanceof Date
+            ? tx.tradeDate.toISOString().slice(0, 10)
+            : String(tx.tradeDate);
         if (txDate >= startDate && txDate <= endDate) {
           if (tx.type === 'DIVIDEND' || tx.type === 'JCP' || tx.type === 'FII_INCOME') {
             const incomeTx = tx as {

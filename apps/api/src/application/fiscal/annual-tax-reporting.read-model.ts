@@ -132,4 +132,3 @@ export function mapReportingPackageToReadModel(
     disclaimer: pkg.disclaimer,
   };
 }
-

@@ -51,4 +51,3 @@ export * from './get-annual-tax-readiness.use-case';
 export * from './record-taxpayer-confirmation.use-case';
 export * from './annual-tax-reporting.read-model';
 export * from './get-annual-tax-reporting-package.use-case';
-

@@ -10,7 +10,10 @@ import {
   HttpCode,
   HttpStatus,
   ConflictException,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
+import { exportAnnualTaxReportingToCsv } from '@atlas/tax-engine';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { GetMonthlyTaxStateUseCase } from '../../application/fiscal/get-monthly-tax-state.use-case';
 import { GetMonthlyTaxLiabilityUseCase } from '../../application/fiscal/get-monthly-tax-liability.use-case';
@@ -902,5 +905,34 @@ export class FiscalController {
     });
     return { data };
   }
-}
 
+  @Get('annual/:calendarYear/reporting/export')
+  @ApiOperation({
+    summary:
+      'Export the Annual Tax Reporting & Declaration Preparation Package as a human-readable support document (CSV).',
+  })
+  @ApiParam({ name: 'calendarYear', description: 'Economic calendar year (e.g. 2025)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Human-readable support document export (CSV)',
+  })
+  @ApiResponse({ status: 400, description: 'Invalid calendar year or input' })
+  async exportAnnualTaxReportingPackage(
+    @Param(new ZodValidationPipe(AnnualTaxReportingParamSchema))
+    params: AnnualTaxReportingParam,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const readModel = await this.getAnnualTaxReportingPackageUseCase.execute({
+      taxSubjectId: principal.userId,
+      calendarYear: params.calendarYear,
+    });
+    const csvContent = exportAnnualTaxReportingToCsv(readModel);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="atlas-suporte-irpf-${params.calendarYear}.csv"`,
+    );
+    return csvContent;
+  }
+}

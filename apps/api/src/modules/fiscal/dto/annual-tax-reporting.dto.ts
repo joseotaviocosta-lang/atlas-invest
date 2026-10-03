@@ -5,4 +5,3 @@ export const AnnualTaxReportingParamSchema = z.object({
 });
 
 export type AnnualTaxReportingParam = z.infer<typeof AnnualTaxReportingParamSchema>;
-

@@ -153,4 +153,3 @@ describe('UI View Model: Annual Tax Reporting & Declaration Preparation (Phase 4
     expect(vm.blockedItems).toHaveLength(1);
   });
 });
-

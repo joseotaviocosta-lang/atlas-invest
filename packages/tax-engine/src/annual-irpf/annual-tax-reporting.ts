@@ -10,10 +10,7 @@ export type AnnualTaxReportingSection =
   | 'EVIDENCIAS_E_CONFIRMACOES';
 
 export type ReportingCategoryStatus =
-  | 'OFFICIAL'
-  | 'PROVISIONAL'
-  | 'UNSUPPORTED'
-  | 'REQUIRES_CONFIRMATION';
+  'OFFICIAL' | 'PROVISIONAL' | 'UNSUPPORTED' | 'REQUIRES_CONFIRMATION';
 
 export interface AnnualTaxReportingItem {
   readonly reportingItemId: string;
@@ -79,4 +76,3 @@ export const ANNUAL_REPORTING_DISCLAIMER =
 export function computeReportingPackageFingerprint(data: unknown): string {
   return createHash('sha256').update(JSON.stringify(data)).digest('hex');
 }
-

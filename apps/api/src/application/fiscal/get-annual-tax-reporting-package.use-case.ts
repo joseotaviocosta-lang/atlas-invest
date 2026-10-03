@@ -1,16 +1,7 @@
 import { Inject, Injectable, BadRequestException } from '@nestjs/common';
-import {
-  ITaxpayerConfirmationRepository,
-  IPortfolioRepository,
-} from '@atlas/database';
-import {
-  TAXPAYER_CONFIRMATION_REPOSITORY,
-  PORTFOLIO_REPOSITORY,
-} from '../../database/tokens';
-import {
-  buildAnnualTaxReportingPackage,
-  isValidCalendarYear,
-} from '@atlas/tax-engine';
+import { ITaxpayerConfirmationRepository, IPortfolioRepository } from '@atlas/database';
+import { TAXPAYER_CONFIRMATION_REPOSITORY, PORTFOLIO_REPOSITORY } from '../../database/tokens';
+import { buildAnnualTaxReportingPackage, isValidCalendarYear } from '@atlas/tax-engine';
 import { mapTaxpayerConfirmationRowToDomain } from './annual-tax-readiness.read-model';
 import { GetAnnualCapitalMarketSummaryUseCase } from './get-annual-capital-market-summary.use-case';
 import { GetAnnualInvestmentIncomeSummaryUseCase } from './get-annual-investment-income-summary.use-case';
@@ -50,17 +41,15 @@ export class GetAnnualTaxReportingPackageUseCase {
     const { taxSubjectId, calendarYear } = query;
 
     // Fetch user portfolios and baseline summaries concurrently
-    const [
-      capitalMarketSummary,
-      investmentIncomeSummary,
-      portfolios,
-      confirmationRows,
-    ] = await Promise.all([
-      this.capitalMarketSummaryUseCase.execute({ taxSubjectId, calendarYear }).catch(() => null),
-      this.investmentIncomeSummaryUseCase.execute({ taxSubjectId, calendarYear }).catch(() => null),
-      this.portfolioRepo.findByUserId(taxSubjectId),
-      this.confirmationRepo.listByYear({ taxSubjectId, calendarYear }),
-    ]);
+    const [capitalMarketSummary, investmentIncomeSummary, portfolios, confirmationRows] =
+      await Promise.all([
+        this.capitalMarketSummaryUseCase.execute({ taxSubjectId, calendarYear }).catch(() => null),
+        this.investmentIncomeSummaryUseCase
+          .execute({ taxSubjectId, calendarYear })
+          .catch(() => null),
+        this.portfolioRepo.findByUserId(taxSubjectId),
+        this.confirmationRepo.listByYear({ taxSubjectId, calendarYear }),
+      ]);
 
     const confirmations = confirmationRows.map(mapTaxpayerConfirmationRowToDomain);
 
@@ -90,20 +79,32 @@ export class GetAnnualTaxReportingPackageUseCase {
               openingTotalCost: p.totalHistoricalCost ?? '0.00',
               costBasisStatus: p.costBasisStatus,
               isBlocked: p.completenessStatus === 'BLOCKED',
+              status: p.completenessStatus,
               blockingReasons: p.blockingReasons,
               isSoldOut: p.quantity === '0' || !p.quantity,
             })),
             blockingReasons: positionReports
               .filter((pr): pr is NonNullable<typeof pr> => Boolean(pr))
-              .flatMap((pr) => pr.summary.blockedPositionsCount > 0 ? ['BLOCKED_POSITIONS_PRESENT'] : []),
+              .flatMap((pr) =>
+                pr.summary.blockedPositionsCount > 0 ? ['BLOCKED_POSITIONS_PRESENT'] : [],
+              ),
           }
         : null;
 
-function isNonZero(val?: string | null): boolean {
-  if (!val) return false;
-  const s = val.trim();
-  return s !== '0' && s !== '0.0' && s !== '0.00' && s !== '0.000000000000000000';
-}
+    function isNonZero(val?: unknown): boolean {
+      if (!val) return false;
+      const s =
+        typeof val === 'object' && val !== null && 'amount' in val
+          ? String((val as { amount: unknown }).amount).trim()
+          : String(val).trim();
+      return (
+        s !== '0' &&
+        s !== '0.0' &&
+        s !== '0.00' &&
+        s !== '0.000000000000000000' &&
+        s !== '[object Object]'
+      );
+    }
 
     const hasCapitalMarketActivity =
       Boolean(capitalMarketSummary) &&
@@ -123,10 +124,12 @@ function isNonZero(val?: string | null): boolean {
               netGain: capitalMarketSummary.normalEquities?.totalTaxableProfits,
               exemptSalesGross: capitalMarketSummary.normalEquities?.totalGrossSales,
               exemptSalesNetGain: capitalMarketSummary.normalEquities?.totalExemptProfits,
-              endingLossCarry: capitalMarketSummary.lossCarry?.normalEquities?.closingLossDecember31,
+              endingLossCarry:
+                capitalMarketSummary.lossCarry?.normalEquities?.closingLossDecember31,
               irrfTotalWithheld: capitalMarketSummary.normalEquities?.totalIrrfDeducted,
               irrfTerminalBalance: capitalMarketSummary.normalEquities?.uncompensatedIrrf,
-              irrfTerminalStatus: capitalMarketSummary.normalEquities?.uncompensatedIrrfTerminalState,
+              irrfTerminalStatus:
+                capitalMarketSummary.normalEquities?.uncompensatedIrrfTerminalState,
             },
             dayTrade: {
               netGain: capitalMarketSummary.dayTrade?.totalNetTaxableBase,
@@ -151,6 +154,14 @@ function isNonZero(val?: string | null): boolean {
                   paidAmount: m.darf6015.paidAmount,
                 })),
             },
+            months: (capitalMarketSummary.months ?? []).map((m) => ({
+              competence: m.competence,
+              netGainSwingTrade: m.normalEquities?.taxableBase,
+              netGainDayTrade: m.dayTrade?.taxableBase,
+              netGainFii: m.fii?.taxableBase,
+              darfPaid: m.darf6015?.paidAmount,
+              darfDue: m.darf6015?.principalAmount,
+            })),
           }
         : null;
 
@@ -166,21 +177,24 @@ function isNonZero(val?: string | null): boolean {
             blockingReasons: investmentIncomeSummary.blockingReasons,
             payers: (investmentIncomeSummary.payers ?? []).flatMap((p) => {
               const items = [];
-              if (p.dividendGross && p.dividendGross !== '0.00' && p.dividendGross !== '0') {
+              if (isNonZero(p.dividendGross)) {
+                const withheld = p.totalWithheld ?? '0.00';
+                const hasWithholding = isNonZero(withheld);
                 items.push({
                   assetId: p.payerId,
                   ticker: p.payerDisplayName,
                   payerName: p.payerDisplayName,
                   payerDocument: p.payerId,
                   incomeType: 'DIVIDEND',
-                  taxTreatment: 'EXEMPT',
+                  taxTreatment: hasWithholding ? 'EXCLUSIVE' : 'EXEMPT',
                   grossAmount: p.dividendGross,
-                  withheldAmount: '0.00',
+                  withheldAmount: withheld,
                   netAmount: p.dividendGross,
+                  status: p.isComplete ? 'READY' : 'PARTIAL',
                 });
               }
-              if (p.jcpGross && p.jcpGross !== '0.00' && p.jcpGross !== '0') {
-                const withheld = p.jcpWithheld ?? '0.00';
+              if (isNonZero(p.jcpGross)) {
+                const withheld = p.jcpWithheld ?? p.totalWithheld ?? '0.00';
                 items.push({
                   assetId: p.payerId,
                   ticker: p.payerDisplayName,
@@ -191,9 +205,10 @@ function isNonZero(val?: string | null): boolean {
                   grossAmount: p.jcpGross,
                   withheldAmount: withheld,
                   netAmount: p.jcpGross,
+                  status: p.isComplete ? 'READY' : 'PARTIAL',
                 });
               }
-              if (p.fiiIncomeGross && p.fiiIncomeGross !== '0.00' && p.fiiIncomeGross !== '0') {
+              if (isNonZero(p.fiiIncomeGross)) {
                 items.push({
                   assetId: p.payerId,
                   ticker: p.payerDisplayName,
@@ -204,6 +219,7 @@ function isNonZero(val?: string | null): boolean {
                   grossAmount: p.fiiIncomeGross,
                   withheldAmount: '0.00',
                   netAmount: p.fiiIncomeGross,
+                  status: p.isComplete ? 'READY' : 'PARTIAL',
                 });
               }
               return items;

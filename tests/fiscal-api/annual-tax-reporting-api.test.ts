@@ -84,7 +84,9 @@ describe('API Integration: Annual Tax Reporting Real E2E Suite (Phase 4H.6)', ()
     expect(res.body.data.declarationExercise).toBe(2026);
     expect(res.body.data.overallStatus).toBe('NO_ACTIVITY');
     expect(res.body.data.isReadyForReporting).toBe(true);
-    expect(res.body.data.disclaimer).toContain('Não substitui o Programa Gerador da Declaração (PGD)');
+    expect(res.body.data.disclaimer).toContain(
+      'Não substitui o Programa Gerador da Declaração (PGD)',
+    );
     expect(res.body.data.sections).toHaveLength(6);
     expect(res.body.data.packageFingerprint).toBeDefined();
   });
@@ -126,7 +128,7 @@ describe('API Integration: Annual Tax Reporting Real E2E Suite (Phase 4H.6)', ()
         id: uuidFor('asset-petr4-rep'),
         ticker: 'PETR4',
         name: 'PETROBRAS PN',
-        type: 'BRAZILIAN_EQUITY',
+        type: 'STOCK',
         exchange: 'B3',
         currency: 'BRL',
       },
@@ -205,7 +207,7 @@ describe('API Integration: Annual Tax Reporting Real E2E Suite (Phase 4H.6)', ()
         id: uuidFor('asset-vale3-iso'),
         ticker: 'VALE3',
         name: 'VALE ON',
-        type: 'BRAZILIAN_EQUITY',
+        type: 'STOCK',
         exchange: 'B3',
         currency: 'BRL',
       },
