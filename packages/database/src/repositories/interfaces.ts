@@ -1038,4 +1038,3 @@ export interface ITaxpayerConfirmationRepository {
     notes?: string | null;
   }): Promise<{ outcome: TaxpayerConfirmationWriteOutcome; record: TaxpayerConfirmationRow }>;
 }
-

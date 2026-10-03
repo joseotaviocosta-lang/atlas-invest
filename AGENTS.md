@@ -2070,4 +2070,3 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Interfaces Web e Mobile apenas renderizam os view models serializados pelo servidor.
 8. **ORÇAMENTO DE CONSULTAS E PERFORMANCE BOUNDED:**
    - A consulta de prontidão anual (`GET /api/v1/fiscal/annual/:calendarYear/readiness`) executa sob orçamento restrito de no máximo 15 queries estruturadas (zero vazamento N+1) e tempo de execução sub-segundo.
-

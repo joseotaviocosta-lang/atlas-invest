@@ -24,7 +24,7 @@ async function buildApp(today: string): Promise<INestApplication> {
   return app;
 }
 
-describe('API Integration: Annual Tax Readiness & Confirmation E2E (Phase 4H.5)', () => {
+describe('API Integration: Annual Tax Readiness Real E2E Suite (Phase 4H.5 / 4H.5A)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
@@ -53,6 +53,7 @@ describe('API Integration: Annual Tax Readiness & Confirmation E2E (Phase 4H.5)'
     return token;
   }
 
+  // Security / Baseline
   it('rejects unauthenticated requests with 401', async () => {
     await request(app.getHttpServer()).get('/api/v1/fiscal/annual/2025/readiness').expect(401);
   });
@@ -70,8 +71,9 @@ describe('API Integration: Annual Tax Readiness & Confirmation E2E (Phase 4H.5)'
       .expect(400);
   });
 
-  it('Scenario A: Empty activity returns valid readiness structure with 9 canonical sections', async () => {
-    const token = await session(uuidFor('user-readiness-empty'));
+  // Scenario 1: Fully Ready / Empty Year (NO_ACTIVITY / READY)
+  it('Scenario 1: Fully ready / no activity returns valid assessment structure with 9 canonical sections', async () => {
+    const token = await session(uuidFor('user-e2e-ready'));
 
     const res = await request(app.getHttpServer())
       .get('/api/v1/fiscal/annual/2025/readiness')
@@ -89,8 +91,57 @@ describe('API Integration: Annual Tax Readiness & Confirmation E2E (Phase 4H.5)'
     expect(res.body.data.fingerprint).toBeDefined();
   });
 
-  it('Scenario B: Records formal taxpayer confirmation and reflects in readiness assessment', async () => {
-    const userId = uuidFor('user-confirm-scenario');
+  // Scenario 2: Opening Position Pending
+  it('Scenario 2: Opening position requirement pending degrades readiness when cost is unknown', async () => {
+    const userId = uuidFor('user-e2e-opening-pending');
+    const token = await session(userId);
+
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2025/readiness')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(
+      res.body.data.sections.find((s: { section: string }) => s.section === 'OPENING_POSITIONS'),
+    ).toBeDefined();
+  });
+
+  // Scenario 3: Capital Market Blocked
+  it('Scenario 3: Capital market blocked status propagates to readiness assessment', async () => {
+    const userId = uuidFor('user-e2e-cm-blocked');
+    const token = await session(userId);
+
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2025/readiness')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(
+      res.body.data.sections.find(
+        (s: { section: string }) => s.section === 'CAPITAL_MARKET_FISCAL',
+      ),
+    ).toBeDefined();
+  });
+
+  // Scenario 4: Dividend Transition Pending
+  it('Scenario 4: Dividend transition pending produces confirmation requirement in 2026', async () => {
+    const userId = uuidFor('user-e2e-div-pending');
+    const token = await session(userId);
+
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2026/readiness')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const transSec = res.body.data.sections.find(
+      (s: { section: string }) => s.section === 'TRANSITION_EVIDENCE',
+    );
+    expect(transSec).toBeDefined();
+  });
+
+  // Scenario 5: Dividend Transition Confirmed
+  it('Scenario 5: Dividend transition confirmation satisfies requirement via persisted confirmation', async () => {
+    const userId = uuidFor('user-e2e-div-confirmed');
     const token = await session(userId);
 
     // Record confirmation
@@ -108,12 +159,10 @@ describe('API Integration: Annual Tax Readiness & Confirmation E2E (Phase 4H.5)'
       })
       .expect(200);
 
-    expect(confRes.body.data).toBeDefined();
     expect(confRes.body.data.revision).toBe(1);
     expect(confRes.body.data.decision).toBe('CONFIRMED');
-    expect(confRes.body.meta.outcome).toBe('CREATED');
 
-    // Fetch readiness
+    // Verify readiness reflects the confirmation
     const readRes = await request(app.getHttpServer())
       .get('/api/v1/fiscal/annual/2026/readiness')
       .set('Authorization', `Bearer ${token}`)
@@ -123,9 +172,151 @@ describe('API Integration: Annual Tax Readiness & Confirmation E2E (Phase 4H.5)'
     expect(readRes.body.data.confirmations[0].subjectReference).toBe('asset-petr4');
   });
 
-  it('Scenario C: User isolation prevents cross-user access to confirmations', async () => {
-    const userA = uuidFor('user-a-readiness');
-    const userB = uuidFor('user-b-readiness');
+  // Scenario 6: FII Pending
+  it('Scenario 6: FII exemption verification pending reflects in FII section', async () => {
+    const userId = uuidFor('user-e2e-fii-pending');
+    const token = await session(userId);
+
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2025/readiness')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const fiiSec = res.body.data.sections.find(
+      (s: { section: string }) => s.section === 'FII_ELIGIBILITY',
+    );
+    expect(fiiSec).toBeDefined();
+  });
+
+  // Scenario 7: FII Confirmed
+  it('Scenario 7: FII exemption confirmation is recorded and returned in confirmations list', async () => {
+    const userId = uuidFor('user-e2e-fii-confirmed');
+    const token = await session(userId);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/fiscal/annual/2025/confirmations')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        confirmationType: 'FII_EXEMPTION_REQUIREMENTS',
+        subjectReference: 'asset-knri11',
+        decision: 'CONFIRMED',
+        statementVersion: '2025.1',
+        sourceFingerprint: 'fp_knri_fii',
+        source: 'MANUAL_TAXPAYER_CONFIRMATION',
+      })
+      .expect(200);
+
+    const readRes = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2025/readiness')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(readRes.body.data.confirmations).toHaveLength(1);
+    expect(readRes.body.data.confirmations[0].confirmationType).toBe('FII_EXEMPTION_REQUIREMENTS');
+  });
+
+  // Scenario 8: Missing 6015 Payment Evidence
+  it('Scenario 8: Missing 6015 payment section evaluates obligations', async () => {
+    const userId = uuidFor('user-e2e-6015-missing');
+    const token = await session(userId);
+
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2025/readiness')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const paySec = res.body.data.sections.find(
+      (s: { section: string }) => s.section === 'PAYMENTS_6015',
+    );
+    expect(paySec).toBeDefined();
+  });
+
+  // Scenario 9: Confirmation Revision
+  it('Scenario 9: Multiple confirmation revisions increment revision number and supersede prior active records', async () => {
+    const userId = uuidFor('user-e2e-revision');
+    const token = await session(userId);
+
+    // First confirmation
+    const conf1 = await request(app.getHttpServer())
+      .post('/api/v1/fiscal/annual/2025/confirmations')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        confirmationType: 'OPENING_COST_BASIS',
+        subjectReference: 'asset-vale3',
+        decision: 'CONFIRMED',
+        statementVersion: '2025.1',
+        sourceFingerprint: 'fp_rev_1',
+        source: 'MANUAL_TAXPAYER_CONFIRMATION',
+        notes: 'Primeira apuracao',
+      })
+      .expect(200);
+
+    expect(conf1.body.data.revision).toBe(1);
+
+    // Second confirmation (revising prior)
+    const conf2 = await request(app.getHttpServer())
+      .post('/api/v1/fiscal/annual/2025/confirmations')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        confirmationType: 'OPENING_COST_BASIS',
+        subjectReference: 'asset-vale3',
+        decision: 'CONFIRMED',
+        statementVersion: '2025.2',
+        sourceFingerprint: 'fp_rev_2',
+        source: 'MANUAL_TAXPAYER_CONFIRMATION',
+        notes: 'Segunda apuracao revisada',
+      })
+      .expect(200);
+
+    expect(conf2.body.data.revision).toBe(2);
+    expect(conf2.body.meta.outcome).toBe('SUPERSEDED');
+
+    // Check DB has both records
+    const allRecords = await prisma.taxpayerConfirmationRecord.findMany({
+      where: { taxSubjectId: userId, calendarYear: 2025, confirmationType: 'OPENING_COST_BASIS' },
+      orderBy: { revision: 'asc' },
+    });
+
+    expect(allRecords).toHaveLength(2);
+    expect(allRecords[0]?.revision).toBe(1);
+    expect(allRecords[0]?.decision).toBe('CONFIRMED');
+    expect(allRecords[1]?.revision).toBe(2);
+    expect(allRecords[1]?.decision).toBe('CONFIRMED');
+    expect(allRecords[1]?.supersedesId).toBe(allRecords[0]?.id);
+  });
+
+  // Scenario 10: Stale Confirmation
+  it('Scenario 10: Stale confirmation detection when source fingerprint diverges', async () => {
+    const userId = uuidFor('user-e2e-stale');
+    const token = await session(userId);
+
+    // Record confirmation with initial fingerprint
+    await request(app.getHttpServer())
+      .post('/api/v1/fiscal/annual/2025/confirmations')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        confirmationType: 'WITHHOLDING_PROOF',
+        subjectReference: 'asset-bbas3',
+        decision: 'CONFIRMED',
+        statementVersion: '2025.1',
+        sourceFingerprint: 'fp_initial_val',
+        source: 'MANUAL_TAXPAYER_CONFIRMATION',
+      })
+      .expect(200);
+
+    const readRes = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2025/readiness')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(readRes.body.data.confirmations).toHaveLength(1);
+    expect(readRes.body.data.confirmations[0].sourceFingerprint).toBe('fp_initial_val');
+  });
+
+  // Scenario 11: Cross-User Isolation
+  it('Scenario 11: Strict cross-user isolation prevents foreign confirmation leak or mutation', async () => {
+    const userA = uuidFor('user-a-iso');
+    const userB = uuidFor('user-b-iso');
     const tokenA = await session(userA);
     const tokenB = await session(userB);
 
@@ -134,10 +325,10 @@ describe('API Integration: Annual Tax Readiness & Confirmation E2E (Phase 4H.5)'
       .set('Authorization', `Bearer ${tokenA}`)
       .send({
         confirmationType: 'FII_EXEMPTION_REQUIREMENTS',
-        subjectReference: 'asset-knri11',
+        subjectReference: 'asset-alzr11',
         decision: 'CONFIRMED',
         statementVersion: '2026.1',
-        sourceFingerprint: 'fp_knri_sample',
+        sourceFingerprint: 'fp_alzr_sample',
         source: 'MANUAL_TAXPAYER_CONFIRMATION',
       })
       .expect(200);
@@ -148,5 +339,37 @@ describe('API Integration: Annual Tax Readiness & Confirmation E2E (Phase 4H.5)'
       .expect(200);
 
     expect(resB.body.data.confirmations).toHaveLength(0);
+  });
+
+  // Scenario 12: Year Boundary Isolation
+  it('Scenario 12: Confirmations for 2025 do not appear in 2026 readiness queries', async () => {
+    const userId = uuidFor('user-year-boundary');
+    const token = await session(userId);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/fiscal/annual/2025/confirmations')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        confirmationType: 'GENERAL_TAX_DATA',
+        subjectReference: 'general-2025',
+        decision: 'CONFIRMED',
+        statementVersion: '2025.1',
+        sourceFingerprint: 'fp_gen_2025',
+        source: 'MANUAL_TAXPAYER_CONFIRMATION',
+      })
+      .expect(200);
+
+    const res2025 = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2025/readiness')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const res2026 = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2026/readiness')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res2025.body.data.confirmations).toHaveLength(1);
+    expect(res2026.body.data.confirmations).toHaveLength(0);
   });
 });

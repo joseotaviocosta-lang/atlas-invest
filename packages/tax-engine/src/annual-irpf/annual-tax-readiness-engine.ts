@@ -81,8 +81,10 @@ export function buildAnnualTaxReadinessAssessment(
   const declarationExercise = calendarYear + 1;
   const confirmations = input.taxpayerConfirmations ?? [];
 
-  // Active (CONFIRMED) confirmations lookup by scope:subjectId
-  const activeConfirmations = confirmations.filter((c) => c.status === 'CONFIRMED');
+  // Active (CONFIRMED) confirmations lookup by scope:subjectId for the assessment calendar year
+  const activeConfirmations = confirmations.filter(
+    (c) => c.status === 'CONFIRMED' && c.calendarYear === calendarYear,
+  );
 
   const requirements: AnnualEvidenceRequirement[] = [];
   const sectionSummaries: AnnualReadinessSectionSummary[] = [];

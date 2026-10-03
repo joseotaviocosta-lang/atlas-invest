@@ -41,12 +41,7 @@ export function AnnualReadinessSection() {
               | 'INVESTMENT_INCOME'
               | 'TAXPAYER_CONFIRMATIONS';
             title: string;
-            status:
-              | 'READY'
-              | 'PARTIAL'
-              | 'REQUIRES_CONFIRMATION'
-              | 'BLOCKED'
-              | 'NO_ACTIVITY';
+            status: 'READY' | 'PARTIAL' | 'REQUIRES_CONFIRMATION' | 'BLOCKED' | 'NO_ACTIVITY';
             isComplete: boolean;
             blockingReasons: readonly string[];
             requirementIds: readonly string[];
