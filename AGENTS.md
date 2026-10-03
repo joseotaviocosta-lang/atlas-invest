@@ -2045,3 +2045,29 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
     - É terminantemente proibida inferência por texto livre, ticker ou descrição; ausência de comprovação estruturada resulta em fail-closed (aplicação ordinária da regra de 2026).
 12. **DISTINÇÃO ESTRITA DE CATEGORIAS:**
     - Dividendos (`DIVIDEND`), JCP (`JCP`) e Rendimentos de FII (`FII_INCOME`) constituem regimes tributários estanques e inconfundíveis entre si.
+
+---
+
+## 71. Invariantes de Prontidão Fiscal Anual, Evidências e Confirmações do Contribuinte (Fase 4H.5)
+
+1. **MOTOR PURO E DETERMINÍSTICO DE PRONTIDÃO (ADR-048):**
+   - O `buildAnnualTaxReadinessAssessment` avalia deterministica e puramente a completude probatória do ano-calendário, sem I/O e sem dependência de mutações externas.
+2. **HIERARQUIA ESTRITA DE PRECEDÊNCIA DE STATUS:**
+   - O status geral (`overallStatus`) e os status seccionais obedecem estritamente à severidade: `BLOCKED` (4) > `REQUIRES_CONFIRMATION` (3) > `PARTIAL` (2) > `READY` (1) > `NO_ACTIVITY` (0).
+   - Qualquer bloqueio em uma seção resulta compulsoriamente em prontidão geral `BLOCKED`.
+3. **AS 9 SEÇÕES CANÔNICAS DE AVALIAÇÃO:**
+   - A completude é avaliada individualmente em 9 seções: `OPENING_POSITIONS`, `ANNUAL_POSITIONS`, `CAPITAL_MARKET_FISCAL`, `PAYMENTS_6015`, `TRANSITION_EVIDENCE`, `FII_ELIGIBILITY`, `WITHHOLDING_EVIDENCE`, `INVESTMENT_INCOME` e `TAXPAYER_CONFIRMATIONS`.
+4. **EXIGÊNCIAS PROBATÓRIAS RASTREÁVEIS (`AnnualEvidenceRequirement`):**
+   - Cada pendência identificada é tipada com `requirementId`, `section`, `subjectId`, `status`, `blockingReason` e `sourceFingerprint` (SHA-256).
+5. **DETECÇÃO DE CADUCIDADE VIA FINGERPRINTING (STALE CONFIRMATIONS):**
+   - Confirmações fornecidas pelo contribuinte são atreladas ao hash criptográfico (`sourceFingerprint`) dos dados vigentes no momento da confirmação.
+   - Qualquer modificação nos dados subjacentes (ex.: inclusão retroativa de transações) invalida o hash e reclassifica a exigência como `STALE`, exigindo revalidação do investidor.
+6. **PERSISTÊNCIA E MONOTONIA DE REVISÕES (`TaxpayerConfirmationRecord`):**
+   - Confirmações são armazenadas no repositório `taxpayer_confirmations`. Atualizações subsequentes incrementam `revision` monotonicamente e marcam o registro anterior como `SUPERSEDED`.
+   - Cancelamentos atribuem status `REVOKED` e preenchem `revokedAt`.
+7. **ISOLAMENTO ANTI-ENUMERAÇÃO E ZERO CÁLCULOS NA UI:**
+   - Requisições para usuários ou anos não pertencentes ao titular autenticado retornam invariavelmente `404 Not Found` ou `401 Unauthorized`.
+   - Interfaces Web e Mobile apenas renderizam os view models serializados pelo servidor.
+8. **ORÇAMENTO DE CONSULTAS E PERFORMANCE BOUNDED:**
+   - A consulta de prontidão anual (`GET /api/v1/fiscal/annual/:calendarYear/readiness`) executa sob orçamento restrito de no máximo 15 queries estruturadas (zero vazamento N+1) e tempo de execução sub-segundo.
+

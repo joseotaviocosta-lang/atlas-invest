@@ -25,6 +25,7 @@ import { Composed6015Section } from '@/components/fiscal/Composed6015Section';
 import { AnnualPositionsSection } from '@/components/fiscal/AnnualPositionsSection';
 import { AnnualCapitalMarketSection } from '@/components/fiscal/AnnualCapitalMarketSection';
 import { AnnualInvestmentIncomeSection } from '@/components/fiscal/AnnualInvestmentIncomeSection';
+import { AnnualReadinessSection } from '@/components/fiscal/AnnualReadinessSection';
 
 function currentCompetence(): string {
   const now = new Date();
@@ -545,6 +546,7 @@ function FiscalContent() {
           <AnnualPositionsSection portfolioId={selectedPortfolioId} />
           <AnnualCapitalMarketSection />
           <AnnualInvestmentIncomeSection />
+          <AnnualReadinessSection />
 
           <div
             style={{

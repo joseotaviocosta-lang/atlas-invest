@@ -54,7 +54,10 @@ import { GetAnnualInvestmentIncomeSummaryUseCase } from '../../application/fisca
 import { RecordAnnualOpeningPositionUseCase } from '../../application/fiscal/record-annual-opening-position.use-case';
 import { ListAnnualOpeningPositionsUseCase } from '../../application/fiscal/list-annual-opening-positions.use-case';
 import { ConfirmAnnualOpeningPositionUseCase } from '../../application/fiscal/confirm-annual-opening-position.use-case';
+import { GetAnnualTaxReadinessUseCase } from '../../application/fiscal/get-annual-tax-readiness.use-case';
+import { RecordTaxpayerConfirmationUseCase } from '../../application/fiscal/record-taxpayer-confirmation.use-case';
 import { ZodValidationPipe } from '../../common/pipes';
+
 import {
   AnnualPositionsQuery,
   AnnualPositionsQuerySchema,
@@ -71,6 +74,12 @@ import {
   AnnualInvestmentIncomeParam,
   AnnualInvestmentIncomeParamSchema,
 } from './dto/annual-investment-income.dto';
+import {
+  AnnualTaxReadinessParam,
+  AnnualTaxReadinessParamSchema,
+  RecordTaxpayerConfirmationBody,
+  RecordTaxpayerConfirmationBodySchema,
+} from './dto/annual-tax-readiness.dto';
 
 import {
   AdjustmentQuery,
@@ -174,6 +183,10 @@ export class FiscalController {
     private readonly listAnnualOpeningPositionsUseCase: ListAnnualOpeningPositionsUseCase,
     @Inject(ConfirmAnnualOpeningPositionUseCase)
     private readonly confirmAnnualOpeningPositionUseCase: ConfirmAnnualOpeningPositionUseCase,
+    @Inject(GetAnnualTaxReadinessUseCase)
+    private readonly getAnnualTaxReadinessUseCase: GetAnnualTaxReadinessUseCase,
+    @Inject(RecordTaxpayerConfirmationUseCase)
+    private readonly recordTaxpayerConfirmationUseCase: RecordTaxpayerConfirmationUseCase,
   ) {}
 
   @Get('monthly/:competence')
@@ -807,5 +820,56 @@ export class FiscalController {
       calendarYear: params.calendarYear,
     });
     return { data };
+  }
+
+  @Get('annual/:calendarYear/readiness')
+  @ApiOperation({
+    summary:
+      'Get authoritative annual tax readiness and evidence completeness assessment for DIRPF.',
+  })
+  @ApiParam({ name: 'calendarYear', description: 'Economic calendar year (e.g. 2025)' })
+  @ApiResponse({ status: 200, description: 'Annual tax readiness assessment' })
+  @ApiResponse({ status: 400, description: 'Invalid calendar year or input' })
+  async getAnnualTaxReadiness(
+    @Param(new ZodValidationPipe(AnnualTaxReadinessParamSchema))
+    params: AnnualTaxReadinessParam,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.getAnnualTaxReadinessUseCase.execute({
+      taxSubjectId: principal.userId,
+      calendarYear: params.calendarYear,
+    });
+    return { data };
+  }
+
+  @Post('annual/:calendarYear/confirmations')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Record or supersede a formal taxpayer confirmation for annual tax readiness evidence.',
+  })
+  @ApiParam({ name: 'calendarYear', description: 'Economic calendar year (e.g. 2025)' })
+  @ApiResponse({ status: 200, description: 'Taxpayer confirmation recorded' })
+  @ApiResponse({ status: 400, description: 'Invalid confirmation input' })
+  async recordTaxpayerConfirmation(
+    @Param(new ZodValidationPipe(AnnualTaxReadinessParamSchema))
+    params: AnnualTaxReadinessParam,
+    @Body(new ZodValidationPipe(RecordTaxpayerConfirmationBodySchema))
+    body: RecordTaxpayerConfirmationBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.recordTaxpayerConfirmationUseCase.execute({
+      taxSubjectId: principal.userId,
+      calendarYear: params.calendarYear,
+      confirmationType: body.confirmationType,
+      subjectReference: body.subjectReference,
+      decision: body.decision,
+      statementVersion: body.statementVersion,
+      sourceFingerprint: body.sourceFingerprint,
+      source: body.source,
+      createdByPrincipal: principal.userId,
+      notes: body.notes,
+    });
+    return { data: result.confirmation, meta: { outcome: result.outcome } };
   }
 }

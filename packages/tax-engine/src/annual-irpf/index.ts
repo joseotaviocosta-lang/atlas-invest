@@ -88,3 +88,22 @@ export type {
   IncomeEventInputData,
   BuildAnnualInvestmentIncomeSummaryInput,
 } from './annual-investment-income-engine';
+
+export type {
+  AnnualTaxReadinessStatus,
+  AnnualReadinessSectionKey,
+  TaxpayerConfirmationScope,
+  TaxpayerConfirmationStatus,
+  EvidenceRequirementStatus,
+  TaxpayerConfirmation,
+  AnnualEvidenceRequirement,
+  AnnualReadinessSectionSummary,
+  AnnualTaxReadinessAssessment,
+} from './annual-tax-readiness';
+export {
+  READINESS_STATUS_SEVERITY,
+  resolveOverallReadinessStatus,
+  computeReadinessFingerprint,
+} from './annual-tax-readiness';
+export { buildAnnualTaxReadinessAssessment } from './annual-tax-readiness-engine';
+export type { AnnualReadinessEngineInput } from './annual-tax-readiness-engine';

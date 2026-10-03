@@ -34,6 +34,7 @@ model User {
   darfGenerationRecords   OfficialDarfGenerationRecord[]
   taxCompensationElections TaxCompensationElectionRecord[]
   annualOpeningPositions  AnnualOpeningPositionInputRecord[]
+  taxpayerConfirmations   TaxpayerConfirmationRecord[]
 
   @@map("users")
 }
@@ -652,4 +653,34 @@ model AnnualOpeningPositionInputRecord {
   @@index([taxSubjectId, portfolioId, accountId, assetId, status], map: "annual_opening_pos_lookup_idx")
   @@index([taxSubjectId, status], map: "annual_opening_pos_subj_status_idx")
   @@map("annual_opening_position_inputs")
+}
+
+/// Phase 4H.5 - persisted, audited taxpayer confirmations for annual tax readiness.
+/// Captures taxpayer declarations (e.g. FII eligibility, dividend transition, opening positions, withholding).
+/// Monotonic revision increments on updates; stale confirmations are detected if sourceFingerprint changes.
+model TaxpayerConfirmationRecord {
+  id                 String    @id @default(uuid()) @db.Uuid
+  taxSubjectId       String    @map("tax_subject_id") @db.Uuid
+  calendarYear       Int       @map("calendar_year")
+  confirmationType   String    @map("confirmation_type") @db.VarChar(60)
+  subjectReference   String    @map("subject_reference") @db.VarChar(255)
+  decision           String    @db.VarChar(30)
+  statementVersion   String    @map("statement_version") @db.VarChar(30)
+  sourceFingerprint  String    @map("source_fingerprint") @db.VarChar(64)
+  source             String    @db.VarChar(50)
+  createdByPrincipal String    @map("created_by_principal") @db.VarChar(255)
+  revision           Int
+  fingerprint        String    @db.VarChar(64)
+  supersedesId       String?   @map("supersedes_id") @db.Uuid
+  notes              String?   @db.Text
+  confirmedAt        DateTime  @default(now()) @map("confirmed_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+
+  @@unique([taxSubjectId, calendarYear, confirmationType, subjectReference, revision], name: "taxpayer_confirmation_revision_identity", map: "taxpayer_conf_rev_uniq")
+  @@index([taxSubjectId, calendarYear, confirmationType, subjectReference], map: "taxpayer_conf_lookup_idx")
+  @@index([taxSubjectId, calendarYear], map: "taxpayer_conf_year_idx")
+  @@map("taxpayer_confirmations")
 }

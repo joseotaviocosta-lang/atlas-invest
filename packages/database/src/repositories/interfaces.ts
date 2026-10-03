@@ -979,3 +979,63 @@ export interface IAnnualOpeningPositionRepository {
   }): Promise<{ outcome: AnnualOpeningPositionWriteOutcome; record: AnnualOpeningPositionRow }>;
   confirm(id: string, taxSubjectId: string): Promise<AnnualOpeningPositionRow | null>;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4H.5 — taxpayer confirmation persistence (immutable revisions)
+// ---------------------------------------------------------------------------
+
+export type TaxpayerConfirmationWriteOutcome = 'CREATED' | 'IDEMPOTENT' | 'SUPERSEDED';
+
+export interface TaxpayerConfirmationRow {
+  id: string;
+  taxSubjectId: string;
+  calendarYear: number;
+  confirmationType: string;
+  subjectReference: string;
+  decision: string;
+  statementVersion: string;
+  sourceFingerprint: string;
+  source: string;
+  createdByPrincipal: string;
+  revision: number;
+  fingerprint: string;
+  supersedesId: string | null;
+  notes: string | null;
+  confirmedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ITaxpayerConfirmationRepository {
+  findById(id: string): Promise<TaxpayerConfirmationRow | null>;
+  findLatest(input: {
+    taxSubjectId: string;
+    calendarYear: number;
+    confirmationType: string;
+    subjectReference: string;
+  }): Promise<TaxpayerConfirmationRow | null>;
+  listByYear(input: {
+    taxSubjectId: string;
+    calendarYear: number;
+  }): Promise<TaxpayerConfirmationRow[]>;
+  listHistory(input: {
+    taxSubjectId: string;
+    calendarYear: number;
+    confirmationType: string;
+    subjectReference: string;
+  }): Promise<TaxpayerConfirmationRow[]>;
+  create(input: {
+    id?: string;
+    taxSubjectId: string;
+    calendarYear: number;
+    confirmationType: string;
+    subjectReference: string;
+    decision: string;
+    statementVersion: string;
+    sourceFingerprint: string;
+    source: string;
+    createdByPrincipal: string;
+    notes?: string | null;
+  }): Promise<{ outcome: TaxpayerConfirmationWriteOutcome; record: TaxpayerConfirmationRow }>;
+}
+

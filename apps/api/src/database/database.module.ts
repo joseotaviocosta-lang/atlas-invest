@@ -22,6 +22,7 @@ import {
   OfficialDarfGenerationRepository,
   TaxCompensationElectionRepository,
   AnnualOpeningPositionRepository,
+  TaxpayerConfirmationRepository,
 } from '@atlas/database';
 import {
   PRISMA_CLIENT,
@@ -46,6 +47,7 @@ import {
   OFFICIAL_DARF_GENERATION_REPOSITORY,
   TAX_COMPENSATION_ELECTION_REPOSITORY,
   ANNUAL_OPENING_POSITION_REPOSITORY,
+  TAXPAYER_CONFIRMATION_REPOSITORY,
 } from './tokens';
 
 type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
@@ -162,6 +164,11 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
       useFactory: (prisma: AtlasPrismaClient) => new AnnualOpeningPositionRepository(prisma),
       inject: [PRISMA_CLIENT],
     },
+    {
+      provide: TAXPAYER_CONFIRMATION_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new TaxpayerConfirmationRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
   ],
   exports: [
     PRISMA_CLIENT,
@@ -186,6 +193,7 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     OFFICIAL_DARF_GENERATION_REPOSITORY,
     TAX_COMPENSATION_ELECTION_REPOSITORY,
     ANNUAL_OPENING_POSITION_REPOSITORY,
+    TAXPAYER_CONFIRMATION_REPOSITORY,
   ],
 })
 export class DatabaseModule {}
