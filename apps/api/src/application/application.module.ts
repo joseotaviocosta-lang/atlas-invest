@@ -62,6 +62,7 @@ import { ListAnnualOpeningPositionsUseCase } from './fiscal/list-annual-opening-
 import { ConfirmAnnualOpeningPositionUseCase } from './fiscal/confirm-annual-opening-position.use-case';
 import { GetAnnualTaxReadinessUseCase } from './fiscal/get-annual-tax-readiness.use-case';
 import { RecordTaxpayerConfirmationUseCase } from './fiscal/record-taxpayer-confirmation.use-case';
+import { GetAnnualTaxReportingPackageUseCase } from './fiscal/get-annual-tax-reporting-package.use-case';
 import { SystemFiscalClock } from './fiscal/fiscal-clock';
 import { EMPTY_TAX_INPUT_ADAPTER_REGISTRY } from './fiscal/tax-input-source-adapter';
 import {
@@ -136,6 +137,7 @@ const USE_CASES = [
   ConfirmAnnualOpeningPositionUseCase,
   GetAnnualTaxReadinessUseCase,
   RecordTaxpayerConfirmationUseCase,
+  GetAnnualTaxReportingPackageUseCase,
   GetPortfolioAiGroundingContextUseCase,
   GetPortfolioAssetAiGroundingContextUseCase,
   GetPortfolioTimelineAiGroundingContextUseCase,

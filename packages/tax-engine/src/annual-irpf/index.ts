@@ -107,3 +107,20 @@ export {
 } from './annual-tax-readiness';
 export { buildAnnualTaxReadinessAssessment } from './annual-tax-readiness-engine';
 export type { AnnualReadinessEngineInput } from './annual-tax-readiness-engine';
+
+export type {
+  AnnualTaxReportingSection,
+  ReportingCategoryStatus,
+  AnnualTaxReportingItem,
+  AnnualTaxReportingSectionSummary,
+  AnnualTaxReportingPackage,
+} from './annual-tax-reporting';
+export {
+  ANNUAL_REPORTING_DISCLAIMER,
+  computeReportingPackageFingerprint,
+} from './annual-tax-reporting';
+export { AnnualTaxReportingRuleRegistry } from './annual-tax-reporting-registry';
+export type { ReportingRuleMapping } from './annual-tax-reporting-registry';
+export { buildAnnualTaxReportingPackage } from './annual-tax-reporting-engine';
+export type { AnnualTaxReportingEngineInput } from './annual-tax-reporting-engine';
+

@@ -2070,3 +2070,29 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Interfaces Web e Mobile apenas renderizam os view models serializados pelo servidor.
 8. **ORÇAMENTO DE CONSULTAS E PERFORMANCE BOUNDED:**
    - A consulta de prontidão anual (`GET /api/v1/fiscal/annual/:calendarYear/readiness`) executa sob orçamento restrito de no máximo 15 queries estruturadas (zero vazamento N+1) e tempo de execução sub-segundo.
+
+---
+
+## 72. Invariantes de Suporte à Declaração Anual e Reporte Fiscal IRPF (Fase 4H.6)
+
+1. **AUTORIDADE PURA E DETERMINÍSTICA DE REPORTE (ADR-049):**
+   - O motor `buildAnnualTaxReportingPackage` é estritamente puro, determinístico, sem I/O e com saída profundamente imutável (`Object.freeze`).
+   - Mapeia os dados fiscais apurados para as fichas oficiais e provisórias do PGD IRPF (`AnnualTaxReportingPackage`).
+2. **NÃO TRANSMISSÃO E DISCLAIMER COMPULSÓRIO:**
+   - O Atlas não realiza transmissão de DIRPF, autenticação automatizada em gov.br/e-CAC, envio de arquivos à RFB nem resolução de CAPTCHAs.
+   - Todo pacote emitido inclui obrigatoriamente `ANNUAL_REPORTING_DISCLAIMER` identificando o documento como informativo de suporte.
+3. **READINESS-GATED / FAIL-CLOSED (ZERO ZERO FABRICADO):**
+   - Itens provenientes de subsistemas com pendências no motor de prontidão (4H.5) com status `BLOCKED` ou `REQUIRES_CONFIRMATION` são compulsoriamente emitidos com `isBlocked: true` e `blockingReasons`.
+   - É terminantemente proibido omitir itens bloqueados ou forçá-los a zero (`0.00`).
+4. **POLÍTICA DE STATUS PROVISÓRIO (REFORMA 2026+):**
+   - Regras fiscais de novas leis (ex.: Lei 15.270/2025 para dividendos em 2026+) cujos programas IRPF oficiais ainda não possuem layout publicado pela RFB são categorizadas compulsoriamente com `mappingStatus: 'PROVISIONAL'`.
+5. **TRATAMENTO DE ATIVOS ALIENADOS NO ANO:**
+   - Ativos com posição positiva em 31/12/(Ano-1) que atingiram quantidade zero em 31/12/Ano são incluídos em *Bens e Direitos* (`POSICAO_ALIENADA_BENS_E_DIREITOS`) com `closingQuantity: "0"` e `closingTotalCost: "0.00"`.
+6. **DECIMAIS PURAS (ZERO FLOATS):**
+   - Todos os valores monetários e quantidades utilizam representações decimais arbitrárias e strings exatas.
+7. **ISOLAMENTO ANTI-ENUMERAÇÃO E ZERO CÁLCULOS NA UI:**
+   - A API resolve o titular estritamente pelo principal autenticado; tentativas de acesso indevido retornam `404 Not Found`.
+   - Web e Mobile apenas exibem as fichas, textos sugeridos e valores serializados pelo backend.
+8. **TAX AI PERMANECE DESABILITADA:**
+   - Consultas de IA sobre reporte IRPF permanecem `UNSUPPORTED_TAX` com 0 chamadas a provedores.
+

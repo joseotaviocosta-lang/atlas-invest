@@ -40,6 +40,7 @@ export * from './view-models/annual-positions.view-model';
 export * from './view-models/annual-capital-market.view-model';
 export * from './view-models/annual-investment-income.view-model';
 export * from './view-models/annual-tax-readiness.view-model';
+export * from './view-models/annual-tax-reporting.view-model';
 
 import { colors } from './tokens/colors';
 import { spacing } from './tokens/spacing';

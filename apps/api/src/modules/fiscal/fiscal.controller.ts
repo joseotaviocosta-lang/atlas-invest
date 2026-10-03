@@ -55,6 +55,7 @@ import { RecordAnnualOpeningPositionUseCase } from '../../application/fiscal/rec
 import { ListAnnualOpeningPositionsUseCase } from '../../application/fiscal/list-annual-opening-positions.use-case';
 import { ConfirmAnnualOpeningPositionUseCase } from '../../application/fiscal/confirm-annual-opening-position.use-case';
 import { GetAnnualTaxReadinessUseCase } from '../../application/fiscal/get-annual-tax-readiness.use-case';
+import { GetAnnualTaxReportingPackageUseCase } from '../../application/fiscal/get-annual-tax-reporting-package.use-case';
 import { RecordTaxpayerConfirmationUseCase } from '../../application/fiscal/record-taxpayer-confirmation.use-case';
 import { ZodValidationPipe } from '../../common/pipes';
 
@@ -80,6 +81,10 @@ import {
   RecordTaxpayerConfirmationBody,
   RecordTaxpayerConfirmationBodySchema,
 } from './dto/annual-tax-readiness.dto';
+import {
+  AnnualTaxReportingParam,
+  AnnualTaxReportingParamSchema,
+} from './dto/annual-tax-reporting.dto';
 
 import {
   AdjustmentQuery,
@@ -185,6 +190,8 @@ export class FiscalController {
     private readonly confirmAnnualOpeningPositionUseCase: ConfirmAnnualOpeningPositionUseCase,
     @Inject(GetAnnualTaxReadinessUseCase)
     private readonly getAnnualTaxReadinessUseCase: GetAnnualTaxReadinessUseCase,
+    @Inject(GetAnnualTaxReportingPackageUseCase)
+    private readonly getAnnualTaxReportingPackageUseCase: GetAnnualTaxReportingPackageUseCase,
     @Inject(RecordTaxpayerConfirmationUseCase)
     private readonly recordTaxpayerConfirmationUseCase: RecordTaxpayerConfirmationUseCase,
   ) {}
@@ -872,4 +879,28 @@ export class FiscalController {
     });
     return { data: result.confirmation, meta: { outcome: result.outcome } };
   }
+
+  @Get('annual/:calendarYear/reporting')
+  @ApiOperation({
+    summary:
+      'Get the authoritative Annual Tax Reporting & Declaration Preparation Package for a calendar year.',
+  })
+  @ApiParam({ name: 'calendarYear', description: 'Economic calendar year (e.g. 2025)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Authoritative annual tax reporting support package',
+  })
+  @ApiResponse({ status: 400, description: 'Invalid calendar year or input' })
+  async getAnnualTaxReportingPackage(
+    @Param(new ZodValidationPipe(AnnualTaxReportingParamSchema))
+    params: AnnualTaxReportingParam,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.getAnnualTaxReportingPackageUseCase.execute({
+      taxSubjectId: principal.userId,
+      calendarYear: params.calendarYear,
+    });
+    return { data };
+  }
 }
+
