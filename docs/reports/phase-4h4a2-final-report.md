@@ -4,18 +4,20 @@
 **Repository:** `c:\Projetos\atlas-invest`  
 **Phase:** 4H.4A.2 (Transition Unknown Semantics & Final Governance Closure)  
 **Date:** 2026-10-02  
-**Status:** COMPLETED & APPROVED DEFINITIVELY  
+**Status:** COMPLETED & APPROVED DEFINITIVELY
 
 ---
 
 ## 1. Executive Summary & Purpose
 
-Phase 4H.4A.2 delivers the final semantic precision and governance closure for the **Annual Investment Income Engine** (`@atlas/tax-engine`). 
+Phase 4H.4A.2 delivers the final semantic precision and governance closure for the **Annual Investment Income Engine** (`@atlas/tax-engine`).
 
 ### Core Reconciliation: Transition Unknown Semantics
+
 In Phase 4H.4A.1, transitional relief under Lei 15.270/2025 (Art. 6º-A, § 3º da Lei 9.250/1995) was implemented with total-base withholding (10% on total when monthly gross > R$ 50,000.00). However, when evidence of pre-2026 profit distribution was unconfirmed (`eligibilityStatus === 'REQUIRES_CONFIRMATION'`), the system previously fell back immediately to the ordinary 2026 rule (`R-DIV-2026`).
 
 Under Phase 4H.4A.2:
+
 - **Fail-Closed Principle Applied to Unconfirmed Claims:** When transition evidence is ambiguous or unverified (`REQUIRES_CONFIRMATION`), the engine does NOT assume ordinary taxation or full exemption. Instead, it emits:
   - `ruleId: 'R-DIV-TRANSITION-UNVERIFIED'`
   - `taxTreatment: 'REQUIRES_CONFIRMATION'`
@@ -61,15 +63,15 @@ dd38bccab909ee54e10c857435e7b3a81a652142
 
 ## 3. Statutory Legal Foundation & Primary Sources
 
-| Jurisdiction / Statute | Subject | Statutory Rule | Engine Implementation |
-|---|---|---|---|
-| **Lei 9.249/1995, Art. 10** | Dividends pre-2026 | 100% Exempt (isentos e não tributáveis) | `R-DIV-PRE2026` (`EXEMPT`) |
-| **Lei 15.270/2025, Art. 6º-A** | Dividends 2026+ Ordinary | 10% IRRF on TOTAL monthly sum per payer when > R$ 50k ("superior a") | `R-DIV-2026` (`WITHHOLDING_EXCLUSIVE` / `EXEMPT`) |
-| **Lei 15.270/2025, Art. 6º-A, § 3º** | Dividends 2026–2028 Transitional Relief | Pre-2026 profits declared/approved by 31/12/2025 remain exempt if distributed 2026–2028 | `R-DIV-TRANSITION` (`EXEMPT`) |
-| **Atlas Tax Integrity Standard** | Dividend Transition Unverified | Fails closed on unconfirmed corporate transition claims | `R-DIV-TRANSITION-UNVERIFIED` (`REQUIRES_CONFIRMATION`) |
-| **Lei 9.249/1995, Art. 9º** | JCP 2025 | 15% Withholding at source (`TRIBUTACAO_EXCLUSIVA`) | `R-JCP-2025` (`WITHHOLDING_EXCLUSIVE`) |
-| **Lei 15.270/2025 (Alíquota JCP)** | JCP 2026+ | 17.5% Withholding at source (`TRIBUTACAO_EXCLUSIVA`) | `R-JCP-2026` (`WITHHOLDING_EXCLUSIVE`) |
-| **Lei 8.668/1993, Art. 16-A / Lei 14.754/2023** | FII Income Distributions | Exempt if 100+ unitholders, organized market, investor < 10%; else 20% IRRF | `R-FII-EXEMPT` / `R-FII-TAXABLE` / `R-FII-UNVERIFIED` |
+| Jurisdiction / Statute                          | Subject                                 | Statutory Rule                                                                          | Engine Implementation                                   |
+| ----------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| **Lei 9.249/1995, Art. 10**                     | Dividends pre-2026                      | 100% Exempt (isentos e não tributáveis)                                                 | `R-DIV-PRE2026` (`EXEMPT`)                              |
+| **Lei 15.270/2025, Art. 6º-A**                  | Dividends 2026+ Ordinary                | 10% IRRF on TOTAL monthly sum per payer when > R$ 50k ("superior a")                    | `R-DIV-2026` (`WITHHOLDING_EXCLUSIVE` / `EXEMPT`)       |
+| **Lei 15.270/2025, Art. 6º-A, § 3º**            | Dividends 2026–2028 Transitional Relief | Pre-2026 profits declared/approved by 31/12/2025 remain exempt if distributed 2026–2028 | `R-DIV-TRANSITION` (`EXEMPT`)                           |
+| **Atlas Tax Integrity Standard**                | Dividend Transition Unverified          | Fails closed on unconfirmed corporate transition claims                                 | `R-DIV-TRANSITION-UNVERIFIED` (`REQUIRES_CONFIRMATION`) |
+| **Lei 9.249/1995, Art. 9º**                     | JCP 2025                                | 15% Withholding at source (`TRIBUTACAO_EXCLUSIVA`)                                      | `R-JCP-2025` (`WITHHOLDING_EXCLUSIVE`)                  |
+| **Lei 15.270/2025 (Alíquota JCP)**              | JCP 2026+                               | 17.5% Withholding at source (`TRIBUTACAO_EXCLUSIVA`)                                    | `R-JCP-2026` (`WITHHOLDING_EXCLUSIVE`)                  |
+| **Lei 8.668/1993, Art. 16-A / Lei 14.754/2023** | FII Income Distributions                | Exempt if 100+ unitholders, organized market, investor < 10%; else 20% IRRF             | `R-FII-EXEMPT` / `R-FII-TAXABLE` / `R-FII-UNVERIFIED`   |
 
 ---
 
@@ -107,22 +109,22 @@ dd38bccab909ee54e10c857435e7b3a81a652142
 
 ## 5. Test Matrix & Verification Evidence
 
-| Test Suite | Files | Tests | Result | Execution Time |
-|---|---|---|---|---|
-| **Tax Engine Unit & Domain** (`pnpm test:tax-engine`) | 35 | 360 | **PASS (100%)** | 7.96s |
-| **Fixtures Matrix A–AJ** (`tests/tax-engine/annual-investment-income-fixtures.test.ts`) | 1 | 36 | **PASS (100%)** | 126ms |
-| **10,000-Case Deterministic Fuzz** (`tests/tax-engine/annual-investment-income-fuzz.test.ts`) | 1 | 7 | **PASS (100%)** | 2.62s |
-| **Fiscal API Integration** (`pnpm test:fiscal-api`) | 31 | 196 | **PASS (100%)** | 43.19s |
-| **Portfolio Engine** (`pnpm test:portfolio-engine`) | 54 | 259 | **PASS (100%)** | 7.95s |
-| **API Integration** (`pnpm test:api`) | 37 | 254 | **PASS (100%)** | 46.12s |
-| **UI Components** (`pnpm test:ui`) | 27 | 219 | **PASS (100%)** | 8.84s |
-| **Security Hardening** (`pnpm test:security`) | 14 | 55 | **PASS (100%)** | 6.77s |
-| **Architecture Rules** (`pnpm test:architecture`) | 25 | 208 | **PASS (100%)** | 7.37s |
-| **Web App** (`pnpm test:web`) | 31 | 160 | **PASS (100%)** | 8.52s |
-| **Mobile App** (`pnpm test:mobile`) | 26 | 92 | **PASS (100%)** | 7.15s |
-| **Database Repositories** (`pnpm test:database`) | 15 | 72 | **PASS (100%)** | 12.33s |
-| **Monorepo Build** (`pnpm build`) | 21 pkgs | 2 apps | **SUCCESS (0 errors)** | 8.75s |
-| **Monorepo Lint & Typecheck** (`pnpm lint`, `pnpm typecheck`) | All pkgs | All pkgs | **CLEAN (0 errors)** | 6.42s |
+| Test Suite                                                                                    | Files    | Tests    | Result                 | Execution Time |
+| --------------------------------------------------------------------------------------------- | -------- | -------- | ---------------------- | -------------- |
+| **Tax Engine Unit & Domain** (`pnpm test:tax-engine`)                                         | 35       | 360      | **PASS (100%)**        | 7.96s          |
+| **Fixtures Matrix A–AJ** (`tests/tax-engine/annual-investment-income-fixtures.test.ts`)       | 1        | 36       | **PASS (100%)**        | 126ms          |
+| **10,000-Case Deterministic Fuzz** (`tests/tax-engine/annual-investment-income-fuzz.test.ts`) | 1        | 7        | **PASS (100%)**        | 2.62s          |
+| **Fiscal API Integration** (`pnpm test:fiscal-api`)                                           | 31       | 196      | **PASS (100%)**        | 43.19s         |
+| **Portfolio Engine** (`pnpm test:portfolio-engine`)                                           | 54       | 259      | **PASS (100%)**        | 7.95s          |
+| **API Integration** (`pnpm test:api`)                                                         | 37       | 254      | **PASS (100%)**        | 46.12s         |
+| **UI Components** (`pnpm test:ui`)                                                            | 27       | 219      | **PASS (100%)**        | 8.84s          |
+| **Security Hardening** (`pnpm test:security`)                                                 | 14       | 55       | **PASS (100%)**        | 6.77s          |
+| **Architecture Rules** (`pnpm test:architecture`)                                             | 25       | 208      | **PASS (100%)**        | 7.37s          |
+| **Web App** (`pnpm test:web`)                                                                 | 31       | 160      | **PASS (100%)**        | 8.52s          |
+| **Mobile App** (`pnpm test:mobile`)                                                           | 26       | 92       | **PASS (100%)**        | 7.15s          |
+| **Database Repositories** (`pnpm test:database`)                                              | 15       | 72       | **PASS (100%)**        | 12.33s         |
+| **Monorepo Build** (`pnpm build`)                                                             | 21 pkgs  | 2 apps   | **SUCCESS (0 errors)** | 8.75s          |
+| **Monorepo Lint & Typecheck** (`pnpm lint`, `pnpm typecheck`)                                 | All pkgs | All pkgs | **CLEAN (0 errors)**   | 6.42s          |
 
 ---
 
