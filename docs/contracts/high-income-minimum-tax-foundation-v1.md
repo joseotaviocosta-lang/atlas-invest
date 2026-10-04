@@ -40,6 +40,21 @@ deductions, `AnticipatedWithholding`, `ExcludedIncome`, `Reduction` /
 `HighIncomeMinimumTaxApplicabilityStatus`:
 `APPLICABLE | NOT_APPLICABLE | REQUIRES_CONFIRMATION | BLOCKED | UNSUPPORTED_YEAR`.
 
+**Threshold metric (frozen in 4I.1A).** `eligibilityThresholdMetric = TOTAL_ANNUAL_INCOME`. The
+R$ 600.000,00 applicability threshold is measured against the **total annual income received**
+(art. 16-A, _caput_: “soma de todos os rendimentos recebidos no ano-calendário”), **not** the
+reduced minimum-tax base after the § 1º exclusions (which governs the § 2º rate). OQ-1 was resolved
+by the enacted statute, the Senate committee report, the RFB Perguntas e Respostas and the Ministry
+of Finance FAQ (legal research §5.1). The boundary is **strictly greater** (R$ 600.000,00 exactly is
+`NOT_APPLICABLE`).
+
+**Divergence behaviour.** The engine always exposes `totalAnnualIncome` and `minimumTaxBase`, plus
+`minimumTaxBaseAboveThreshold` and `thresholdDivergenceDetected`. When the two readings diverge
+(total above R$ 600.000,00 but reduced base at or below it), the **resolved total-income metric
+controls** and the result is `APPLICABLE`; divergence is flagged for audit and never silently
+concealed. The reverse divergence is mathematically impossible (the reduced base cannot exceed total
+income).
+
 Precedence (fail-closed):
 
 1. No modeled rule set → `UNSUPPORTED_YEAR`.
@@ -47,7 +62,7 @@ Precedence (fail-closed):
 3. Hard integrity failure (e.g. negative amount, authoritative currency mismatch) → `BLOCKED`.
 4. Unresolved classification (`CONDITIONAL` / `REQUIRES_CONFIRMATION` / `UNSUPPORTED`) or any
    blocking evidence requirement → `REQUIRES_CONFIRMATION`.
-5. Total income **strictly greater than R$ 600.000,00** → `APPLICABLE`.
+5. **Total annual income strictly greater than R$ 600.000,00** → `APPLICABLE`.
 6. Otherwise → `NOT_APPLICABLE`.
 
 Data completeness reuses Phase 4H.5 semantics:

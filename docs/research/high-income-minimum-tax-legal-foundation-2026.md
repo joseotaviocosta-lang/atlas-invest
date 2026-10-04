@@ -44,15 +44,19 @@ Strictly **superior a R$ 600.000,00** (strictly greater — equality is NOT subj
 16-A caput. Confidence: **HIGH** (boundary wording “superior a”).
 
 **C. Statutory base used for the threshold.**
-Textually, art. 16-A, § 1º defines, “para fins do caput”, the _base de cálculo_ as the rural result
-plus the income received in the year (including exclusive/definitive and exempt/zero-reduced
-income), **deducting the legal exclusions I–XII**. § 2º computes the rate on the “rendimentos
-apurados nos termos do § 1º”. The literal reading therefore applies the R$ 600.000,00 threshold to
-the § 1º base. The Ministério da Fazenda FAQ (S7) describes summing _all_ income for the threshold
-and applying exclusions “na hora de calcular o valor do imposto”, suggesting a gross-total reading.
-→ **OPEN QUESTION OQ-1** (see §5). Confidence: **MEDIUM**. Implementation: the engine exposes
-both `totalAnnualIncome` and `minimumTaxBase` and evaluates the threshold against the gross total
-by default (matching the official FAQ), while documenting the alternate reading.
+The _caput_ of art. 16-A subjects the individual “cuja **soma de todos os rendimentos recebidos no
+ano-calendário** seja superior a R$ 600.000,00”. The threshold is therefore measured against the
+**total annual income received**, not the reduced base. Article 16-A, § 1º defines, “na definição da
+base de cálculo da tributação mínima”, the base (rural result + income received, including
+exclusive/definitive and exempt/zero-reduced income, minus exclusions I–XII), and § 2º fixes the
+**rate** on the “rendimentos apurados nos termos do § 1º”. The two quantities are distinct: the
+broad total governs eligibility; the reduced base governs the rate and the tax amount. This is
+confirmed by the Senate committee report (floor test is broad; the result after deductions determines
+the rate), by the RFB “Perguntas e Respostas” (“total de rendimentos auferidos no ano”) and by the
+Ministry of Finance FAQ (sum all income first; exclusions applied when calculating the tax).
+→ **RESOLVED** (see §5.1). Confidence: **HIGH**. Implementation: the engine evaluates the threshold
+against `totalAnnualIncome` and freezes `eligibilityThresholdMetric = TOTAL_ANNUAL_INCOME`; it still
+exposes `minimumTaxBase` for rate/audit and flags any divergence.
 
 **D. Progressive transition band.**
 Yes. For income **strictly above R$ 600.000,00 and below R$ 1.200.000,00**, the rate grows
@@ -186,18 +190,51 @@ Mirrors statutory terminology; no informal names are introduced.
 
 ## 5. Open questions and confidence
 
-| ID   | Question                                                                     | Reading adopted                           | Alternative                               | Impact                                               |
-| ---- | ---------------------------------------------------------------------------- | ----------------------------------------- | ----------------------------------------- | ---------------------------------------------------- |
-| OQ-1 | Threshold base: gross total vs §1 base                                       | Gross total (official FAQ S7)             | §1 base (literal §1 “para fins do caput”) | Only the eligibility comparison; engine exposes both |
-| OQ-2 | Annual-regime operational detail (rounding, pre-filled redutor, form layout) | Fail closed; no final calculation in 4I.1 | Future IN/Manual                          | Blocks final calculator (4I.2), not 4I.1             |
-| OQ-3 | Foreign income inclusion & credit mechanics                                  | `UNSUPPORTED_UPSTREAM_DATA`               | Requires Lei 14.754 upstream              | Future phase                                         |
-| OQ-4 | Fiagro income as distinct category                                           | `UNSUPPORTED`                             | Map if 4H exposes it                      | Future phase                                         |
-| OQ-5 | Multi-payer corporate redutor evidence granularity                           | Single requirement surfaced               | Per-payer evidence                        | Future calculator                                    |
-| OQ-6 | Rural activity result split                                                  | `UNSUPPORTED_UPSTREAM_DATA`               | Requires rural upstream                   | Future phase                                         |
+| ID   | Question                                                                     | Reading adopted                           | Alternative                               | Impact                                       |
+| ---- | ---------------------------------------------------------------------------- | ----------------------------------------- | ----------------------------------------- | -------------------------------------------- |
+| OQ-1 | Threshold base: gross total vs §1 base                                       | **RESOLVED → TOTAL_ANNUAL_INCOME** (§5.1) | §1 base (literal §1 “para fins do caput”) | Closed in 4I.1A; threshold uses total income |
+| OQ-2 | Annual-regime operational detail (rounding, pre-filled redutor, form layout) | Fail closed; no final calculation in 4I.1 | Future IN/Manual                          | Blocks final calculator (4I.2), not 4I.1     |
+| OQ-3 | Foreign income inclusion & credit mechanics                                  | `UNSUPPORTED_UPSTREAM_DATA`               | Requires Lei 14.754 upstream              | Future phase                                 |
+| OQ-4 | Fiagro income as distinct category                                           | `UNSUPPORTED`                             | Map if 4H exposes it                      | Future phase                                 |
+| OQ-5 | Multi-payer corporate redutor evidence granularity                           | Single requirement surfaced               | Per-payer evidence                        | Future calculator                            |
+| OQ-6 | Rural activity result split                                                  | `UNSUPPORTED_UPSTREAM_DATA`               | Requires rural upstream                   | Future phase                                 |
 
-**Overall legal confidence:** HIGH for the statutory structure and boundaries; MEDIUM for the annual
-operational/evidence detail (no annual-regime IN published as of the cutoff); the engine is
-fail-closed everywhere confidence is not HIGH.
+**Overall legal confidence:** HIGH for the statutory structure, boundaries and the OQ-1 threshold
+metric; MEDIUM for the annual operational/evidence detail (no annual-regime IN published as of the
+cutoff); the engine is fail-closed everywhere confidence is not HIGH.
+
+---
+
+## 5.1 OQ-1 resolution — threshold base (Phase 4I.1A, retrieval 2026-10-04)
+
+- **Question.** Does the R$ 600.000,00 applicability threshold use (A) the total annual income
+  received, or (B) the reduced minimum-tax base after the § 1º exclusions?
+- **Source hierarchy applied.** (1) enacted statute; (2) regulation/normative instruction;
+  (3) official Receita interpretation; (4) official FAQ/Ministry material.
+- **Statutory text (level 1).** Art. 16-A, _caput_: threshold on the “soma de todos os rendimentos
+  recebidos no ano-calendário”. § 1º defines the “base de cálculo da tributação mínima” (income
+  received minus exclusions I–XII); § 2º fixes the **rate** on the “rendimentos apurados nos termos
+  do § 1º”. The caput’s eligibility metric (“todos os rendimentos recebidos”) is broader than the
+  § 1º base.
+- **Legislative intent (level 1/2 — official Senate committee report, Parecer 2025).** “Para
+  verificar se um contribuinte atinge esse piso, o mandamento é amplo. Serão considerados, em regra,
+  todos os rendimentos recebidos no ano… O resultado da soma dos rendimentos **após as deduções**
+  permitidas determinará qual a alíquota a ser aplicada.”
+- **Regulatory text (level 2).** IN RFB nº 2.299/2025 implements the monthly regime (art. 6º-A) and
+  the monthly/annual reduction tables; it does not narrow the § 1º base for the annual threshold.
+- **Receita interpretation (level 3).** RFB “Perguntas e Respostas — Tributação de Altas Rendas”
+  (item 4): “Se o **total de rendimentos auferidos no ano** pela pessoa física superar
+  R$ 600.000,00, a pessoa física deverá submeter… ao regime de tributação anual de altas rendas.”
+- **FAQ interpretation (level 4).** Ministry of Finance FAQ: “Primeiro, soma-se **toda a renda
+  recebida no ano**… Se essa soma for menor que R$ 600 mil, não há cobrança adicional… **Já na hora
+  de calcular o valor do imposto devido**, alguns rendimentos são excluídos.”
+- **Conclusion:** **RESOLVED_TO_TOTAL_INCOME**. The threshold metric is the **total annual income
+  received**; the reduced § 1º base governs only the rate and the tax amount.
+- **Implementation consequence:** `HighIncomeMinimumTaxRuleSet.eligibilityThresholdMetric =
+TOTAL_ANNUAL_INCOME`; the engine evaluates `isAboveThreshold` on `totalAnnualIncome` and exposes
+  `minimumTaxBase`, `minimumTaxBaseAboveThreshold` and `thresholdDivergenceDetected` for audit.
+- **Remaining ambiguity:** none material for the threshold metric. OQ-2 (operational detail of the
+  final calculation) remains open and out of scope for 4I.1/4I.1A.
 
 ---
 

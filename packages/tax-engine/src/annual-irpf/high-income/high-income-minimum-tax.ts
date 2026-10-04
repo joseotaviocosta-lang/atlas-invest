@@ -25,6 +25,18 @@ export const HIGH_INCOME_TAX_SNAPSHOT_VERSION = 'HIGH_INCOME_TAX_DATA_SNAPSHOT_V
 export const HIGH_INCOME_MINIMUM_TAX_FIRST_CALENDAR_YEAR = 2026;
 export const HIGH_INCOME_MINIMUM_TAX_FIRST_DECLARATION_EXERCISE = 2027;
 
+/**
+ * Phase 4I.1A — OQ-1 reconciliation: the R$ 600.000,00 applicability threshold is
+ * measured against the TOTAL annual income received (statute caput, art. 16-A:
+ * "soma de todos os rendimentos recebidos no ano-calendário"), not the reduced
+ * minimum-tax base computed after the § 1º exclusions (which feeds the § 2º rate).
+ * Validated against Lei 15.270/2025, the Senate committee report, the RFB
+ * Perguntas e Respostas and the Ministry of Finance official FAQ.
+ */
+export const HIGH_INCOME_MINIMUM_TAX_THRESHOLD_METRIC = 'TOTAL_ANNUAL_INCOME' as const;
+
+export type HighIncomeThresholdMetric = typeof HIGH_INCOME_MINIMUM_TAX_THRESHOLD_METRIC;
+
 export type HighIncomeMinimumTaxApplicabilityStatus =
   'APPLICABLE' | 'NOT_APPLICABLE' | 'REQUIRES_CONFIRMATION' | 'BLOCKED' | 'UNSUPPORTED_YEAR';
 
@@ -99,6 +111,7 @@ export interface HighIncomeMinimumTaxRuleSet {
   readonly ruleVersion: string;
   readonly effectiveFrom: string; // YYYY-MM-DD civil
   readonly effectiveTo: string | null; // null = open-ended
+  readonly eligibilityThresholdMetric: HighIncomeThresholdMetric;
   readonly applicabilityThreshold: string; // gross annual income, strictly greater than
   readonly maximumEffectiveRatePercentage: string;
   readonly transitionBandUpperBound: string;

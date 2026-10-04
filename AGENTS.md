@@ -2122,3 +2122,6 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - A identidade da fonte pagadora é o `payerId` canônico; `payerDisplayName` nunca é autoridade de identidade.
 10. **PROJEÇÕES 4I SÃO DERIVADAS, NUNCA FONTE DA VERDADE:**
     - O snapshot e a classificação de alta renda são derivados e recalculáveis; não são persistidos como fonte da verdade.
+11. **LIMIAR DE APLICABILIDADE USA A RENDA ANUAL TOTAL (OQ-1 RESOLVIDO NA 4I.1A):**
+    - O limiar de R$ 600.000,00 mede a **soma de todos os rendimentos recebidos no ano-calendário** (art. 16-A, _caput_), e **não** a base reduzida do § 1º, que rege a alíquota do § 2º.
+    - O motor expõe `eligibilityThresholdMetric = TOTAL_ANNUAL_INCOME` e sinaliza divergência (`thresholdDivergenceDetected`) sem ocultá-la; a 4I.1A não implementa o cálculo final do tributo.

@@ -1,4 +1,5 @@
 import {
+  HIGH_INCOME_MINIMUM_TAX_THRESHOLD_METRIC,
   HighIncomeMinimumTaxRuleSet,
   HighIncomeOfficialSourceReference,
 } from './high-income-minimum-tax';
@@ -66,6 +67,7 @@ function buildRuleSet(calendarYear: number): HighIncomeMinimumTaxRuleSet {
     ruleVersion: '2025-11-26-LEI-15270-ART-16A',
     effectiveFrom: '2026-01-01',
     effectiveTo: null,
+    eligibilityThresholdMetric: HIGH_INCOME_MINIMUM_TAX_THRESHOLD_METRIC,
     applicabilityThreshold: '600000',
     maximumEffectiveRatePercentage: '10',
     transitionBandUpperBound: '1200000',

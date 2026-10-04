@@ -7,6 +7,7 @@ import {
   resolveHighIncomeMinimumTaxRuleSet,
   resolveHighIncomeRateBand,
   HIGH_INCOME_MINIMUM_TAX_RULE_SETS,
+  HIGH_INCOME_MINIMUM_TAX_THRESHOLD_METRIC,
   type HighIncomeIncomeItemInput,
 } from '@atlas/tax-engine';
 
@@ -373,6 +374,142 @@ describe('Phase 4I.1 — High-Income Minimum Tax fixtures (A through Z)', () => 
       expect(ruleSet.effectiveFrom).toBe('2026-01-01');
       expect(ruleSet.officialSourceReferences.length).toBeGreaterThan(0);
       expect(ruleSet.ruleVersion).toContain('LEI-15270');
+      expect(ruleSet.eligibilityThresholdMetric).toBe(HIGH_INCOME_MINIMUM_TAX_THRESHOLD_METRIC);
     }
+  });
+});
+
+describe('Phase 4I.1A — Threshold legal reconciliation fixtures (AA–AJ)', () => {
+  const YEAR = 2026;
+
+  it('Fixture AA — exactly R$ 600.000,00 -> NOT_APPLICABLE (strictly greater)', () => {
+    const assessment = assessHighIncomeMinimumTaxApplicability({
+      calendarYear: YEAR,
+      taxSubjectId: 'subject-AA',
+      authoritativeTotalAnnualIncome: '600000',
+      items: [],
+    });
+    expect(assessment.applicability).toBe('NOT_APPLICABLE');
+    expect(assessment.isAboveThreshold).toBe(false);
+    expect(assessment.eligibilityThresholdMetric).toBe(HIGH_INCOME_MINIMUM_TAX_THRESHOLD_METRIC);
+  });
+
+  it('Fixture AB — R$ 600.000,01 -> APPLICABLE via TOTAL_ANNUAL_INCOME', () => {
+    const assessment = assessHighIncomeMinimumTaxApplicability({
+      calendarYear: YEAR,
+      taxSubjectId: 'subject-AB',
+      items: [item({ itemId: 'ab1', category: 'EQUITY_CAPITAL_GAIN', amount: '600000.01' })],
+    });
+    expect(assessment.applicability).toBe('APPLICABLE');
+    expect(assessment.totalAnnualIncome?.amount).toBe('600000.01');
+  });
+
+  it('Fixture AC — just below R$ 600.000,00 -> NOT_APPLICABLE', () => {
+    const assessment = assessHighIncomeMinimumTaxApplicability({
+      calendarYear: YEAR,
+      taxSubjectId: 'subject-AC',
+      authoritativeTotalAnnualIncome: '599999.99',
+      items: [item({ itemId: 'ac1', category: 'EQUITY_CAPITAL_GAIN', amount: '599999.99' })],
+    });
+    expect(assessment.applicability).toBe('NOT_APPLICABLE');
+  });
+
+  it('Fixture AD — just below R$ 1.200.000,00 -> TRANSITION', () => {
+    const ruleSet = resolveHighIncomeMinimumTaxRuleSet(YEAR)!;
+    expect(resolveHighIncomeRateBand(ruleSet, Money.from('1199999.99', 'BRL'))).toBe('TRANSITION');
+  });
+
+  it('Fixture AE — exactly R$ 1.200.000,00 -> MAXIMUM', () => {
+    const ruleSet = resolveHighIncomeMinimumTaxRuleSet(YEAR)!;
+    expect(resolveHighIncomeRateBand(ruleSet, Money.from('1200000', 'BRL'))).toBe('MAXIMUM');
+  });
+
+  it('Fixture AF — just above R$ 1.200.000,00 -> MAXIMUM', () => {
+    const ruleSet = resolveHighIncomeMinimumTaxRuleSet(YEAR)!;
+    expect(resolveHighIncomeRateBand(ruleSet, Money.from('1200000.01', 'BRL'))).toBe('MAXIMUM');
+  });
+
+  it('Fixture AG — divergent bases: total > 600k but reduced base <= 600k -> resolves to TOTAL income', () => {
+    const assessment = assessHighIncomeMinimumTaxApplicability({
+      calendarYear: YEAR,
+      taxSubjectId: 'subject-AG',
+      items: [
+        item({ itemId: 'ag1', category: 'EQUITY_CAPITAL_GAIN', amount: '400000' }),
+        item({ itemId: 'ag2', category: 'SAVINGS_INCOME', amount: '300000' }),
+      ],
+    });
+    expect(assessment.totalAnnualIncome?.amount).toBe('700000');
+    expect(assessment.minimumTaxBase?.amount).toBe('400000');
+    expect(assessment.isAboveThreshold).toBe(true);
+    expect(assessment.minimumTaxBaseAboveThreshold).toBe(false);
+    expect(assessment.thresholdDivergenceDetected).toBe(true);
+    expect(assessment.applicability).toBe('APPLICABLE');
+  });
+
+  it('Fixture AH — pre-effective year -> UNSUPPORTED_YEAR', () => {
+    const assessment = assessHighIncomeMinimumTaxApplicability({
+      calendarYear: 2025,
+      taxSubjectId: 'subject-AH',
+      items: [],
+    });
+    expect(assessment.applicability).toBe('UNSUPPORTED_YEAR');
+  });
+
+  it('Fixture AI — 2026 supported with frozen metric', () => {
+    const assessment = assessHighIncomeMinimumTaxApplicability({
+      calendarYear: 2026,
+      taxSubjectId: 'subject-AI',
+      items: [],
+    });
+    expect(assessment.ruleVersion).not.toBe('UNSUPPORTED_YEAR');
+    expect(assessment.eligibilityThresholdMetric).toBe('TOTAL_ANNUAL_INCOME');
+  });
+
+  it('Fixture AJ — >= 2028 unsupported (no modeled rule set)', () => {
+    const assessment = assessHighIncomeMinimumTaxApplicability({
+      calendarYear: 2028,
+      taxSubjectId: 'subject-AJ',
+      items: [],
+    });
+    expect(assessment.applicability).toBe('UNSUPPORTED_YEAR');
+    expect(assessment.ruleSet).toBeNull();
+  });
+
+  it('reduced base can never exceed total income (inverse divergence impossible)', () => {
+    const assessment = assessHighIncomeMinimumTaxApplicability({
+      calendarYear: YEAR,
+      taxSubjectId: 'subject-inverse',
+      items: [
+        item({ itemId: 'i1', category: 'DIVIDEND', amount: '500000', payerId: 'payer-inverse' }),
+        item({ itemId: 'i2', category: 'SAVINGS_INCOME', amount: '200000' }),
+      ],
+      evidenceStates: [
+        {
+          requirement: 'CORPORATE_EFFECTIVE_TAX_EVIDENCE',
+          status: 'SATISFIED',
+          subjectId: 'payer-inverse',
+        },
+      ],
+    });
+    expect(assessment.minimumTaxBase!.compare(assessment.totalAnnualIncome!)).toBeLessThanOrEqual(
+      0,
+    );
+  });
+
+  it('ruleVersion change is reflected in the snapshot fingerprint', () => {
+    const baseRuleSet = resolveHighIncomeMinimumTaxRuleSet(YEAR)!;
+    const items = [item({ itemId: 'fp1', category: 'EQUITY_CAPITAL_GAIN', amount: '700000' })];
+    const a = buildHighIncomeTaxDataSnapshot({
+      calendarYear: YEAR,
+      taxSubjectId: 'subject-fp',
+      items,
+    });
+    const b = buildHighIncomeTaxDataSnapshot({
+      calendarYear: YEAR,
+      taxSubjectId: 'subject-fp',
+      items,
+      ruleSet: { ...baseRuleSet, ruleVersion: '2099-01-01-LEI-TEST' },
+    });
+    expect(a.fingerprint).not.toBe(b.fingerprint);
   });
 });

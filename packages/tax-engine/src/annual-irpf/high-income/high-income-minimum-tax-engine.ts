@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Currency, Money } from '@atlas/domain';
 import {
   HIGH_INCOME_MINIMUM_TAX_CALCULATION_BOUNDARY,
+  HIGH_INCOME_MINIMUM_TAX_THRESHOLD_METRIC,
   HIGH_INCOME_TAX_SNAPSHOT_VERSION,
   HighIncomeEvidenceRequirement,
   HighIncomeEvidenceRequirementCode,
@@ -17,6 +18,7 @@ import {
   HighIncomeTaxDataSnapshot,
   HighIncomeTaxPaidFact,
   HighIncomeTaxPaidFactInput,
+  HighIncomeThresholdMetric,
   classifyHighIncomeIncomeItem,
   computeHighIncomeSnapshotFingerprint,
   resolveHighIncomeRateBand,
@@ -40,6 +42,7 @@ export interface HighIncomeMinimumTaxThresholdMetadata {
   readonly amount: string;
   readonly currency: Currency;
   readonly comparison: 'STRICTLY_GREATER';
+  readonly metric: HighIncomeThresholdMetric;
   readonly legalReference: string;
 }
 
@@ -52,10 +55,15 @@ export interface HighIncomeMinimumTaxApplicabilityAssessment {
   readonly ruleSet: HighIncomeMinimumTaxRuleSet | null;
   readonly applicability: HighIncomeMinimumTaxApplicabilityStatus;
   readonly dataCompleteness: HighIncomeMinimumTaxCompletenessStatus;
+  readonly eligibilityThresholdMetric: HighIncomeThresholdMetric;
   readonly threshold: HighIncomeMinimumTaxThresholdMetadata | null;
   readonly totalAnnualIncome: Money | null;
   readonly minimumTaxBase: Money | null;
   readonly isAboveThreshold: boolean | null;
+  /** Outcome the reduced-base reading (OQ-1 alternative) would have produced, for audit. */
+  readonly minimumTaxBaseAboveThreshold: boolean | null;
+  /** True when the resolved total-income reading and the reduced-base reading diverge. */
+  readonly thresholdDivergenceDetected: boolean;
   readonly rateBand: HighIncomeRateBand | null;
   /** Final payable minimum tax is explicitly never computed in Phase 4I.1. */
   readonly minimumEffectiveRatePercentage: null;
@@ -285,6 +293,17 @@ export function assessHighIncomeMinimumTaxApplicability(
       ? totalAnnualIncome.compare(thresholdMoney) > 0
       : null;
 
+  // OQ-1 reconciliation (Phase 4I.1A): the threshold uses TOTAL_ANNUAL_INCOME.
+  // Expose what the alternative reduced-base reading would have yielded, for audit.
+  const minimumTaxBaseAboveThreshold =
+    minimumTaxBase !== null && thresholdMoney !== null
+      ? minimumTaxBase.compare(thresholdMoney) > 0
+      : null;
+  const thresholdDivergenceDetected =
+    isAboveThreshold !== null &&
+    minimumTaxBaseAboveThreshold !== null &&
+    isAboveThreshold !== minimumTaxBaseAboveThreshold;
+
   const rateBand =
     ruleSet && minimumTaxBase !== null ? resolveHighIncomeRateBand(ruleSet, minimumTaxBase) : null;
 
@@ -503,6 +522,7 @@ export function assessHighIncomeMinimumTaxApplicability(
         amount: ruleSet.applicabilityThreshold,
         currency,
         comparison: 'STRICTLY_GREATER',
+        metric: ruleSet.eligibilityThresholdMetric,
         legalReference: 'Lei 9.250/1995, art. 16-A, caput',
       })
     : null;
@@ -516,10 +536,14 @@ export function assessHighIncomeMinimumTaxApplicability(
     ruleSet,
     applicability,
     dataCompleteness,
+    eligibilityThresholdMetric:
+      ruleSet?.eligibilityThresholdMetric ?? HIGH_INCOME_MINIMUM_TAX_THRESHOLD_METRIC,
     threshold,
     totalAnnualIncome,
     minimumTaxBase,
     isAboveThreshold,
+    minimumTaxBaseAboveThreshold,
+    thresholdDivergenceDetected,
     rateBand,
     minimumEffectiveRatePercentage: null,
     finalTaxAmount: null,

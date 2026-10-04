@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { Money } from '@atlas/domain';
 import {
   assessHighIncomeMinimumTaxApplicability,
   buildHighIncomeTaxDataSnapshot,
@@ -319,6 +320,28 @@ describe('Phase 4I.1 — High-Income Minimum Tax deterministic 10,000-case fuzz'
       const hasNegative = assessment.incomeClassifications.some((item) => item.amount.isNegative());
       if (hasNegative && hasRuleSet && assessment.applicability !== 'BLOCKED') {
         failures.push(`case ${i}: negative amount did not block`);
+      }
+
+      // 9. Threshold follows the canonical TOTAL_ANNUAL_INCOME metric (OQ-1 resolved).
+      if (hasRuleSet) {
+        if (assessment.eligibilityThresholdMetric !== 'TOTAL_ANNUAL_INCOME') {
+          failures.push(`case ${i}: threshold metric not canonical`);
+        }
+        if (assessment.totalAnnualIncome !== null && assessment.threshold !== null) {
+          const thresholdMoney = Money.from(assessment.threshold.amount, assessment.currency);
+          const expectedAbove = assessment.totalAnnualIncome.compare(thresholdMoney) > 0;
+          if (assessment.isAboveThreshold !== expectedAbove) {
+            failures.push(`case ${i}: threshold not computed on total income`);
+          }
+        }
+        if (
+          assessment.minimumTaxBaseAboveThreshold !== null &&
+          assessment.isAboveThreshold !== null &&
+          assessment.thresholdDivergenceDetected !==
+            (assessment.isAboveThreshold !== assessment.minimumTaxBaseAboveThreshold)
+        ) {
+          failures.push(`case ${i}: divergence flag inconsistent`);
+        }
       }
     }
 

@@ -37,6 +37,13 @@ semântica já congelada.
 8. O snapshot de entrada é puro e imutável, com fingerprint SHA-256 determinístico sobre
    serialização canônica; a Fase 4I.1 **não persiste** resultado derivado como fonte da verdade.
 9. A IA fiscal permanece `UNSUPPORTED_TAX` com **zero** chamadas a provedores.
+10. **LIMIAR DE APLICABILIDADE = RENDA ANUAL TOTAL (OQ-1 resolvido na 4I.1A):** o limiar de
+    R$ 600.000,00 mede a **soma de todos os rendimentos recebidos no ano-calendário** (art. 16-A,
+    _caput_), e não a base reduzida após as exclusões do § 1º (que rege apenas a alíquota do § 2º).
+    A conclusão é suportada pelo texto legal, pelo parecer da comissão do Senado, pela
+    “Perguntas e Respostas” da RFB e pelo FAQ oficial do Ministério da Fazenda. O motor expõe
+    `eligibilityThresholdMetric = TOTAL_ANNUAL_INCOME`, `minimumTaxBase` e sinaliza divergência
+    (`thresholdDivergenceDetected`) sem ocultá-la.
 
 ## Consequências
 
