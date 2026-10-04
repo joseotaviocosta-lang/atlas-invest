@@ -8,7 +8,7 @@
 
 - **base (4I.3 candidate):** `299c9d2873ad556c4b7e26aefe0692d182114118`
 - **branch:** `feature/phase-4i3a-performance-gate-closure`
-- **phase commit (4I.3A):** `__PHASE_COMMIT__`
+- **phase commit (4I.3A):** `330f494e906def6997dfef26d45a33405d41b2cb`
 - **HEAD:** tip of the branch (see git log)
 - **worktree:** clean
 
@@ -147,4 +147,4 @@ REAL_4I3_BLOCKERS: none.
 **PHASE 4I.3: APROVADA DEFINITIVAMENTE**
 **PHASE 4I: NÃO APROVADA**
 
-FINAL CHECKPOINT: `__PHASE_COMMIT__`
+FINAL CHECKPOINT: `330f494e906def6997dfef26d45a33405d41b2cb`
