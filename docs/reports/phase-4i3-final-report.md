@@ -8,7 +8,7 @@
 
 - **base (4I.2 final):** `e75e7cc730dd50cdcf7bdc5923d11f6031191220`
 - **branch:** `feature/phase-4i3-corporate-effective-tax-redutor`
-- **phase commit (4I.3):** `__PHASE_COMMIT__`
+- **phase commit (4I.3):** `74bfa9b5974e9a53590d97522ecb702f3f9b8d96`
 - **HEAD:** tip of the branch (see git log)
 - **worktree:** clean
 
@@ -191,4 +191,4 @@ REAL_4I3_BLOCKERS: none.
 **PHASE 4I.3: APROVADA**
 **PHASE 4I: NÃO APROVADA**
 
-FINAL CHECKPOINT: `__PHASE_COMMIT__`
+FINAL CHECKPOINT: `74bfa9b5974e9a53590d97522ecb702f3f9b8d96`
