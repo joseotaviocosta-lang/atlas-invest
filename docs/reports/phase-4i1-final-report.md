@@ -8,7 +8,7 @@
 
 - **base:** `be4e15745ac9ed59be4065e1cc49efc4ebba59c7`
 - **branch:** `feature/phase-4i1-high-income-minimum-tax-foundation`
-- **phase commit:** `__PHASE_COMMIT__`
+- **phase commit:** `1d3d1baaa13cbbf92a38605912a2c89d19746cfa`
 - **HEAD:** tip of the branch (see git log)
 - **worktree:** clean
 
@@ -183,4 +183,4 @@ REAL_4I1_BLOCKERS: none.
 **PHASE 4I.1: APROVADA**
 **PHASE 4I: NÃO APROVADA**
 
-FINAL CHECKPOINT: `__PHASE_COMMIT__`
+FINAL CHECKPOINT: `1d3d1baaa13cbbf92a38605912a2c89d19746cfa`
