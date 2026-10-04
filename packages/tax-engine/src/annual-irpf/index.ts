@@ -124,3 +124,6 @@ export type { ReportingRuleMapping } from './annual-tax-reporting-registry';
 export { buildAnnualTaxReportingPackage } from './annual-tax-reporting-engine';
 export type { AnnualTaxReportingEngineInput } from './annual-tax-reporting-engine';
 export { exportAnnualTaxReportingToCsv } from './annual-tax-reporting-export';
+
+// --- Phase 4I.1: high-income minimum tax legal & data foundation (Lei 15.270/2025) ---
+export * from './high-income';

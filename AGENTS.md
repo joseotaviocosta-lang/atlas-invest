@@ -2095,3 +2095,30 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Web e Mobile apenas exibem as fichas, textos sugeridos e valores serializados pelo backend.
 8. **TAX AI PERMANECE DESABILITADA:**
    - Consultas de IA sobre reporte IRPF permanecem `UNSUPPORTED_TAX` com 0 chamadas a provedores.
+
+---
+
+## 73. Regras de Fundação da Tributação Mínima de Alta Renda (Fase 4I.1)
+
+1. **4H PERMANECE BASELINE IMUTÁVEL:**
+   - A Fase 4H (posições anuais, resumo de renda variável, rendimentos de investimento, prontidão fiscal, confirmações do contribuinte, mapeamentos de reporte e export CSV) permanece congelada.
+   - A Fase 4I **consome** fatos anuais autoritativos e **nunca** reinterpreta, recalcula ou muta silenciosamente a semântica da 4H.
+2. **REGRAS FISCAIS DE ALTA RENDA EXIGEM FONTE PRIMÁRIA:**
+   - Toda regra material (limiares, alíquotas, faixas, exclusões, deduções) deriva de `HighIncomeMinimumTaxRuleSet` versionado com proveniência oficial (Lei nº 15.270/2025) e vigência explícita.
+   - Blogs, artigos contábeis, corretoras e notícias **não** são autoridade canônica.
+3. **NENHUMA CATEGORIA SUPORTADA SILENCIOSAMENTE INCLUÍDA OU EXCLUÍDA:**
+   - Categorias sem mapeamento legal verificado são `UNSUPPORTED`; CONDICIONAL exige condição, fonte, evidência e comportamento fail-closed explícitos.
+4. **DESCONHECIDO ≠ ZERO:**
+   - Valores desconhecidos nunca viram zero; base não resolvida produz `minimumTaxBase = null` (nunca `"0"`), crédito desconhecido não vira zero e evidência ausente não vira zero.
+5. **AUSÊNCIA DE EVIDÊNCIA FALHA FECHADO:**
+   - Transição, elegibilidade de FII e carga efetiva corporativa (redutor do art. 16-B) ausentes resultam em `REQUIRES_CONFIRMATION`, nunca em inclusão/exclusão ou zero presumidos.
+6. **VALOR FINAL NÃO IMPLEMENTADO NA 4I.1:**
+   - É proibido calcular o valor final da tributação mínima, ajuste anual global, restituição ou obrigação de pagamento nesta fase (`calculationBoundary = 'NO_FINAL_TAX_CALCULATION'`).
+7. **IA FISCAL PERMANECE DESABILITADA:**
+   - Consultas fiscais permanecem `UNSUPPORTED_TAX` com 0 chamadas a provedores.
+8. **calendarYear ≠ declarationExercise:**
+   - Ano-calendário e exercício de declaração são conceitos tipados distintos e nunca colapsados.
+9. **NOME DE EXIBIÇÃO DA FONTE PAGADORA NÃO É IDENTIDADE:**
+   - A identidade da fonte pagadora é o `payerId` canônico; `payerDisplayName` nunca é autoridade de identidade.
+10. **PROJEÇÕES 4I SÃO DERIVADAS, NUNCA FONTE DA VERDADE:**
+    - O snapshot e a classificação de alta renda são derivados e recalculáveis; não são persistidos como fonte da verdade.
