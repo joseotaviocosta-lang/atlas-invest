@@ -8,7 +8,7 @@
 
 - **base (4I.1 final):** `ced2e3f39f9d0d246c90bf1439bfcda1f549ae08`
 - **branch:** `feature/phase-4i2-high-income-minimum-tax-calculation-core`
-- **phase commit (4I.2):** `__PHASE_COMMIT__`
+- **phase commit (4I.2):** `6b5a3de6078f8c757c71e00e1c24bb9553eb67d5`
 - **HEAD:** tip of the branch (see git log)
 - **worktree:** clean
 
@@ -157,4 +157,4 @@ REAL_4I2_BLOCKERS: none.
 **PHASE 4I.2: APROVADA**
 **PHASE 4I: NÃO APROVADA**
 
-FINAL CHECKPOINT: `__PHASE_COMMIT__`
+FINAL CHECKPOINT: `6b5a3de6078f8c757c71e00e1c24bb9553eb67d5`
