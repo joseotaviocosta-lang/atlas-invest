@@ -8,7 +8,7 @@
 
 - **base (4I.3 final):** `98ffd43d73a4d8ee7d97308ab618948cad9f8ef3`
 - **branch:** `feature/phase-4i4-high-income-annual-integration`
-- **phase commit (4I.4):** `__PHASE_COMMIT__`
+- **phase commit (4I.4):** `5030efa45884533b9631bcc9cc1d65c897113ea1`
 - **HEAD:** tip of the branch (see git log)
 - **worktree:** clean
 
@@ -162,4 +162,4 @@ REAL_4I4_BLOCKERS: none.
 **PHASE 4I.4: APROVADA**
 **PHASE 4I: NÃO APROVADA**
 
-FINAL CHECKPOINT: `__PHASE_COMMIT__`
+FINAL CHECKPOINT: `5030efa45884533b9631bcc9cc1d65c897113ea1`
