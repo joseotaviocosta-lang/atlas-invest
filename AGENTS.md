@@ -2179,3 +2179,26 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
     - Consultas fiscais permanecem `UNSUPPORTED_TAX` com 0 chamadas a provedores.
 11. **ZERO MATEMÁTICA FISCAL NO CLIENTE:**
     - Web/Mobile apenas renderizam valores serializados pelo servidor.
+
+---
+
+## 76. Regras de Integração Anual de Alta Renda (Fase 4I.4)
+
+1. **RESULTADOS 4I SÃO DERIVADOS DE 4H + EVIDÊNCIA:**
+   - O serviço consome fatos anuais autoritativos 4H (renda de investimento, resumo de renda variável) sem recomputar ganhos, custo médio, proventos ou IRRF; toda fórmula vive nos motores 4I.1/4I.2/4I.3.
+2. **RESULTADO FISCAL FINAL NUNCA É PERSISTIDO COMO FONTE DA VERDADE:**
+   - Nenhuma tabela guarda imposto bruto/líquido, alíquota, base ou redutor; a resposta é montada por requisição a partir de fontes + evidência, sem cache de cálculo.
+3. **EVIDÊNCIA É REVISIONADA E APPEND-ONLY:**
+   - Mesmo conteúdo é idempotente; conteúdo alterado gera nova revisão com histórico preservado; contenção usa constraint única + retry; identidade inclui exercício de origem do lucro.
+4. **AUTORIDADE DE EVIDÊNCIA É CONTROLADA PELO SERVIDOR:**
+   - O cliente declara origem e conteúdo; o servidor decide `AUTHORITATIVE` vs `REQUIRES_CONFIRMATION`; confirmação isolada nunca autoriza livros corporativos; conflito exige resolução explícita.
+5. **PROPRIEDADE DO CLIENTE NUNCA É CONFIÁVEL:**
+   - Sujeito derivado do principal autenticado; `taxSubjectId`/`userId` nunca vêm do cliente; pagador deve resolver no upstream do próprio sujeito; cross-user impossível por construção.
+6. **MUDANÇAS DE EVIDÊNCIA INVALIDAM FINGERPRINTS DE CÁLCULO:**
+   - Revisões, pins STALE e revisões de fonte 4H alteram fingerprints e disparam rebuild; evidência não vaza entre anos.
+7. **SEM N+1 POR PAGADOR/EVIDÊNCIA:**
+   - Evidência em lote (1 listagem + 2 watermarks); shape de queries invariante ao número de pagadores; sem query por item, pagador, evidência ou seção.
+8. **ZERO FLOAT:**
+   - Decimais exatos como strings em payloads e respostas; sem `parseFloat`/`Number()` em valores financeiros; sem matemática fiscal no cliente.
+9. **IA FISCAL PERMANECE DESABILITADA:**
+   - Consultas fiscais permanecem `UNSUPPORTED_TAX` com 0 chamadas a provedores.

@@ -1038,3 +1038,109 @@ export interface ITaxpayerConfirmationRepository {
     notes?: string | null;
   }): Promise<{ outcome: TaxpayerConfirmationWriteOutcome; record: TaxpayerConfirmationRow }>;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4I.4 — high-income annual evidence persistence (immutable revisions)
+// ---------------------------------------------------------------------------
+
+export type HighIncomeEvidenceType =
+  'CORPORATE_TAX' | 'ANNUAL_ADJUSTMENT_IRPF' | 'ANNUAL_INCOME_TOTAL';
+
+export type HighIncomeEvidenceAuthority = 'AUTHORITATIVE' | 'REQUIRES_CONFIRMATION';
+
+export type HighIncomeEvidenceSource =
+  'PJ_FINANCIAL_STATEMENTS' | 'RFB_PREFILLED' | 'TAXPAYER_CONFIRMED';
+
+export type HighIncomeEvidenceConflictStatus = 'NONE' | 'CONFLICT';
+
+export type HighIncomeEvidenceResolutionDecision = 'KEEP_EXISTING' | 'ACCEPT_NEW';
+
+export type HighIncomeEvidenceWriteOutcome = 'CREATED' | 'IDEMPOTENT' | 'SUPERSEDED';
+
+export interface HighIncomeEvidenceRow {
+  id: string;
+  taxSubjectId: string;
+  calendarYear: number;
+  payerKey: string;
+  payerId: string | null;
+  evidenceType: HighIncomeEvidenceType;
+  payerType: string | null;
+  profitPeriodExercise: number | null;
+  evidenceMode: string | null;
+  accountingProfit: string | null;
+  irDue: string | null;
+  csllDue: string | null;
+  prouniTaxCredit: string | null;
+  simplifiedRevenue: string | null;
+  adjustmentAmount: string | null;
+  authority: HighIncomeEvidenceAuthority;
+  evidenceSource: HighIncomeEvidenceSource;
+  conflictStatus: HighIncomeEvidenceConflictStatus;
+  upstreamFingerprint: string | null;
+  sourceFingerprint: string;
+  revision: number;
+  fingerprint: string;
+  supersedesId: string | null;
+  resolutionNote: string | null;
+  createdByPrincipal: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface HighIncomeEvidenceWriteInput {
+  id?: string;
+  taxSubjectId: string;
+  calendarYear: number;
+  payerId?: string | null;
+  evidenceType: HighIncomeEvidenceType;
+  payerType?: string | null;
+  profitPeriodExercise?: number | null;
+  evidenceMode?: string | null;
+  accountingProfit?: string | null;
+  irDue?: string | null;
+  csllDue?: string | null;
+  prouniTaxCredit?: string | null;
+  simplifiedRevenue?: string | null;
+  adjustmentAmount?: string | null;
+  authority: HighIncomeEvidenceAuthority;
+  evidenceSource: HighIncomeEvidenceSource;
+  upstreamFingerprint?: string | null;
+  sourceFingerprint?: string | null;
+  createdByPrincipal: string;
+  resolutionNote?: string | null;
+}
+
+export interface IHighIncomeEvidenceRepository {
+  findById(id: string): Promise<HighIncomeEvidenceRow | null>;
+  findCurrent(input: {
+    taxSubjectId: string;
+    calendarYear: number;
+    payerKey: string;
+    evidenceType: HighIncomeEvidenceType;
+    profitPeriodExercise?: number | null;
+  }): Promise<HighIncomeEvidenceRow | null>;
+  listCurrentBySubjectYear(input: {
+    taxSubjectId: string;
+    calendarYear: number;
+  }): Promise<HighIncomeEvidenceRow[]>;
+  listHistory(input: {
+    taxSubjectId: string;
+    calendarYear: number;
+    payerKey: string;
+    evidenceType: HighIncomeEvidenceType;
+    profitPeriodExercise?: number | null;
+  }): Promise<HighIncomeEvidenceRow[]>;
+  create(
+    input: HighIncomeEvidenceWriteInput,
+  ): Promise<{ outcome: HighIncomeEvidenceWriteOutcome; record: HighIncomeEvidenceRow }>;
+  resolve(input: {
+    id: string;
+    taxSubjectId: string;
+    decision: HighIncomeEvidenceResolutionDecision;
+    createdByPrincipal: string;
+  }): Promise<{ outcome: HighIncomeEvidenceWriteOutcome; record: HighIncomeEvidenceRow }>;
+  watermark(input: {
+    taxSubjectId: string;
+    calendarYear: number;
+  }): Promise<{ count: number; maxUpdatedAt: string | null }>;
+}

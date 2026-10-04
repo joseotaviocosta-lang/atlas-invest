@@ -60,6 +60,9 @@ import { ConfirmAnnualOpeningPositionUseCase } from '../../application/fiscal/co
 import { GetAnnualTaxReadinessUseCase } from '../../application/fiscal/get-annual-tax-readiness.use-case';
 import { GetAnnualTaxReportingPackageUseCase } from '../../application/fiscal/get-annual-tax-reporting-package.use-case';
 import { RecordTaxpayerConfirmationUseCase } from '../../application/fiscal/record-taxpayer-confirmation.use-case';
+import { GetAnnualHighIncomeAssessmentUseCase } from '../../application/fiscal/get-annual-high-income-assessment.use-case';
+import { RecordHighIncomeEvidenceUseCase } from '../../application/fiscal/record-high-income-evidence.use-case';
+import { ResolveHighIncomeEvidenceUseCase } from '../../application/fiscal/resolve-high-income-evidence.use-case';
 import { ZodValidationPipe } from '../../common/pipes';
 
 import {
@@ -88,6 +91,14 @@ import {
   AnnualTaxReportingParam,
   AnnualTaxReportingParamSchema,
 } from './dto/annual-tax-reporting.dto';
+import {
+  AnnualHighIncomeParam,
+  AnnualHighIncomeParamSchema,
+  RecordHighIncomeEvidenceBody,
+  RecordHighIncomeEvidenceBodySchema,
+  ResolveHighIncomeEvidenceBody,
+  ResolveHighIncomeEvidenceBodySchema,
+} from './dto/annual-high-income.dto';
 
 import {
   AdjustmentQuery,
@@ -197,6 +208,12 @@ export class FiscalController {
     private readonly getAnnualTaxReportingPackageUseCase: GetAnnualTaxReportingPackageUseCase,
     @Inject(RecordTaxpayerConfirmationUseCase)
     private readonly recordTaxpayerConfirmationUseCase: RecordTaxpayerConfirmationUseCase,
+    @Inject(GetAnnualHighIncomeAssessmentUseCase)
+    private readonly getAnnualHighIncomeAssessmentUseCase: GetAnnualHighIncomeAssessmentUseCase,
+    @Inject(RecordHighIncomeEvidenceUseCase)
+    private readonly recordHighIncomeEvidenceUseCase: RecordHighIncomeEvidenceUseCase,
+    @Inject(ResolveHighIncomeEvidenceUseCase)
+    private readonly resolveHighIncomeEvidenceUseCase: ResolveHighIncomeEvidenceUseCase,
   ) {}
 
   @Get('monthly/:competence')
@@ -934,5 +951,92 @@ export class FiscalController {
       `attachment; filename="atlas-suporte-irpf-${params.calendarYear}.csv"`,
     );
     return csvContent;
+  }
+
+  // --- Phase 4I.4: High-Income Annual Integration, Evidence & API Foundation ---
+
+  @Get('annual/:calendarYear/high-income')
+  @ApiOperation({
+    summary:
+      'Get the derived annual high-income minimum-tax assessment (4I.1 snapshot, 4I.2 calculation, 4I.3 redutor) from authoritative 4H facts and persisted evidence. The result is derived, never persisted.',
+  })
+  @ApiParam({ name: 'calendarYear', description: 'Economic calendar year (e.g. 2026)' })
+  @ApiResponse({ status: 200, description: 'Annual high-income assessment' })
+  @ApiResponse({ status: 400, description: 'Invalid calendar year' })
+  async getAnnualHighIncomeAssessment(
+    @Param(new ZodValidationPipe(AnnualHighIncomeParamSchema)) params: AnnualHighIncomeParam,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.getAnnualHighIncomeAssessmentUseCase.execute({
+      taxSubjectId: principal.userId,
+      calendarYear: params.calendarYear,
+    });
+    return { data };
+  }
+
+  @Post('annual/:calendarYear/high-income/evidence')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary:
+      'Record high-income evidence (corporate effective-tax facts, annual adjustment or income-total attestations). Append-only revisions; idempotent retry; server-controlled authority.',
+  })
+  @ApiParam({ name: 'calendarYear', description: 'Economic calendar year (e.g. 2026)' })
+  @ApiResponse({ status: 201, description: 'Evidence recorded' })
+  @ApiResponse({ status: 400, description: 'Invalid evidence input' })
+  @ApiResponse({ status: 404, description: 'Payer does not resolve to user upstream data' })
+  async recordHighIncomeEvidence(
+    @Param(new ZodValidationPipe(AnnualHighIncomeParamSchema)) params: AnnualHighIncomeParam,
+    @Body(new ZodValidationPipe(RecordHighIncomeEvidenceBodySchema))
+    body: RecordHighIncomeEvidenceBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const { outcome, created, record } = await this.recordHighIncomeEvidenceUseCase.execute({
+      taxSubjectId: principal.userId,
+      calendarYear: params.calendarYear,
+      evidenceType: body.evidenceType,
+      payerId: body.evidenceType === 'CORPORATE_TAX' ? body.payerId : null,
+      payerType: body.evidenceType === 'CORPORATE_TAX' ? body.payerType : null,
+      profitPeriodExercise:
+        body.evidenceType === 'CORPORATE_TAX' ? body.profitPeriodExercise : null,
+      evidenceMode: body.evidenceType === 'CORPORATE_TAX' ? body.evidenceMode : null,
+      accountingProfit: body.evidenceType === 'CORPORATE_TAX' ? body.accountingProfit : null,
+      irDue: body.evidenceType === 'CORPORATE_TAX' ? body.irDue : null,
+      csllDue: body.evidenceType === 'CORPORATE_TAX' ? body.csllDue : null,
+      prouniTaxCredit:
+        body.evidenceType === 'CORPORATE_TAX' ? (body.prouniTaxCredit ?? null) : null,
+      simplifiedRevenue:
+        body.evidenceType === 'CORPORATE_TAX' ? (body.simplifiedRevenue ?? null) : null,
+      adjustmentAmount: body.evidenceType === 'CORPORATE_TAX' ? null : body.adjustmentAmount,
+      evidenceSource: body.evidenceSource,
+      createdByPrincipal: principal.userId,
+    });
+    return { data: record, meta: { outcome, created } };
+  }
+
+  @Post('annual/:calendarYear/high-income/evidence/:evidenceId/resolve')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Resolve conflicting high-income evidence (KEEP_EXISTING restores pre-conflict content, ACCEPT_NEW keeps current content). Creates a new auditable revision.',
+  })
+  @ApiParam({ name: 'calendarYear', description: 'Economic calendar year (e.g. 2026)' })
+  @ApiResponse({ status: 200, description: 'Evidence conflict resolved' })
+  @ApiResponse({ status: 404, description: 'Evidence not found' })
+  @ApiResponse({ status: 409, description: 'Evidence not current or not in conflict' })
+  async resolveHighIncomeEvidence(
+    @Param(new ZodValidationPipe(AnnualHighIncomeParamSchema)) params: AnnualHighIncomeParam,
+    @Param('evidenceId') evidenceId: string,
+    @Body(new ZodValidationPipe(ResolveHighIncomeEvidenceBodySchema))
+    body: ResolveHighIncomeEvidenceBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const { outcome, record } = await this.resolveHighIncomeEvidenceUseCase.execute({
+      id: evidenceId,
+      taxSubjectId: principal.userId,
+      calendarYear: params.calendarYear,
+      decision: body.decision,
+      createdByPrincipal: principal.userId,
+    });
+    return { data: record, meta: { outcome } };
   }
 }

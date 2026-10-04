@@ -210,8 +210,10 @@ export function calculateHighIncomeMinimumTax(
     ).sort();
     const payerResults = payerIds.map((payerId) => {
       const dividends = eligibleDividendsByPayer.get(payerId) ?? Money.zero(currency);
-      const conflict = deduped.conflictingPayerIds.includes(payerId);
-      const evidence = conflict ? null : (evidenceByPayer.get(payerId) ?? null);
+      const record = evidenceByPayer.get(payerId) ?? null;
+      const conflict =
+        deduped.conflictingPayerIds.includes(payerId) || record?.hasConflictingEvidence === true;
+      const evidence = conflict ? null : record;
       return calculateCorporatePayerRedutor({
         payerId,
         payerType: evidence?.payerType ?? 'UNKNOWN',
@@ -222,8 +224,14 @@ export function calculateHighIncomeMinimumTax(
         hasConflictingEvidence: conflict,
       });
     });
-    if (deduped.conflictingPayerIds.length > 0) {
-      for (const payerId of deduped.conflictingPayerIds) {
+    const conflictedPayerIds = new Set([
+      ...deduped.conflictingPayerIds,
+      ...Array.from(evidenceByPayer.entries())
+        .filter(([, record]) => record.hasConflictingEvidence === true)
+        .map(([payerId]) => payerId),
+    ]);
+    if (conflictedPayerIds.size > 0) {
+      for (const payerId of conflictedPayerIds) {
         blockingReasons.add(`CONFLICTING_CORPORATE_EVIDENCE:${payerId}`);
       }
     }

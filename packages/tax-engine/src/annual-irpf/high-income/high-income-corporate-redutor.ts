@@ -80,6 +80,12 @@ export interface CorporatePayerEvidenceInput {
   readonly evidenceAuthority: CorporateEvidenceAuthority;
   readonly evidenceSource: CorporateEvidenceSource;
   readonly sourceFingerprint?: string;
+  /**
+   * Phase 4I.4 additive: set when the application layer resolved this record as
+   * the current revision of a conflicting evidence identity. Forces the payer
+   * computation to BLOCKED without requiring duplicate input records.
+   */
+  readonly hasConflictingEvidence?: boolean;
 }
 
 export interface CorporatePayerEvidence {
@@ -97,6 +103,7 @@ export interface CorporatePayerEvidence {
   readonly evidenceAuthority: CorporateEvidenceAuthority;
   readonly evidenceSource: CorporateEvidenceSource;
   readonly sourceFingerprint: string;
+  readonly hasConflictingEvidence: boolean;
 }
 
 export type CorporatePayerRedutorStatus =
@@ -229,6 +236,7 @@ export function deduplicateCorporateEvidence(
       sourceFingerprint:
         raw.sourceFingerprint ??
         createHash('sha256').update(`corporate-evidence:${signature}`).digest('hex'),
+      hasConflictingEvidence: raw.hasConflictingEvidence ?? false,
     });
     const existing = byKey.get(key);
     if (!existing) {

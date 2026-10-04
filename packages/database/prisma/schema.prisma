@@ -35,6 +35,7 @@ model User {
   taxCompensationElections TaxCompensationElectionRecord[]
   annualOpeningPositions  AnnualOpeningPositionInputRecord[]
   taxpayerConfirmations   TaxpayerConfirmationRecord[]
+  highIncomeEvidence      HighIncomeEvidenceRecord[]
 
   @@map("users")
 }
@@ -683,4 +684,45 @@ model TaxpayerConfirmationRecord {
   @@index([taxSubjectId, calendarYear, confirmationType, subjectReference], map: "taxpayer_conf_lookup_idx")
   @@index([taxSubjectId, calendarYear], map: "taxpayer_conf_year_idx")
   @@map("taxpayer_confirmations")
+}
+
+/// Phase 4I.4 - persisted high-income annual evidence (corporate effective-tax facts,
+/// annual adjustment attestations, attested annual-income totals).
+/// Only non-derivable evidence facts are stored; every calculation remains derived.
+/// Monotonic revision increments; conflicting candidates fail closed until resolved.
+model HighIncomeEvidenceRecord {
+  id                  String    @id @default(uuid()) @db.Uuid
+  taxSubjectId        String    @map("tax_subject_id") @db.Uuid
+  calendarYear        Int       @map("calendar_year")
+  payerKey            String    @map("payer_key") @db.VarChar(255)
+  payerId             String?   @map("payer_id") @db.VarChar(255)
+  evidenceType        String    @map("evidence_type") @db.VarChar(40)
+  payerType           String?   @map("payer_type") @db.VarChar(40)
+  profitPeriodExercise Int?     @map("profit_period_exercise")
+  evidenceMode        String?   @map("evidence_mode") @db.VarChar(20)
+  accountingProfit    Decimal?  @map("accounting_profit") @db.Decimal(38, 18)
+  irDue               Decimal?  @map("ir_due") @db.Decimal(38, 18)
+  csllDue             Decimal?  @map("csll_due") @db.Decimal(38, 18)
+  prouniTaxCredit     Decimal?  @map("prouni_tax_credit") @db.Decimal(38, 18)
+  simplifiedRevenue   Decimal?  @map("simplified_revenue") @db.Decimal(38, 18)
+  adjustmentAmount    Decimal?  @map("adjustment_amount") @db.Decimal(38, 18)
+  authority           String    @db.VarChar(30)
+  evidenceSource      String    @map("evidence_source") @db.VarChar(40)
+  conflictStatus      String    @default("NONE") @map("conflict_status") @db.VarChar(20)
+  upstreamFingerprint String?   @map("upstream_fingerprint") @db.VarChar(64)
+  sourceFingerprint   String    @map("source_fingerprint") @db.VarChar(64)
+  revision            Int
+  fingerprint         String    @db.VarChar(64)
+  supersedesId        String?   @map("supersedes_id") @db.Uuid
+  resolutionNote      String?   @map("resolution_note") @db.VarChar(40)
+  createdByPrincipal  String    @map("created_by_principal") @db.VarChar(255)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+
+  @@unique([taxSubjectId, calendarYear, payerKey, evidenceType, profitPeriodExercise, revision], name: "high_income_evidence_revision_identity", map: "hi_evidence_rev_uniq")
+  @@index([taxSubjectId, calendarYear, evidenceType, payerKey], map: "hi_evidence_lookup_idx")
+  @@index([taxSubjectId, calendarYear], map: "hi_evidence_year_idx")
+  @@map("high_income_evidence_records")
 }

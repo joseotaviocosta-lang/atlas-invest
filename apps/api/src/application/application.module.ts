@@ -63,6 +63,9 @@ import { ConfirmAnnualOpeningPositionUseCase } from './fiscal/confirm-annual-ope
 import { GetAnnualTaxReadinessUseCase } from './fiscal/get-annual-tax-readiness.use-case';
 import { RecordTaxpayerConfirmationUseCase } from './fiscal/record-taxpayer-confirmation.use-case';
 import { GetAnnualTaxReportingPackageUseCase } from './fiscal/get-annual-tax-reporting-package.use-case';
+import { GetAnnualHighIncomeAssessmentUseCase } from './fiscal/get-annual-high-income-assessment.use-case';
+import { RecordHighIncomeEvidenceUseCase } from './fiscal/record-high-income-evidence.use-case';
+import { ResolveHighIncomeEvidenceUseCase } from './fiscal/resolve-high-income-evidence.use-case';
 import { SystemFiscalClock } from './fiscal/fiscal-clock';
 import { EMPTY_TAX_INPUT_ADAPTER_REGISTRY } from './fiscal/tax-input-source-adapter';
 import {
@@ -138,6 +141,9 @@ const USE_CASES = [
   GetAnnualTaxReadinessUseCase,
   RecordTaxpayerConfirmationUseCase,
   GetAnnualTaxReportingPackageUseCase,
+  GetAnnualHighIncomeAssessmentUseCase,
+  RecordHighIncomeEvidenceUseCase,
+  ResolveHighIncomeEvidenceUseCase,
   GetPortfolioAiGroundingContextUseCase,
   GetPortfolioAssetAiGroundingContextUseCase,
   GetPortfolioTimelineAiGroundingContextUseCase,
