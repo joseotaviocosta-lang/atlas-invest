@@ -2125,3 +2125,30 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 11. **LIMIAR DE APLICABILIDADE USA A RENDA ANUAL TOTAL (OQ-1 RESOLVIDO NA 4I.1A):**
     - O limiar de R$ 600.000,00 mede a **soma de todos os rendimentos recebidos no ano-calendário** (art. 16-A, _caput_), e **não** a base reduzida do § 1º, que rege a alíquota do § 2º.
     - O motor expõe `eligibilityThresholdMetric = TOTAL_ANNUAL_INCOME` e sinaliza divergência (`thresholdDivergenceDetected`) sem ocultá-la; a 4I.1A não implementa o cálculo final do tributo.
+
+---
+
+## 74. Regras do Núcleo de Cálculo da Tributação Mínima de Alta Renda (Fase 4I.2)
+
+1. **LIMIAR USA `TOTAL_ANNUAL_INCOME`:**
+   - A aplicabilidade da tributação mínima é decidida exclusivamente pela renda anual total (art. 16-A, _caput_), estritamente superior a R$ 600.000,00.
+2. **A BASE DA TRIBUTAÇÃO MÍNIMA É QUANTIDADE DISTINTA:**
+   - `TOTAL_ANNUAL_INCOME` e a base após as exclusões do § 1º nunca são colapsados; o cálculo usa a base, a aplicabilidade usa o total.
+3. **ALÍQUOTA DETERMINÍSTICA E LIMITADA PELO RULE SET:**
+   - A alíquota é derivada do rule set versionado, monotônica e limitada a 10%; usa-se precisão decimal arbitrária, nunca float.
+4. **ENTRADAS NÃO SUPORTADAS OU DESCONHECIDAS NUNCA VIRAM ZERO:**
+   - Categorias/entradas não suportadas falham fechado (`UNSUPPORTED_INPUT`); base não resolvida produz `null`, nunca `"0"`.
+5. **IMPOSTO BRUTO PODE SER CONHECIDO ENQUANTO O LÍQUIDO PERMANECE DESCONHECIDO:**
+   - O imposto bruto é calculado sempre que a base é resolvível; o líquido pode permanecer `null`.
+6. **IMPOSTO LÍQUIDO SÓ É AUTORITATIVO SE REDUÇÕES/CRÉDITOS EXIGIDOS ESTIVEREM RESOLVIDOS:**
+   - A redução corporativa do art. 16-B não é implementada na 4I.2; quando potencialmente aplicável, o líquido é bloqueado (`INCOMPLETE_REDUCTION_DATA`). Créditos exigidos ausentes bloqueiam o líquido (`INCOMPLETE_CREDITS`). O imposto líquido nunca é negativo e o excedente não é restituído.
+7. **CÁLCULO DERIVADO E NÃO PERSISTENTE:**
+   - O resultado é recomputável e nunca é persistido como fonte da verdade; a 4I.2 não adiciona API, UI ou banco (0 queries).
+8. **ZERO FLOAT:**
+   - Nenhum `parseFloat`/`Number()`/aritmética IEEE-754 em caminhos financeiros; strings decimais exatas de ponta a ponta; arredondamento em ponto único (`ROUND_HALF_UP`, 2 casas).
+9. **IA FISCAL PERMANECE DESABILITADA:**
+   - Consultas fiscais permanecem `UNSUPPORTED_TAX` com 0 chamadas a provedores.
+10. **ZERO MATEMÁTICA FISCAL NO CLIENTE:**
+    - Web/Mobile apenas renderizam valores serializados pelo servidor.
+11. **4H E 4I.1 PERMANECEM IMUTÁVEIS:**
+    - O cálculo consome fatos anuais autoritativos sem recomputar ganhos, custo médio, proventos ou IRRF e sem reescrever a fundação 4I.1.
