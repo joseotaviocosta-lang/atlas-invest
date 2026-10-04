@@ -178,33 +178,74 @@ export class TaxpayerConfirmationRepository implements ITaxpayerConfirmationRepo
     createdByPrincipal: string;
     notes?: string | null;
   }): Promise<{ outcome: TaxpayerConfirmationWriteOutcome; record: TaxpayerConfirmationRow }> {
-    try {
-      return await this.prisma.$transaction(async (tx) => {
-        const existing = await tx.taxpayerConfirmationRecord.findFirst({
-          where: {
-            taxSubjectId: input.taxSubjectId,
-            calendarYear: input.calendarYear,
-            confirmationType: input.confirmationType,
-            subjectReference: input.subjectReference,
-          },
-          orderBy: { revision: 'desc' },
-        });
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await this.prisma.$transaction(async (tx) => {
+          const existing = await tx.taxpayerConfirmationRecord.findFirst({
+            where: {
+              taxSubjectId: input.taxSubjectId,
+              calendarYear: input.calendarYear,
+              confirmationType: input.confirmationType,
+              subjectReference: input.subjectReference,
+            },
+            orderBy: { revision: 'desc' },
+          });
 
-        if (existing) {
-          // Check for idempotency (same decision, version, and sourceFingerprint)
-          if (
-            existing.decision === input.decision &&
-            existing.statementVersion === input.statementVersion &&
-            existing.sourceFingerprint === input.sourceFingerprint
-          ) {
+          if (existing) {
+            // Check for idempotency (same decision, version, and sourceFingerprint)
+            if (
+              existing.decision === input.decision &&
+              existing.statementVersion === input.statementVersion &&
+              existing.sourceFingerprint === input.sourceFingerprint
+            ) {
+              return {
+                outcome: 'IDEMPOTENT',
+                record: this.map(existing),
+              };
+            }
+
+            // Supersede with next revision
+            const revision = existing.revision + 1;
+            const fingerprint = computeTaxpayerConfirmationFingerprint({
+              taxSubjectId: input.taxSubjectId,
+              calendarYear: input.calendarYear,
+              confirmationType: input.confirmationType,
+              subjectReference: input.subjectReference,
+              decision: input.decision,
+              statementVersion: input.statementVersion,
+              sourceFingerprint: input.sourceFingerprint,
+              source: input.source,
+              revision,
+            });
+
+            const created = await tx.taxpayerConfirmationRecord.create({
+              data: {
+                id: input.id ?? randomUUID(),
+                taxSubjectId: input.taxSubjectId,
+                calendarYear: input.calendarYear,
+                confirmationType: input.confirmationType,
+                subjectReference: input.subjectReference,
+                decision: input.decision,
+                statementVersion: input.statementVersion,
+                sourceFingerprint: input.sourceFingerprint,
+                source: input.source,
+                createdByPrincipal: input.createdByPrincipal,
+                revision,
+                fingerprint,
+                supersedesId: existing.id,
+                notes: input.notes ?? null,
+              },
+            });
+
             return {
-              outcome: 'IDEMPOTENT',
-              record: this.map(existing),
+              outcome: 'SUPERSEDED',
+              record: this.map(created),
             };
           }
 
-          // Supersede with next revision
-          const revision = existing.revision + 1;
+          // First revision
+          const revision = 1;
           const fingerprint = computeTaxpayerConfirmationFingerprint({
             taxSubjectId: input.taxSubjectId,
             calendarYear: input.calendarYear,
@@ -231,57 +272,28 @@ export class TaxpayerConfirmationRepository implements ITaxpayerConfirmationRepo
               createdByPrincipal: input.createdByPrincipal,
               revision,
               fingerprint,
-              supersedesId: existing.id,
+              supersedesId: null,
               notes: input.notes ?? null,
             },
           });
 
           return {
-            outcome: 'SUPERSEDED',
+            outcome: 'CREATED',
             record: this.map(created),
           };
+        });
+      } catch (err: unknown) {
+        const isUniqueConstraint =
+          typeof err === 'object' &&
+          err !== null &&
+          'code' in err &&
+          (err as { code: string }).code === 'P2002';
+        if (isUniqueConstraint && attempt < maxAttempts) {
+          continue;
         }
-
-        // First revision
-        const revision = 1;
-        const fingerprint = computeTaxpayerConfirmationFingerprint({
-          taxSubjectId: input.taxSubjectId,
-          calendarYear: input.calendarYear,
-          confirmationType: input.confirmationType,
-          subjectReference: input.subjectReference,
-          decision: input.decision,
-          statementVersion: input.statementVersion,
-          sourceFingerprint: input.sourceFingerprint,
-          source: input.source,
-          revision,
-        });
-
-        const created = await tx.taxpayerConfirmationRecord.create({
-          data: {
-            id: input.id ?? randomUUID(),
-            taxSubjectId: input.taxSubjectId,
-            calendarYear: input.calendarYear,
-            confirmationType: input.confirmationType,
-            subjectReference: input.subjectReference,
-            decision: input.decision,
-            statementVersion: input.statementVersion,
-            sourceFingerprint: input.sourceFingerprint,
-            source: input.source,
-            createdByPrincipal: input.createdByPrincipal,
-            revision,
-            fingerprint,
-            supersedesId: null,
-            notes: input.notes ?? null,
-          },
-        });
-
-        return {
-          outcome: 'CREATED',
-          record: this.map(created),
-        };
-      });
-    } catch (err) {
-      throw new PersistenceError(`Failed to create taxpayer confirmation: ${err}`);
+        throw new PersistenceError(`Failed to create taxpayer confirmation: ${err}`);
+      }
     }
+    throw new PersistenceError('Failed to create taxpayer confirmation after maximum attempts');
   }
 }
