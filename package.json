@@ -101,6 +101,7 @@
     "test:annual-position:e2e": "vitest run --config vitest.fiscal-api.config.ts tests/fiscal-api/annual-position-e2e.test.ts",
     "test:annual-position:budget": "vitest run --config vitest.fiscal-api.config.ts tests/fiscal-api/annual-position-query-budget.test.ts",
     "test:annual-position:scale": "tsx scripts/annual-position-scale.ts",
+    "test:annual-readiness:scale": "tsx --tsconfig tsconfig.smoke.json scripts/annual-readiness-scale-bench.ts",
     "test:annual-high-income:scale": "tsx --tsconfig tsconfig.smoke.json scripts/high-income-minimum-tax-scale.ts",
     "test:high-income-minimum-tax:fixtures": "vitest run --config vitest.tax-engine.config.ts tests/tax-engine/high-income-minimum-tax-fixtures.test.ts tests/tax-engine/high-income-minimum-tax-calculation-fixtures.test.ts",
     "test:high-income-minimum-tax:fuzz": "vitest run --config vitest.tax-engine.config.ts tests/tax-engine/high-income-minimum-tax-property.test.ts tests/tax-engine/high-income-minimum-tax-calculation-fuzz.test.ts",

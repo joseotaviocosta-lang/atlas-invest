@@ -81,10 +81,24 @@ export function buildAnnualTaxReadinessAssessment(
   const declarationExercise = calendarYear + 1;
   const confirmations = input.taxpayerConfirmations ?? [];
 
-  // Active (CONFIRMED) confirmations lookup by scope:subjectId for the assessment calendar year
+  // Active (CONFIRMED) confirmations lookup by scope:subjectId for the assessment calendar year.
+  // Indexed in a Map for O(1) lookup. First-match wins, exactly replicating the
+  // previous linear-scan `.find` semantics on the same filtered array.
   const activeConfirmations = confirmations.filter(
     (c) => c.status === 'CONFIRMED' && c.calendarYear === calendarYear,
   );
+  const activeConfirmationByScopeSubject = new Map<string, TaxpayerConfirmation>();
+  for (const confirmation of activeConfirmations) {
+    const key = `${confirmation.scope}::${confirmation.subjectId}`;
+    if (!activeConfirmationByScopeSubject.has(key)) {
+      activeConfirmationByScopeSubject.set(key, confirmation);
+    }
+  }
+  const findActiveConfirmation = (
+    scope: TaxpayerConfirmation['scope'],
+    subjectId: string,
+  ): TaxpayerConfirmation | undefined =>
+    activeConfirmationByScopeSubject.get(`${scope}::${subjectId}`);
 
   const requirements: AnnualEvidenceRequirement[] = [];
   const sectionSummaries: AnnualReadinessSectionSummary[] = [];
@@ -110,9 +124,7 @@ export function buildAnnualTaxReadinessAssessment(
             assetId: p.assetId,
             costBasisStatus: p.costBasisStatus,
           });
-          const matchConf = activeConfirmations.find(
-            (c) => c.scope === 'OPENING_COST_BASIS' && c.subjectId === p.assetId,
-          );
+          const matchConf = findActiveConfirmation('OPENING_COST_BASIS', p.assetId);
           let reqStatus: AnnualEvidenceRequirement['status'] = 'PENDING';
           if (matchConf) {
             reqStatus = matchConf.sourceFingerprint === fp ? 'SATISFIED' : 'STALE';
@@ -241,9 +253,7 @@ export function buildAnnualTaxReadinessAssessment(
             status: ob.status,
             balancePayable: ob.balancePayable,
           });
-          const matchConf = activeConfirmations.find(
-            (c) => c.scope === 'GENERAL_TAX_DATA' && c.subjectId === `6015_${ob.competence}`,
-          );
+          const matchConf = findActiveConfirmation('GENERAL_TAX_DATA', `6015_${ob.competence}`);
           let reqStatus: AnnualEvidenceRequirement['status'] = 'PENDING';
           if (matchConf) {
             reqStatus = matchConf.sourceFingerprint === fp ? 'SATISFIED' : 'STALE';
@@ -303,9 +313,7 @@ export function buildAnnualTaxReadinessAssessment(
               assetId: r.assetId,
               calendarYear,
             });
-          const matchConf = activeConfirmations.find(
-            (c) => c.scope === 'DIVIDEND_TRANSITION_EVIDENCE' && c.subjectId === r.assetId,
-          );
+          const matchConf = findActiveConfirmation('DIVIDEND_TRANSITION_EVIDENCE', r.assetId);
           let reqStatus: AnnualEvidenceRequirement['status'] = 'PENDING';
           if (matchConf) {
             reqStatus = matchConf.sourceFingerprint === fp ? 'SATISFIED' : 'STALE';
@@ -366,9 +374,7 @@ export function buildAnnualTaxReadinessAssessment(
               ticker: item.ticker,
               calendarYear,
             });
-          const matchConf = activeConfirmations.find(
-            (c) => c.scope === 'FII_EXEMPTION_REQUIREMENTS' && c.subjectId === item.assetId,
-          );
+          const matchConf = findActiveConfirmation('FII_EXEMPTION_REQUIREMENTS', item.assetId);
           let reqStatus: AnnualEvidenceRequirement['status'] = 'PENDING';
           if (matchConf) {
             reqStatus = matchConf.sourceFingerprint === fp ? 'SATISFIED' : 'STALE';
@@ -422,9 +428,7 @@ export function buildAnnualTaxReadinessAssessment(
       for (const rep of we.missingReports ?? []) {
         const reqId = `req_withholding_${rep}`;
         const fp = computeReadinessFingerprint({ report: rep, calendarYear });
-        const matchConf = activeConfirmations.find(
-          (c) => c.scope === 'WITHHOLDING_PROOF' && c.subjectId === rep,
-        );
+        const matchConf = findActiveConfirmation('WITHHOLDING_PROOF', rep);
         let reqStatus: AnnualEvidenceRequirement['status'] = 'PENDING';
         if (matchConf) {
           reqStatus = matchConf.sourceFingerprint === fp ? 'SATISFIED' : 'STALE';
