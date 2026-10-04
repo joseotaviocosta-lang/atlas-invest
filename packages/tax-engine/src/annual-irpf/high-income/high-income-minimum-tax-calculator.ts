@@ -5,6 +5,13 @@ import {
 } from './high-income-minimum-tax-engine';
 import { HighIncomeTaxPaidFact, HighIncomeTaxPaidFactKind } from './high-income-minimum-tax';
 import {
+  aggregateCorporateRedutor,
+  calculateCorporatePayerRedutor,
+  CorporatePayerEvidenceInput,
+  CorporateRedutorAggregateResult,
+  deduplicateCorporateEvidence,
+} from './high-income-corporate-redutor';
+import {
   HIGH_INCOME_CREDIT_SUPPORT_MATRIX,
   HIGH_INCOME_MINIMUM_TAX_CALCULATION_VERSION,
   HIGH_INCOME_MINIMUM_TAX_RATE_SCALE,
@@ -27,11 +34,19 @@ import {
  *
  * GROSS tax is emitted whenever the minimum-tax base is resolvable; NET tax is
  * emitted only when every legally required credit/reduction is supported and
- * evidenced. Missing facts never become zero, and the art. 16-B corporate
- * reduction (whose formula is not frozen in 4I.1) blocks an authoritative net.
+ * evidenced. Missing facts never become zero.
+ *
+ * Phase 4I.3 integration: the art. 16-B corporate redutor is computed per
+ * canonical payer from explicit corporate evidence and integrated into the net.
+ * Unresolved required redutor evidence keeps the net null (fail-closed).
  */
+export interface CalculateHighIncomeMinimumTaxInput extends BuildHighIncomeTaxDataSnapshotInput {
+  /** Phase 4I.3: per-payer corporate evidence for the art. 16-B redutor. */
+  readonly corporateEvidence?: readonly CorporatePayerEvidenceInput[];
+}
+
 export function calculateHighIncomeMinimumTax(
-  input: BuildHighIncomeTaxDataSnapshotInput,
+  input: CalculateHighIncomeMinimumTaxInput,
 ): HighIncomeMinimumTaxCalculationResult {
   const currency: Currency = input.currency ?? 'BRL';
   const dedupe = deduplicateHighIncomeItems(input.items);
@@ -53,11 +68,6 @@ export function calculateHighIncomeMinimumTax(
   );
   const isApplicable = aboveThreshold && !baseUnresolved;
 
-  const hasIncludedDividend = assessment.incomeClassifications.some(
-    (item) =>
-      (item.category === 'DIVIDEND' || item.category === 'DIVIDEND_TRANSITION') &&
-      item.classification === 'INCLUDED',
-  );
   const hasExclusiveWithholdingIncome = assessment.incomeClassifications.some(
     (item) =>
       item.classification === 'INCLUDED' &&
@@ -132,7 +142,6 @@ export function calculateHighIncomeMinimumTax(
   const missingRequiredCredits = Array.from(requiredCreditKinds)
     .filter((kind) => !factsByKind.has(kind))
     .sort();
-  const corporateReductionPotential = isApplicable && hasIncludedDividend;
 
   // --- Gross tax (independent of credits/reduction) ------------------------
   const canComputeGross =
@@ -157,6 +166,82 @@ export function calculateHighIncomeMinimumTax(
     grossMinimumTax = roundMoneyToCents(grossExact);
   }
 
+  // --- Phase 4I.3: payer-scoped corporate redutor (art. 16-B) ---------------
+  // Eligible dividends: INCLUDED "lucros e dividendos" only. JCP is deductible
+  // remuneration, not distributed profit, and transition-exempt dividends are
+  // outside the base — neither enters the redutor.
+  const eligibleDividendsByPayer = new Map<string, Money>();
+  if (canComputeGross) {
+    for (const item of assessment.incomeClassifications) {
+      if (
+        item.classification !== 'INCLUDED' ||
+        (item.category !== 'DIVIDEND' && item.category !== 'DIVIDEND_TRANSITION') ||
+        !item.payerId
+      ) {
+        continue;
+      }
+      const current = eligibleDividendsByPayer.get(item.payerId) ?? Money.zero(currency);
+      eligibleDividendsByPayer.set(item.payerId, current.add(item.amount));
+    }
+  }
+  const redutorPathActive = canComputeGross && eligibleDividendsByPayer.size > 0;
+
+  let corporateRedutor: CorporateRedutorAggregateResult | null = null;
+  let pfEffectiveRatePercentage: string | null = null;
+
+  if (redutorPathActive && ruleSet && assessment.minimumTaxBase !== null && grossExact !== null) {
+    const totalEligible = Array.from(eligibleDividendsByPayer.values()).reduce(
+      (acc, amount) => acc.add(amount),
+      Money.zero(currency),
+    );
+    // Statutory PF rate (§3, II): increment from including ALL eligible dividends,
+    // before any reduction. Exact: (Gross(Base) − Gross(Base − D)) / D × 100.
+    const baseWithoutDividends = assessment.minimumTaxBase.subtract(totalEligible);
+    const model = buildHighIncomeRateModel(ruleSet, currency);
+    const rateWithout = resolveHighIncomeRatePercentage(model, baseWithoutDividends);
+    const grossWithout = baseWithoutDividends.multiply(rateWithout.amount).divide('100');
+    const increment = grossExact.subtract(grossWithout);
+    pfEffectiveRatePercentage = increment.divide(totalEligible.amount).multiply('100').amount;
+
+    const deduped = deduplicateCorporateEvidence(input.corporateEvidence ?? [], currency);
+    const evidenceByPayer = new Map(deduped.evidence.map((record) => [record.payerId, record]));
+    const payerIds = Array.from(
+      new Set([...eligibleDividendsByPayer.keys(), ...evidenceByPayer.keys()]),
+    ).sort();
+    const payerResults = payerIds.map((payerId) => {
+      const dividends = eligibleDividendsByPayer.get(payerId) ?? Money.zero(currency);
+      const conflict = deduped.conflictingPayerIds.includes(payerId);
+      const evidence = conflict ? null : (evidenceByPayer.get(payerId) ?? null);
+      return calculateCorporatePayerRedutor({
+        payerId,
+        payerType: evidence?.payerType ?? 'UNKNOWN',
+        eligibleDividends: dividends,
+        pfEffectiveRatePercentage: pfEffectiveRatePercentage!,
+        evidence,
+        currency,
+        hasConflictingEvidence: conflict,
+      });
+    });
+    if (deduped.conflictingPayerIds.length > 0) {
+      for (const payerId of deduped.conflictingPayerIds) {
+        blockingReasons.add(`CONFLICTING_CORPORATE_EVIDENCE:${payerId}`);
+      }
+    }
+    corporateRedutor = aggregateCorporateRedutor(payerResults, currency);
+  }
+
+  const redutorComplete =
+    corporateRedutor !== null &&
+    (corporateRedutor.status === 'APPLICABLE' || corporateRedutor.status === 'NOT_APPLICABLE');
+  const redutorBlocked =
+    corporateRedutor !== null &&
+    (corporateRedutor.status === 'BLOCKED' ||
+      corporateRedutor.status === 'UNSUPPORTED_PAYER_TYPE' ||
+      corporateRedutor.status === 'UNSUPPORTED_YEAR');
+  const redutorPending =
+    (redutorPathActive && corporateRedutor === null) ||
+    (corporateRedutor !== null && corporateRedutor.status === 'REQUIRES_EVIDENCE');
+
   // --- Status precedence (fail-closed) -------------------------------------
   let status: HighIncomeMinimumTaxCalculationStatus;
   let netMinimumTax: Money | null = null;
@@ -178,7 +263,10 @@ export function calculateHighIncomeMinimumTax(
     blockingReasons.add('MINIMUM_TAX_BASE_UNRESOLVED');
   } else if (!aboveThreshold) {
     status = 'NOT_APPLICABLE';
-  } else if (corporateReductionPotential) {
+  } else if (redutorBlocked) {
+    status = 'BLOCKED';
+    blockingReasons.add('CORPORATE_REDUTOR_BLOCKED');
+  } else if (redutorPending) {
     status = 'INCOMPLETE_REDUCTION_DATA';
     blockingReasons.add('CORPORATE_EFFECTIVE_TAX_REDUCTION_NOT_IMPLEMENTED');
     limitations.add('CORPORATE_EFFECTIVE_TAX_EVIDENCE_PENDING');
@@ -189,7 +277,8 @@ export function calculateHighIncomeMinimumTax(
     }
   } else {
     status = 'CALCULABLE';
-    const netExact = grossExact!.subtract(appliedCreditsSum);
+    const redutorAmount = corporateRedutor?.totalSupportedReduction ?? Money.zero(currency);
+    const netExact = grossExact!.subtract(appliedCreditsSum).subtract(redutorAmount);
     if (netExact.isNegative()) {
       creditExcess = roundMoneyToCents(netExact.abs());
       netMinimumTax = Money.zero(currency);
@@ -200,7 +289,32 @@ export function calculateHighIncomeMinimumTax(
   }
 
   const supportedCreditsTotal = grossMinimumTax !== null ? appliedCreditsSum : null;
-  const supportedReductionsTotal = grossMinimumTax !== null ? appliedReductionsSum : null;
+  const computedReductionEntry =
+    corporateRedutor !== null &&
+    redutorComplete &&
+    corporateRedutor.totalSupportedReduction !== null
+      ? [
+          Object.freeze({
+            kind: 'ART_16B_REDUTOR' as HighIncomeTaxPaidFactKind,
+            role: 'REDUCTION' as const,
+            supported: true,
+            provided: true,
+            amount: corporateRedutor.totalSupportedReduction,
+            applied: true,
+            requiredForNet: true,
+            legalReference: 'Lei 9.250/1995, art. 16-A, §3º, V e art. 16-B',
+            reason: 'APPLIED',
+          }),
+        ]
+      : [];
+  const supportedReductionsTotal =
+    grossMinimumTax !== null
+      ? appliedReductionsSum.add(
+          computedReductionEntry.length > 0
+            ? computedReductionEntry[0]!.amount!
+            : Money.zero(currency),
+        )
+      : null;
 
   const incomeBreakdown = buildIncomeBreakdown(assessment.incomeClassifications);
   const blockingReasonsArray = Array.from(blockingReasons).sort();
@@ -219,9 +333,20 @@ export function calculateHighIncomeMinimumTax(
     minimumRatePercentage,
     grossMinimumTax,
     credits,
-    reductions,
+    reductions: [...reductions, ...computedReductionEntry],
     netMinimumTax,
     blockingReasons: blockingReasonsArray,
+    corporateRedutor:
+      corporateRedutor === null
+        ? null
+        : {
+            aggregateVersion: corporateRedutor.aggregateVersion,
+            status: corporateRedutor.status,
+            totalEligibleDividends: corporateRedutor.totalEligibleDividends,
+            totalReductionExact: corporateRedutor.totalReductionExact,
+            totalSupportedReduction: corporateRedutor.totalSupportedReduction,
+            calculationFingerprint: corporateRedutor.calculationFingerprint,
+          },
   });
 
   return Object.freeze({
@@ -241,8 +366,9 @@ export function calculateHighIncomeMinimumTax(
     grossMinimumTax,
     credits: Object.freeze(credits),
     supportedCreditsTotal,
-    reductions: Object.freeze(reductions),
+    reductions: Object.freeze([...reductions, ...computedReductionEntry]),
     supportedReductionsTotal,
+    corporateRedutor,
     netMinimumTax,
     creditExcess,
     incomeBreakdown: Object.freeze(incomeBreakdown),

@@ -12,6 +12,7 @@ import {
   stableStringify,
 } from './high-income-minimum-tax';
 import { createHash } from 'node:crypto';
+import type { CorporateRedutorAggregateResult } from './high-income-corporate-redutor';
 
 /**
  * Phase 4I.2 — High-income minimum tax deterministic calculation core.
@@ -147,6 +148,8 @@ export interface HighIncomeMinimumTaxCalculationResult {
   readonly supportedCreditsTotal: Money | null;
   readonly reductions: readonly HighIncomeCreditAssessment[];
   readonly supportedReductionsTotal: Money | null;
+  /** Phase 4I.3 additive: payer-scoped corporate redutor aggregate (null when no eligible dividends). */
+  readonly corporateRedutor: CorporateRedutorAggregateResult | null;
   readonly netMinimumTax: Money | null;
   readonly creditExcess: Money | null;
   readonly incomeBreakdown: readonly HighIncomeIncomeBreakdownEntry[];
@@ -270,6 +273,19 @@ export interface HighIncomeCalculationFingerprintInput {
   readonly reductions: readonly HighIncomeCreditAssessment[];
   readonly netMinimumTax: Money | null;
   readonly blockingReasons: readonly string[];
+  /**
+   * Phase 4I.3 additive: corporate redutor section. Included in the canonical
+   * fingerprint ONLY when present, so calculations without eligible dividends
+   * keep byte-identical fingerprints.
+   */
+  readonly corporateRedutor?: {
+    readonly aggregateVersion: string;
+    readonly status: string;
+    readonly totalEligibleDividends: Money | null;
+    readonly totalReductionExact: Money | null;
+    readonly totalSupportedReduction: Money | null;
+    readonly calculationFingerprint: string;
+  } | null;
 }
 
 export function computeHighIncomeCalculationFingerprint(
@@ -303,6 +319,18 @@ export function computeHighIncomeCalculationFingerprint(
     })),
     netMinimumTax: moneyOrNull(input.netMinimumTax),
     blockingReasons: [...input.blockingReasons],
+    ...(input.corporateRedutor !== null && input.corporateRedutor !== undefined
+      ? {
+          corporateRedutor: {
+            aggregateVersion: input.corporateRedutor.aggregateVersion,
+            status: input.corporateRedutor.status,
+            totalEligibleDividends: moneyOrNull(input.corporateRedutor.totalEligibleDividends),
+            totalReductionExact: moneyOrNull(input.corporateRedutor.totalReductionExact),
+            totalSupportedReduction: moneyOrNull(input.corporateRedutor.totalSupportedReduction),
+            calculationFingerprint: input.corporateRedutor.calculationFingerprint,
+          },
+        }
+      : {}),
   };
   return createHash('sha256').update(stableStringify(canonical)).digest('hex');
 }

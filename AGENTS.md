@@ -2152,3 +2152,30 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
     - Web/Mobile apenas renderizam valores serializados pelo servidor.
 11. **4H E 4I.1 PERMANECEM IMUTÁVEIS:**
     - O cálculo consome fatos anuais autoritativos sem recomputar ganhos, custo médio, proventos ou IRRF e sem reescrever a fundação 4I.1.
+
+---
+
+## 75. Regras do Redutor da Carga Efetiva Corporativa (Fase 4I.3)
+
+1. **REDUTOR É ESCOPADO POR PAGADOR:**
+   - O redutor do art. 16-B é calculado por `payerId` canônico e agregado deterministicamente; distribuições do mesmo pagador agregam, pagadores distintos nunca se compensam.
+2. **NOME DE PAGADOR ≠ IDENTIDADE DE PAGADOR:**
+   - `payerDisplayName` nunca é identidade; entidades distintas com mesmo nome nunca se fundem.
+3. **EVIDÊNCIA DE PAGADOR DEVE SER EXPLÍCITA:**
+   - Somente documentação de origem (`PJ_FINANCIAL_STATEMENTS` ou `RFB_PREFILLED`) com autoridade `AUTHORITATIVE` computa; confirmação do contribuinte sozinha nunca autoriza redução.
+4. **EVIDÊNCIA AUSENTE ≠ ZERO:**
+   - Evidência ausente ou não autoritativa resulta em `REQUIRES_EVIDENCE` (líquido `null`, bruto preservado); evidência conflitante ou tipo desconhecido bloqueia.
+5. **REDUÇÃO ZERO ≠ REDUÇÃO DESCONHECIDA:**
+   - Excesso não positivo gera redução `0` autoritativa; falta de evidência gera `null`, nunca `0`.
+6. **COMPENSAÇÃO ENTRE PAGADORES É PROIBIDA:**
+   - O excesso de carga de um pagador nunca abate o déficit de outro, salvo previsão legal expressa (inexistente).
+7. **REDUÇÃO CORPORATIVA É DERIVADA, NUNCA FONTE DA VERDADE:**
+   - O redutor é recomputável e nunca persistido como fonte autoritativa; sem API, sem UI, 0 queries.
+8. **IMPOSTO LÍQUIDO PERMANECE NULO SE O REDUTOR EXIGIDO ESTIVER NÃO RESOLVIDO:**
+   - `netMinimumTax` só é autoritativo com redutor completo e evidenciado (ou redutor não aplicável).
+9. **ZERO FLOAT:**
+   - Nenhum `parseFloat`/`Number()`/aritmética IEEE-754 em caminhos financeiros; arredondamento em ponto único (`ROUND_HALF_UP`, 2 casas).
+10. **IA FISCAL PERMANECE DESABILITADA:**
+    - Consultas fiscais permanecem `UNSUPPORTED_TAX` com 0 chamadas a provedores.
+11. **ZERO MATEMÁTICA FISCAL NO CLIENTE:**
+    - Web/Mobile apenas renderizam valores serializados pelo servidor.

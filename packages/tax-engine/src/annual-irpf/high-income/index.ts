@@ -3,3 +3,4 @@ export * from './high-income-minimum-tax-rules';
 export * from './high-income-minimum-tax-engine';
 export * from './high-income-minimum-tax-calculation';
 export * from './high-income-minimum-tax-calculator';
+export * from './high-income-corporate-redutor';
