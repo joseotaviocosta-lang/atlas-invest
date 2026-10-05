@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, ApiError } from '@/api/client';
 import {
@@ -549,6 +550,20 @@ function FiscalContent() {
           <AnnualInvestmentIncomeSection />
           <AnnualReadinessSection />
           <AnnualReportingSection />
+
+          <Card style={{ padding: `${spacing.base}px`, marginTop: `${spacing.base}px` }}>
+            <SectionHeader
+              title="Tributação mínima de alta renda"
+              description="Revisão anual do regime de altas rendas (Lei nº 15.270/2025): situação, base, evidências e pendências."
+            />
+            <Link
+              href="/tax/high-income"
+              data-testid="tax-high-income-link"
+              style={{ color: colors.accent, fontSize: '0.875rem' }}
+            >
+              Abrir revisão anual de alta renda →
+            </Link>
+          </Card>
 
           <div
             style={{

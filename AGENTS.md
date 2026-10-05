@@ -2202,3 +2202,26 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Decimais exatos como strings em payloads e respostas; sem `parseFloat`/`Number()` em valores financeiros; sem matemática fiscal no cliente.
 9. **IA FISCAL PERMANECE DESABILITADA:**
    - Consultas fiscais permanecem `UNSUPPORTED_TAX` com 0 chamadas a provedores.
+
+---
+
+## 77. Regras da Experiência Web de Alta Renda (Fase 4I.5)
+
+1. **WEB NUNCA CALCULA TRIBUTO DE ALTA RENDA:**
+   - A interface consome a API 4I.4 e projeta seus campos verbatim; nenhum limiar, alíquota, base, crédito, redutor ou líquido é computado no navegador (fiscalizado por teste de arquitetura).
+2. **DESCONHECIDO ≠ ZERO NA UI:**
+   - `null` renderiza `—` com contexto; zero autoritativo renderiza `R$ 0,00`; líquido bloqueado/desconhecido nunca aparece como valor final.
+3. **ZERO AUTORITATIVO ≠ DESCONHECIDO:**
+   - Redutor zero com evidência completa exibe `R$ 0,00`; redutor sem evidência exibe mensagem de pendência, nunca zero.
+4. **EDIÇÕES DE EVIDÊNCIA CRIAM REVISÕES:**
+   - Sem edição in-place; sem campo de autoridade no cliente; stale/conflito visíveis; resolução auditável; double-submit inócuo.
+5. **CLIENTE NÃO AFIRMA AUTORIDADE DE EVIDÊNCIA:**
+   - O servidor decide `AUTHORITATIVE`; o cliente nunca envia `taxSubjectId`, `authority` ou segredos.
+6. **EVIDÊNCIA DESATUALIZADA É VISÍVEL:**
+   - Stale exibe motivo e exige nova revisão; troca de ano nunca mostra valores de outro ano.
+7. **LÍQUIDO BLOQUEADO NUNCA RENDERIZA COMO ZERO:**
+   - Status bloqueado prioriza itens de ação ordenados deterministicamente.
+8. **SEM ALEGAÇÕES DE RECEITA/PAGAMENTO:**
+   - Disclaimer obrigatório sempre visível; nenhuma linguagem de transmissão, validação, DARF ou pagamento; IA fiscal desabilitada.
+9. **ZERO MATEMÁTICA FISCAL NO CLIENTE:**
+   - Apenas formatação de exibição de strings decimais exatas; sem `parseFloat`/`Number()`; sem import do motor tributário.
