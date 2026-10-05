@@ -8,7 +8,7 @@
 
 - **base (4I.4 candidate):** `942f67dd9b83645de036b9fd1e803666820d408d`
 - **branch:** `feature/phase-4i4a-scale-query-closure`
-- **phase commit (4I.4A):** `__PHASE_COMMIT__`
+- **phase commit (4I.4A):** `2651b445730810baa87f2dd3324402ce27edc09c`
 - **HEAD:** tip of the branch (see git log)
 - **worktree:** clean
 
@@ -226,4 +226,4 @@ REAL_4I4_SCALE_BLOCKERS: none.
 **PHASE 4I.4: APROVADA DEFINITIVAMENTE**
 **PHASE 4I: NÃO APROVADA**
 
-FINAL CHECKPOINT: `__PHASE_COMMIT__`
+FINAL CHECKPOINT: `2651b445730810baa87f2dd3324402ce27edc09c`
