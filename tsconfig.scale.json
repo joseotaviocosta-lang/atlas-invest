@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.smoke.json",
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  }
+}

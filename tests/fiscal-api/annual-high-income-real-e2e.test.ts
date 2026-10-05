@@ -696,4 +696,87 @@ describe('API Integration: Annual High-Income Real E2E (Phase 4I.4)', () => {
     );
     await postEvidence(app.getHttpServer(), token, 2026, corporateBody('PETR4'), 201);
   });
+
+  it('large decimal values flow through without overflow or float coercion', async () => {
+    const userId = uuidFor('user-hi-big');
+    const token = await session(userId);
+    const fx = await setupPortfolio(userId, 'big', [
+      { ticker: 'PETR4', name: 'Petrobras PN', type: 'STOCK' },
+    ]);
+    await addIncomeTx(fx, 'big-div', 'PETR4', 'DIVIDEND', '999999999999.99', '2026-05-15');
+    await postEvidence(app.getHttpServer(), token, 2026, {
+      ...corporateBody('PETR4'),
+      accountingProfit: '9999999999999.99',
+      irDue: '2000000000000.00',
+      csllDue: '680000000000.00',
+    });
+    await postEvidence(app.getHttpServer(), token, 2026, adjustmentBody('0.00'));
+
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2026/high-income')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.data.status).toBe('CALCULABLE');
+    expect(res.body.data.totalAnnualIncome).toBe('999999999999.99');
+    expect(/^-?\d+(\.\d+)?$/.test(res.body.data.grossMinimumTax)).toBe(true);
+    expect(/^-?\d+(\.\d+)?$/.test(res.body.data.netMinimumTax)).toBe(true);
+    expect(res.body.data.netMinimumTax).not.toContain('e');
+    expect(res.body.data.grossMinimumTax).not.toContain('e');
+  });
+
+  it('concurrent read during evidence write never yields mixed state', async () => {
+    const userId = uuidFor('user-hi-race');
+    const token = await session(userId);
+    const fx = await setupPortfolio(userId, 'race', [
+      { ticker: 'PETR4', name: 'Petrobras PN', type: 'STOCK' },
+    ]);
+    await addIncomeTx(fx, 'race-div', 'PETR4', 'DIVIDEND', '700000.00', '2026-05-15');
+    await postEvidence(app.getHttpServer(), token, 2026, adjustmentBody('0.00'));
+    await postEvidence(app.getHttpServer(), token, 2026, corporateBody('PETR4'));
+
+    const baseline = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2026/high-income')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    const fp0 = baseline.body.data.calculationFingerprint as string;
+    expect(baseline.body.data.status).toBe('CALCULABLE');
+
+    const racingReads = Array.from({ length: 10 }, () =>
+      request(app.getHttpServer())
+        .get('/api/v1/fiscal/annual/2026/high-income')
+        .set('Authorization', `Bearer ${token}`),
+    );
+    const racingWrite = postEvidence(app.getHttpServer(), token, 2026, {
+      ...corporateBody('PETR4'),
+      irDue: '210000.00',
+    });
+    const [readResults] = await Promise.all([Promise.all(racingReads), racingWrite]);
+    const legalStatuses = new Set([
+      'NOT_APPLICABLE',
+      'CALCULABLE',
+      'INCOMPLETE_CREDITS',
+      'INCOMPLETE_REDUCTION_DATA',
+      'REQUIRES_CONFIRMATION',
+      'BLOCKED',
+      'UNSUPPORTED_YEAR',
+      'UNSUPPORTED_INPUT',
+    ]);
+    for (const res of readResults) {
+      expect(res.status).toBe(200);
+      expect(legalStatuses.has(res.body.data.status)).toBe(true);
+    }
+
+    const converged = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2026/high-income')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    const fp1 = converged.body.data.calculationFingerprint as string;
+    expect(fp1).not.toBe(fp0);
+    // No racy response may claim a third, mixed state: every fingerprint seen
+    // must equal the pre-write or the post-write fingerprint.
+    for (const res of readResults) {
+      expect([fp0, fp1]).toContain(res.body.data.calculationFingerprint);
+    }
+  });
 });
