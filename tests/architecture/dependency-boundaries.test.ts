@@ -166,6 +166,33 @@ describe('Architecture Gate: Layer Dependency Boundaries & Package Isolation', (
     }
   });
 
+  it('Phase 4I.6: high-income review package tax-engine module must not import Nest/Prisma/@atlas/database/react', () => {
+    const annualIrpfDir = path.join(rootDir, 'packages/tax-engine/src/annual-irpf');
+    const moduleFiles = [
+      'high-income-review-package.ts',
+      'high-income-review-package-registry.ts',
+      'high-income-review-package-export.ts',
+      'csv-escape.ts',
+    ];
+
+    const forbiddenImportPatterns = [
+      /from\s+['"]@nestjs\//,
+      /from\s+['"]@prisma\/client['"]/,
+      /from\s+['"]@atlas\/database['"]/,
+      /from\s+['"]react['"]/,
+      /from\s+['"]react-native['"]/,
+    ];
+
+    for (const file of moduleFiles) {
+      const fullPath = path.join(annualIrpfDir, file);
+      expect(fs.existsSync(fullPath), `${file} must exist`).toBe(true);
+      const content = fs.readFileSync(fullPath, 'utf8');
+      for (const pattern of forbiddenImportPatterns) {
+        expect(content, `${file} must not match ${pattern}`).not.toMatch(pattern);
+      }
+    }
+  });
+
   it('Zero Client Financial Math: Shared UI view models must not perform financial division or arithmetic', () => {
     const viewModelsDir = path.join(rootDir, 'packages/ui/src/view-models');
     if (!fs.existsSync(viewModelsDir)) return;

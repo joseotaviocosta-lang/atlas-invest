@@ -125,5 +125,55 @@ export { buildAnnualTaxReportingPackage } from './annual-tax-reporting-engine';
 export type { AnnualTaxReportingEngineInput } from './annual-tax-reporting-engine';
 export { exportAnnualTaxReportingToCsv } from './annual-tax-reporting-export';
 
+export { escapeCsvCell } from './csv-escape';
+
 // --- Phase 4I.1: high-income minimum tax legal & data foundation (Lei 15.270/2025) ---
 export * from './high-income';
+
+// --- Phase 4I.6: high-income annual review / support package, fingerprint & export ---
+export {
+  HIGH_INCOME_REVIEW_PACKAGE_VERSION,
+  HIGH_INCOME_REVIEW_DISCLAIMER,
+  HIGH_INCOME_REVIEW_BANNER,
+  stableStringify,
+  computeHighIncomeReviewPackageFingerprint,
+  buildHighIncomeAnnualReviewPackage,
+} from './high-income-review-package';
+export type {
+  ReviewPackageStatus,
+  FilingMappingStatus,
+  FilingSupportNote,
+  Section1Identity,
+  Section2Applicability,
+  Section3IncomeRow,
+  Section3IncomeComposition,
+  Section4Calculation,
+  Section5CreditRow,
+  Section5Credits,
+  Section6Payer,
+  Section6CorporateRedutor,
+  Section7RequirementGroup,
+  Section7EvidenceRow,
+  Section7Counts,
+  Section7Readiness,
+  Section8Provenance,
+  Section9FilingSupportNotes,
+  HighIncomeReviewPackage,
+  HighIncomeReviewFingerprintInput,
+  BuildHighIncomeReviewPackageOptions,
+  HighIncomeReviewAssessmentInput,
+  HighIncomeReviewCreditInput,
+  HighIncomeReviewBreakdownInput,
+  HighIncomeReviewPayerInput,
+  HighIncomeReviewCorporateRedutorInput,
+  HighIncomeReviewEvidenceRequirementInput,
+  HighIncomeReviewEvidenceStateInput,
+} from './high-income-review-package';
+export {
+  HighIncomeReviewFilingRegistry,
+  exerciseLabel,
+} from './high-income-review-package-registry';
+export {
+  serializeHighIncomeReviewPackageToJson,
+  exportHighIncomeReviewPackageToCsv,
+} from './high-income-review-package-export';
