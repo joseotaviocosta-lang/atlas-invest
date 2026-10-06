@@ -17,7 +17,7 @@ export class TransactionRepository implements ITransactionRepository {
       const created = await this.prisma.transaction.create({ data });
       return TransactionMapper.toDomain(created);
     } catch (error) {
-      this.handlePrismaError(error, transaction);
+      await this.handlePrismaError(error, transaction);
       throw error;
     }
   }
@@ -90,7 +90,7 @@ export class TransactionRepository implements ITransactionRepository {
     return raw ? TransactionMapper.toDomain(raw) : null;
   }
 
-  private handlePrismaError(error: unknown, transaction: Transaction): void {
+  private async handlePrismaError(error: unknown, transaction: Transaction): Promise<void> {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       const metaStr = JSON.stringify(error.meta ?? {});
       const details = `${metaStr} ${error.message}`;
@@ -110,13 +110,29 @@ export class TransactionRepository implements ITransactionRepository {
         }
       }
 
-      // P2003: Foreign key constraint failed
-      if (error.code === 'P2003') {
-        if (
-          details.includes('account_id') ||
-          details.includes('portfolio_id') ||
-          details.includes('transactions_account_id_portfolio_id_fkey')
-        ) {
+      // P2003: Foreign key constraint failed.
+      // The constraint name Prisma surfaces on P2003 (error.meta.constraint and
+      // the message text) is version-dependent and historically unreliable, so
+      // string-matching it is brittle. Instead, when the transaction carries an
+      // account, run a deterministic server-side ownership check against the
+      // composite unique accounts(id, portfolio_id): if no such row exists the
+      // account does not belong to the target portfolio (or does not exist) =>
+      // cross-portfolio integrity violation. Otherwise the P2003 came from a
+      // different FK (portfolio or asset) and keeps the generic mapping. The
+      // probe reads only account identifiers (no sensitive/financial fields)
+      // and is covered by the accounts_id_portfolio_id_key index.
+      if (error.code === 'P2003' && transaction.accountId) {
+        const owningAccount = await this.prisma.account.findUnique({
+          where: {
+            id_portfolioId: {
+              id: transaction.accountId,
+              portfolioId: transaction.portfolioId,
+            },
+          },
+          select: { id: true },
+        });
+
+        if (owningAccount === null) {
           throw new CrossPortfolioIntegrityError(
             `Account '${transaction.accountId}' does not belong to portfolio '${transaction.portfolioId}' or does not exist.`,
           );
