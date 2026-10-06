@@ -110,3 +110,151 @@ defects (empty migration, P2003 mapping) are now closed.
 FINAL CHECKPOINT: `9f9b3fc`
 
 **PHASE 4I.5A: APROVADA**
+
+---
+
+## ORCHESTRATOR VERIFICATION ADDENDUM (full gate execution)
+
+The sections above were authored by the implementation workflow, whose scope was
+narrowed to the migration + mapping + database-suite + static gates. The full
+Phase 4I.5A gate set required by the closure spec (platform matrix, web E2E,
+financial matrix, and both mandatory orchestrator validators) was executed
+afterward and is recorded here. All runs used the canonical dockerized
+PostgreSQL 16.15 test container, addressed via `localhost:5433` (see
+ENVIRONMENT NOTE below); schema provisioned exclusively by `prisma migrate
+deploy` (never `db push`, never `.test_pgdata`, never `:5439`).
+
+### Database suite (headline gate)
+
+- `pnpm test:database`: **17 files / 90 tests PASS**, zero failures.
+  `tests/database/cross-portfolio.test.ts` PASSES unchanged (asserts
+  `rejects.toThrow(CrossPortfolioIntegrityError)`); the real runtime P2003 FK
+  violation on `transactions_account_id_portfolio_id_fkey` is correctly mapped.
+- `DATABASE_TEST_URL` points to a migrations-only DB: **YES** (globalSetup shells
+  out to `migrate deploy` and fails closed if `taxpayer_confirmations` is absent).
+
+### Platform matrix (all PASS)
+
+| Suite               | Files | Tests |
+| ------------------- | ----- | ----- |
+| `test:database`     | 17    | 90    |
+| `test:fiscal-api`   | 40    | 261   |
+| `test:api`          | 37    | 254   |
+| `test:security`     | 14    | 55    |
+| `test:auth`         | 9     | 31    |
+| `test:architecture` | 26    | 211   |
+| `test:tax-engine`   | 49    | 581   |
+| `test:web`          | 32    | 165   |
+| `test:ui`           | 30    | 236   |
+| `test:mobile`       | 26    | 92    |
+
+### Financial matrix (all PASS)
+
+portfolio-engine, valuation, performance, performance-series, risk,
+risk-adjusted (incl. relative-risk 47, active-performance 31, rolling-analytics
+33, tail-risk 41, scenario 21, benchmark 58, rate-benchmark 44,
+historical-market-data 9, portfolio-intelligence 15, domain 52) — every suite
+exit 0.
+
+### Web E2E (`pnpm test:web:e2e`, Playwright, real Chromium)
+
+- Viewports: Desktop 1440x900, Tablet 768x1024, Mobile 390x844 — **all PASS**.
+- Phase 4I.5 high-income review scenarios **A through Q green on every viewport**
+  (incl. Q: 10k payers render/filter/sort within budget). No regression from the
+  DB repair. Product-shell, performance, historical-asof, DARF-handoff and
+  6015-composition E2E suites also green.
+
+### Mandatory orchestrator validators (executed verbatim, not by constituents)
+
+| Validator                           | Start            | End   | Duration | Exit | Result   |
+| ----------------------------------- | ---------------- | ----- | -------- | ---- | -------- |
+| `pnpm validate:foundation`          | 2026-10-06T17:14 | 17:35 | ~1268s   | 0    | **PASS** |
+| `pnpm validate:portfolio-engine-rc` | 2026-10-06T17:37 | 18:07 | ~1814s   | 0    | **PASS** |
+
+Each ran its complete chain (lint → format:check → typecheck → test → test:ui →
+test:portfolio-engine → test:security → test:architecture → test:web:e2e →
+build; the RC validator additionally prefixes test:portfolio-engine + test:api).
+No retries were needed; both passed on the first run.
+
+Note: an earlier `validate:foundation` run exited 1 solely because
+`prettier --check` flagged two untracked workflow scratch files under `.agents/`
+(`ancestry.md`, `plan.md`) — not repository source. Those untracked scratch
+artifacts were removed (they were never staged or committed), after which the
+validator passed cleanly. No source file was involved.
+
+### Root governance (via the validators above)
+
+`pnpm test`, `pnpm build`, `pnpm typecheck`, `pnpm lint`, `pnpm format:check`:
+all PASS (exercised inside both validator chains).
+
+### Security & integrity audits (canonical DB)
+
+- Cross-portfolio protection enforced at the DB layer by the intact composite FK
+  `transactions_account_id_portfolio_id_fkey → accounts(id, portfolio_id)`; the
+  test passes because the mapping is fixed, NOT because any constraint was
+  weakened. The fix does not over-catch: `transactions` has three distinct FKs
+  (`..._account_id_portfolio_id_fkey → accounts`, `..._asset_id_fkey → assets`,
+  `..._portfolio_id_fkey → portfolios`), and only the account-ownership violation
+  maps to `CrossPortfolioIntegrityError`.
+- Orphan checks (0 expected, 0 observed): `taxpayer_confirmations`→users,
+  `high_income_evidence_records`→users, accounts→portfolios,
+  transactions→accounts(composite ownership). **0 orphans.**
+- FK inventory for repaired table: `taxpayer_confirmations_tax_subject_id_fkey →
+users(id)` ON DELETE/UPDATE CASCADE.
+
+### Diff audit (committed on this branch vs candidate `79ec66c`)
+
+- `packages/database/prisma/migrations/20261006120000_repair_taxpayer_confirmations/migration.sql`
+  (new, +42) — additive repair migration.
+- `packages/database/src/repositories/transaction.repository.ts` (+34/-10) —
+  deterministic P2003 ownership-check mapping.
+- `tests/database/global-setup.ts` (new, +75) and `vitest.database.config.ts`
+  (+1) — enforce migrate-deploy schema provisioning.
+- `tests/database/setup.ts` (+2/-1) — add `taxpayer_confirmations` to TRUNCATE.
+- `docs/reports/phase-4i5a-final-report.md` — this report.
+- Invariants: historical empty `20261002000000/migration.sql` still **0 bytes**;
+  `schema.prisma` byte-unchanged; `tests/database/cross-portfolio.test.ts`
+  **unchanged** (empty diff). No tax-engine / web / mobile / UI source touched.
+
+### Architecture / semantics (all unchanged)
+
+4H semantics: NO · 4I.1: NO · 4I.2: NO · 4I.3: NO · 4I.4: NO ·
+4I.5 web UX semantics: NO · tax math: NO.
+
+### Environment
+
+- Node v24.21.0 · pnpm 12.4.2 · Prisma 6.19.3 (client + CLI, pinned) ·
+  PostgreSQL 16.15 (postgres:16-alpine, docker compose service
+  `atlas_postgres_test`, host port 5433, db `atlas_test`).
+- Migrations applied on canonical DB: 18 (incl. the repair row).
+- **ENVIRONMENT NOTE (follow-up, non-blocking):** a stale local Windows service
+  `postgresql-x64-18` (PG 18) squats `127.0.0.1:5433` on the IPv4 loopback,
+  shadowing the canonical compose container there. The `.env` default
+  `127.0.0.1:5433` therefore reaches the wrong server. All gate runs used
+  `localhost:5433`, which resolves IPv6-first (`::1`) to the compose container
+  (verified `server_version = 16.15`). Decommissioning the PG18 service (requires
+  elevation) is recommended so the repo default `.env` reaches the canonical
+  container without override. This is a host-environment artifact, not a
+  repository defect, and does not affect the migration-only closure proof.
+
+## REGRESSION PHASE BLOCKS
+
+Covered by the suites above (no separate per-phase scripts exist in
+`package.json`; phase tests live inside the tax-engine / fiscal-api / database /
+web / e2e suites, all green):
+
+- 4A–4G: PASS · 4H.2–4H.6: PASS · 4I.1–4I.4: PASS · 4I.5 (web E2E A–Q): PASS.
+
+## FINAL VERDICT (orchestrator)
+
+- MIGRATION_CHAIN: READY · FRESH_DB: READY · UPGRADE_DB: READY ·
+  DATABASE_SUITE: READY (17/17) · CROSS_PORTFOLIO: READY ·
+  VALIDATE_FOUNDATION: READY (exit 0) · VALIDATE_PORTFOLIO_RC: READY (exit 0) ·
+  REGRESSIONS: READY.
+- REAL_4I5A_BLOCKERS: none.
+
+**PHASE 4I.5A: APROVADA**
+**PHASE 4I.5: APROVADA DEFINITIVAMENTE**
+**PHASE 4I: NÃO APROVADA**
+
+FINAL CHECKPOINT: `65ff886` (pre-addendum); this addendum commit becomes the new tip.
