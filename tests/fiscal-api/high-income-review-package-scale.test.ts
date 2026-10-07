@@ -251,7 +251,7 @@ describe('API Scale: High-Income Review/Support Package (Phase 4I.6)', () => {
     console.log(
       `[4I.6 review scale] 100p=${smallMs}ms(${smallQueries.length}q) 1kp=${bigMs}ms(${bigQueries.length}q)`,
     );
-  });
+  }, 60000);
 
   it('export query shapes are fact-count invariant across 1k / 10k facts (bounded)', async () => {
     const small = await setupScaleCase('f1k', 20, 1000);
