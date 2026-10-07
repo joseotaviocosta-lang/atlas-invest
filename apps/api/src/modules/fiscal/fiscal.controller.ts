@@ -64,6 +64,7 @@ import { GetAnnualHighIncomeAssessmentUseCase } from '../../application/fiscal/g
 import { RecordHighIncomeEvidenceUseCase } from '../../application/fiscal/record-high-income-evidence.use-case';
 import { ResolveHighIncomeEvidenceUseCase } from '../../application/fiscal/resolve-high-income-evidence.use-case';
 import { HighIncomeAnnualReviewPackageService } from '../../application/fiscal/get-high-income-annual-review-package.use-case';
+import { UnifiedAnnualIrpfService } from '../../application/fiscal/get-unified-annual-irpf.use-case';
 import { ZodValidationPipe } from '../../common/pipes';
 
 import {
@@ -101,6 +102,15 @@ import {
   ResolveHighIncomeEvidenceBodySchema,
 } from './dto/annual-high-income.dto';
 import { HighIncomeExportQuerySchema } from './dto/high-income-export.dto';
+import { UnifiedAnnualParam, UnifiedAnnualParamSchema } from './dto/unified-annual.dto';
+import type {
+  UnifiedAnnualIrpfState,
+  UnifiedAnnualStatus,
+  UnifiedAnnualSummary,
+  UnifiedConsistencyIssue,
+  UnifiedModuleSummary,
+  UnifiedRequirement,
+} from '@atlas/tax-engine';
 
 import {
   AdjustmentQuery,
@@ -139,6 +149,40 @@ function conflict(): never {
     message: 'A canonical tax input already exists for this identity with a different value.',
     code: 'TAX_INPUT.CONFLICT',
   });
+}
+
+/**
+ * Phase 4J.1 — the flattened wire view of `UnifiedAnnualIrpfState`.
+ * `calendarYear/declarationExercise/status/sourceFingerprint/annualFingerprint`
+ * are lifted from `identity`; `modules/requirements/consistencyIssues/summary`
+ * pass through. Deliberately DROPPED from the body: `identity.taxSubjectId`
+ * (internal only), `identity.generatedAt` (non-deterministic; excluded from the
+ * fingerprint) and `identity.ruleVersions` (internal provenance input).
+ */
+interface UnifiedAnnualResponse {
+  readonly calendarYear: number;
+  readonly declarationExercise: number;
+  readonly status: UnifiedAnnualStatus;
+  readonly summary: UnifiedAnnualSummary;
+  readonly modules: readonly UnifiedModuleSummary[];
+  readonly requirements: readonly UnifiedRequirement[];
+  readonly consistencyIssues: readonly UnifiedConsistencyIssue[];
+  readonly sourceFingerprint: string;
+  readonly annualFingerprint: string;
+}
+
+function toUnifiedAnnualResponse(state: UnifiedAnnualIrpfState): UnifiedAnnualResponse {
+  return {
+    calendarYear: state.identity.calendarYear,
+    declarationExercise: state.identity.declarationExercise,
+    status: state.identity.status,
+    summary: state.summary,
+    modules: state.modules,
+    requirements: state.requirements,
+    consistencyIssues: state.consistencyIssues,
+    sourceFingerprint: state.identity.sourceFingerprint,
+    annualFingerprint: state.identity.annualFingerprint,
+  };
 }
 
 @ApiTags('Fiscal')
@@ -218,6 +262,8 @@ export class FiscalController {
     private readonly resolveHighIncomeEvidenceUseCase: ResolveHighIncomeEvidenceUseCase,
     @Inject(HighIncomeAnnualReviewPackageService)
     private readonly highIncomeReviewPackageService: HighIncomeAnnualReviewPackageService,
+    @Inject(UnifiedAnnualIrpfService)
+    private readonly unifiedAnnualIrpfService: UnifiedAnnualIrpfService,
   ) {}
 
   @Get('monthly/:competence')
@@ -1108,5 +1154,34 @@ export class FiscalController {
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('Pragma', 'no-cache');
     return body;
+  }
+
+  // --- Phase 4J.1: Unified Annual IRPF Orchestration (projection only) ---
+  //
+  // Declared AFTER all existing `annual/...` routes (opening-positions* and all
+  // two-segment `annual/:calendarYear/<sub>` literals) so the bare parametric
+  // single-segment route never captures a literal like `opening-positions`.
+  @Get('annual/:calendarYear')
+  @ApiOperation({
+    summary:
+      'Get the deterministic unified annual IRPF orchestration state: which annual modules (4H.2–4H.5, 4I) apply, are ready or blocked, which confirmations/evidence are missing, cross-regime consistency, and whether the overall package is ready for accountant/user review. ORCHESTRATION ONLY — consumes 4H/4I authoritative outputs; computes no tax, persists nothing. READY_FOR_REVIEW is NOT filed/submitted/paid.',
+  })
+  @ApiParam({ name: 'calendarYear', description: 'Economic calendar year (e.g. 2026)' })
+  @ApiResponse({ status: 200, description: 'Unified annual IRPF state' })
+  @ApiResponse({ status: 400, description: 'Invalid calendar year' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  @ApiResponse({ status: 422, description: 'Annual fiscal sources inconsistent (fail-closed)' })
+  async getUnifiedAnnualState(
+    @Param(new ZodValidationPipe(UnifiedAnnualParamSchema)) params: UnifiedAnnualParam,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ data: UnifiedAnnualResponse }> {
+    const state = await this.unifiedAnnualIrpfService.execute({
+      taxSubjectId: principal.userId,
+      calendarYear: params.calendarYear,
+    });
+    // Never cached by shared caches — the state reflects a subject's fiscal posture.
+    res.setHeader('Cache-Control', 'private, no-store');
+    return { data: toUnifiedAnnualResponse(state) };
   }
 }
