@@ -177,3 +177,39 @@ export {
   serializeHighIncomeReviewPackageToJson,
   exportHighIncomeReviewPackageToCsv,
 } from './high-income-review-package-export';
+
+// --- Phase 4J.1: unified annual IRPF orchestration (projection only; no tax math) ---
+export {
+  UNIFIED_MODULE_ORDER,
+  UNIFIED_SYNTHESISED_BLOCKING_REASONS,
+  normalizeSubjectReference,
+  buildRequirementKey,
+  aggregateRequirements,
+  computeUnifiedAnnualFingerprint,
+  computeUnifiedSourceFingerprint,
+  buildUnifiedAnnualIrpfState,
+  deriveUnifiedGlobalStatus,
+} from './unified-annual-irpf';
+export type {
+  UnifiedModuleId,
+  UnifiedModuleSource,
+  UnifiedModuleStatus,
+  UnifiedBlockingReason,
+  UnifiedAnnualStatus,
+  UnifiedConsistencyCode,
+  UnifiedConsistencySeverity,
+  UnifiedConsistencyIssue,
+  UnifiedRequirement,
+  UnifiedModuleSummary,
+  UnifiedRuleVersions,
+  UnifiedAnnualIdentity,
+  UnifiedAnnualSummary,
+  UnifiedAnnualIrpfState,
+  UnifiedModuleContribution,
+  BuildUnifiedAnnualIrpfInput,
+  UnifiedAnnualFingerprintInput,
+  UnifiedSourceFingerprintInput,
+} from './unified-annual-irpf';
+export { unifiedStatusRank, maxUnifiedStatus } from './unified-annual-status';
+export { detectUnifiedConsistencyIssues } from './unified-annual-consistency';
+export type { ConsistencyInput, ConsistencyModuleIdentity } from './unified-annual-consistency';
