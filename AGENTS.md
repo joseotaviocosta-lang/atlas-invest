@@ -2250,3 +2250,26 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - `taxSubjectId` vem unicamente do principal autenticado; recursos de outro contribuinte/ausentes retornam `404` (nunca `403`). Respostas de exportação carregam `Cache-Control: private, no-store` + `Pragma: no-cache`. UUIDs de PK de evidência do banco (`id`/`supersedesId`) **nunca** saem da memória (apenas desempate de ordenação); nenhuma resposta vaza CPF/token/sessionId/UUID interno/stack.
 10. **VERIFICAÇÃO:**
     - Fiscalizado por `pnpm test:tax-engine`, `test:fiscal-api`, `test:architecture` e `test:web`(`:e2e`). Sem Receita submission, DIRPF, DARF, pagamento, restituição, Tax-AI, matemática fiscal no cliente nem resultado tributário derivado persistido como fonte-da-verdade.
+
+---
+
+## 79. Regras da Orquestração Anual Unificada do IRPF (Fase 4J.1)
+
+1. **ORQUESTRAÇÃO, NUNCA CÁLCULO (ADR-278):**
+   - A camada anual unificada (`UnifiedAnnualIrpfState`, `@atlas/tax-engine/annual-irpf/`) é uma **projeção de orquestração** dos resultados autoritativos de 4H (4H.2–4H.5) e 4I. O fluxo é `ledger → motores fiscais → resultados derivados 4H/4I → orquestração anual unificada → UX de revisão`; **nunca** `ledger → cálculo 4J`. Não calcula ganho de capital, preço médio, imposto mensal, resultado anual de mercado, dividendos, JCP, FII, limiar/alíquota de alta renda, redutor corporativo nem créditos. Não há terceiro motor, recomputação entre módulos, persistência de resultado derivado nem migration nova.
+2. **CINCO MÓDULOS COM FONTE ÚNICA:**
+   - `ANNUAL_POSITIONS` (4H.2, fan-out por carteira com worst-status fold), `CAPITAL_MARKETS` (4H.3), `INVESTMENT_INCOME` (4H.4), `READINESS_EVIDENCE` (4H.5), `HIGH_INCOME_MINIMUM_TAX` (4I). Cada módulo declara uma única fonte da verdade; apenas 4I popula `calculationFingerprint`.
+3. **VOCABULÁRIO E PRECEDÊNCIA CONGELADOS, SEM COLAPSO:**
+   - Status global: `READY_FOR_REVIEW | REQUIRES_ACTION | PARTIAL | BLOCKED | NO_ACTIVITY | UNSUPPORTED`. Precedência: `BLOCKED > REQUIRES_ACTION > PARTIAL > READY_FOR_REVIEW > NO_ACTIVITY`. `BLOCKED` nunca degrada para `PARTIAL`; valor nativo não mapeado nunca vira `READY` (vira `UNSUPPORTED` + `UNMAPPED_STATUS`). Marcadores de bloqueio sintetizados por 4J são um conjunto fechado: `MODULE_LOAD_FAILED`, `UNMAPPED_STATUS`, `UPSTREAM_SNAPSHOT_INCONSISTENT`. `READY_FOR_REVIEW` ≠ declarado/enviado/pago.
+4. **CONSISTÊNCIA = IDENTIDADE + PROCEDÊNCIA + IDENTIDADE DE PAGADOR (ADR-279):**
+   - Compara ano/exercício, fingerprints de procedência (4I `upstreamIncomeFingerprint` vs 4H.4; `upstreamCapitalMarketFingerprint` vs 4H.3) e **conjuntos** de `payerId`. **Comparação de valores NÃO é feita por pagador** e não é feita por padrão; `ANNUAL_AMOUNT_MISMATCH` descartado como bloqueante (apenas variante WARNING por agregado de categoria, igualdade de string decimal `Money`, nunca float). Classificação fiscal legítima diferente para o mesmo fato nunca é erro.
+5. **DOIS CÓDIGOS DE INCONSISTÊNCIA DISTINTOS (ADR-280):**
+   - Cerca interna de 4I → `400 FISCAL.SNAPSHOT_INCONSISTENT`, capturada e mapeada para HIGH_INCOME `BLOCKED` + `UPSTREAM_SNAPSHOT_INCONSISTENT`. Cerca externa unificada → `422 FISCAL.UNIFIED_ANNUAL_INCONSISTENT` (nunca emite `READY` de estado misto). Os dois códigos nunca se confundem.
+6. **FINGERPRINT EXCLUI `generatedAt`; `ruleVersions` HONESTO (ADR-281):**
+   - `annualFingerprint`/`sourceFingerprint` SHA-256 via `stableStringify` do pacote (não a de `high-income-minimum-tax.ts`), `generatedAt` excluído, invariante à ordem de módulos/requisitos. `ruleVersions` carrega `annualPositions` e `highIncome` reais e `null` honesto para os três módulos sem versão.
+7. **ROTA ÚNICA E ORDEM DE ROTAS:**
+   - `GET /api/v1/fiscal/annual/:calendarYear`, declarada **após** todas as rotas `annual/...` (literais `annual/opening-positions*` e `annual/:calendarYear/<sub>`) para não capturar literais. Principal autenticado apenas; propriedade derivada do servidor; **não** aceita subject/portfolio id do cliente; recurso de terceiro resolve vazio/`NO_ACTIVITY`, nunca `403`. Corpo não carrega `taxSubjectId`, `generatedAt`, `ruleVersions`, UUID de banco, valor monetário bruto, token ou stack. `Cache-Control: private, no-store`.
+8. **ALLOW-LIST DE ARQUITETURA (ADR-282):**
+   - O use-case unificado consome os cinco `Get*UseCase` + `buildUnifiedAnnualIrpfState`; injeta `PORTFOLIO_REPOSITORY` + `FISCAL_CLOCK` (permitidos explicitamente, **sem** proibição ampla `/Repository/`); não importa tipos de linha/mapper de `@atlas/database`, não chama `calculate*`/`buildAnnual*`/`replayPortfolio` e não injeta repositório de evidência/confirmação fiscal diretamente. O módulo puro `annual-irpf/unified-annual-*.ts` não importa NestJS/Prisma/@atlas/database/React. Memoização por requisição permitida; cache fiscal global entre usuários proibido.
+9. **VERIFICAÇÃO:**
+   - Fiscalizado por `pnpm test:tax-engine` (unit/property/fuzz ≥ 20.000/differential/golden), `test:fiscal-api` (E2E real-PG A–T, routing, param-guard, segurança, escala, DB-final-proof), `test:architecture` e `test:web`(`:e2e`). Sem Receita submission, DIRPF, DARF, pagamento, Tax-AI, matemática fiscal no cliente, resultado derivado persistido nem migration nova.
