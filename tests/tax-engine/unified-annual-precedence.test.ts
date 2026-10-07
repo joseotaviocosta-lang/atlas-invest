@@ -1,0 +1,153 @@
+import { describe, expect, it } from 'vitest';
+import {
+  deriveUnifiedGlobalStatus,
+  maxUnifiedStatus,
+  type UnifiedConsistencyIssue,
+  type UnifiedModuleStatus,
+} from '../../packages/tax-engine/src/annual-irpf';
+import { buildState, makeModule } from './unified-annual-helpers';
+
+const BLOCKING_ISSUE: UnifiedConsistencyIssue = {
+  code: 'SOURCE_FINGERPRINT_MISMATCH',
+  severity: 'BLOCKING',
+  modules: ['INVESTMENT_INCOME', 'HIGH_INCOME_MINIMUM_TAX'],
+  detail: 'test blocking',
+};
+
+describe('Phase 4J.1 — unified annual global status precedence (frozen)', () => {
+  it('maxUnifiedStatus respects BLOCKED > REQUIRES_ACTION > PARTIAL > READY_FOR_REVIEW > NO_ACTIVITY', () => {
+    expect(maxUnifiedStatus('BLOCKED', 'READY_FOR_REVIEW')).toBe('BLOCKED');
+    expect(maxUnifiedStatus('REQUIRES_ACTION', 'PARTIAL')).toBe('REQUIRES_ACTION');
+    expect(maxUnifiedStatus('PARTIAL', 'READY_FOR_REVIEW')).toBe('PARTIAL');
+    expect(maxUnifiedStatus('READY_FOR_REVIEW', 'NO_ACTIVITY')).toBe('READY_FOR_REVIEW');
+    expect(maxUnifiedStatus('NO_ACTIVITY', 'NO_ACTIVITY')).toBe('NO_ACTIVITY');
+  });
+
+  it('any module BLOCKED -> global BLOCKED (never degrades to PARTIAL)', () => {
+    const modules = [
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'READY' }),
+      makeModule({ module: 'CAPITAL_MARKETS', status: 'PARTIAL' }),
+      makeModule({ module: 'INVESTMENT_INCOME', status: 'BLOCKED' }),
+      makeModule({ module: 'READINESS_EVIDENCE', status: 'READY' }),
+      makeModule({ module: 'HIGH_INCOME_MINIMUM_TAX', status: 'NOT_APPLICABLE' }),
+    ];
+    expect(deriveUnifiedGlobalStatus(modules, [])).toBe('BLOCKED');
+  });
+
+  it('any BLOCKING consistency issue -> global BLOCKED even with all-READY modules', () => {
+    const modules = [
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'READY' }),
+      makeModule({ module: 'CAPITAL_MARKETS', status: 'READY' }),
+      makeModule({ module: 'INVESTMENT_INCOME', status: 'READY' }),
+      makeModule({ module: 'READINESS_EVIDENCE', status: 'READY' }),
+      makeModule({ module: 'HIGH_INCOME_MINIMUM_TAX', status: 'READY' }),
+    ];
+    expect(deriveUnifiedGlobalStatus(modules, [BLOCKING_ISSUE])).toBe('BLOCKED');
+  });
+
+  it('REQUIRES_CONFIRMATION -> REQUIRES_ACTION', () => {
+    const modules = [
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'READY' }),
+      makeModule({ module: 'READINESS_EVIDENCE', status: 'REQUIRES_CONFIRMATION' }),
+    ];
+    expect(deriveUnifiedGlobalStatus(modules, [])).toBe('REQUIRES_ACTION');
+  });
+
+  it('PARTIAL (no action, no blocking) -> PARTIAL', () => {
+    const modules = [
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'READY' }),
+      makeModule({ module: 'CAPITAL_MARKETS', status: 'PARTIAL' }),
+    ];
+    expect(deriveUnifiedGlobalStatus(modules, [])).toBe('PARTIAL');
+  });
+
+  it('all READY/NO_ACTIVITY/NOT_APPLICABLE, coherent -> READY_FOR_REVIEW', () => {
+    const modules = [
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'READY' }),
+      makeModule({ module: 'CAPITAL_MARKETS', status: 'READY' }),
+      makeModule({ module: 'INVESTMENT_INCOME', status: 'NO_ACTIVITY' }),
+      makeModule({ module: 'READINESS_EVIDENCE', status: 'READY' }),
+      makeModule({ module: 'HIGH_INCOME_MINIMUM_TAX', status: 'NOT_APPLICABLE' }),
+    ];
+    expect(deriveUnifiedGlobalStatus(modules, [])).toBe('READY_FOR_REVIEW');
+  });
+
+  it('every module NO_ACTIVITY/NOT_APPLICABLE -> NO_ACTIVITY', () => {
+    const modules = [
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'NO_ACTIVITY' }),
+      makeModule({ module: 'CAPITAL_MARKETS', status: 'NO_ACTIVITY' }),
+      makeModule({ module: 'INVESTMENT_INCOME', status: 'NO_ACTIVITY' }),
+      makeModule({ module: 'READINESS_EVIDENCE', status: 'NO_ACTIVITY' }),
+      makeModule({
+        module: 'HIGH_INCOME_MINIMUM_TAX',
+        status: 'NOT_APPLICABLE',
+        material: false,
+      }),
+    ];
+    expect(deriveUnifiedGlobalStatus(modules, [])).toBe('NO_ACTIVITY');
+  });
+
+  it('NOT_APPLICABLE and NO_ACTIVITY modules do not by themselves block a READY', () => {
+    const modules = [
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'READY' }),
+      makeModule({ module: 'CAPITAL_MARKETS', status: 'NO_ACTIVITY' }),
+      makeModule({ module: 'INVESTMENT_INCOME', status: 'NO_ACTIVITY' }),
+      makeModule({ module: 'READINESS_EVIDENCE', status: 'READY' }),
+      makeModule({
+        module: 'HIGH_INCOME_MINIMUM_TAX',
+        status: 'NOT_APPLICABLE',
+        material: false,
+      }),
+    ];
+    expect(deriveUnifiedGlobalStatus(modules, [])).toBe('READY_FOR_REVIEW');
+  });
+
+  it('material UNSUPPORTED module cannot be READY_FOR_REVIEW', () => {
+    const withOtherState = [
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'READY' }),
+      makeModule({ module: 'CAPITAL_MARKETS', status: 'UNSUPPORTED', material: true }),
+    ];
+    expect(deriveUnifiedGlobalStatus(withOtherState, [])).toBe('REQUIRES_ACTION');
+  });
+
+  it('a sole material UNSUPPORTED fact -> global UNSUPPORTED', () => {
+    const modules = [
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'UNSUPPORTED', material: true }),
+      makeModule({ module: 'CAPITAL_MARKETS', status: 'NO_ACTIVITY' }),
+      makeModule({ module: 'INVESTMENT_INCOME', status: 'NO_ACTIVITY' }),
+      makeModule({ module: 'READINESS_EVIDENCE', status: 'NO_ACTIVITY' }),
+      makeModule({
+        module: 'HIGH_INCOME_MINIMUM_TAX',
+        status: 'NOT_APPLICABLE',
+        material: false,
+      }),
+    ];
+    expect(deriveUnifiedGlobalStatus(modules, [])).toBe('UNSUPPORTED');
+  });
+
+  it('status is exposed on the assembled identity', () => {
+    const state = buildState([
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'READY' }),
+      makeModule({ module: 'READINESS_EVIDENCE', status: 'BLOCKED' }),
+    ]);
+    expect(state.identity.status).toBe('BLOCKED');
+  });
+
+  it('exhaustive: a single BLOCKED module dominates any other-module status', () => {
+    const others: UnifiedModuleStatus[] = [
+      'READY',
+      'PARTIAL',
+      'REQUIRES_CONFIRMATION',
+      'NO_ACTIVITY',
+      'NOT_APPLICABLE',
+      'UNSUPPORTED',
+    ];
+    for (const other of others) {
+      const modules = [
+        makeModule({ module: 'ANNUAL_POSITIONS', status: 'BLOCKED' }),
+        makeModule({ module: 'CAPITAL_MARKETS', status: other, material: true }),
+      ];
+      expect(deriveUnifiedGlobalStatus(modules, [])).toBe('BLOCKED');
+    }
+  });
+});

@@ -240,4 +240,72 @@ describe('Architecture Gate: Layer Dependency Boundaries & Package Isolation', (
       }
     }
   });
+
+  it('Phase 4J.1: unified annual orchestration tax-engine modules must not import Nest/Prisma/@atlas/database/react', () => {
+    const annualIrpfDir = path.join(rootDir, 'packages/tax-engine/src/annual-irpf');
+    const moduleFiles = [
+      'unified-annual-irpf.ts',
+      'unified-annual-status.ts',
+      'unified-annual-consistency.ts',
+    ];
+
+    const forbiddenImportPatterns = [
+      /from\s+['"]@nestjs\//,
+      /from\s+['"]@prisma\/client['"]/,
+      /from\s+['"]@atlas\/database['"]/,
+      /from\s+['"]react['"]/,
+      /from\s+['"]react-native['"]/,
+    ];
+
+    for (const file of moduleFiles) {
+      const fullPath = path.join(annualIrpfDir, file);
+      expect(fs.existsSync(fullPath), `${file} must exist`).toBe(true);
+      const content = fs.readFileSync(fullPath, 'utf8');
+      for (const pattern of forbiddenImportPatterns) {
+        expect(content, `${file} must not match ${pattern}`).not.toMatch(pattern);
+      }
+    }
+  });
+
+  it('Phase 4J.1: unified annual use-case consumes the five Get*UseCase classes + pure assembler, never recomputes or injects a fiscal evidence/confirmation repository', () => {
+    const useCasePath = path.join(
+      rootDir,
+      'apps/api/src/application/fiscal/get-unified-annual-irpf.use-case.ts',
+    );
+    expect(fs.existsSync(useCasePath), 'unified annual use-case must exist').toBe(true);
+    const content = fs.readFileSync(useCasePath, 'utf8');
+
+    // MUST consume all five frozen 4H/4I use-cases.
+    for (const useCase of [
+      'GetAnnualPositionReportUseCase',
+      'GetAnnualCapitalMarketSummaryUseCase',
+      'GetAnnualInvestmentIncomeSummaryUseCase',
+      'GetAnnualTaxReadinessUseCase',
+      'GetAnnualHighIncomeAssessmentUseCase',
+    ]) {
+      expect(content, `must consume ${useCase}`).toMatch(new RegExp(useCase));
+    }
+
+    // MUST feed the pure assembler.
+    expect(content).toMatch(/buildUnifiedAnnualIrpfState/);
+
+    // MUST NOT import @atlas/database row/mapper types for recomputation and
+    // MUST NOT reference row/mapper symbols.
+    expect(content).not.toMatch(/HighIncomeEvidenceRow/);
+    expect(content).not.toMatch(/TaxpayerConfirmationRow/);
+
+    // MUST NOT call recomputation primitives.
+    expect(content).not.toMatch(/calculate\w+/);
+    expect(content).not.toMatch(/buildAnnual\w+/);
+    expect(content).not.toMatch(/replayPortfolio/);
+
+    // MUST NOT inject a fiscal evidence/confirmation repository directly.
+    expect(content).not.toMatch(/HIGH_INCOME_EVIDENCE_REPOSITORY/);
+    expect(content).not.toMatch(/TAXPAYER_CONFIRMATION_REPOSITORY/);
+
+    // EXPLICITLY ALLOWED: PORTFOLIO_REPOSITORY + FISCAL_CLOCK (no blanket
+    // /Repository/ ban — the fan-out and clock are permitted).
+    expect(content).toMatch(/PORTFOLIO_REPOSITORY/);
+    expect(content).toMatch(/FISCAL_CLOCK/);
+  });
 });
