@@ -2225,3 +2225,28 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Disclaimer obrigatório sempre visível; nenhuma linguagem de transmissão, validação, DARF ou pagamento; IA fiscal desabilitada.
 9. **ZERO MATEMÁTICA FISCAL NO CLIENTE:**
    - Apenas formatação de exibição de strings decimais exatas; sem `parseFloat`/`Number()`; sem import do motor tributário.
+
+---
+
+## 78. Regras do Pacote Anual de Revisão/Apoio de Alta Renda e Hardening Final 4I (Fase 4I.6)
+
+1. **PACOTE DERIVADO E NÃO-AUTORITATIVO (ADR-050):**
+   - O `HighIncomeReviewPackage` (IRPFM, Lei 15.270/2025, Exercício 2027 / ano-calendário 2026) é derivado sob demanda e **NUNCA** persistido como estado tributário autoritativo. A Fase 4I.6 **não** introduz migration; `prisma migrate status` permanece limpo/sem-pendências/sem-drift. Padrão: nenhuma persistência.
+2. **CONSOME APENAS O MODELO DE LEITURA 4I.4, CARREGADO UMA VEZ:**
+   - O serviço de aplicação chama `GetAnnualHighIncomeAssessmentUseCase` **exatamente uma vez** por requisição (shape de queries invariante à contagem de pagadores/fatos; sem N+1). É **proibido** re-consultar ou recomputar cada categoria de domínio de forma independente.
+3. **SEM NOVA MATEMÁTICA TRIBUTÁRIA / SEM SEGUNDO MOTOR:**
+   - `buildHighIncomeAnnualReviewPackage` apenas organiza, rotula, ordena e serializa; copia cada campo do modelo de leitura verbatim. **Nenhuma** fórmula de 4I.1–4I.5 é duplicada; o montador não contém aritmética tributária.
+4. **ZERO FLOAT:**
+   - Montantes/quantidades/percentuais são strings decimais canônicas ou `null`; `number` apenas em contadores inteiros (`itemCount`, contagens da Seção 7, `calendarYear`, `declarationExercise`, `revision`).
+5. **FINGERPRINT SHA-256 EXCLUI `generatedAt` E É SHUFFLE-INVARIANTE:**
+   - `packageFingerprint = SHA-256(stableStringify(input))` sobre input canônico que exclui `generatedAt`, `section1Identity` e `section8Provenance`. O mesmo estado produz o mesmo fingerprint independentemente da ordem dos arrays; `generatedAt` é injetado pela aplicação (`FISCAL_CLOCK`) — o motor **nunca** chama `Date.now()`/`new Date()`. Verificado por fuzz determinístico de ≥ 10.000 casos (seed fixa).
+6. **EXPORTAÇÃO É SOMENTE-APOIO COM BANNER E CSV OWASP COMPARTILHADO:**
+   - Todo artefato humano carrega verbatim o banner compulsório `DOCUMENTO DE APOIO — NÃO É ARQUIVO OFICIAL DA RECEITA FEDERAL` + disclaimer completo. CSV delimitado por `;`, CRLF, escapado via o `escapeCsvCell` OWASP compartilhado (extraído de `annual-tax-reporting-export.ts`). Formatos: CSV (padrão) e JSON — sem PDF. Nome de arquivo apenas-ano `atlas-alta-renda-<year>-relatorio-apoio.<ext>` (sem PII).
+7. **`READY_FOR_REVIEW` ≠ DECLARADO/ENVIADO/PAGO:**
+   - O status só significa que o líquido é autoritativo e pronto para conferência humana. `netMinimumTax` é exposto apenas quando `status === READY_FOR_REVIEW`. Precedência de status: `UNSUPPORTED` → `BLOCKED` → `NOT_APPLICABLE` → `READY_FOR_REVIEW` → `INCOMPLETE`. A janela de anos suportados pertence ao ruleset do motor; **não há** janela na API (ano fora resolve em `200` com `UNSUPPORTED` e figuras `null`).
+8. **ZERO MAPEAMENTOS OFICIAIS DA DIRPF NÃO COMPROVADOS:**
+   - O registro de notas usa `FilingMappingStatus` padrão `GENERAL_SUPPORT` e envia **0 entradas** `VERIFIED_OFFICIAL_MAPPING` (leiaute oficial do IRPFM Exercício 2027 não publicado). Rotulagem Exercício 2027 (ano-calendário 2026) via `exerciseLabel()`.
+9. **PROPRIEDADE DERIVADA DO SERVIDOR, ANTI-ENUMERAÇÃO 404 E CACHE `private, no-store`:**
+   - `taxSubjectId` vem unicamente do principal autenticado; recursos de outro contribuinte/ausentes retornam `404` (nunca `403`). Respostas de exportação carregam `Cache-Control: private, no-store` + `Pragma: no-cache`. UUIDs de PK de evidência do banco (`id`/`supersedesId`) **nunca** saem da memória (apenas desempate de ordenação); nenhuma resposta vaza CPF/token/sessionId/UUID interno/stack.
+10. **VERIFICAÇÃO:**
+    - Fiscalizado por `pnpm test:tax-engine`, `test:fiscal-api`, `test:architecture` e `test:web`(`:e2e`). Sem Receita submission, DIRPF, DARF, pagamento, restituição, Tax-AI, matemática fiscal no cliente nem resultado tributário derivado persistido como fonte-da-verdade.
