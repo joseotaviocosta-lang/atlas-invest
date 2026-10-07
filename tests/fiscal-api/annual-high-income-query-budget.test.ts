@@ -223,4 +223,70 @@ describe('Phase 4I.4 — Annual High-Income Query Budget (Real App Path)', () =>
       `[4I.4 query-budget] total=${fivePayer.length} categories=${JSON.stringify(Object.fromEntries(fiveBy))}`,
     );
   });
+
+  it('Phase 4I.6: /review loads the 4I.4 result ONCE — evidence access is bulk + payer-invariant', async () => {
+    const one = await setupCase('rp-one', 1);
+    recordedQueries.length = 0;
+    await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2026/high-income/review')
+      .set('Authorization', `Bearer ${one.token}`)
+      .expect(200);
+    const onePayer = [...recordedQueries];
+
+    await cleanDatabase();
+    recordedQueries.length = 0;
+    const five = await setupCase('rp-five', 5);
+    recordedQueries.length = 0;
+    await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2026/high-income/review')
+      .set('Authorization', `Bearer ${five.token}`)
+      .expect(200);
+    const fivePayer = [...recordedQueries];
+
+    const countBy = (logs: QueryLog[]) => {
+      const map = new Map<string, number>();
+      for (const entry of logs) {
+        const category = categorize(entry.query);
+        map.set(category, (map.get(category) ?? 0) + 1);
+      }
+      return map;
+    };
+    const oneBy = countBy(onePayer);
+    const fiveBy = countBy(fivePayer);
+
+    // The 4I.4 result is loaded exactly once: evidence stays list(1)+watermark(2).
+    expect(oneBy.get('evidence')).toBe(3);
+    expect(fiveBy.get('evidence')).toBe(3);
+    // No per-payer growth: review wraps the single 4I.4 load, no extra queries.
+    expect(fivePayer.length).toBe(onePayer.length);
+  });
+
+  it('Phase 4I.6: /export?format=csv loads the 4I.4 result ONCE — same bounded shapes as /review', async () => {
+    const five = await setupCase('rp-exp', 5);
+    recordedQueries.length = 0;
+    await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2026/high-income/review')
+      .set('Authorization', `Bearer ${five.token}`)
+      .expect(200);
+    const reviewQueries = [...recordedQueries];
+
+    recordedQueries.length = 0;
+    await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/2026/high-income/export?format=csv')
+      .set('Authorization', `Bearer ${five.token}`)
+      .expect(200);
+    const exportQueries = [...recordedQueries];
+
+    const countBy = (logs: QueryLog[]) => {
+      const map = new Map<string, number>();
+      for (const entry of logs) {
+        const category = categorize(entry.query);
+        map.set(category, (map.get(category) ?? 0) + 1);
+      }
+      return map;
+    };
+    // Export rebuilds the current package via the SAME single 4I.4 load.
+    expect(countBy(exportQueries).get('evidence')).toBe(3);
+    expect(exportQueries.length).toBe(reviewQueries.length);
+  });
 });

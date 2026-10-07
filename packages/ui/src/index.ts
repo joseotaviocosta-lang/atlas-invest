@@ -42,6 +42,7 @@ export * from './view-models/annual-investment-income.view-model';
 export * from './view-models/annual-tax-readiness.view-model';
 export * from './view-models/annual-tax-reporting.view-model';
 export * from './view-models/annual-high-income.view-model';
+export * from './view-models/high-income-review-package.view-model';
 
 import { colors } from './tokens/colors';
 import { spacing } from './tokens/spacing';

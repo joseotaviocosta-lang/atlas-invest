@@ -4,7 +4,10 @@ import {
   HighIncomeMinimumTaxApplicabilityStatus,
   HighIncomeThresholdMetric,
 } from './high-income';
-import { HighIncomeReviewFilingRegistry, exerciseLabel } from './high-income-review-package-registry';
+import {
+  HighIncomeReviewFilingRegistry,
+  exerciseLabel,
+} from './high-income-review-package-registry';
 
 /**
  * Phase 4I.6 — High-Income Annual Review / Support Package (IRPFM, Lei 15.270/2025).
@@ -181,10 +184,7 @@ export interface Section8Provenance {
 }
 
 export type FilingMappingStatus =
-  | 'VERIFIED_OFFICIAL_MAPPING'
-  | 'GENERAL_SUPPORT'
-  | 'NO_OFFICIAL_MAPPING'
-  | 'UNSUPPORTED';
+  'VERIFIED_OFFICIAL_MAPPING' | 'GENERAL_SUPPORT' | 'NO_OFFICIAL_MAPPING' | 'UNSUPPORTED';
 
 export interface FilingSupportNote {
   readonly mappingStatus: FilingMappingStatus;

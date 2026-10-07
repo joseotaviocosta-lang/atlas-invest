@@ -178,7 +178,9 @@ describe('Phase 4I.6 — High-Income Review Package assembler (verbatim mapping)
     expect(pkg.section2Applicability.status).toBe('APPLICABLE');
     expect(pkg.section2Applicability.totalAnnualIncome).toBe('1200000.00');
     expect(pkg.section2Applicability.eligibilityThreshold).toBe('600000');
-    expect(pkg.section2Applicability.thresholdMetric).toBe(HIGH_INCOME_MINIMUM_TAX_THRESHOLD_METRIC);
+    expect(pkg.section2Applicability.thresholdMetric).toBe(
+      HIGH_INCOME_MINIMUM_TAX_THRESHOLD_METRIC,
+    );
     expect(pkg.section2Applicability.applicable).toBe(true);
   });
 
@@ -287,10 +289,9 @@ describe('Phase 4I.6 — status derivation (all five package statuses reachable)
 
 describe('Phase 4I.6 — applicable null-override & null/zero discipline', () => {
   it('forces applicable=null when totalAnnualIncome is null even if APPLICABLE', () => {
-    const pkg = buildHighIncomeAnnualReviewPackage(
-      baseReadModel({ totalAnnualIncome: null }),
-      { generatedAt: GEN_AT },
-    );
+    const pkg = buildHighIncomeAnnualReviewPackage(baseReadModel({ totalAnnualIncome: null }), {
+      generatedAt: GEN_AT,
+    });
     expect(pkg.section2Applicability.applicable).toBeNull();
   });
 
@@ -478,7 +479,9 @@ describe('Phase 4I.6 — registry: zero unproven official mappings', () => {
   it('exerciseLabel enforces the exercício-2027 caveat', () => {
     expect(exerciseLabel()).toBe('Exercício 2027 (ano-calendário 2026)');
     const pkg = buildHighIncomeAnnualReviewPackage(baseReadModel(), { generatedAt: GEN_AT });
-    expect(pkg.section9FilingSupportNotes.exerciseLabel).toBe('Exercício 2027 (ano-calendário 2026)');
+    expect(pkg.section9FilingSupportNotes.exerciseLabel).toBe(
+      'Exercício 2027 (ano-calendário 2026)',
+    );
   });
 });
 

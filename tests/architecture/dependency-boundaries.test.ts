@@ -193,6 +193,27 @@ describe('Architecture Gate: Layer Dependency Boundaries & Package Isolation', (
     }
   });
 
+  it('Phase 4I.6: high-income review package API use-case consumes the 4I.4 use-case, never raw calculate* or a repository', () => {
+    const useCasePath = path.join(
+      rootDir,
+      'apps/api/src/application/fiscal/get-high-income-annual-review-package.use-case.ts',
+    );
+    expect(fs.existsSync(useCasePath), 'review-package API use-case must exist').toBe(true);
+    const content = fs.readFileSync(useCasePath, 'utf8');
+
+    // MUST consume the frozen 4I.4 assessment use-case (loaded once).
+    expect(content).toMatch(/GetAnnualHighIncomeAssessmentUseCase/);
+    // MUST feed the pure engine assembler/exporters.
+    expect(content).toMatch(/buildHighIncomeAnnualReviewPackage/);
+
+    // MUST NOT re-run the frozen tax calculation.
+    expect(content).not.toMatch(/calculateHighIncomeMinimumTax/);
+    // MUST NOT touch the database/repository layer directly.
+    expect(content).not.toMatch(/from\s+['"]@atlas\/database['"]/);
+    expect(content).not.toMatch(/Repository/);
+    expect(content).not.toMatch(/_REPOSITORY\b/);
+  });
+
   it('Zero Client Financial Math: Shared UI view models must not perform financial division or arithmetic', () => {
     const viewModelsDir = path.join(rootDir, 'packages/ui/src/view-models');
     if (!fs.existsSync(viewModelsDir)) return;

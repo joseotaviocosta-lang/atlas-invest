@@ -13,7 +13,7 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { exportAnnualTaxReportingToCsv } from '@atlas/tax-engine';
+import { exportAnnualTaxReportingToCsv, type HighIncomeReviewPackage } from '@atlas/tax-engine';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { GetMonthlyTaxStateUseCase } from '../../application/fiscal/get-monthly-tax-state.use-case';
 import { GetMonthlyTaxLiabilityUseCase } from '../../application/fiscal/get-monthly-tax-liability.use-case';
@@ -63,6 +63,7 @@ import { RecordTaxpayerConfirmationUseCase } from '../../application/fiscal/reco
 import { GetAnnualHighIncomeAssessmentUseCase } from '../../application/fiscal/get-annual-high-income-assessment.use-case';
 import { RecordHighIncomeEvidenceUseCase } from '../../application/fiscal/record-high-income-evidence.use-case';
 import { ResolveHighIncomeEvidenceUseCase } from '../../application/fiscal/resolve-high-income-evidence.use-case';
+import { HighIncomeAnnualReviewPackageService } from '../../application/fiscal/get-high-income-annual-review-package.use-case';
 import { ZodValidationPipe } from '../../common/pipes';
 
 import {
@@ -99,6 +100,7 @@ import {
   ResolveHighIncomeEvidenceBody,
   ResolveHighIncomeEvidenceBodySchema,
 } from './dto/annual-high-income.dto';
+import { HighIncomeExportQuerySchema } from './dto/high-income-export.dto';
 
 import {
   AdjustmentQuery,
@@ -214,6 +216,8 @@ export class FiscalController {
     private readonly recordHighIncomeEvidenceUseCase: RecordHighIncomeEvidenceUseCase,
     @Inject(ResolveHighIncomeEvidenceUseCase)
     private readonly resolveHighIncomeEvidenceUseCase: ResolveHighIncomeEvidenceUseCase,
+    @Inject(HighIncomeAnnualReviewPackageService)
+    private readonly highIncomeReviewPackageService: HighIncomeAnnualReviewPackageService,
   ) {}
 
   @Get('monthly/:competence')
@@ -1038,5 +1042,71 @@ export class FiscalController {
       createdByPrincipal: principal.userId,
     });
     return { data: record, meta: { outcome } };
+  }
+
+  // --- Phase 4I.6: High-Income Annual Review / Support Package & Export ---
+
+  @Get('annual/:calendarYear/high-income/review')
+  @ApiOperation({
+    summary:
+      'Get the deterministic annual high-income minimum-tax review/support package (IRPFM, Lei 15.270/2025). Derived from the 4I.4 assessment (loaded once); arranges, labels and fingerprints — no tax math. This is SUPPORT FOR FILING, not an official Receita file, DIRPF, DARF, payment or declaration.',
+  })
+  @ApiParam({ name: 'calendarYear', description: 'Economic calendar year (e.g. 2026)' })
+  @ApiResponse({ status: 200, description: 'High-income annual review support package' })
+  @ApiResponse({ status: 400, description: 'Invalid calendar year or snapshot inconsistent' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  @ApiResponse({ status: 404, description: 'Resource not found (anti-enumeration)' })
+  async getHighIncomeReviewPackage(
+    @Param(new ZodValidationPipe(AnnualHighIncomeParamSchema)) params: AnnualHighIncomeParam,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ): Promise<{ data: HighIncomeReviewPackage }> {
+    const data = await this.highIncomeReviewPackageService.getReviewPackage({
+      taxSubjectId: principal.userId,
+      calendarYear: params.calendarYear,
+    });
+    return { data };
+  }
+
+  @Get('annual/:calendarYear/high-income/export')
+  @ApiOperation({
+    summary:
+      'Export the annual high-income review/support package as a downloadable human-review support document (CSV default, or JSON). SUPPORT ONLY — never a Receita file, DIRPF transmission, DARF, payment, refund or declaration.',
+  })
+  @ApiParam({ name: 'calendarYear', description: 'Economic calendar year (e.g. 2026)' })
+  @ApiResponse({ status: 200, description: 'Downloadable support document (CSV or JSON)' })
+  @ApiResponse({ status: 400, description: 'Invalid calendar year or format' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  @ApiResponse({ status: 404, description: 'Resource not found (anti-enumeration)' })
+  async exportHighIncomeReviewPackage(
+    @Param(new ZodValidationPipe(AnnualHighIncomeParamSchema)) params: AnnualHighIncomeParam,
+    @Query(new ZodValidationPipe(HighIncomeExportQuerySchema))
+    query: { format?: 'json' | 'csv' },
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<string> {
+    const format = query.format ?? 'csv';
+    const input = {
+      taxSubjectId: principal.userId,
+      calendarYear: params.calendarYear,
+    };
+
+    // Year-only, non-sensitive filename built from the validated integer.
+    const ext = format === 'json' ? 'json' : 'csv';
+    const filename = `atlas-alta-renda-${params.calendarYear}-relatorio-apoio.${ext}`;
+
+    const body =
+      format === 'json'
+        ? await this.highIncomeReviewPackageService.exportReviewPackageJson(input)
+        : await this.highIncomeReviewPackageService.exportReviewPackageCsv(input);
+
+    res.setHeader(
+      'Content-Type',
+      format === 'json' ? 'application/json; charset=utf-8' : 'text/csv; charset=utf-8',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    // Support doc may reflect sensitive aggregates — never cached by shared caches.
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Pragma', 'no-cache');
+    return body;
   }
 }

@@ -8,10 +8,14 @@ import {
   borderRadius,
   annualHighIncomeQueryKey,
   formatAnnualHighIncomeViewModel,
+  highIncomeReviewPackageQueryKey,
+  formatHighIncomeReviewPackageViewModel,
   type RawAnnualHighIncomeAssessment,
   type AnnualHighIncomeViewModel,
+  type RawHighIncomeReviewPackage,
 } from '@atlas/ui';
 import { apiClient, ApiError } from '@/api/client';
+import { getInMemoryAccessToken } from '@/stores/auth.store';
 import {
   Card,
   SectionHeader,
@@ -179,6 +183,89 @@ export function AnnualHighIncomeSection({ initialYear }: { initialYear?: number 
     () => (data ? formatAnnualHighIncomeViewModel(data) : null),
     [data],
   );
+
+  const [exportFormat, setExportFormat] = useState<'csv' | 'json'>('csv');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const exportButtonRef = React.useRef<HTMLButtonElement>(null);
+
+  // Review/support package (derived; drives the stale indicator + export).
+  const { data: reviewPackageData, isError: reviewPackageError } = useQuery({
+    queryKey: highIncomeReviewPackageQueryKey(calendarYear),
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: RawHighIncomeReviewPackage }>(
+        `/api/v1/fiscal/annual/${calendarYear}/high-income/review`,
+      );
+      return res.data;
+    },
+    enabled: Boolean(calendarYear >= 1900 && calendarYear <= 2100),
+    staleTime: 30_000,
+  });
+
+  const reviewPackageViewModel = useMemo(
+    () => (reviewPackageData ? formatHighIncomeReviewPackageViewModel(reviewPackageData) : null),
+    [reviewPackageData],
+  );
+
+  // Fail-safe: a malformed/unparseable package disables the download.
+  const packageMalformed = reviewPackageError || (!!reviewPackageData && !reviewPackageViewModel);
+  const canExport = Boolean(reviewPackageViewModel) && !packageMalformed;
+  const packageStale = reviewPackageViewModel?.isStale ?? false;
+
+  function filenameFromContentDisposition(header: string | null, fallback: string): string {
+    if (!header) {
+      return fallback;
+    }
+    const match = /filename="?([^"]+)"?/i.exec(header);
+    return match && match[1] ? match[1] : fallback;
+  }
+
+  async function handleExport() {
+    if (!canExport || exporting) {
+      return;
+    }
+    setExporting(true);
+    setExportError(null);
+    const ext = exportFormat === 'json' ? 'json' : 'csv';
+    const fallbackName = `atlas-alta-renda-${calendarYear}-relatorio-apoio.${ext}`;
+    try {
+      const token = getInMemoryAccessToken();
+      const base = apiClient.getBaseUrl();
+      const response = await fetch(
+        `${base}/api/v1/fiscal/annual/${calendarYear}/high-income/export?format=${exportFormat}`,
+        {
+          method: 'GET',
+          headers: {
+            Accept: exportFormat === 'json' ? 'application/json' : 'text/csv',
+            'x-atlas-client': 'web',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`Falha ao exportar (status ${response.status}).`);
+      }
+      const blob = await response.blob();
+      const filename = filenameFromContentDisposition(
+        response.headers.get('Content-Disposition'),
+        fallbackName,
+      );
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Falha ao exportar.');
+    } finally {
+      setExporting(false);
+      // Focus-safe: return focus to the trigger after download.
+      exportButtonRef.current?.focus();
+    }
+  }
 
   const payerOptions = useMemo(() => {
     if (!viewModel) {
@@ -350,6 +437,78 @@ export function AnnualHighIncomeSection({ initialYear }: { initialYear?: number 
                 Resultado parcial: o imposto líquido ainda depende de comprovações.
               </div>
             )}
+
+            {/* Package stale indicator (text + icon/badge, role=status). */}
+            {packageStale && (
+              <div
+                role="status"
+                data-testid="high-income-package-stale"
+                style={{
+                  marginTop: `${spacing.sm}px`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: `${spacing.xs}px`,
+                  fontSize: '0.8125rem',
+                }}
+              >
+                <span aria-hidden="true">⚠️</span>
+                <Badge>Pacote desatualizado</Badge>
+                <span style={{ color: colors.textSecondary }}>
+                  Os dados de origem mudaram; gere o relatório novamente antes de revisar.
+                </span>
+              </div>
+            )}
+
+            {/* Export / support-document download controls. */}
+            <div
+              role="group"
+              aria-label="Exportar relatório de apoio"
+              style={{
+                marginTop: `${spacing.sm}px`,
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: `${spacing.sm}px`,
+              }}
+            >
+              <label style={{ fontSize: '0.8125rem' }}>
+                Formato{' '}
+                <select
+                  data-testid="high-income-export-format"
+                  value={exportFormat}
+                  onChange={(event) => setExportFormat(event.target.value as 'csv' | 'json')}
+                  style={{ minHeight: '44px' }}
+                >
+                  <option value="csv">CSV</option>
+                  <option value="json">JSON</option>
+                </select>
+              </label>
+              <button
+                ref={exportButtonRef}
+                type="button"
+                data-testid="high-income-export"
+                onClick={handleExport}
+                disabled={!canExport || exporting}
+                aria-disabled={!canExport || exporting}
+                style={{
+                  padding: `${spacing.xs}px ${spacing.sm}px`,
+                  borderRadius: `${borderRadius.md}px`,
+                  border: `1px solid ${colors.accent}`,
+                  backgroundColor: canExport ? colors.surfaceElevated : colors.surface,
+                  color: canExport ? colors.accent : colors.textSecondary,
+                  fontWeight: 600,
+                  cursor: canExport && !exporting ? 'pointer' : 'not-allowed',
+                  minHeight: '44px',
+                }}
+              >
+                {exporting ? 'Exportando…' : 'Exportar relatório de apoio'}
+              </button>
+              {exportError && (
+                <span role="alert" style={{ color: colors.negative, fontSize: '0.8125rem' }}>
+                  {exportError}
+                </span>
+              )}
+            </div>
           </Card>
 
           {/* Summary cards */}
