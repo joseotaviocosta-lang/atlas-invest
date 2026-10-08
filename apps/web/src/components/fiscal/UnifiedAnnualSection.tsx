@@ -1,12 +1,21 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { colors, spacing } from '@atlas/ui';
 import { apiClient, ApiError } from '@/api/client';
+import { getInMemoryAccessToken } from '@/stores/auth.store';
 import { Card, SectionHeader, ErrorState, Skeleton, EmptyState, Badge } from '@/components/ui';
-import { isValidWire } from './unified-annual-wire';
+import {
+  isPackageStale,
+  isValidReviewPackage,
+  isValidWire,
+  reviewPackageFallbackFilename,
+  reviewPackageFilenameFromContentDisposition,
+  reviewPackageFingerprintOf,
+  unifiedAnnualReviewPackageQueryKey,
+} from './unified-annual-wire';
 
 // --- Verbatim label maps (presentation only; never alters substance) ---
 
@@ -111,6 +120,91 @@ export function UnifiedAnnualSection({ calendarYear }: { calendarYear: number })
     () => (wire ? wire.consistencyIssues.filter((i) => i.severity !== 'BLOCKING') : []),
     [wire],
   );
+
+  // --- Phase 4J.2 — review/support package + export (support-only) ---
+
+  const [exportFormat, setExportFormat] = useState<'csv' | 'json'>('csv');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [lastExportedFingerprint, setLastExportedFingerprint] = useState<string | null>(null);
+  const exportButtonRef = useRef<HTMLButtonElement>(null);
+
+  const { data: reviewPackageData, isError: reviewPackageError } = useQuery({
+    queryKey: unifiedAnnualReviewPackageQueryKey(calendarYear),
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: unknown }>(
+        `/api/v1/fiscal/annual/${calendarYear}/review-package`,
+      );
+      return res.data;
+    },
+    enabled: Boolean(calendarYear >= 1900 && calendarYear <= 2100),
+    staleTime: 30_000,
+  });
+
+  const reviewPackageValid = useMemo(
+    () => (reviewPackageData !== undefined ? isValidReviewPackage(reviewPackageData) : null),
+    [reviewPackageData],
+  );
+  const currentPackageFingerprint = useMemo(
+    () => reviewPackageFingerprintOf(reviewPackageData ?? null),
+    [reviewPackageData],
+  );
+
+  // Fail-safe: a malformed/unparseable package disables the download.
+  const packageMalformed =
+    reviewPackageError || (reviewPackageData !== undefined && reviewPackageValid === false);
+  const canExport = reviewPackageValid === true && !packageMalformed && !exporting;
+  const packageStale = isPackageStale(lastExportedFingerprint, currentPackageFingerprint);
+
+  async function handleExport() {
+    if (!canExport || exporting) {
+      return;
+    }
+    setExporting(true);
+    setExportError(null);
+    const ext = exportFormat === 'json' ? 'json' : 'csv';
+    const fallbackName = reviewPackageFallbackFilename(calendarYear, ext);
+    try {
+      const token = getInMemoryAccessToken();
+      const base = apiClient.getBaseUrl();
+      const response = await fetch(
+        `${base}/api/v1/fiscal/annual/${calendarYear}/review-package/export?format=${exportFormat}`,
+        {
+          method: 'GET',
+          headers: {
+            Accept: exportFormat === 'json' ? 'application/json' : 'text/csv',
+            'x-atlas-client': 'web',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`Falha ao exportar (status ${response.status}).`);
+      }
+      const blob = await response.blob();
+      const filename = reviewPackageFilenameFromContentDisposition(
+        response.headers.get('Content-Disposition'),
+        fallbackName,
+      );
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(objectUrl);
+      if (currentPackageFingerprint) {
+        setLastExportedFingerprint(currentPackageFingerprint);
+      }
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Falha ao exportar.');
+    } finally {
+      setExporting(false);
+      // Focus-safe: return focus to the trigger after download.
+      exportButtonRef.current?.focus();
+    }
+  }
 
   return (
     <div
@@ -310,6 +404,92 @@ export function UnifiedAnnualSection({ calendarYear }: { calendarYear: number })
                   </li>
                 ))}
               </ul>
+            )}
+          </Card>
+
+          {/* Phase 4J.2 — review/support package export (support-only). */}
+          <Card style={{ padding: `${spacing.base}px` }} data-testid="unified-annual-export">
+            <div style={{ fontWeight: 700, marginBottom: `${spacing.xs}px` }}>
+              Relatório anual de apoio
+            </div>
+            <div
+              style={{
+                fontSize: '0.8125rem',
+                color: colors.textSecondary,
+                marginBottom: `${spacing.sm}px`,
+              }}
+            >
+              Documento de apoio à revisão — não é arquivo oficial da Receita Federal.
+            </div>
+            {packageMalformed ? (
+              <div
+                style={{ fontSize: '0.875rem', color: colors.textSecondary }}
+                data-testid="unified-annual-export-unavailable"
+              >
+                Relatório indisponível no momento. Tente recarregar a página.
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: `${spacing.sm}px`,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <label
+                  htmlFor="unified-annual-export-format"
+                  style={{ fontSize: '0.875rem', color: colors.textSecondary }}
+                >
+                  Formato
+                </label>
+                <select
+                  id="unified-annual-export-format"
+                  data-testid="unified-annual-export-format"
+                  value={exportFormat}
+                  onChange={(event) =>
+                    setExportFormat(event.target.value === 'json' ? 'json' : 'csv')
+                  }
+                  style={{ minHeight: '44px', fontSize: '0.875rem' }}
+                >
+                  <option value="csv">CSV (apoio)</option>
+                  <option value="json">JSON</option>
+                </select>
+                <button
+                  ref={exportButtonRef}
+                  type="button"
+                  data-testid="unified-annual-export-button"
+                  onClick={handleExport}
+                  disabled={!canExport}
+                  style={{
+                    minHeight: '44px',
+                    padding: `0 ${spacing.md}px`,
+                    fontSize: '0.875rem',
+                    fontWeight: 700,
+                  }}
+                >
+                  {exporting ? 'Exportando…' : 'Exportar relatório anual de apoio'}
+                </button>
+              </div>
+            )}
+            {packageStale && (
+              <div
+                role="status"
+                data-testid="unified-annual-package-stale"
+                style={{
+                  marginTop: `${spacing.sm}px`,
+                  fontSize: '0.875rem',
+                  fontWeight: 700,
+                }}
+              >
+                O pacote atual mudou desde a última exportação — exporte novamente para revisar
+                a versão atual.
+              </div>
+            )}
+            {exportError && (
+              <div role="alert" style={{ marginTop: `${spacing.sm}px`, fontSize: '0.875rem' }}>
+                {exportError}
+              </div>
             )}
           </Card>
         </div>

@@ -68,6 +68,7 @@ import { RecordHighIncomeEvidenceUseCase } from './fiscal/record-high-income-evi
 import { ResolveHighIncomeEvidenceUseCase } from './fiscal/resolve-high-income-evidence.use-case';
 import { HighIncomeAnnualReviewPackageService } from './fiscal/get-high-income-annual-review-package.use-case';
 import { UnifiedAnnualIrpfService } from './fiscal/get-unified-annual-irpf.use-case';
+import { UnifiedAnnualReviewPackageService } from './fiscal/get-unified-annual-review-package.use-case';
 import { SystemFiscalClock } from './fiscal/fiscal-clock';
 import { EMPTY_TAX_INPUT_ADAPTER_REGISTRY } from './fiscal/tax-input-source-adapter';
 import {
@@ -148,6 +149,7 @@ const USE_CASES = [
   ResolveHighIncomeEvidenceUseCase,
   HighIncomeAnnualReviewPackageService,
   UnifiedAnnualIrpfService,
+  UnifiedAnnualReviewPackageService,
   GetPortfolioAiGroundingContextUseCase,
   GetPortfolioAssetAiGroundingContextUseCase,
   GetPortfolioTimelineAiGroundingContextUseCase,

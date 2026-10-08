@@ -65,6 +65,7 @@ import { RecordHighIncomeEvidenceUseCase } from '../../application/fiscal/record
 import { ResolveHighIncomeEvidenceUseCase } from '../../application/fiscal/resolve-high-income-evidence.use-case';
 import { HighIncomeAnnualReviewPackageService } from '../../application/fiscal/get-high-income-annual-review-package.use-case';
 import { UnifiedAnnualIrpfService } from '../../application/fiscal/get-unified-annual-irpf.use-case';
+import { UnifiedAnnualReviewPackageService } from '../../application/fiscal/get-unified-annual-review-package.use-case';
 import { ZodValidationPipe } from '../../common/pipes';
 
 import {
@@ -103,10 +104,17 @@ import {
 } from './dto/annual-high-income.dto';
 import { HighIncomeExportQuerySchema } from './dto/high-income-export.dto';
 import { UnifiedAnnualParam, UnifiedAnnualParamSchema } from './dto/unified-annual.dto';
+import {
+  UnifiedAnnualReviewPackageExportQuery,
+  UnifiedAnnualReviewPackageExportQuerySchema,
+  UnifiedAnnualReviewPackageParam,
+  UnifiedAnnualReviewPackageParamSchema,
+} from './dto/unified-annual-review-package.dto';
 import type {
   UnifiedAnnualIrpfState,
   UnifiedAnnualStatus,
   UnifiedAnnualSummary,
+  UnifiedAnnualReviewPackage,
   UnifiedConsistencyIssue,
   UnifiedModuleSummary,
   UnifiedRequirement,
@@ -264,6 +272,8 @@ export class FiscalController {
     private readonly highIncomeReviewPackageService: HighIncomeAnnualReviewPackageService,
     @Inject(UnifiedAnnualIrpfService)
     private readonly unifiedAnnualIrpfService: UnifiedAnnualIrpfService,
+    @Inject(UnifiedAnnualReviewPackageService)
+    private readonly unifiedAnnualReviewPackageService: UnifiedAnnualReviewPackageService,
   ) {}
 
   @Get('monthly/:competence')
@@ -1144,6 +1154,80 @@ export class FiscalController {
       format === 'json'
         ? await this.highIncomeReviewPackageService.exportReviewPackageJson(input)
         : await this.highIncomeReviewPackageService.exportReviewPackageCsv(input);
+
+    res.setHeader(
+      'Content-Type',
+      format === 'json' ? 'application/json; charset=utf-8' : 'text/csv; charset=utf-8',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    // Support doc may reflect sensitive aggregates — never cached by shared caches.
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Pragma', 'no-cache');
+    return body;
+  }
+
+  // --- Phase 4J.2: Unified Annual Review / Support Package & Export ---
+  //
+  // Declared BEFORE the bare `annual/:calendarYear` route (like the
+  // `high-income/*` routes above) so the two-segment package routes are never
+  // captured by the single-segment parametric route.
+
+  @Get('annual/:calendarYear/review-package')
+  @ApiOperation({
+    summary:
+      'Get the deterministic unified annual IRPF review/support package (sections A–H over the 4J.1 state: identity, readiness, modules, actions, consistency, filing support, provenance, disclaimer). Derived projection only — no tax math. SUPPORT FOR FILING, not an official Receita file, DIRPF, DARF, payment or declaration.',
+  })
+  @ApiParam({ name: 'calendarYear', description: 'Economic calendar year (e.g. 2026)' })
+  @ApiResponse({ status: 200, description: 'Unified annual review support package' })
+  @ApiResponse({ status: 400, description: 'Invalid calendar year' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  @ApiResponse({ status: 404, description: 'Resource not found (anti-enumeration)' })
+  @ApiResponse({ status: 422, description: 'Annual fiscal sources inconsistent (fail-closed)' })
+  async getUnifiedAnnualReviewPackage(
+    @Param(new ZodValidationPipe(UnifiedAnnualReviewPackageParamSchema))
+    params: UnifiedAnnualReviewPackageParam,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ): Promise<{ data: UnifiedAnnualReviewPackage }> {
+    const data = await this.unifiedAnnualReviewPackageService.getReviewPackage({
+      taxSubjectId: principal.userId,
+      calendarYear: params.calendarYear,
+    });
+    return { data };
+  }
+
+  @Get('annual/:calendarYear/review-package/export')
+  @ApiOperation({
+    summary:
+      'Export the unified annual review/support package as a downloadable human-review support document (CSV default, or JSON). SUPPORT ONLY — never a Receita file, DIRPF transmission, DARF, payment, refund or declaration.',
+  })
+  @ApiParam({ name: 'calendarYear', description: 'Economic calendar year (e.g. 2026)' })
+  @ApiResponse({ status: 200, description: 'Downloadable support document (CSV or JSON)' })
+  @ApiResponse({ status: 400, description: 'Invalid calendar year or format' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  @ApiResponse({ status: 404, description: 'Resource not found (anti-enumeration)' })
+  @ApiResponse({ status: 422, description: 'Annual fiscal sources inconsistent (fail-closed)' })
+  async exportUnifiedAnnualReviewPackage(
+    @Param(new ZodValidationPipe(UnifiedAnnualReviewPackageParamSchema))
+    params: UnifiedAnnualReviewPackageParam,
+    @Query(new ZodValidationPipe(UnifiedAnnualReviewPackageExportQuerySchema))
+    query: UnifiedAnnualReviewPackageExportQuery,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<string> {
+    const format = query.format ?? 'csv';
+    const input = {
+      taxSubjectId: principal.userId,
+      calendarYear: params.calendarYear,
+    };
+
+    // Year-only, non-sensitive filename built from the validated integer.
+    const ext = format === 'json' ? 'json' : 'csv';
+    const filename = `atlas-irpf-${params.calendarYear}-relatorio-apoio.${ext}`;
+
+    const body =
+      format === 'json'
+        ? await this.unifiedAnnualReviewPackageService.exportReviewPackageJson(input)
+        : await this.unifiedAnnualReviewPackageService.exportReviewPackageCsv(input);
 
     res.setHeader(
       'Content-Type',

@@ -190,6 +190,39 @@ export {
   buildUnifiedAnnualIrpfState,
   deriveUnifiedGlobalStatus,
 } from './unified-annual-irpf';
+// --- Phase 4J.2: unified annual review package (projection only; no tax math) ---
+export {
+  UNIFIED_ANNUAL_REVIEW_PACKAGE_VERSION,
+  UNIFIED_ANNUAL_REVIEW_BANNER,
+  buildUnifiedAnnualReviewDisclaimer,
+  computeUnifiedAnnualReviewPackageFingerprint,
+  buildUnifiedAnnualReviewPackage,
+} from './unified-annual-review-package';
+export type {
+  SectionAAnnualIdentity,
+  SectionBGlobalReadiness,
+  SectionCModuleRow,
+  SectionCModuleSummary,
+  SectionDRequirementRow,
+  SectionDActionRequirements,
+  SectionEConsistencyRow,
+  SectionECrossModuleConsistency,
+  SectionFFilingSupport,
+  SectionGModuleProvenance,
+  SectionGProvenance,
+  SectionHDisclaimer,
+  UnifiedAnnualReviewPackage,
+  UnifiedAnnualReviewFingerprintInput,
+  BuildUnifiedAnnualReviewPackageOptions,
+} from './unified-annual-review-package';
+export {
+  UnifiedAnnualReviewFilingRegistry,
+  unifiedExerciseLabel,
+} from './unified-annual-review-package-registry';
+export {
+  serializeUnifiedAnnualReviewPackageToJson,
+  exportUnifiedAnnualReviewPackageToCsv,
+} from './unified-annual-review-package-export';
 export type {
   UnifiedModuleId,
   UnifiedModuleSource,

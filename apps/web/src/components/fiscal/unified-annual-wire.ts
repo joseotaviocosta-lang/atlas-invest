@@ -152,3 +152,66 @@ export function parseStrictCalendarYear(segment: string): number | null {
   }
   return parsed;
 }
+
+// --- Phase 4J.2 — review-package wire helpers (presentation only) ---
+
+/** React-query key for the unified annual review package (never collides). */
+export function unifiedAnnualReviewPackageQueryKey(calendarYear: number): readonly string[] {
+  return ['unified-annual-review-package', String(calendarYear)];
+}
+
+export interface UnifiedReviewPackageWire {
+  readonly packageVersion: string;
+  readonly status: string;
+  readonly packageFingerprint: string;
+  readonly annualFingerprint: string;
+}
+
+/** Light guard for the review-package envelope (fail-safe, never throws). */
+export function isValidReviewPackage(value: unknown): value is UnifiedReviewPackageWire {
+  if (!isObject(value)) return false;
+  const provenance = value.sectionGProvenance;
+  return (
+    typeof value.packageVersion === 'string' &&
+    typeof value.status === 'string' &&
+    typeof value.packageFingerprint === 'string' &&
+    isObject(provenance) &&
+    typeof provenance.annualFingerprint === 'string'
+  );
+}
+
+export function reviewPackageFingerprintOf(value: unknown): string | null {
+  return isValidReviewPackage(value) ? value.packageFingerprint : null;
+}
+
+/** Year-only fallback filename (no PII), mirroring the server convention. */
+export function reviewPackageFallbackFilename(calendarYear: number, ext: 'csv' | 'json'): string {
+  return `atlas-irpf-${calendarYear}-relatorio-apoio.${ext}`;
+}
+
+export function reviewPackageFilenameFromContentDisposition(
+  header: string | null,
+  fallback: string,
+): string {
+  if (!header) {
+    return fallback;
+  }
+  const match = /filename="?([^"]+)"?/i.exec(header);
+  return match && match[1] ? match[1] : fallback;
+}
+
+/**
+ * Session-local staleness: a previously exported fingerprint that differs from
+ * the current one means the download no longer reflects the live package.
+ * Pure comparison only — no persistence, no history.
+ */
+export function isPackageStale(
+  lastExportedFingerprint: string | null,
+  currentFingerprint: string | null,
+): boolean {
+  return (
+    lastExportedFingerprint !== null &&
+    currentFingerprint !== null &&
+    lastExportedFingerprint !== currentFingerprint
+  );
+}

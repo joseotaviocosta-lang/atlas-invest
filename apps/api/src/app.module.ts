@@ -48,12 +48,21 @@ import { RequestIdMiddleware, UnifiedAnnualNoStoreMiddleware } from './common/mi
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(RequestIdMiddleware).forRoutes('*');
-    // Phase 4J.1: the unified annual route must carry `private, no-store` on
-    // EVERY response (including 400/401/422/500 that bypass the successful
-    // handler), so the directive is applied in route-scoped middleware ahead of
-    // guards/pipes rather than only inside the handler body.
-    consumer
-      .apply(UnifiedAnnualNoStoreMiddleware)
-      .forRoutes({ path: 'api/v1/fiscal/annual/:calendarYear', method: RequestMethod.GET });
+    // Phase 4J.1/4J.2: the unified annual route and the unified review-package
+    // routes must carry `private, no-store` on EVERY response (including
+    // 400/401/404/422/500 that bypass the successful handler), so the directive
+    // is applied in route-scoped middleware ahead of guards/pipes rather than
+    // only inside the handler body.
+    consumer.apply(UnifiedAnnualNoStoreMiddleware).forRoutes(
+      { path: 'api/v1/fiscal/annual/:calendarYear', method: RequestMethod.GET },
+      {
+        path: 'api/v1/fiscal/annual/:calendarYear/review-package',
+        method: RequestMethod.GET,
+      },
+      {
+        path: 'api/v1/fiscal/annual/:calendarYear/review-package/export',
+        method: RequestMethod.GET,
+      },
+    );
   }
 }
