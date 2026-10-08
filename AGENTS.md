@@ -2273,3 +2273,23 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - O use-case unificado consome os cinco `Get*UseCase` + `buildUnifiedAnnualIrpfState`; injeta `PORTFOLIO_REPOSITORY` + `FISCAL_CLOCK` (permitidos explicitamente, **sem** proibição ampla `/Repository/`); **não importa de `@atlas/database`** (asserção exata `not.toMatch(/from ['"]@atlas\/database['"]/)`) — o contrato do repositório e os preditores de erro de persistência vêm de uma porta voltada à aplicação (`unified-annual.port.ts`, detecção estrutural por código de erro); não chama `calculate*`/`buildAnnual*`/`replayPortfolio` e não injeta repositório de evidência/confirmação fiscal diretamente. O módulo puro `annual-irpf/unified-annual-*.ts` não importa NestJS/Prisma/@atlas/database/React. De-duplicação das execuções de 4H.3/4H.4 (direto + transitivo via readiness/high-income) é **escopada a um snapshot de `load()` composto** (escopo novo por load; escopo separado para o after-read da cerca externa) e **retém resultados liquidados pelo tempo de vida do snapshot** para que uma chamada transitiva atrasada reaproveite o valor já computado — exatamente 1 compute por categoria por snapshot (2 por requisição com cerca), forma de query determinística e independente de timing; orçamento fiscalizado por `unified-annual-query-budget`. O escopo **não** é singleton de processo nem cache entre requisições/usuários; cache fiscal global proibido.
 9. **VERIFICAÇÃO:**
    - Fiscalizado por `pnpm test:tax-engine` (unit/property/fuzz ≥ 20.000/differential/golden), `test:fiscal-api` (E2E real-PG A–T, routing, param-guard, segurança, escala, DB-final-proof), `test:architecture` e `test:web`(`:e2e`). Sem Receita submission, DIRPF, DARF, pagamento, Tax-AI, matemática fiscal no cliente, resultado derivado persistido nem migration nova.
+---
+
+## 80. Regras do Pacote Anual de Revisao/Apoio Unificado do IRPF (Fase 4J.2)
+
+1. **PACOTE E PROJECAO SOBRE 4J.1 (ADR-283):**
+   - O `UnifiedAnnualReviewPackage` consome exclusivamente um `UnifiedAnnualIrpfState` carregado uma vez via `UnifiedAnnualIrpfService`; nunca acessa ledger, portfolio engine, 4H/4I de baixo nivel, nem injeta repositorio fiscal. `package.status` copia verbatim o status global 4J.1; anual `BLOCKED` nunca gera pacote `READY_FOR_REVIEW`.
+2. **SEM SEGUNDO MOTOR E SEM PERSISTENCIA:**
+   - O montador puro apenas organiza, rotula, ordena e serializa; nenhuma formula de 4H/4I/4J.1 e duplicada. Pacote derivado sob demanda; nenhuma migration nova.
+3. **FINGERPRINT DETERMINISTICO:**
+   - `packageFingerprint` SHA-256 via `stableStringify` canonico; `generatedAt` excluido; invariante a ordem de modulos/requisitos/issues; revisao de fonte/evidencia (via `annualFingerprint`) ou bump de `packageVersion` muda o fingerprint.
+4. **APOIO A DECLARACAO SEM MAPEAMENTO OFICIAL INVENTADO:**
+   - Registro de apoio emite 0 entradas `VERIFIED_OFFICIAL_MAPPING` (leiaute DIRPF Exercicio 2027 nao publicado); apenas `GENERAL_SUPPORT`/`NO_OFFICIAL_MAPPING`. Mapa fechado de acoes de pendencia com padrao generico; nenhuma pendencia inventada, nenhum conselho fiscal.
+5. **EXPORTACAO SOMENTE-APOIO:**
+   - Rotas `GET annual/:calendarYear/review-package` e `.../review-package/export?format=json|csv` declaradas apos `high-income/*` e antes da rota nua `annual/:calendarYear`. JSON preserva `null`/fingerprints/codigos; CSV `;`/CRLF com `escapeCsvCell` compartilhado; banner e disclaimer compulsorios; filename apenas-ano `atlas-irpf-<year>-relatorio-apoio.<ext>`; `Cache-Control: private, no-store` em todos os caminhos via middleware estendido; sem IDs internos, CPF, token, stack; sem polling acidental.
+6. **WEB SOMENTE FORMATACAO:**
+   - Acao de exportacao na pagina anual unificada com aviso stale local (sem persistencia de historico); deep links existentes; sem matematica fiscal no cliente; acessivel e responsiva.
+7. **CONGELAMENTO DE INVARIANTES ANTERIORES:**
+   - Portfolio Engine, AI (3Q-3Z), Market Intelligence e fundacoes fiscais 4A-4J.1 permanecem inalterados e inviolaveis.
+8. **VERIFICACAO:**
+   - Fiscalizado por `pnpm test:tax-engine` (unit/fuzz 20.000/differential), `test:fiscal-api` (E2E real-PG A-X, concorrencia, escala, seguranca), `test:architecture` e `test:web`(`:e2e`). Sem Receita submission, DIRPF, DARF, pagamento, restituicao, Tax-AI, matematica fiscal no cliente, pacote derivado persistido nem migration nova.
