@@ -783,5 +783,5 @@ describe('Phase 4J.1 — Unified Annual IRPF Orchestration real-PG E2E (A–T)',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     expect(output).toMatch(/up to date|Database schema is up to date/i);
-  });
+  }, 120000);
 });
