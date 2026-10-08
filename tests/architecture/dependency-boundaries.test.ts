@@ -312,4 +312,81 @@ describe('Architecture Gate: Layer Dependency Boundaries & Package Isolation', (
     expect(content).toMatch(/PORTFOLIO_REPOSITORY/);
     expect(content).toMatch(/FISCAL_CLOCK/);
   });
+
+  it('Phase 4J.2: unified annual review-package tax-engine modules must not import Nest/Prisma/@atlas/database/react', () => {
+    const annualIrpfDir = path.join(rootDir, 'packages/tax-engine/src/annual-irpf');
+    const moduleFiles = [
+      'unified-annual-review-package.ts',
+      'unified-annual-review-package-registry.ts',
+      'unified-annual-review-package-export.ts',
+    ];
+
+    const forbiddenImportPatterns = [
+      /from\s+['"]@nestjs\//,
+      /from\s+['"]@prisma\/client['"]/,
+      /from\s+['"]@atlas\/database['"]/,
+      /from\s+['"]react['"]/,
+      /from\s+['"]react-native['"]/,
+    ];
+
+    for (const file of moduleFiles) {
+      const fullPath = path.join(annualIrpfDir, file);
+      expect(fs.existsSync(fullPath), `${file} must exist`).toBe(true);
+      const content = fs.readFileSync(fullPath, 'utf8');
+      for (const pattern of forbiddenImportPatterns) {
+        expect(content, `${file} must not match ${pattern}`).not.toMatch(pattern);
+      }
+    }
+  });
+
+  it('Phase 4J.2: review-package use-case consumes UnifiedAnnualIrpfService + pure assembler exactly once, never recomputes or persists', () => {
+    const useCasePath = path.join(
+      rootDir,
+      'apps/api/src/application/fiscal/get-unified-annual-review-package.use-case.ts',
+    );
+    expect(fs.existsSync(useCasePath), 'review-package use-case must exist').toBe(true);
+    const content = fs.readFileSync(useCasePath, 'utf8');
+
+    // MUST consume the 4J.1 unified service (single load per request).
+    expect(content).toMatch(/UnifiedAnnualIrpfService/);
+
+    // MUST feed the pure package assembler.
+    expect(content).toMatch(/buildUnifiedAnnualReviewPackage/);
+
+    // MUST NOT import from @atlas/database at all.
+    expect(content).not.toMatch(/from\s+['"]@atlas\/database['"]/);
+
+    // MUST NOT call recomputation primitives or touch the ledger/engines.
+    expect(content).not.toMatch(/calculate\w+/);
+    expect(content).not.toMatch(/buildAnnual\w+/);
+    expect(content).not.toMatch(/replayPortfolio/);
+    expect(content).not.toMatch(/GetAnnualPositionReportUseCase/);
+    expect(content).not.toMatch(/GetAnnualCapitalMarketSummaryUseCase/);
+    expect(content).not.toMatch(/GetAnnualInvestmentIncomeSummaryUseCase/);
+    expect(content).not.toMatch(/GetAnnualTaxReadinessUseCase/);
+    expect(content).not.toMatch(/GetAnnualHighIncomeAssessmentUseCase/);
+
+    // MUST NOT inject a repository or persist anything.
+    expect(content).not.toMatch(/REPOSITORY/);
+    expect(content).not.toMatch(/\.save\(/);
+    expect(content).not.toMatch(/\.create\(/);
+  });
+
+  it('Phase 4J.2: unified annual web surface must not perform tax math', () => {
+    const sectionPath = path.join(
+      rootDir,
+      'apps/web/src/components/fiscal/UnifiedAnnualSection.tsx',
+    );
+    expect(fs.existsSync(sectionPath), 'UnifiedAnnualSection must exist').toBe(true);
+    const content = fs.readFileSync(sectionPath, 'utf8');
+
+    // Presentation only: no float parsing, no engine import, no recomputation.
+    expect(content).not.toMatch(/parseFloat/);
+    expect(content).not.toMatch(/@atlas\/tax-engine/);
+    expect(content).not.toMatch(/buildUnifiedAnnual/);
+
+    // Export action must be present and support-labeled.
+    expect(content).toMatch(/review-package\/export/);
+    expect(content).toMatch(/Exportar relatório anual de apoio/);
+  });
 });

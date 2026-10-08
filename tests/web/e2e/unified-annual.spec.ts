@@ -221,3 +221,189 @@ test.describe('Phase 4J.1 — unified annual IRPF orchestration (real browser)',
     });
   }
 });
+
+test.describe('Phase 4J.2 — unified annual review package (real browser)', () => {
+  const PACKAGE = {
+    packageVersion: 'unified-annual-review-package-v1',
+    status: 'REQUIRES_ACTION',
+    packageFingerprint: 'f'.repeat(64),
+    sectionGProvenance: { annualFingerprint: 'a'.repeat(64) },
+  };
+
+  async function setupPackageHarness(
+    page: Page,
+    context: BrowserContext,
+    pkg: unknown,
+  ): Promise<{ csvSeen: { current: number } }> {
+    await context.addCookies([
+      {
+        name: 'atlas_refresh',
+        value: 'mock-refresh-token',
+        domain: 'localhost',
+        path: '/',
+        httpOnly: true,
+        sameSite: 'Lax',
+      },
+      {
+        name: 'atlas_logged_in',
+        value: 'true',
+        domain: 'localhost',
+        path: '/',
+        httpOnly: false,
+        sameSite: 'Lax',
+      },
+    ]);
+    await page.route('**/api/auth/me', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 'usr-e2e-1',
+            name: 'Investidor E2E',
+            email: 'e2e@atlas.dev',
+            locale: 'pt-BR',
+            timezone: 'America/Sao_Paulo',
+            baseCurrency: 'BRL',
+          },
+        }),
+      }),
+    );
+    await page.route('**/api/auth/refresh', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { accessToken: 'mock-token', expiresIn: 900 } }),
+      }),
+    );
+    await page.route('**/api/v1/portfolios', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [] }),
+      }),
+    );
+    const csvSeen = { current: 0 };
+    await page.route('**/api/v1/fiscal/annual/**', (route) => {
+      const url = route.request().url();
+      if (url.includes('/review-package/export')) {
+        if (url.includes('format=json')) {
+          return route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            headers: {
+              'Content-Disposition': 'attachment; filename="atlas-irpf-2026-relatorio-apoio.json"',
+            },
+            body: JSON.stringify({ packageFingerprint: 'f'.repeat(64), status: 'OK' }),
+          });
+        }
+        csvSeen.current += 1;
+        return route.fulfill({
+          status: 200,
+          contentType: 'text/csv',
+          headers: {
+            'Content-Disposition': 'attachment; filename="atlas-irpf-2026-relatorio-apoio.csv"',
+          },
+          body: '# DOCUMENTO DE APOIO — NÃO É ARQUIVO OFICIAL DA RECEITA FEDERAL\r\nSECAO A;X\r\n',
+        });
+      }
+      if (/\/review-package(\?|$)/.test(url)) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: pkg }),
+        });
+      }
+      if (/\/annual\/\d+(\?|$)/.test(url)) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: baseState() }),
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: null }),
+      });
+    });
+    return { csvSeen };
+  }
+
+  test('export action renders with support-only labeling', async ({ page, context }) => {
+    await setupPackageHarness(page, context, PACKAGE);
+    await gotoUnified(page);
+    const exportCard = page.getByTestId('unified-annual-export');
+    await expect(exportCard).toBeVisible();
+    await expect(exportCard).toContainText('Relatório anual de apoio');
+    await expect(exportCard).toContainText('não é arquivo oficial da Receita Federal');
+    await expect(page.getByTestId('unified-annual-export-format')).toHaveValue('csv');
+    await expect(page.getByTestId('unified-annual-export-button')).toContainText(
+      'Exportar relatório anual de apoio',
+    );
+  });
+
+  test('CSV export downloads with the year-only filename', async ({ page, context }) => {
+    await setupPackageHarness(page, context, PACKAGE);
+    await gotoUnified(page);
+    const button = page.getByTestId('unified-annual-export-button');
+    await expect(button).toBeEnabled();
+    const [download] = await Promise.all([page.waitForEvent('download'), button.click()]);
+    expect(download.suggestedFilename()).toBe('atlas-irpf-2026-relatorio-apoio.csv');
+    const filePath = await download.path();
+    expect(filePath).toBeTruthy();
+  });
+
+  test('JSON export downloads JSON bytes', async ({ page, context }) => {
+    await setupPackageHarness(page, context, PACKAGE);
+    await gotoUnified(page);
+    await page.getByTestId('unified-annual-export-format').selectOption('json');
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByTestId('unified-annual-export-button').click(),
+    ]);
+    expect(download.suggestedFilename()).toBe('atlas-irpf-2026-relatorio-apoio.json');
+  });
+
+  test('malformed package disables export with a fail-safe note', async ({ page, context }) => {
+    await setupPackageHarness(page, context, { status: 'READY_FOR_REVIEW' });
+    await gotoUnified(page);
+    await expect(page.getByTestId('unified-annual-export-unavailable')).toBeVisible();
+    await expect(page.getByTestId('unified-annual-export-button')).toHaveCount(0);
+  });
+
+  test('no false stale warning after a fresh export', async ({ page, context }) => {
+    await setupPackageHarness(page, context, PACKAGE);
+    await gotoUnified(page);
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByTestId('unified-annual-export-button').click(),
+    ]);
+    expect(download.suggestedFilename()).toContain('atlas-irpf-2026');
+    await expect(page.getByTestId('unified-annual-package-stale')).toHaveCount(0);
+  });
+
+  test('export flow is keyboard operable', async ({ page, context }) => {
+    await setupPackageHarness(page, context, PACKAGE);
+    await gotoUnified(page);
+    const formatSelect = page.getByTestId('unified-annual-export-format');
+    await formatSelect.focus();
+    await expect(formatSelect).toBeFocused();
+    await page.keyboard.press('Tab');
+    const button = page.getByTestId('unified-annual-export-button');
+    await expect(button).toBeFocused();
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.keyboard.press('Enter'),
+    ]);
+    expect(download.suggestedFilename()).toBe('atlas-irpf-2026-relatorio-apoio.csv');
+  });
+
+  test('export card usable at mobile viewport', async ({ page, context }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setupPackageHarness(page, context, PACKAGE);
+    await gotoUnified(page);
+    await expect(page.getByTestId('unified-annual-export')).toBeVisible();
+    await expect(page.getByTestId('unified-annual-export-button')).toBeVisible();
+  });
+});
