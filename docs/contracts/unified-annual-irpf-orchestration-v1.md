@@ -17,7 +17,13 @@ provenance + payer identity), ADR-280 (two inconsistency codes), ADR-281
 - Authenticated principal only. Ownership is server-derived; the route accepts
   **no** client subject/portfolio id. Foreign/missing resources resolve to an
   empty/`NO_ACTIVITY` state, never `403` (anti-enumeration).
-- `Cache-Control: private, no-store`.
+- `Cache-Control: private, no-store` on **every** response — success (200) and
+  all error paths (400 param validation, 401 unauthenticated, 422 outer fence,
+  500). The directive is applied by a route-scoped middleware
+  (`UnifiedAnnualNoStoreMiddleware`) that runs before guards/pipes/handler, so it
+  is present even when the request never reaches the successful handler body. The
+  middleware is scoped to this route only and skips the sibling literal
+  `annual/opening-positions`, so no other route's cache behavior changes.
 - Declared **after** all existing `annual/...` routes so the bare parametric
   route never captures the literal `annual/opening-positions`.
 
@@ -125,6 +131,17 @@ populates `calculationFingerprint`; it is `null` for all 4H modules.
 - `NOT_APPLICABLE`/`NO_ACTIVITY` modules do not by themselves block. A material
   `UNSUPPORTED` module prevents a global `READY_FOR_REVIEW`. HIGH_INCOME is
   material only for in-window years (≥ 2026).
+- **Every decisive precedence branch folds over MATERIAL modules only.** A
+  non-material module (a pre-2026 HIGH_INCOME `UNSUPPORTED_YEAR`, or a
+  non-material 4I evidence-fence race that maps HIGH_INCOME to `BLOCKED`) can
+  **never** drive the global status: it neither forces a global `BLOCKED` nor
+  keeps a dormant subject out of `NO_ACTIVITY`. Concretely, a pre-2026 empty
+  subject is exactly `NO_ACTIVITY` (not a false `READY_FOR_REVIEW`), and a
+  non-material fence race leaves an otherwise-coherent general package untouched.
+  A **material** `BLOCKED` module still fails closed to global `BLOCKED` — this
+  is a materiality scope, not a status collapse. Correspondingly, the
+  forced-snapshot `UPSTREAM_NOT_READY` consistency signal is emitted only when
+  HIGH_INCOME is material.
 - The global fold inspects module requirements and blocking reasons, not just the
   status enum: a material, participating module (`READY`/`PARTIAL`/`NO_ACTIVITY`)
   carrying an unresolved required requirement (status not `SATISFIED`/`WAIVED`) or
