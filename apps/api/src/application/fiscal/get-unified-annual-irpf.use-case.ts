@@ -78,6 +78,19 @@ interface PositionsFold {
    * fingerprint.
    */
   readonly ruleVersion: string | null;
+  /**
+   * The distinct calendar years reported across the subject's per-portfolio
+   * position reports. Preserved so a drifted-period 4H.2 report can be
+   * cross-checked for YEAR_MISMATCH (never discarded). Empty when no report was
+   * produced.
+   */
+  readonly reportedCalendarYears: readonly number[];
+  /**
+   * The distinct declaration exercises reported across the subject's
+   * per-portfolio position reports. Preserved for the EXERCISE_MISMATCH
+   * cross-check. Empty when no report was produced.
+   */
+  readonly reportedDeclarationExercises: readonly number[];
 }
 
 interface HighIncomeLoad {
@@ -232,6 +245,8 @@ export class UnifiedAnnualIrpfService {
         loadFailed: false,
         unmappedStatus: false,
         ruleVersion: null,
+        reportedCalendarYears: [],
+        reportedDeclarationExercises: [],
       };
     }
 
@@ -274,6 +289,8 @@ export class UnifiedAnnualIrpfService {
         loadFailed: true,
         unmappedStatus: false,
         ruleVersion: this.positionsRuleVersion(reports),
+        reportedCalendarYears: this.distinctReportedYears(reports),
+        reportedDeclarationExercises: this.distinctReportedExercises(reports),
       };
     }
 
@@ -284,7 +301,39 @@ export class UnifiedAnnualIrpfService {
       loadFailed: false,
       unmappedStatus: unmapped,
       ruleVersion: this.positionsRuleVersion(reports),
+      reportedCalendarYears: this.distinctReportedYears(reports),
+      reportedDeclarationExercises: this.distinctReportedExercises(reports),
     };
+  }
+
+  /**
+   * Distinct reported calendar years across reports (sorted, order-independent).
+   * A report that did not actually declare a numeric year contributes nothing —
+   * identity can only disagree when the report asserted a value.
+   */
+  private distinctReportedYears(reports: readonly AnnualPositionReportReadModel[]): number[] {
+    return [
+      ...new Set(
+        reports
+          .map((r) => r.calendarYear)
+          .filter((y): y is number => typeof y === 'number' && Number.isFinite(y)),
+      ),
+    ].sort((a, b) => a - b);
+  }
+
+  /**
+   * Distinct reported declaration exercises across reports (sorted,
+   * order-independent). A report without a numeric declaration exercise
+   * contributes nothing (so a missing field never fabricates EXERCISE_MISMATCH).
+   */
+  private distinctReportedExercises(reports: readonly AnnualPositionReportReadModel[]): number[] {
+    return [
+      ...new Set(
+        reports
+          .map((r) => r.declarationExercise)
+          .filter((e): e is number => typeof e === 'number' && Number.isFinite(e)),
+      ),
+    ].sort((a, b) => a - b);
   }
 
   /**
@@ -371,6 +420,10 @@ export class UnifiedAnnualIrpfService {
         return {
           portfolioKey: sha256Hex(r.portfolioId).slice(0, 16),
           version: r.version,
+          // Report identity preserved in the content digest so a drifted-period
+          // 4H.2 report moves the positions marker (never silently discarded).
+          calendarYear: r.calendarYear ?? null,
+          declarationExercise: r.declarationExercise ?? null,
           completenessStatus: r.summary.completenessStatus,
           totalHistoricalCostKnown: r.summary.totalHistoricalCostKnown,
           blockedPositionsCount: r.summary.blockedPositionsCount,
@@ -763,6 +816,38 @@ export class UnifiedAnnualIrpfService {
     return normalizeSubjectReference(subjectId);
   }
 
+  /**
+   * Build ANNUAL_POSITIONS identity entries for the consistency detector from
+   * the preserved per-report year/exercise sets. Each distinct reported value
+   * becomes its own identity entry so a single drifted-period report raises the
+   * mismatch even when sibling portfolios report the canonical period. Returns
+   * no entry when no report was produced (NO_ACTIVITY) — identity can only
+   * disagree when a report actually declared a period.
+   */
+  private positionIdentities(fold: PositionsFold): ConsistencyModuleIdentity[] {
+    const years = fold.reportedCalendarYears;
+    const exercises = fold.reportedDeclarationExercises;
+    if (years.length === 0 && exercises.length === 0) {
+      return [];
+    }
+    const identities: ConsistencyModuleIdentity[] = [];
+    for (const year of years) {
+      identities.push({
+        module: 'ANNUAL_POSITIONS',
+        calendarYear: year,
+        declarationExercise: null,
+      });
+    }
+    for (const exercise of exercises) {
+      identities.push({
+        module: 'ANNUAL_POSITIONS',
+        calendarYear: null,
+        declarationExercise: exercise,
+      });
+    }
+    return identities;
+  }
+
   private detectConsistency(
     calendarYear: number,
     loaded: LoadedState,
@@ -770,6 +855,12 @@ export class UnifiedAnnualIrpfService {
   ): readonly UnifiedConsistencyIssue[] {
     const localDeclarationExercise = calendarYear + 1;
     const moduleIdentities: ConsistencyModuleIdentity[] = [
+      // ANNUAL_POSITIONS: one identity entry per distinct reported year /
+      // exercise, so a drifted-period 4H.2 report (e.g. a wrong-year report
+      // folded in from one portfolio) still raises YEAR_MISMATCH /
+      // EXERCISE_MISMATCH. Entries are emitted independently because a report
+      // can drift on either axis; both are checked against the canonical values.
+      ...this.positionIdentities(loaded.positions),
       {
         module: 'CAPITAL_MARKETS',
         calendarYear: loaded.capitalMarket.calendarYear,

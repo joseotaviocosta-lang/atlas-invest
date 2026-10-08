@@ -692,54 +692,46 @@ describe('Phase 4J.1 — Unified Annual IRPF Orchestration real-PG E2E (A–T)',
   // counts/status still changes the annualFingerprint (positionsMarker hashes
   // full per-position content, not just counts). Proven with TWO INDEPENDENT
   // immutable ledgers — never by mutating the append-only Transaction ledger.
-  it('position provenance: two independent ledgers differing only in cost basis (same counts) hash differently', async () => {
-    // One shared asset identity referenced by both independent ledgers, so the
-    // positionsMarker's hashed assetId is IDENTICAL across subjects and the only
-    // varying input is the BUY cost basis.
+  it('position provenance: a ledger that varies ONLY in cost basis (identical identities) hashes differently', async () => {
+    // Isolate cost sensitivity: hold EVERY identity constant — same user,
+    // portfolio, account, institution and asset ids (same `tag`) and same
+    // ticker/exchange — and reset the DB between the two append-only snapshots
+    // so the deterministic identities can be reused. The ONLY input that
+    // differs between snapshot A and snapshot B is the BUY cost basis, so a
+    // divergence in the positions marker / annualFingerprint can be attributed
+    // to the cost alone (not to a different portfolioKey hashed by
+    // positionsMarker).
     const sharedAsset = { id: uuidFor('asset-posfp-shared'), ticker: 'PETR4', exchange: 'B3' };
+    const userId = uuidFor('u-posfp'); // same subject across both snapshots
+    const tag = 'posfp'; // same portfolio/account/institution identity tags
 
     // BUY-only (no sale) so each ledger keeps an OPEN year-end position whose
-    // historical cost is exactly the input distinguishing the two subjects.
-    // Subject A: lower BUY cost basis.
-    const userA = uuidFor('u-posfp-a');
-    const tokenA = await session(userA);
-    await seedBuySellPortfolio(
-      userA,
-      'posfpA',
-      'PETR4',
-      '100',
-      '10.00',
-      '12.00',
-      sharedAsset,
-      false,
-    );
+    // historical cost is exactly the distinguishing input.
+    // Snapshot A: lower BUY cost basis.
+    const tokenA = await session(userId);
+    await seedBuySellPortfolio(userId, tag, 'PETR4', '100', '10.00', '12.00', sharedAsset, false);
     const resA = await request(app.getHttpServer())
       .get(URL(2026))
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(200);
 
-    // Subject B: SAME shared asset/quantity, higher BUY cost basis only. Same
-    // asset count, same open-position count, same completeness status.
-    const userB = uuidFor('u-posfp-b');
-    const tokenB = await session(userB);
-    await seedBuySellPortfolio(
-      userB,
-      'posfpB',
-      'PETR4',
-      '100',
-      '11.00',
-      '12.00',
-      sharedAsset,
-      false,
-    );
+    // Reset so the SAME deterministic identities can be reused without mutating
+    // the append-only Transaction ledger (no update/delete of a tx row).
+    await cleanDatabase();
+
+    // Snapshot B: IDENTICAL identities (same user/portfolio/account/asset ids),
+    // IDENTICAL quantity, higher BUY cost basis ONLY. Same asset count, same
+    // open-position count, same completeness status.
+    const tokenB = await session(userId);
+    await seedBuySellPortfolio(userId, tag, 'PETR4', '100', '11.00', '12.00', sharedAsset, false);
     const resB = await request(app.getHttpServer())
       .get(URL(2026))
       .set('Authorization', `Bearer ${tokenB}`)
       .expect(200);
 
-    // The only difference between the two immutable ledgers is the BUY cost
-    // basis; the derived position summary counts/status are identical. The
-    // content-derived marker must still diverge.
+    // The only difference between the two snapshots is the BUY cost basis; the
+    // derived position summary counts/status are identical. The content-derived
+    // marker must still diverge, proving cost sensitivity in isolation.
     expect(resB.body.data.annualFingerprint).not.toBe(resA.body.data.annualFingerprint);
     expect(resB.body.data.sourceFingerprint).not.toBe(resA.body.data.sourceFingerprint);
   });

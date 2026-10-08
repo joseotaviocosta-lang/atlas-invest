@@ -181,8 +181,12 @@ test.describe('Phase 4J.1 — unified annual IRPF orchestration (real browser)',
       }),
     );
     await gotoUnified(page);
-    await expect(page.getByTestId('unified-annual-blocking-issues')).toBeVisible();
-    await expect(page.getByRole('alert')).toContainText('impedem a revisão');
+    const blockingBanner = page.getByTestId('unified-annual-blocking-issues');
+    await expect(blockingBanner).toBeVisible();
+    // Scope the role=alert assertion to the blocking-issues banner: an unscoped
+    // page-level getByRole('alert') also matches Next.js's always-present
+    // `__next-route-announcer__` live region, violating Playwright strict mode.
+    await expect(blockingBanner.getByRole('alert')).toContainText('impedem a revisão');
   });
 
   test('deep links into existing 4H/4I detail pages', async ({ page, context }) => {

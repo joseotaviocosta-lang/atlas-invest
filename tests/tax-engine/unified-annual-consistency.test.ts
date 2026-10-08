@@ -47,6 +47,40 @@ describe('Phase 4J.1 — consistency engine', () => {
     expect(issues.some((i) => i.code === 'YEAR_MISMATCH' && i.severity === 'BLOCKING')).toBe(true);
   });
 
+  it('ANNUAL_POSITIONS participates in YEAR_MISMATCH (drifted-period 4H.2 report is cross-checked)', () => {
+    const issues = detectUnifiedConsistencyIssues(
+      baseInput({
+        moduleIdentities: [
+          // Positions report drifted to the prior year; the detector must flag it.
+          { module: 'ANNUAL_POSITIONS', calendarYear: 2025, declarationExercise: null },
+          { module: 'CAPITAL_MARKETS', calendarYear: 2026, declarationExercise: 2027 },
+        ],
+      }),
+    );
+    expect(
+      issues.some(
+        (i) =>
+          i.code === 'YEAR_MISMATCH' &&
+          i.severity === 'BLOCKING' &&
+          i.modules.includes('ANNUAL_POSITIONS'),
+      ),
+    ).toBe(true);
+  });
+
+  it('ANNUAL_POSITIONS participates in EXERCISE_MISMATCH', () => {
+    const issues = detectUnifiedConsistencyIssues(
+      baseInput({
+        moduleIdentities: [
+          { module: 'ANNUAL_POSITIONS', calendarYear: null, declarationExercise: 2026 },
+          { module: 'CAPITAL_MARKETS', calendarYear: 2026, declarationExercise: 2027 },
+        ],
+      }),
+    );
+    expect(
+      issues.some((i) => i.code === 'EXERCISE_MISMATCH' && i.modules.includes('ANNUAL_POSITIONS')),
+    ).toBe(true);
+  });
+
   it('EXERCISE_MISMATCH when a module disagrees with the local derivation', () => {
     const issues = detectUnifiedConsistencyIssues(
       baseInput({

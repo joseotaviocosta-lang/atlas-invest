@@ -5,7 +5,7 @@ import {
   normalizeSubjectReference,
   type UnifiedRequirement,
 } from '../../packages/tax-engine/src/annual-irpf';
-import { makeModule } from './unified-annual-helpers';
+import { buildState, makeModule } from './unified-annual-helpers';
 
 function req(
   partial: Partial<UnifiedRequirement> & Pick<UnifiedRequirement, 'module'>,
@@ -168,6 +168,48 @@ describe('Phase 4J.1 — requirement aggregation & semantic-key dedup', () => {
     ]);
     expect(result).toHaveLength(1);
     expect(result[0]!.status).toBe('WEIRD_FUTURE_STATUS');
+  });
+
+  it('reordering a duplicate semantic-key pair within a module yields an IDENTICAL full state (nested requirements canonicalized)', () => {
+    const satisfied = req({
+      module: 'READINESS_EVIDENCE',
+      subjectReference: 'PETR4',
+      status: 'SATISFIED',
+    });
+    const pending = req({
+      module: 'READINESS_EVIDENCE',
+      subjectReference: 'PETR4',
+      status: 'PENDING',
+      blockingReason: 'MISSING_CONFIRMATION',
+    });
+
+    const forward = buildState([
+      makeModule({
+        module: 'READINESS_EVIDENCE',
+        status: 'PARTIAL',
+        requirements: [satisfied, pending],
+      }),
+    ]);
+    const reverse = buildState([
+      makeModule({
+        module: 'READINESS_EVIDENCE',
+        status: 'PARTIAL',
+        requirements: [pending, satisfied],
+      }),
+    ]);
+
+    // The nested module requirement list must collapse the duplicate semantic
+    // key onto the SAME fail-closed winner regardless of input order, so the
+    // public module body cannot diverge while the fingerprint stays constant.
+    const forwardReadiness = forward.modules.find((m) => m.module === 'READINESS_EVIDENCE')!;
+    const reverseReadiness = reverse.modules.find((m) => m.module === 'READINESS_EVIDENCE')!;
+    expect(forwardReadiness.requirements).toHaveLength(1);
+    expect(reverseReadiness.requirements).toHaveLength(1);
+    expect(forwardReadiness.requirements[0]!.status).toBe('PENDING');
+
+    // Full-state equality: identical fingerprints AND identical serialized body.
+    expect(reverse.identity.annualFingerprint).toBe(forward.identity.annualFingerprint);
+    expect(JSON.stringify(reverse)).toBe(JSON.stringify(forward));
   });
 
   it('a subjectReference carrying a UUID is preserved in the key but the key is per-source (not strip-the-id)', () => {

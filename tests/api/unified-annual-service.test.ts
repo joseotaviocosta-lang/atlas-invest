@@ -255,6 +255,55 @@ describe('Phase 4J.1 — UnifiedAnnualIrpfService (service-level)', () => {
     expect(state.identity.status).not.toBe('READY_FOR_REVIEW');
   });
 
+  // --- Finding 1 (reviewer-B): ANNUAL_POSITIONS identity is cross-checked ---
+
+  it('emits YEAR_MISMATCH when the ANNUAL_POSITIONS report drifts to a different calendar year', async () => {
+    const { service } = buildService({
+      positions: positionReport({
+        calendarYear: YEAR - 1, // drifted period
+        declarationExercise: YEAR, // = (YEAR-1)+1, internally self-consistent
+      }),
+    });
+    const state = await service.execute({ taxSubjectId: SUBJECT, calendarYear: YEAR });
+    expect(
+      state.consistencyIssues.some(
+        (i) => i.code === 'YEAR_MISMATCH' && i.modules.includes('ANNUAL_POSITIONS'),
+      ),
+    ).toBe(true);
+    // A blocking identity issue must fail the whole package closed.
+    expect(state.identity.status).toBe('BLOCKED');
+  });
+
+  it('emits EXERCISE_MISMATCH when the ANNUAL_POSITIONS report declares a non-canonical exercise', async () => {
+    const { service } = buildService({
+      positions: positionReport({
+        calendarYear: YEAR,
+        declarationExercise: YEAR + 2, // not calendarYear + 1
+      }),
+    });
+    const state = await service.execute({ taxSubjectId: SUBJECT, calendarYear: YEAR });
+    expect(
+      state.consistencyIssues.some(
+        (i) => i.code === 'EXERCISE_MISMATCH' && i.modules.includes('ANNUAL_POSITIONS'),
+      ),
+    ).toBe(true);
+    expect(state.identity.status).toBe('BLOCKED');
+  });
+
+  it('does NOT emit a positions identity issue when the report period matches the requested year', async () => {
+    const { service } = buildService({
+      positions: positionReport({ calendarYear: YEAR, declarationExercise: YEAR + 1 }),
+    });
+    const state = await service.execute({ taxSubjectId: SUBJECT, calendarYear: YEAR });
+    expect(
+      state.consistencyIssues.some(
+        (i) =>
+          (i.code === 'YEAR_MISMATCH' || i.code === 'EXERCISE_MISMATCH') &&
+          i.modules.includes('ANNUAL_POSITIONS'),
+      ),
+    ).toBe(false);
+  });
+
   // --- Finding 2: fail-closed readiness mapper ----------------------------
 
   it('fails closed to UNSUPPORTED + UNMAPPED_STATUS on an unknown readiness overall status', async () => {

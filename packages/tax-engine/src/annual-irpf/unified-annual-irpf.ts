@@ -402,6 +402,28 @@ export function computeUnifiedSourceFingerprint(input: UnifiedSourceFingerprintI
 // Pure assembler
 // ---------------------------------------------------------------------------
 
+/**
+ * Collapse a single module's requirements onto their canonical semantic key
+ * using the SAME fail-closed resolver as the top-level aggregation. Without
+ * this, `compareRequirements` (which excludes status and blockingReason) treats
+ * two entries sharing a semantic key as equal and preserves their incoming
+ * order, so reordering a duplicate `[SATISFIED, PENDING]` pair could flip the
+ * public `modules[].requirements` body while the deduplicated top-level winner
+ * and `annualFingerprint` stayed identical — one fingerprint identifying two
+ * different public bodies. Resolving per module from the same canonical set
+ * closes that gap and keeps nested + top-level requirements consistent.
+ */
+function canonicalizeModuleRequirements(
+  requirements: readonly UnifiedRequirement[],
+): readonly UnifiedRequirement[] {
+  const byKey = new Map<string, UnifiedRequirement>();
+  for (const req of requirements) {
+    const existing = byKey.get(req.key);
+    byKey.set(req.key, existing ? resolveRequirementConflict(existing, req) : req);
+  }
+  return [...byKey.values()].sort(compareRequirements);
+}
+
 function toModuleSummary(contribution: UnifiedModuleContribution): UnifiedModuleSummary {
   return {
     module: contribution.module,
@@ -409,7 +431,7 @@ function toModuleSummary(contribution: UnifiedModuleContribution): UnifiedModule
     status: contribution.status,
     authoritative: contribution.authoritative,
     blockingReasons: sortBlockingReasons(contribution.blockingReasons),
-    requirements: [...contribution.requirements].sort(compareRequirements),
+    requirements: canonicalizeModuleRequirements(contribution.requirements),
     sourceFingerprint: contribution.sourceFingerprint,
     calculationFingerprint: contribution.calculationFingerprint,
   };
