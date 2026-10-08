@@ -194,6 +194,77 @@ describe('Phase 4J.1 — unified annual global status precedence (frozen)', () =
     expect(deriveUnifiedGlobalStatus(modules, [])).toBe('UNSUPPORTED');
   });
 
+  it('pre-2026 empty subject: non-material UNSUPPORTED HIGH_INCOME does not keep the package out of NO_ACTIVITY', () => {
+    // Frozen 4I returns UNSUPPORTED_YEAR before 2026; the service marks the
+    // module non-material. The four general-annual modules are inert, so the
+    // package is NO_ACTIVITY — NOT a false READY_FOR_REVIEW.
+    const modules = [
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'NO_ACTIVITY' }),
+      makeModule({ module: 'CAPITAL_MARKETS', status: 'NO_ACTIVITY' }),
+      makeModule({ module: 'INVESTMENT_INCOME', status: 'NO_ACTIVITY' }),
+      makeModule({ module: 'READINESS_EVIDENCE', status: 'NO_ACTIVITY' }),
+      makeModule({
+        module: 'HIGH_INCOME_MINIMUM_TAX',
+        status: 'UNSUPPORTED',
+        material: false,
+      }),
+    ];
+    expect(deriveUnifiedGlobalStatus(modules, [])).toBe('NO_ACTIVITY');
+  });
+
+  it('non-material BLOCKED HIGH_INCOME (pre-2026 fence race) never forces the general package to BLOCKED', () => {
+    // A pre-2026 4I evidence-fence race maps HIGH_INCOME to a non-material
+    // BLOCKED module. It must NOT drag an otherwise-READY general annual
+    // package to BLOCKED. The forced consistency UPSTREAM_NOT_READY issue is
+    // suppressed upstream for a non-material module, so no blocking issue is
+    // passed here.
+    const modules = [
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'READY' }),
+      makeModule({ module: 'CAPITAL_MARKETS', status: 'READY' }),
+      makeModule({ module: 'INVESTMENT_INCOME', status: 'READY' }),
+      makeModule({ module: 'READINESS_EVIDENCE', status: 'READY' }),
+      makeModule({
+        module: 'HIGH_INCOME_MINIMUM_TAX',
+        status: 'BLOCKED',
+        material: false,
+        blockingReasons: ['UPSTREAM_SNAPSHOT_INCONSISTENT'],
+      }),
+    ];
+    expect(deriveUnifiedGlobalStatus(modules, [])).toBe('READY_FOR_REVIEW');
+  });
+
+  it('non-material PARTIAL/REQUIRES_CONFIRMATION HIGH_INCOME does not drive the global status', () => {
+    const base = [
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'READY' }),
+      makeModule({ module: 'CAPITAL_MARKETS', status: 'READY' }),
+      makeModule({ module: 'INVESTMENT_INCOME', status: 'READY' }),
+      makeModule({ module: 'READINESS_EVIDENCE', status: 'READY' }),
+    ];
+    for (const nonMaterialStatus of ['PARTIAL', 'REQUIRES_CONFIRMATION'] as const) {
+      const modules = [
+        ...base,
+        makeModule({
+          module: 'HIGH_INCOME_MINIMUM_TAX',
+          status: nonMaterialStatus,
+          material: false,
+        }),
+      ];
+      expect(deriveUnifiedGlobalStatus(modules, [])).toBe('READY_FOR_REVIEW');
+    }
+  });
+
+  it('a material BLOCKED module still fails closed to global BLOCKED (no collapse)', () => {
+    const modules = [
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'READY' }),
+      makeModule({
+        module: 'HIGH_INCOME_MINIMUM_TAX',
+        status: 'BLOCKED',
+        material: true,
+      }),
+    ];
+    expect(deriveUnifiedGlobalStatus(modules, [])).toBe('BLOCKED');
+  });
+
   it('status is exposed on the assembled identity', () => {
     const state = buildState([
       makeModule({ module: 'ANNUAL_POSITIONS', status: 'READY' }),

@@ -66,10 +66,14 @@ function referenceGlobalStatus(
 ): UnifiedAnnualStatus {
   const blockingIssue = issues.some((i) => i.severity === 'BLOCKING');
   if (blockingIssue) return 'BLOCKED';
-  if (modules.some((m) => m.status === 'BLOCKED')) return 'BLOCKED';
-  if (modules.some((m) => m.status === 'REQUIRES_CONFIRMATION')) return 'REQUIRES_ACTION';
 
+  // Decisive precedence branches inspect MATERIAL modules only: a non-material
+  // module (pre-2026 HIGH_INCOME, a non-material fence race) must never drive
+  // the global status. Mirrors the frozen production fold.
   const material = modules.filter((m) => m.material);
+  if (material.some((m) => m.status === 'BLOCKED')) return 'BLOCKED';
+  if (material.some((m) => m.status === 'REQUIRES_CONFIRMATION')) return 'REQUIRES_ACTION';
+
   const materialUnsupported = material.filter((m) => m.status === 'UNSUPPORTED');
   if (materialUnsupported.length > 0) {
     const otherMaterialWithState = material.some(
@@ -87,8 +91,8 @@ function referenceGlobalStatus(
   );
   if (actionOwned) return 'REQUIRES_ACTION';
 
-  if (modules.some((m) => m.status === 'PARTIAL')) return 'PARTIAL';
-  if (modules.every((m) => m.status === 'NO_ACTIVITY' || m.status === 'NOT_APPLICABLE')) {
+  if (material.some((m) => m.status === 'PARTIAL')) return 'PARTIAL';
+  if (material.every((m) => m.status === 'NO_ACTIVITY' || m.status === 'NOT_APPLICABLE')) {
     return 'NO_ACTIVITY';
   }
   return 'READY_FOR_REVIEW';
@@ -247,7 +251,9 @@ describe('Phase 4J.1 — property, fuzz & differential', () => {
         const issues = randomDetectedIssues(rng);
 
         const hasBlockingIssue = issues.some((x) => x.severity === 'BLOCKING');
-        const hasBlockedModule = modules.some((m) => m.status === 'BLOCKED');
+        // A non-material BLOCKED module must NOT force a global BLOCKED, so the
+        // invariant is scoped to material modules (mirrors the frozen fold).
+        const hasBlockedModule = modules.some((m) => m.material && m.status === 'BLOCKED');
 
         // The pure fold (no hashing) must never throw and must honour the
         // no-collapse invariants.

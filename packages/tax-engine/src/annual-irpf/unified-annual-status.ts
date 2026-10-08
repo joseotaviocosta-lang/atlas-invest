@@ -73,14 +73,20 @@ export function deriveUnifiedGlobalStatus(
   const hasBlockingIssue = consistencyIssues.some((i) => i.severity === 'BLOCKING');
 
   // A module participates in readiness only when it is material to filing.
+  // Every decisive precedence branch below inspects materialModules so a
+  // NON-MATERIAL module (e.g. pre-2026 HIGH_INCOME, or a non-material 4I
+  // evidence-fence race) can NEVER drive the global status. A material
+  // BLOCKED module (ANNUAL_POSITIONS/CAPITAL_MARKETS/INVESTMENT_INCOME/
+  // READINESS_EVIDENCE are always material; HIGH_INCOME only in-window) still
+  // fails closed to global BLOCKED — no BLOCKED->PARTIAL collapse.
   const materialModules = modules.filter((m) => m.material);
 
-  const anyBlocked = modules.some((m) => m.status === 'BLOCKED');
+  const anyBlocked = materialModules.some((m) => m.status === 'BLOCKED');
   if (hasBlockingIssue || anyBlocked) {
     return 'BLOCKED';
   }
 
-  const anyRequiresConfirmation = modules.some((m) => m.status === 'REQUIRES_CONFIRMATION');
+  const anyRequiresConfirmation = materialModules.some((m) => m.status === 'REQUIRES_CONFIRMATION');
   if (anyRequiresConfirmation) {
     return 'REQUIRES_ACTION';
   }
@@ -111,21 +117,23 @@ export function deriveUnifiedGlobalStatus(
     return 'REQUIRES_ACTION';
   }
 
-  const anyPartial = modules.some((m) => m.status === 'PARTIAL');
+  const anyPartial = materialModules.some((m) => m.status === 'PARTIAL');
   if (anyPartial) {
     return 'PARTIAL';
   }
 
-  // No blocking, no action, no partial, no material-unsupported. If every module
-  // is NO_ACTIVITY/NOT_APPLICABLE, there is nothing to review.
-  const everyInertOrNotApplicable = modules.every(
+  // No blocking, no action, no partial, no material-unsupported. If every
+  // MATERIAL module is NO_ACTIVITY/NOT_APPLICABLE, there is nothing to review.
+  // Non-material modules (a pre-2026 UNSUPPORTED_YEAR HIGH_INCOME, say) are
+  // excluded here so they cannot keep a dormant subject out of NO_ACTIVITY.
+  const everyInertOrNotApplicable = materialModules.every(
     (m) => m.status === 'NO_ACTIVITY' || m.status === 'NOT_APPLICABLE',
   );
   if (everyInertOrNotApplicable) {
     return 'NO_ACTIVITY';
   }
 
-  // Remaining case: at least one READY module, all others coherent
+  // Remaining case: at least one READY material module, all others coherent
   // (READY / NO_ACTIVITY / NOT_APPLICABLE), no blocking, no action, no partial.
   return 'READY_FOR_REVIEW';
 }
