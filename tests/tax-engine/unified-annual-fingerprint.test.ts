@@ -118,6 +118,42 @@ describe('Phase 4J.1 — unified annual fingerprint', () => {
     expect(a.identity.annualFingerprint).not.toBe(b.identity.annualFingerprint);
   });
 
+  it('reordering the modules WITHIN a consistency issue does NOT change the fingerprint (nested canonicalization)', () => {
+    const issueAB: UnifiedConsistencyIssue = {
+      code: 'SOURCE_FINGERPRINT_MISMATCH',
+      severity: 'BLOCKING',
+      modules: ['INVESTMENT_INCOME', 'HIGH_INCOME_MINIMUM_TAX'],
+      detail: 'skew',
+    };
+    const issueBA: UnifiedConsistencyIssue = {
+      ...issueAB,
+      modules: ['HIGH_INCOME_MINIMUM_TAX', 'INVESTMENT_INCOME'],
+    };
+    const a = buildState(baseModules(), { consistencyIssues: [issueAB] });
+    const b = buildState(baseModules(), { consistencyIssues: [issueBA] });
+    expect(a.identity.annualFingerprint).toBe(b.identity.annualFingerprint);
+    // And the serialized nested array is itself canonically ordered.
+    expect(a.consistencyIssues[0]!.modules).toEqual(b.consistencyIssues[0]!.modules);
+  });
+
+  it('issue-order shuffle (multiple issues) does NOT change the fingerprint', () => {
+    const i1: UnifiedConsistencyIssue = {
+      code: 'CONFLICTING_EVIDENCE',
+      severity: 'BLOCKING',
+      modules: ['HIGH_INCOME_MINIMUM_TAX'],
+      detail: 'c',
+    };
+    const i2: UnifiedConsistencyIssue = {
+      code: 'STALE_CONFIRMATION',
+      severity: 'BLOCKING',
+      modules: ['READINESS_EVIDENCE'],
+      detail: 's',
+    };
+    const a = buildState(baseModules(), { consistencyIssues: [i1, i2] });
+    const b = buildState(baseModules(), { consistencyIssues: [i2, i1] });
+    expect(a.identity.annualFingerprint).toBe(b.identity.annualFingerprint);
+  });
+
   it('a changed consistency set DOES change the fingerprint', () => {
     const issue: UnifiedConsistencyIssue = {
       code: 'CONFLICTING_EVIDENCE',
@@ -150,7 +186,7 @@ describe('Phase 4J.1 — unified annual fingerprint', () => {
     );
   });
 
-  it('ruleVersions values feed the fingerprint deterministically', () => {
+  it('ruleVersions.highIncome feeds the fingerprint deterministically', () => {
     const a = buildState(baseModules(), {
       ruleVersions: { ...DEFAULT_RULE_VERSIONS, highIncome: 'v1' },
     });
@@ -158,5 +194,16 @@ describe('Phase 4J.1 — unified annual fingerprint', () => {
       ruleVersions: { ...DEFAULT_RULE_VERSIONS, highIncome: 'v2' },
     });
     expect(a.identity.annualFingerprint).not.toBe(b.identity.annualFingerprint);
+  });
+
+  it('ruleVersions.annualPositions (folded report version) feeds the fingerprint', () => {
+    const a = buildState(baseModules(), {
+      ruleVersions: { ...DEFAULT_RULE_VERSIONS, annualPositions: 'pos-v1' },
+    });
+    const b = buildState(baseModules(), {
+      ruleVersions: { ...DEFAULT_RULE_VERSIONS, annualPositions: 'pos-v2' },
+    });
+    expect(a.identity.annualFingerprint).not.toBe(b.identity.annualFingerprint);
+    expect(a.identity.sourceFingerprint).not.toBe(b.identity.sourceFingerprint);
   });
 });

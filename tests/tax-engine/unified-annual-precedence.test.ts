@@ -61,6 +61,75 @@ describe('Phase 4J.1 — unified annual global status precedence (frozen)', () =
     expect(deriveUnifiedGlobalStatus(modules, [])).toBe('PARTIAL');
   });
 
+  it('passive PARTIAL (no requirements, no blocking reason) -> PARTIAL', () => {
+    const modules = [
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'READY' }),
+      makeModule({
+        module: 'CAPITAL_MARKETS',
+        status: 'PARTIAL',
+        requirements: [],
+        blockingReasons: [],
+      }),
+    ];
+    expect(deriveUnifiedGlobalStatus(modules, [])).toBe('PARTIAL');
+  });
+
+  it('action-owned PARTIAL (unresolved required requirement) -> REQUIRES_ACTION', () => {
+    const modules = [
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'READY' }),
+      makeModule({
+        module: 'READINESS_EVIDENCE',
+        status: 'PARTIAL',
+        requirements: [
+          {
+            key: 'READINESS_EVIDENCE::TAXPAYER_CONFIRMATIONS::x::TAXPAYER_CONFIRMATIONS',
+            module: 'READINESS_EVIDENCE',
+            category: 'TAXPAYER_CONFIRMATIONS',
+            nativeType: 'TAXPAYER_CONFIRMATIONS',
+            subjectReference: 'x',
+            status: 'PENDING',
+            blockingReason: null,
+          },
+        ],
+      }),
+    ];
+    expect(deriveUnifiedGlobalStatus(modules, [])).toBe('REQUIRES_ACTION');
+  });
+
+  it('action-owned PARTIAL (non-null blocking reason) -> REQUIRES_ACTION', () => {
+    const modules = [
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'READY' }),
+      makeModule({
+        module: 'CAPITAL_MARKETS',
+        status: 'PARTIAL',
+        blockingReasons: ['SOME_NATIVE_BLOCKING_MARKER'],
+      }),
+    ];
+    expect(deriveUnifiedGlobalStatus(modules, [])).toBe('REQUIRES_ACTION');
+  });
+
+  it('a satisfied/waived requirement on a PARTIAL module stays passive PARTIAL', () => {
+    const modules = [
+      makeModule({ module: 'ANNUAL_POSITIONS', status: 'READY' }),
+      makeModule({
+        module: 'CAPITAL_MARKETS',
+        status: 'PARTIAL',
+        requirements: [
+          {
+            key: 'CAPITAL_MARKETS::X::y::X',
+            module: 'CAPITAL_MARKETS',
+            category: 'X',
+            nativeType: 'X',
+            subjectReference: 'y',
+            status: 'SATISFIED',
+            blockingReason: null,
+          },
+        ],
+      }),
+    ];
+    expect(deriveUnifiedGlobalStatus(modules, [])).toBe('PARTIAL');
+  });
+
   it('all READY/NO_ACTIVITY/NOT_APPLICABLE, coherent -> READY_FOR_REVIEW', () => {
     const modules = [
       makeModule({ module: 'ANNUAL_POSITIONS', status: 'READY' }),

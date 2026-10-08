@@ -75,11 +75,53 @@ describe('Phase 4J.1 — consistency engine', () => {
     expect(match).toBeDefined();
   });
 
-  it('PAYER_IDENTITY_MISMATCH on payer-set divergence (identity only)', () => {
-    const issues = detectUnifiedConsistencyIssues(
-      baseInput({ incomePayerIds: ['PETR4', 'VALE3'] }),
-    );
+  it('PAYER_IDENTITY_MISMATCH fires ONLY when 4I references a payer absent from the 4H.4 universe (orphanInHighIncome)', () => {
+    // 4I claims payer FOOX that 4H.4 income never produced -> genuine provenance
+    // skew -> BLOCKING.
+    const base = baseInput();
+    const issues = detectUnifiedConsistencyIssues({
+      ...base,
+      highIncome: { ...base.highIncome!, payerIds: ['PETR4', 'FOOX'] },
+      incomePayerIds: ['PETR4'],
+    });
     expect(issues.some((i) => i.code === 'PAYER_IDENTITY_MISMATCH')).toBe(true);
+  });
+
+  it('PAYER_IDENTITY_MISMATCH does NOT fire for a legitimate diversified filer (orphanInIncome is benign)', () => {
+    // 4H.4 holds extra income payers (another dividend payer, a JCP/FII payer)
+    // that 4I legitimately does not track in its redutor/evidence subset. This
+    // is the normal shape of a diversified high-income portfolio and must NOT
+    // produce a BLOCKING issue (§7.3 / §29 boundary).
+    const base = baseInput();
+    const issues = detectUnifiedConsistencyIssues({
+      ...base,
+      highIncome: { ...base.highIncome!, payerIds: ['PETR4'] },
+      incomePayerIds: ['PETR4', 'VALE3', 'HGLG11'],
+    });
+    expect(issues.some((i) => i.code === 'PAYER_IDENTITY_MISMATCH')).toBe(false);
+  });
+
+  it('PAYER_IDENTITY_MISMATCH does NOT fire when 4I tracks no payers', () => {
+    const base = baseInput();
+    const issues = detectUnifiedConsistencyIssues({
+      ...base,
+      highIncome: { ...base.highIncome!, payerIds: [] },
+      incomePayerIds: ['PETR4', 'VALE3'],
+    });
+    expect(issues.some((i) => i.code === 'PAYER_IDENTITY_MISMATCH')).toBe(false);
+  });
+
+  it('STALE_CONFIRMATION on high-income side when a required stale evidence is present', () => {
+    const base = baseInput();
+    const issues = detectUnifiedConsistencyIssues({
+      ...base,
+      highIncome: { ...base.highIncome!, hasStaleRequiredEvidence: true },
+    });
+    expect(
+      issues.some(
+        (i) => i.code === 'STALE_CONFIRMATION' && i.modules.includes('HIGH_INCOME_MINIMUM_TAX'),
+      ),
+    ).toBe(true);
   });
 
   it('CONFLICTING_EVIDENCE when 4I evidence conflicts', () => {

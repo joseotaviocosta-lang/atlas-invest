@@ -289,7 +289,11 @@ describe('Architecture Gate: Layer Dependency Boundaries & Package Isolation', (
     // MUST feed the pure assembler.
     expect(content).toMatch(/buildUnifiedAnnualIrpfState/);
 
-    // MUST NOT import @atlas/database row/mapper types for recomputation and
+    // MUST NOT import from @atlas/database at all (repository/error/row/mapper
+    // types are reached only via an allowed application-facing port + the
+    // PORTFOLIO_REPOSITORY token).
+    expect(content).not.toMatch(/from\s+['"]@atlas\/database['"]/);
+
     // MUST NOT reference row/mapper symbols.
     expect(content).not.toMatch(/HighIncomeEvidenceRow/);
     expect(content).not.toMatch(/TaxpayerConfirmationRow/);

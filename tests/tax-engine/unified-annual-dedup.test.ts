@@ -87,6 +87,89 @@ describe('Phase 4J.1 — requirement aggregation & semantic-key dedup', () => {
     expect(result.map((r) => r.subjectReference)).toEqual(['aaaa', 'zzzz']);
   });
 
+  it('duplicate semantic key with different status collapses to the most-severe (fail-closed) winner', () => {
+    const satisfied = req({
+      module: 'READINESS_EVIDENCE',
+      subjectReference: 'PETR4',
+      status: 'SATISFIED',
+    });
+    const pending = req({
+      module: 'READINESS_EVIDENCE',
+      subjectReference: 'PETR4',
+      status: 'PENDING',
+      blockingReason: 'MISSING_CONFIRMATION',
+    });
+    const modules = [
+      makeModule({
+        module: 'READINESS_EVIDENCE',
+        status: 'PARTIAL',
+        requirements: [satisfied, pending],
+      }),
+    ];
+    const result = aggregateRequirements(modules);
+    expect(result).toHaveLength(1);
+    // The unresolved PENDING entry must win over SATISFIED (never collapse into
+    // a more-permissive winner).
+    expect(result[0]!.status).toBe('PENDING');
+    expect(result[0]!.blockingReason).toBe('MISSING_CONFIRMATION');
+  });
+
+  it('duplicate conflict resolution is independent of input order', () => {
+    const satisfied = req({
+      module: 'HIGH_INCOME_MINIMUM_TAX',
+      subjectReference: 'ABC',
+      status: 'SATISFIED',
+    });
+    const stale = req({
+      module: 'HIGH_INCOME_MINIMUM_TAX',
+      subjectReference: 'ABC',
+      status: 'STALE',
+      blockingReason: 'STALE_EVIDENCE',
+    });
+    const forward = aggregateRequirements([
+      makeModule({
+        module: 'HIGH_INCOME_MINIMUM_TAX',
+        status: 'PARTIAL',
+        requirements: [satisfied, stale],
+      }),
+    ]);
+    const reverse = aggregateRequirements([
+      makeModule({
+        module: 'HIGH_INCOME_MINIMUM_TAX',
+        status: 'PARTIAL',
+        requirements: [stale, satisfied],
+      }),
+    ]);
+    expect(forward).toHaveLength(1);
+    expect(reverse).toHaveLength(1);
+    // Same deterministic fail-closed winner regardless of order.
+    expect(forward[0]!.status).toBe('STALE');
+    expect(reverse[0]!.status).toBe('STALE');
+    expect(forward[0]).toEqual(reverse[0]);
+  });
+
+  it('an unknown native status fails closed (wins over any known status) in duplicate resolution', () => {
+    const known = req({
+      module: 'READINESS_EVIDENCE',
+      subjectReference: 'X',
+      status: 'PENDING',
+    });
+    const unknown = req({
+      module: 'READINESS_EVIDENCE',
+      subjectReference: 'X',
+      status: 'WEIRD_FUTURE_STATUS',
+    });
+    const result = aggregateRequirements([
+      makeModule({
+        module: 'READINESS_EVIDENCE',
+        status: 'PARTIAL',
+        requirements: [known, unknown],
+      }),
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.status).toBe('WEIRD_FUTURE_STATUS');
+  });
+
   it('a subjectReference carrying a UUID is preserved in the key but the key is per-source (not strip-the-id)', () => {
     // We never put a UUID in the key in practice (service normalizes to stable
     // references). But if one leaks, dedup still relies on the full composite
