@@ -6,6 +6,7 @@ import { use } from 'react';
 import { colors, spacing } from '@atlas/ui';
 import { Card, Skeleton, PageHeader } from '@/components/ui';
 import { UnifiedAnnualSection } from '@/components/fiscal/UnifiedAnnualSection';
+import { parseStrictCalendarYear } from '@/components/fiscal/unified-annual-wire';
 
 function UnifiedAnnualFallback() {
   return (
@@ -18,8 +19,7 @@ function UnifiedAnnualFallback() {
 
 export default function UnifiedAnnualPage({ params }: { params: Promise<{ year: string }> }) {
   const { year } = use(params);
-  const parsed = Number.parseInt(year, 10);
-  const calendarYear = Number.isInteger(parsed) ? parsed : new Date().getFullYear() - 1;
+  const calendarYear = parseStrictCalendarYear(year);
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
@@ -37,9 +37,20 @@ export default function UnifiedAnnualPage({ params }: { params: Promise<{ year: 
           ← Voltar para Fiscal
         </Link>
       </div>
-      <Suspense fallback={<UnifiedAnnualFallback />}>
-        <UnifiedAnnualSection calendarYear={calendarYear} />
-      </Suspense>
+      {calendarYear === null ? (
+        <Card style={{ padding: `${spacing.lg}px` }} data-testid="unified-annual-invalid-year">
+          <div role="alert" style={{ color: colors.negative, fontWeight: 700 }}>
+            Ano-calendário inválido
+          </div>
+          <div style={{ marginTop: `${spacing.sm}px`, color: colors.textSecondary }}>
+            Informe um ano-calendário válido na URL (ex.: /tax/annual/2026).
+          </div>
+        </Card>
+      ) : (
+        <Suspense fallback={<UnifiedAnnualFallback />}>
+          <UnifiedAnnualSection calendarYear={calendarYear} />
+        </Suspense>
+      )}
     </div>
   );
 }

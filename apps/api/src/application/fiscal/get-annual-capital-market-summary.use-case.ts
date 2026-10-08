@@ -8,6 +8,7 @@ import {
 } from '@atlas/tax-engine';
 import { TAX_OBLIGATION_REPOSITORY } from '../../database/tokens';
 import { GetMonthlyTaxLiabilityUseCase } from './get-monthly-tax-liability.use-case';
+import type { UnifiedLoadScope } from './in-flight-memo';
 import {
   AnnualCapitalMarketFiscalSummaryReadModel,
   mapAnnualCapitalMarketSummaryToReadModel,
@@ -16,6 +17,14 @@ import {
 export interface GetAnnualCapitalMarketSummaryQuery {
   readonly taxSubjectId: string;
   readonly calendarYear: number;
+  /**
+   * Optional composed-load scope (Phase 4J.1). When present, the unified
+   * orchestration service de-duplicates the direct and transitive calls to this
+   * use-case within one load snapshot. Absent for every standalone 4H.3 route,
+   * which computes directly (NO process-wide memo — a singleton memo would share
+   * work across requests, the earlier defect).
+   */
+  readonly scope?: UnifiedLoadScope;
 }
 
 @Injectable()
@@ -35,7 +44,18 @@ export class GetAnnualCapitalMarketSummaryUseCase {
         `Invalid calendar year: ${query.calendarYear}. Must be an integer between 1900 and 2100.`,
       );
     }
+    if (query.scope) {
+      return query.scope.memo.run(
+        `CAPITAL_MARKET:${query.taxSubjectId}:${query.calendarYear}`,
+        () => this.compute(query),
+      );
+    }
+    return this.compute(query);
+  }
 
+  private async compute(
+    query: GetAnnualCapitalMarketSummaryQuery,
+  ): Promise<AnnualCapitalMarketFiscalSummaryReadModel> {
     const calendarYear = createCalendarYear(query.calendarYear);
     const monthsData: MonthlyFiscalInputData[] = [];
 

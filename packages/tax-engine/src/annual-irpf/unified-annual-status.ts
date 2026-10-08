@@ -44,6 +44,28 @@ export function maxUnifiedStatus(
  * Derive the unified global status from the module contributions + consistency
  * issues. Pure and total. Order-independent.
  */
+/**
+ * A requirement is UNRESOLVED (an open action owner) when its native status is
+ * anything other than SATISFIED/WAIVED. STALE and PENDING both count, as does
+ * any unknown native status (fail closed).
+ */
+function isUnresolvedRequirement(status: string): boolean {
+  return status !== 'SATISFIED' && status !== 'WAIVED';
+}
+
+/**
+ * A module is "action-owned" when it carries an unresolved required evidence
+ * requirement or a non-null synthesised/native blocking reason — i.e. there is
+ * an explicit action the subject must take. Such a module's PARTIAL state must
+ * escalate to REQUIRES_ACTION rather than remaining a passive PARTIAL.
+ */
+function moduleHasOpenAction(module: UnifiedModuleContribution): boolean {
+  if (module.blockingReasons.length > 0) {
+    return true;
+  }
+  return module.requirements.some((req) => isUnresolvedRequirement(req.status));
+}
+
 export function deriveUnifiedGlobalStatus(
   modules: readonly UnifiedModuleContribution[],
   consistencyIssues: readonly UnifiedConsistencyIssue[],
@@ -74,6 +96,19 @@ export function deriveUnifiedGlobalStatus(
         m.status !== 'UNSUPPORTED' && m.status !== 'NO_ACTIVITY' && m.status !== 'NOT_APPLICABLE',
     );
     return otherMaterialWithState ? 'REQUIRES_ACTION' : 'UNSUPPORTED';
+  }
+
+  // Unresolved required evidence / action-owned partials escalate ahead of a
+  // passive PARTIAL (precedence: unresolved required evidence and action-owned
+  // partials become REQUIRES_ACTION). This inspects module requirements and
+  // native/synthesised blocking reasons, not just the status enum.
+  const anyActionOwned = materialModules.some(
+    (m) =>
+      (m.status === 'PARTIAL' || m.status === 'READY' || m.status === 'NO_ACTIVITY') &&
+      moduleHasOpenAction(m),
+  );
+  if (anyActionOwned) {
+    return 'REQUIRES_ACTION';
   }
 
   const anyPartial = modules.some((m) => m.status === 'PARTIAL');

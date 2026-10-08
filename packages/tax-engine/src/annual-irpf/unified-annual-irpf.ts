@@ -226,16 +226,34 @@ function compareRequirements(a: UnifiedRequirement, b: UnifiedRequirement): numb
   );
 }
 
+/**
+ * Canonicalize a consistency issue by sorting its nested `modules` array into a
+ * stable order. The nested array is reordered on the RETURNED object (not just
+ * inside a comparator), so a serialized fingerprint is invariant to the member
+ * order of an otherwise-identical multi-module issue.
+ */
+function canonicalizeConsistencyIssue(issue: UnifiedConsistencyIssue): UnifiedConsistencyIssue {
+  const modules = [...issue.modules].sort(
+    (a, b) => moduleOrderIndex(a) - moduleOrderIndex(b) || compareStrings(a, b),
+  );
+  return { ...issue, modules };
+}
+
 function sortConsistencyIssues(
   issues: readonly UnifiedConsistencyIssue[],
 ): readonly UnifiedConsistencyIssue[] {
-  return [...issues].sort(
-    (a, b) =>
-      compareStrings(a.code, b.code) ||
-      compareStrings(a.severity, b.severity) ||
-      compareStrings([...a.modules].sort().join(','), [...b.modules].sort().join(',')) ||
-      compareStrings(a.detail, b.detail),
-  );
+  // Normalize nested module arrays FIRST so both the comparator and the
+  // returned objects (which are later serialized for the fingerprint) carry the
+  // canonical member order.
+  return issues
+    .map(canonicalizeConsistencyIssue)
+    .sort(
+      (a, b) =>
+        compareStrings(a.code, b.code) ||
+        compareStrings(a.severity, b.severity) ||
+        compareStrings(a.modules.join(','), b.modules.join(',')) ||
+        compareStrings(a.detail, b.detail),
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -260,8 +278,60 @@ export function buildRequirementKey(input: {
 }
 
 /**
+ * Deterministic fail-closed severity ordering for native requirement statuses.
+ * Higher rank = more unresolved/blocking. An unknown native status fails closed
+ * to the most-severe rank so a duplicate conflict can never be collapsed into a
+ * more-permissive winner. Used ONLY to resolve duplicate semantic keys
+ * deterministically — never to compute tax.
+ */
+const REQUIREMENT_STATUS_SEVERITY: Readonly<Record<string, number>> = {
+  SATISFIED: 0,
+  WAIVED: 1,
+  PENDING: 3,
+  STALE: 4,
+};
+
+function requirementStatusRank(status: string): number {
+  const rank = REQUIREMENT_STATUS_SEVERITY[status];
+  // Unknown native status -> fail closed to the most severe rank.
+  return rank === undefined ? 5 : rank;
+}
+
+/**
+ * Resolve two requirements sharing a semantic key into a single deterministic,
+ * fail-closed winner. The more-severe (more unresolved) status wins; ties break
+ * on a non-null blocking reason, then on the lexicographically smaller
+ * blockingReason/status so the result is independent of input order.
+ */
+function resolveRequirementConflict(
+  a: UnifiedRequirement,
+  b: UnifiedRequirement,
+): UnifiedRequirement {
+  const ra = requirementStatusRank(a.status);
+  const rb = requirementStatusRank(b.status);
+  if (ra !== rb) {
+    return ra > rb ? a : b;
+  }
+  // Same severity: prefer the one carrying a blocking reason (fail closed).
+  const aHasReason = a.blockingReason !== null;
+  const bHasReason = b.blockingReason !== null;
+  if (aHasReason !== bHasReason) {
+    return aHasReason ? a : b;
+  }
+  // Fully deterministic lexicographic tiebreak (order-independent).
+  const byReason = compareStrings(a.blockingReason ?? '', b.blockingReason ?? '');
+  if (byReason !== 0) {
+    return byReason < 0 ? a : b;
+  }
+  return compareStrings(a.status, b.status) <= 0 ? a : b;
+}
+
+/**
  * Aggregate requirements across modules and collapse identical semantic keys.
- * Similar labels with different keys stay separate. Deterministically sorted.
+ * Similar labels with different keys stay separate. Duplicate keys carrying
+ * different status/blocking reason are resolved deterministically and fail
+ * closed (the most-unresolved entry wins), so output is independent of the
+ * input order. Deterministically sorted.
  */
 export function aggregateRequirements(
   modules: readonly UnifiedModuleContribution[],
@@ -269,9 +339,8 @@ export function aggregateRequirements(
   const byKey = new Map<string, UnifiedRequirement>();
   for (const mod of modules) {
     for (const req of mod.requirements) {
-      if (!byKey.has(req.key)) {
-        byKey.set(req.key, req);
-      }
+      const existing = byKey.get(req.key);
+      byKey.set(req.key, existing ? resolveRequirementConflict(existing, req) : req);
     }
   }
   return [...byKey.values()].sort(compareRequirements);

@@ -14,6 +14,7 @@ import { IHighIncomeEvidenceRepository, HighIncomeEvidenceRow } from '@atlas/dat
 import { HIGH_INCOME_EVIDENCE_REPOSITORY } from '../../database/tokens';
 import { GetAnnualCapitalMarketSummaryUseCase } from './get-annual-capital-market-summary.use-case';
 import { GetAnnualInvestmentIncomeSummaryUseCase } from './get-annual-investment-income-summary.use-case';
+import type { UnifiedLoadScope } from './in-flight-memo';
 import {
   AnnualHighIncomeAssessmentReadModel,
   mapAnnualHighIncomeAssessmentToReadModel,
@@ -23,6 +24,13 @@ import {
 export interface GetAnnualHighIncomeAssessmentInput {
   readonly taxSubjectId: string;
   readonly calendarYear: number;
+  /**
+   * Optional composed-load scope (Phase 4J.1) forwarded to the transitive
+   * capital-market / investment-income calls so the unified orchestration
+   * de-duplicates them against one load snapshot. Absent for the standalone
+   * 4I route.
+   */
+  readonly scope?: UnifiedLoadScope;
 }
 
 interface PayerAggregatePin {
@@ -82,11 +90,11 @@ export class GetAnnualHighIncomeAssessmentUseCase {
     // before and after the build, no write landed mid-calculation. Otherwise the
     // assessment rebuilds once against fresh state; a persistent race fails
     // closed instead of claiming a stale authoritative status.
-    const first = await this.buildWithFence(input.taxSubjectId, input.calendarYear);
+    const first = await this.buildWithFence(input.taxSubjectId, input.calendarYear, input.scope);
     if (first.consistent) {
       return first.assessment;
     }
-    const second = await this.buildWithFence(input.taxSubjectId, input.calendarYear);
+    const second = await this.buildWithFence(input.taxSubjectId, input.calendarYear, input.scope);
     if (second.consistent) {
       return second.assessment;
     }
@@ -99,9 +107,10 @@ export class GetAnnualHighIncomeAssessmentUseCase {
   private async buildWithFence(
     taxSubjectId: string,
     calendarYear: number,
+    scope: UnifiedLoadScope | undefined,
   ): Promise<{ assessment: AnnualHighIncomeAssessmentReadModel; consistent: boolean }> {
     const before = await this.evidenceRepository.watermark({ taxSubjectId, calendarYear });
-    const assessment = await this.buildAssessment(taxSubjectId, calendarYear);
+    const assessment = await this.buildAssessment(taxSubjectId, calendarYear, scope);
     const after = await this.evidenceRepository.watermark({ taxSubjectId, calendarYear });
     return {
       assessment,
@@ -112,11 +121,12 @@ export class GetAnnualHighIncomeAssessmentUseCase {
   private async buildAssessment(
     taxSubjectId: string,
     calendarYear: number,
+    scope: UnifiedLoadScope | undefined,
   ): Promise<AnnualHighIncomeAssessmentReadModel> {
     // 1. Authoritative 4H annual facts (consumed, never recomputed).
     const [capitalMarket, income] = await Promise.all([
-      this.capitalMarketUseCase.execute({ taxSubjectId, calendarYear }),
-      this.incomeUseCase.execute({ taxSubjectId, calendarYear }),
+      this.capitalMarketUseCase.execute({ taxSubjectId, calendarYear, scope }),
+      this.incomeUseCase.execute({ taxSubjectId, calendarYear, scope }),
     ]);
 
     // 2. Current evidence rows (bulk, single query).

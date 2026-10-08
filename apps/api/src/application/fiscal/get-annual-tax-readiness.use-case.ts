@@ -14,6 +14,7 @@ import {
 import { buildAnnualTaxReadinessAssessment, isValidCalendarYear } from '@atlas/tax-engine';
 import { GetAnnualCapitalMarketSummaryUseCase } from './get-annual-capital-market-summary.use-case';
 import { GetAnnualInvestmentIncomeSummaryUseCase } from './get-annual-investment-income-summary.use-case';
+import type { UnifiedLoadScope } from './in-flight-memo';
 import {
   AnnualTaxReadinessReadModel,
   mapAssessmentToReadModel,
@@ -23,6 +24,13 @@ import {
 export interface GetAnnualTaxReadinessQuery {
   readonly taxSubjectId: string;
   readonly calendarYear: number;
+  /**
+   * Optional composed-load scope (Phase 4J.1) forwarded to the transitive
+   * capital-market / investment-income calls so the unified orchestration
+   * de-duplicates them against one load snapshot. Absent for the standalone
+   * 4H.5 route.
+   */
+  readonly scope?: UnifiedLoadScope;
 }
 
 @Injectable()
@@ -63,8 +71,12 @@ export class GetAnnualTaxReadinessUseCase {
       this.confirmationRepo.listByYear({ taxSubjectId, calendarYear }),
       this.openingPositionRepo.listBySubject({ taxSubjectId }),
       this.obligationRepo.list(taxSubjectId),
-      this.capitalMarketSummaryUseCase.execute({ taxSubjectId, calendarYear }).catch(() => null),
-      this.investmentIncomeSummaryUseCase.execute({ taxSubjectId, calendarYear }).catch(() => null),
+      this.capitalMarketSummaryUseCase
+        .execute({ taxSubjectId, calendarYear, scope: query.scope })
+        .catch(() => null),
+      this.investmentIncomeSummaryUseCase
+        .execute({ taxSubjectId, calendarYear, scope: query.scope })
+        .catch(() => null),
       this.portfolioRepo.findByUserId(taxSubjectId),
     ]);
 

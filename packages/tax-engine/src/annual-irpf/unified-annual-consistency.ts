@@ -137,17 +137,27 @@ export function detectUnifiedConsistencyIssues(
       );
     }
 
-    // PAYER_IDENTITY_MISMATCH — set comparison of payer identities (never amounts).
+    // PAYER_IDENTITY_MISMATCH — one-directional provenance invariant only.
+    //
+    // The ONLY valid provenance invariant is: 4I must never reference a payer
+    // that the 4H.4 income universe never produced (`orphanInHighIncome`). 4I
+    // derives from 4H facts, so a 4I payer absent from 4H.4 is a genuine skew.
+    //
+    // The REVERSE direction (a 4H.4 income payer absent from 4I's redutor /
+    // evidence subset) is EXPECTED and benign: 4I legitimately tracks only the
+    // payers relevant to the minimum tax (another dividend payer without
+    // recorded corporate evidence, or any JCP/FII payer, is normal for a
+    // diversified high-income filer). Flagging it would false-block a legitimate
+    // subject, so it is NOT an error (§7.3 / §29 boundary — never flag a
+    // legitimate cross-regime difference).
     const incomePayers = new Set(input.incomePayerIds);
-    const hiPayers = new Set(hi.payerIds);
-    const orphanInHighIncome = [...hiPayers].some((p) => !incomePayers.has(p));
-    const orphanInIncome = [...incomePayers].some((p) => !hiPayers.has(p));
-    if (hi.payerIds.length > 0 && (orphanInHighIncome || orphanInIncome)) {
+    const orphanInHighIncome = hi.payerIds.some((p) => !incomePayers.has(p));
+    if (orphanInHighIncome) {
       issues.push(
         blocking(
           'PAYER_IDENTITY_MISMATCH',
           ['INVESTMENT_INCOME', 'HIGH_INCOME_MINIMUM_TAX'],
-          'The payer identity sets referenced by the annual income and high-income modules do not match.',
+          'The high-income module references a payer identity absent from the annual investment income payer universe.',
         ),
       );
     }

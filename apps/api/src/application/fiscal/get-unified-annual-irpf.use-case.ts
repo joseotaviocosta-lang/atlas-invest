@@ -7,7 +7,12 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Money } from '@atlas/domain';
-import { EntityNotFoundError, IPortfolioRepository, PersistenceError } from '@atlas/database';
+import {
+  isEntityNotFound,
+  isPersistenceFault,
+  type UnifiedAnnualPortfolioPort,
+} from './unified-annual.port';
+import { createUnifiedLoadScope, type UnifiedLoadScope } from './in-flight-memo';
 import {
   buildRequirementKey,
   buildUnifiedAnnualIrpfState,
@@ -60,6 +65,19 @@ interface PositionsFold {
   readonly status: UnifiedModuleStatus;
   readonly sourceFingerprint: string;
   readonly loadFailed: boolean;
+  /**
+   * True when the fold saw an unrecognized native completeness value and failed
+   * closed to UNSUPPORTED. `mapPositions` synthesises an UNMAPPED_STATUS
+   * blocking reason so the state can explain what prevents readiness.
+   */
+  readonly unmappedStatus: boolean;
+  /**
+   * Deterministic fold of the per-portfolio position report `version` strings
+   * (sorted + joined), or null when no report was produced. Feeds
+   * `ruleVersions.annualPositions` so a report-version bump changes the
+   * fingerprint.
+   */
+  readonly ruleVersion: string | null;
 }
 
 interface HighIncomeLoad {
@@ -69,6 +87,21 @@ interface HighIncomeLoad {
 
 const SENTINEL_ANNUAL = '_ANNUAL_';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Frozen 4I evidence-ingestion correlation: which requirement code a given
+ * `evidenceType` row can satisfy, plus whether the correlation is payer-scoped
+ * or annual-scoped. Mirrors `GetAnnualHighIncomeAssessmentUseCase.mapEvidenceToEngineInputs`.
+ * Used only to decide whether a STALE row actually gates an OPEN requirement —
+ * never to compute tax.
+ */
+const STALE_EVIDENCE_REQUIREMENT_MAP: Readonly<
+  Record<string, { readonly requirement: string; readonly scope: 'PAYER' | 'ANNUAL' }>
+> = {
+  CORPORATE_TAX: { requirement: 'CORPORATE_EFFECTIVE_TAX_EVIDENCE', scope: 'PAYER' },
+  ANNUAL_ADJUSTMENT_IRPF: { requirement: 'ANNUAL_ADJUSTMENT_TAX_DUE', scope: 'ANNUAL' },
+  ANNUAL_INCOME_TOTAL: { requirement: 'ANNUAL_INCOME_TOTAL', scope: 'ANNUAL' },
+};
 
 function sha256Hex(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -101,7 +134,7 @@ export class UnifiedAnnualIrpfService {
     @Inject(GetAnnualHighIncomeAssessmentUseCase)
     private readonly highIncomeUseCase: GetAnnualHighIncomeAssessmentUseCase,
     @Inject(PORTFOLIO_REPOSITORY)
-    private readonly portfolioRepository: IPortfolioRepository,
+    private readonly portfolioRepository: UnifiedAnnualPortfolioPort,
     @Inject(FISCAL_CLOCK)
     private readonly clock: FiscalClock,
   ) {}
@@ -136,9 +169,14 @@ export class UnifiedAnnualIrpfService {
     taxSubjectId: string,
     calendarYear: number,
   ): Promise<{ state: UnifiedAnnualIrpfState; consistent: boolean }> {
-    const before = await this.load(taxSubjectId, calendarYear);
+    // Each composed read gets a FRESH load scope: the `before` snapshot
+    // de-duplicates its own direct + transitive capital-market / income calls,
+    // and the `after` snapshot uses a separate scope so the fence genuinely
+    // re-reads source state (a TOCTOU change is detectable) rather than being
+    // served stale values from the first snapshot.
+    const before = await this.load(taxSubjectId, calendarYear, createUnifiedLoadScope());
     const state = this.assemble(taxSubjectId, calendarYear, before);
-    const after = await this.load(taxSubjectId, calendarYear);
+    const after = await this.load(taxSubjectId, calendarYear, createUnifiedLoadScope());
     return {
       state,
       consistent: this.watermark(before) === this.watermark(after),
@@ -164,13 +202,17 @@ export class UnifiedAnnualIrpfService {
   // Loading
   // -------------------------------------------------------------------------
 
-  private async load(taxSubjectId: string, calendarYear: number): Promise<LoadedState> {
+  private async load(
+    taxSubjectId: string,
+    calendarYear: number,
+    scope: UnifiedLoadScope,
+  ): Promise<LoadedState> {
     const [positions, capitalMarket, income, readiness, highIncome] = await Promise.all([
       this.loadPositions(taxSubjectId, calendarYear),
-      this.capitalMarketUseCase.execute({ taxSubjectId, calendarYear }),
-      this.incomeUseCase.execute({ taxSubjectId, calendarYear }),
-      this.readinessUseCase.execute({ taxSubjectId, calendarYear }),
-      this.loadHighIncome(taxSubjectId, calendarYear),
+      this.capitalMarketUseCase.execute({ taxSubjectId, calendarYear, scope }),
+      this.incomeUseCase.execute({ taxSubjectId, calendarYear, scope }),
+      this.readinessUseCase.execute({ taxSubjectId, calendarYear, scope }),
+      this.loadHighIncome(taxSubjectId, calendarYear, scope),
     ]);
     return { positions, capitalMarket, income, readiness, highIncome };
   }
@@ -188,6 +230,8 @@ export class UnifiedAnnualIrpfService {
         status: 'NO_ACTIVITY',
         sourceFingerprint: this.positionsMarker('NO_ACTIVITY', []),
         loadFailed: false,
+        unmappedStatus: false,
+        ruleVersion: null,
       };
     }
 
@@ -201,11 +245,13 @@ export class UnifiedAnnualIrpfService {
           .then((report) => ({ ok: true as const, report }))
           .catch((error: unknown) => {
             // Recoverable: portfolio vanished mid-request / not found for subject.
-            if (error instanceof NotFoundException || error instanceof EntityNotFoundError) {
+            // Covers both the Nest NotFoundException raised by the composed
+            // position use-case and the structural persistence entity-not-found.
+            if (error instanceof NotFoundException || isEntityNotFound(error)) {
               return { ok: false as const, failed: false };
             }
             // Genuine persistence fault: degrade this module to BLOCKED.
-            if (error instanceof PersistenceError) {
+            if (isPersistenceFault(error)) {
               return { ok: false as const, failed: true };
             }
             throw error;
@@ -226,51 +272,114 @@ export class UnifiedAnnualIrpfService {
         status: 'BLOCKED',
         sourceFingerprint: this.positionsMarker('BLOCKED', reports),
         loadFailed: true,
+        unmappedStatus: false,
+        ruleVersion: this.positionsRuleVersion(reports),
       };
     }
 
-    const status = this.foldPositionStatus(reports);
+    const { status, unmapped } = this.foldPositionStatus(reports);
     return {
       status,
       sourceFingerprint: this.positionsMarker(status, reports),
       loadFailed: false,
+      unmappedStatus: unmapped,
+      ruleVersion: this.positionsRuleVersion(reports),
     };
   }
 
-  private foldPositionStatus(
-    reports: readonly AnnualPositionReportReadModel[],
-  ): UnifiedModuleStatus {
-    const totalAssets = reports.reduce((sum, r) => sum + r.summary.totalAssetsCount, 0);
-    if (reports.length === 0 || totalAssets === 0) {
-      return 'NO_ACTIVITY';
+  /**
+   * Deterministic fold of the distinct per-portfolio report `version` strings
+   * (sorted + joined), or null when no report was produced. Order-independent.
+   */
+  private positionsRuleVersion(reports: readonly AnnualPositionReportReadModel[]): string | null {
+    if (reports.length === 0) {
+      return null;
     }
-    const statuses = reports.map((r) => r.summary.completenessStatus);
-    if (statuses.includes('BLOCKED')) return 'BLOCKED';
-    if (statuses.includes('REQUIRES_CONFIRMATION')) return 'REQUIRES_CONFIRMATION';
-    if (statuses.includes('PARTIAL')) return 'PARTIAL';
-    return 'READY';
+    const versions = [...new Set(reports.map((r) => r.version))].sort((a, b) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    );
+    return versions.join('|');
   }
 
   /**
-   * Derive a stable per-module marker from the folded status + per-portfolio
-   * summary counts, sorted by portfolioId (order-independent). Never includes
-   * `generatedAt`.
+   * Fold the per-portfolio completeness statuses into a single module status.
+   * Fail-closed and exhaustive: an unrecognized/malformed native completeness
+   * value NEVER becomes authoritative READY — it degrades the whole module to
+   * UNSUPPORTED and sets `unmapped` so `mapPositions` can synthesise an
+   * UNMAPPED_STATUS blocking reason explaining what prevents readiness.
+   */
+  private foldPositionStatus(reports: readonly AnnualPositionReportReadModel[]): {
+    status: UnifiedModuleStatus;
+    unmapped: boolean;
+  } {
+    const totalAssets = reports.reduce((sum, r) => sum + r.summary.totalAssetsCount, 0);
+    if (reports.length === 0 || totalAssets === 0) {
+      return { status: 'NO_ACTIVITY', unmapped: false };
+    }
+    // Any unrecognized native completeness value fails closed to UNSUPPORTED and
+    // dominates (so a drift cannot be masked by a sibling READY portfolio).
+    const KNOWN_COMPLETENESS = new Set(['BLOCKED', 'REQUIRES_CONFIRMATION', 'PARTIAL', 'COMPLETE']);
+    const statuses = reports.map((r) => r.summary.completenessStatus);
+    if (statuses.some((s) => !KNOWN_COMPLETENESS.has(s))) {
+      return { status: 'UNSUPPORTED', unmapped: true };
+    }
+    if (statuses.includes('BLOCKED')) return { status: 'BLOCKED', unmapped: false };
+    if (statuses.includes('REQUIRES_CONFIRMATION')) {
+      return { status: 'REQUIRES_CONFIRMATION', unmapped: false };
+    }
+    if (statuses.includes('PARTIAL')) return { status: 'PARTIAL', unmapped: false };
+    return { status: 'READY', unmapped: false };
+  }
+
+  /**
+   * Derive a stable per-module marker from the folded status + a canonical
+   * digest of the already-DERIVED position report content (never the raw ledger
+   * input, never `generatedAt`). Hashing the full per-position content —
+   * quantity, total/average historical cost, asset identity, cost-basis +
+   * completeness status, opening-position application + id, and the report
+   * version — means a content change that preserves summary counts/status still
+   * changes the marker, so the module source fingerprint, annual fingerprint and
+   * outer-fence watermark all detect it. The raw portfolio DB UUID is hashed so
+   * it never reaches the wire; the per-position/per-portfolio digests are sorted
+   * so the marker is order-independent across portfolios and positions.
    */
   private positionsMarker(
     status: UnifiedModuleStatus,
     reports: readonly AnnualPositionReportReadModel[],
   ): string {
     const perPortfolio = reports
-      .map((r) => ({
-        // Hash the portfolioId so the raw DB UUID never reaches the wire while
-        // the marker stays order-independent and revision-sensitive.
-        portfolioKey: sha256Hex(r.portfolioId).slice(0, 16),
-        completenessStatus: r.summary.completenessStatus,
-        blockedPositionsCount: r.summary.blockedPositionsCount,
-        requiresConfirmationCount: r.summary.requiresConfirmationCount,
-        completePositionsCount: r.summary.completePositionsCount,
-        totalAssetsCount: r.summary.totalAssetsCount,
-      }))
+      .map((r) => {
+        const positions = r.positions
+          .map((p) => ({
+            // assetId identifies the asset but is NOT a tax-subject/DB-row id;
+            // hash it so no raw internal id leaks while content stays sensitive.
+            assetKey: sha256Hex(p.assetId).slice(0, 16),
+            assetCategory: p.assetCategory,
+            quantity: p.quantity,
+            totalHistoricalCost: p.totalHistoricalCost,
+            averageHistoricalCost: p.averageHistoricalCost,
+            currency: p.currency,
+            costBasisStatus: p.costBasisStatus,
+            completenessStatus: p.completenessStatus,
+            blockingReasons: [...p.blockingReasons].sort(),
+            openingPositionApplied: p.openingPositionApplied,
+            openingPositionId: p.openingPositionId
+              ? sha256Hex(p.openingPositionId).slice(0, 16)
+              : null,
+          }))
+          .sort((a, b) => (a.assetKey < b.assetKey ? -1 : a.assetKey > b.assetKey ? 1 : 0));
+        return {
+          portfolioKey: sha256Hex(r.portfolioId).slice(0, 16),
+          version: r.version,
+          completenessStatus: r.summary.completenessStatus,
+          totalHistoricalCostKnown: r.summary.totalHistoricalCostKnown,
+          blockedPositionsCount: r.summary.blockedPositionsCount,
+          requiresConfirmationCount: r.summary.requiresConfirmationCount,
+          completePositionsCount: r.summary.completePositionsCount,
+          totalAssetsCount: r.summary.totalAssetsCount,
+          positions,
+        };
+      })
       .sort((a, b) =>
         a.portfolioKey < b.portfolioKey ? -1 : a.portfolioKey > b.portfolioKey ? 1 : 0,
       );
@@ -285,9 +394,14 @@ export class UnifiedAnnualIrpfService {
   private async loadHighIncome(
     taxSubjectId: string,
     calendarYear: number,
+    scope: UnifiedLoadScope,
   ): Promise<HighIncomeLoad> {
     try {
-      const assessment = await this.highIncomeUseCase.execute({ taxSubjectId, calendarYear });
+      const assessment = await this.highIncomeUseCase.execute({
+        taxSubjectId,
+        calendarYear,
+        scope,
+      });
       return { assessment, snapshotInconsistent: false };
     } catch (error: unknown) {
       if (
@@ -335,7 +449,7 @@ export class UnifiedAnnualIrpfService {
     const consistencyIssues = this.detectConsistency(calendarYear, loaded, highIncomeModule);
 
     const ruleVersions: UnifiedRuleVersions = {
-      annualPositions: null,
+      annualPositions: loaded.positions.ruleVersion,
       capitalMarkets: null,
       investmentIncome: null,
       readinessEvidence: null,
@@ -355,7 +469,9 @@ export class UnifiedAnnualIrpfService {
   private mapPositions(fold: PositionsFold): UnifiedModuleContribution {
     const blockingReasons: (UnifiedBlockingReason | string)[] = fold.loadFailed
       ? ['MODULE_LOAD_FAILED']
-      : [];
+      : fold.unmappedStatus
+        ? ['UNMAPPED_STATUS']
+        : [];
     return {
       module: 'ANNUAL_POSITIONS',
       source: '4H.2',
@@ -467,13 +583,23 @@ export class UnifiedAnnualIrpfService {
     const status = this.mapReadinessStatus(readiness.overallStatus);
     const requirements = this.mapReadinessRequirements(taxSubjectId, readiness);
     const evidenceFingerprints = readiness.confirmations.map((c) => c.fingerprint);
+    // Fail-closed: when the native overall status is unrecognized the mapper
+    // degrades to UNSUPPORTED, and we synthesise UNMAPPED_STATUS so the module
+    // can explain what prevents readiness (never an empty blocking-reason set
+    // under an UNSUPPORTED status). A legitimately-mapped UNSUPPORTED native
+    // status is impossible here (4H.5 has no UNSUPPORTED vocabulary), so this is
+    // unambiguous.
+    const unmapped = status === 'UNSUPPORTED';
+    const blockingReasons: (UnifiedBlockingReason | string)[] = unmapped
+      ? ['UNMAPPED_STATUS', ...readiness.blockingReasons]
+      : [...readiness.blockingReasons];
     return {
       module: 'READINESS_EVIDENCE',
       source: '4H.5',
       status,
       authoritative: status === 'READY',
       material: true,
-      blockingReasons: [...readiness.blockingReasons],
+      blockingReasons,
       requirements,
       sourceFingerprint: readiness.fingerprint,
       calculationFingerprint: null,
@@ -726,19 +852,59 @@ export class UnifiedAnnualIrpfService {
     return [...ids];
   }
 
+  /**
+   * A stale 4I evidence row gates filing ONLY when a required (unresolved)
+   * evidence requirement it can actually satisfy still depends on it.
+   *
+   * The earlier (reviewer-B confirmed) defect correlated "any stale row" with
+   * "any unresolved requirement": an obsolete `ANNUAL_INCOME_TOTAL` row already
+   * superseded by canonical 4H income could flip an otherwise REQUIRES_ACTION
+   * package to BLOCKED while an UNRELATED `CORPORATE_EFFECTIVE_TAX_EVIDENCE` /
+   * `ANNUAL_ADJUSTMENT_TAX_DUE` requirement was the real open item.
+   *
+   * This now correlates the evidence row's `evidenceType` to the specific
+   * requirement code it feeds (the frozen 4I ingestion mapping), retaining
+   * annual-vs-payer scope:
+   *   - `CORPORATE_TAX`          -> `CORPORATE_EFFECTIVE_TAX_EVIDENCE` (payer-scoped:
+   *                                 the stale row must carry a `payerId`);
+   *   - `ANNUAL_ADJUSTMENT_IRPF` -> `ANNUAL_ADJUSTMENT_TAX_DUE`       (annual-scoped);
+   *   - `ANNUAL_INCOME_TOTAL`    -> `ANNUAL_INCOME_TOTAL`             (annual-scoped).
+   * A stale row only gates when the requirement it maps to is itself unresolved
+   * (not SATISFIED/WAIVED). An unknown evidenceType fails CLOSED (gates when any
+   * requirement is unresolved) so a new 4I evidence kind can never silently stop
+   * blocking. Leaks no raw tax-subject / evidence / payer ids.
+   */
   private hasStaleRequiredHighIncomeEvidence(
     assessment: AnnualHighIncomeAssessmentReadModel,
   ): boolean {
-    const requiredSubjects = new Set(
+    const unresolved = new Set(
       assessment.evidenceRequirements
         .filter((r) => r.status !== 'SATISFIED' && r.status !== 'WAIVED')
-        .map((r) => r.subjectId),
+        .map((r) => r.requirement),
     );
-    return assessment.evidence.some(
-      (e) =>
-        e.stale &&
-        (requiredSubjects.has(e.payerId ?? SENTINEL_ANNUAL) ||
-          (e.payerId !== null && requiredSubjects.has(e.payerId))),
-    );
+    if (unresolved.size === 0) {
+      return false;
+    }
+
+    return assessment.evidence.some((e) => {
+      if (!e.stale) {
+        return false;
+      }
+      const correlated = STALE_EVIDENCE_REQUIREMENT_MAP[e.evidenceType];
+      if (correlated === undefined) {
+        // Unknown evidence kind: fail closed — gate whenever anything is open.
+        return true;
+      }
+      // Payer-scoped evidence (CORPORATE_TAX) must carry a payerId to gate; an
+      // annual-scoped stale row without a payer never masquerades as payer
+      // evidence (and vice-versa).
+      if (correlated.scope === 'PAYER' && e.payerId === null) {
+        return false;
+      }
+      if (correlated.scope === 'ANNUAL' && e.payerId !== null) {
+        return false;
+      }
+      return unresolved.has(correlated.requirement);
+    });
   }
 }

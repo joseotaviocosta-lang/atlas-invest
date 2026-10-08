@@ -10,6 +10,7 @@ import {
   IncomeEventInputData,
   IncomeType,
 } from '@atlas/tax-engine';
+import type { UnifiedLoadScope } from './in-flight-memo';
 import {
   AnnualInvestmentIncomeSummaryReadModel,
   mapAnnualInvestmentIncomeSummaryToReadModel,
@@ -18,6 +19,13 @@ import {
 export interface GetAnnualInvestmentIncomeSummaryInput {
   readonly taxSubjectId: string;
   readonly calendarYear: number;
+  /**
+   * Optional composed-load scope (Phase 4J.1). When present, the unified
+   * orchestration service de-duplicates the direct and transitive calls to this
+   * use-case within one load snapshot. Absent for every standalone 4H.4 route,
+   * which computes directly (NO process-wide memo).
+   */
+  readonly scope?: UnifiedLoadScope;
 }
 
 @Injectable()
@@ -32,6 +40,17 @@ export class GetAnnualInvestmentIncomeSummaryUseCase {
   ) {}
 
   async execute(
+    input: GetAnnualInvestmentIncomeSummaryInput,
+  ): Promise<AnnualInvestmentIncomeSummaryReadModel> {
+    if (input.scope) {
+      return input.scope.memo.run(`INCOME:${input.taxSubjectId}:${input.calendarYear}`, () =>
+        this.compute(input),
+      );
+    }
+    return this.compute(input);
+  }
+
+  private async compute(
     input: GetAnnualInvestmentIncomeSummaryInput,
   ): Promise<AnnualInvestmentIncomeSummaryReadModel> {
     const calendarYear = input.calendarYear;

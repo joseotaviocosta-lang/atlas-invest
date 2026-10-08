@@ -6,55 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { colors, spacing } from '@atlas/ui';
 import { apiClient, ApiError } from '@/api/client';
 import { Card, SectionHeader, ErrorState, Skeleton, EmptyState, Badge } from '@/components/ui';
-
-// --- Wire types (local; NO new @atlas/ui unified export in 4J.1) ---
-
-interface UnifiedModuleWire {
-  readonly module: string;
-  readonly source: string;
-  readonly status: string;
-  readonly authoritative: boolean;
-  readonly blockingReasons: readonly string[];
-  readonly requirements: readonly UnifiedRequirementWire[];
-  readonly sourceFingerprint: string;
-  readonly calculationFingerprint: string | null;
-}
-
-interface UnifiedRequirementWire {
-  readonly key: string;
-  readonly module: string;
-  readonly category: string;
-  readonly nativeType: string;
-  readonly subjectReference: string;
-  readonly status: string;
-  readonly blockingReason: string | null;
-}
-
-interface UnifiedConsistencyWire {
-  readonly code: string;
-  readonly severity: string;
-  readonly modules: readonly string[];
-  readonly detail: string;
-}
-
-interface UnifiedAnnualWire {
-  readonly calendarYear: number;
-  readonly declarationExercise: number;
-  readonly status: string;
-  readonly summary: {
-    readonly moduleCount: number;
-    readonly readyCount: number;
-    readonly actionRequiredCount: number;
-    readonly blockedCount: number;
-    readonly consistencyIssueCount: number;
-    readonly blockingIssueCount: number;
-  };
-  readonly modules: readonly UnifiedModuleWire[];
-  readonly requirements: readonly UnifiedRequirementWire[];
-  readonly consistencyIssues: readonly UnifiedConsistencyWire[];
-  readonly sourceFingerprint: string;
-  readonly annualFingerprint: string;
-}
+import { isValidWire } from './unified-annual-wire';
 
 // --- Verbatim label maps (presentation only; never alters substance) ---
 
@@ -127,18 +79,6 @@ function errorMessageFor(error: unknown): { title: string; message: string } {
     title: 'Erro ao carregar a visão unificada',
     message: error instanceof Error ? error.message : 'Tente novamente em instantes.',
   };
-}
-
-function isValidWire(value: unknown): value is UnifiedAnnualWire {
-  if (!value || typeof value !== 'object') return false;
-  const v = value as Record<string, unknown>;
-  return (
-    typeof v.status === 'string' &&
-    typeof v.calendarYear === 'number' &&
-    Array.isArray(v.modules) &&
-    Array.isArray(v.requirements) &&
-    Array.isArray(v.consistencyIssues)
-  );
 }
 
 export function UnifiedAnnualSection({ calendarYear }: { calendarYear: number }) {
