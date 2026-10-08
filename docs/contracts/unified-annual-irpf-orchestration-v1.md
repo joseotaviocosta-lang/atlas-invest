@@ -115,9 +115,21 @@ populates `calculationFingerprint`; it is `null` for all 4H modules.
 - Frozen precedence: `BLOCKED > REQUIRES_ACTION > PARTIAL > READY_FOR_REVIEW > NO_ACTIVITY`.
 - No status collapse: `BLOCKED` never degrades to `PARTIAL`; an unmapped native
   value never maps to `READY` (it becomes `UNSUPPORTED` + `UNMAPPED_STATUS`).
+- Every native→unified adapter is exhaustive and **fails closed**. In particular:
+  the `ANNUAL_POSITIONS` completeness fold recognises only
+  `COMPLETE/PARTIAL/BLOCKED/REQUIRES_CONFIRMATION` and maps any other value to
+  `UNSUPPORTED` + `UNMAPPED_STATUS` (it never falls through to `READY`); the
+  `READINESS_EVIDENCE` overall-status mapper maps any unknown value to
+  `UNSUPPORTED` and always attaches `UNMAPPED_STATUS` so the state can explain
+  what prevents readiness (never an empty blocking-reason set under `UNSUPPORTED`).
 - `NOT_APPLICABLE`/`NO_ACTIVITY` modules do not by themselves block. A material
   `UNSUPPORTED` module prevents a global `READY_FOR_REVIEW`. HIGH_INCOME is
   material only for in-window years (≥ 2026).
+- The global fold inspects module requirements and blocking reasons, not just the
+  status enum: a material, participating module (`READY`/`PARTIAL`/`NO_ACTIVITY`)
+  carrying an unresolved required requirement (status not `SATISFIED`/`WAIVED`) or
+  a non-null blocking reason is **action-owned** and escalates to
+  `REQUIRES_ACTION`. A passive `PARTIAL` (no open action) stays `PARTIAL`.
 - The 4J-synthesised blocking reasons are a closed set: `MODULE_LOAD_FAILED`,
   `UNMAPPED_STATUS`, `UPSTREAM_SNAPSHOT_INCONSISTENT`. Native 4H/4I
   `blockingReasons` pass through verbatim.
@@ -131,6 +143,11 @@ populates `calculationFingerprint`; it is `null` for all 4H modules.
   are normalized verbatim.
 - Identical keys collapse to one requirement; similar labels with different keys
   stay separate.
+- A duplicate key whose entries carry different status/blocking reason is
+  resolved **deterministically and fail-closed**: the most-unresolved status wins
+  (`SATISFIED < WAIVED < PENDING < STALE`, unknown native statuses fail closed to
+  the most severe), ties break on a non-null blocking reason then lexicographic
+  order — so the winner is independent of input order (never first-wins).
 
 ## 6. Consistency rules
 
@@ -138,6 +155,32 @@ Consistency compares identity + gross-economic provenance (fingerprints) +
 payer identity only. Codes: `YEAR_MISMATCH`, `EXERCISE_MISMATCH`,
 `SOURCE_FINGERPRINT_MISMATCH`, `PAYER_IDENTITY_MISMATCH`, `STALE_CONFIRMATION`,
 `CONFLICTING_EVIDENCE`, `UPSTREAM_NOT_READY`.
+
+**Payer identity is checked one-directionally.** `PAYER_IDENTITY_MISMATCH` fires
+only when 4I references a payer absent from the 4H.4 income payer universe
+(`orphanInHighIncome`) — the only valid provenance invariant, since 4I derives
+from 4H facts. The reverse (a 4H.4 income payer absent from 4I's redutor/evidence
+subset) is expected for a diversified filer and is never flagged.
+
+**Stale evidence is correlated to the requirement it can actually satisfy, by
+`evidenceType` + scope — never by raw id, and never "any stale row + any open
+requirement".** 4I requirement subjects are the aggregate tax-subject id, a
+different namespace than an evidence row's `payerId`, so ids are not compared
+directly. Instead each stale evidence row is mapped (via the frozen 4I ingestion
+mapping) to the specific requirement code it feeds, and `STALE_CONFIRMATION`
+fires only when THAT requirement is itself unresolved (not SATISFIED/WAIVED):
+
+| evidenceType             | satisfies requirement              | scope                                     |
+| ------------------------ | ---------------------------------- | ----------------------------------------- |
+| `CORPORATE_TAX`          | `CORPORATE_EFFECTIVE_TAX_EVIDENCE` | payer-scoped (row must carry a `payerId`) |
+| `ANNUAL_ADJUSTMENT_IRPF` | `ANNUAL_ADJUSTMENT_TAX_DUE`        | annual-scoped (`payerId === null`)        |
+| `ANNUAL_INCOME_TOTAL`    | `ANNUAL_INCOME_TOTAL`              | annual-scoped                             |
+
+An unrelated obsolete row (e.g. a stale `ANNUAL_INCOME_TOTAL` already satisfied
+by canonical 4H income) can no longer flip an otherwise `REQUIRES_ACTION`
+package to `BLOCKED` while a separate corporate/adjustment requirement is the
+real open item. An unknown `evidenceType` fails CLOSED (gates when anything is
+open) so a new 4I evidence kind never silently stops blocking. No id is leaked.
 
 **Amount comparison is NOT done per payer** and is not done at all by default.
 It is uncomputable from the frozen read models (4I exposes only per-category
@@ -154,7 +197,15 @@ classification is never flagged.
 - `annualFingerprint` = SHA-256 over the full canonical content (modules,
   evidence fingerprints, consistency issues, requirements, ruleVersions).
 - `generatedAt` is **excluded** from both fingerprints.
-- Module-order and requirement-order independent (canonical sort before hash).
+- Module-order and requirement-order independent (canonical sort before hash),
+  and consistency-issue `modules` member order independent (nested arrays are
+  canonicalized on the serialized object, not only inside a comparator).
+- The `ANNUAL_POSITIONS` source marker folds a canonical digest of the derived
+  position report content (quantity, total/average cost, asset identity,
+  cost-basis + completeness status, opening-position application/id, report
+  version) plus the folded report version — never `generatedAt`, never the raw
+  ledger — so a content change that preserves summary counts still changes the
+  fingerprint and is caught by the outer fence.
 - Any authoritative source revision (changed module fingerprint/status, new
   evidence/confirmation revision, changed consistency set) changes the fingerprint.
 
@@ -177,8 +228,14 @@ classification is never flagged.
   and requirement metadata. Logs carry only technical metadata.
 - **Scale / query.** The payload is `O(modules + positions-summary + requirements)`,
   bounded and independent of ledger size; the positions fan-out is linear in
-  portfolio count. Request-scoped memoization is allowed; a global cross-user
-  fiscal cache is forbidden.
+  portfolio count. De-duplication of the direct + transitive capital-market /
+  investment-income loads is scoped to a single composed `load()` **snapshot**
+  (a fresh scope per load, and a separate fresh scope for the outer fence's
+  after-read): the snapshot retains settled results for its lifetime so a delayed
+  transitive call reuses the already-computed value (exactly one compute per
+  category per snapshot — a deterministic, timing-independent query shape). The
+  scope is NOT a process-wide singleton and NOT a cross-request/cross-user cache;
+  a global fiscal cache is forbidden.
 
 ## 10. Consumed read-model contracts
 

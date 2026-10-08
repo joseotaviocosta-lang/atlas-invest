@@ -16,7 +16,14 @@ não há bruto por pagador.
 1. A consistência compara **identidade** (ano, exercício), **procedência
    econômica bruta** (fingerprints: `upstreamIncomeFingerprint` de 4I vs
    fingerprint de 4H.4; `upstreamCapitalMarketFingerprint` de 4I vs fingerprint
-   de 4H.3) e **identidade de pagador** (comparação de conjuntos de `payerId`).
+   de 4H.3) e **identidade de pagador**. A verificação de pagador é
+   **unidirecional**: só dispara `PAYER_IDENTITY_MISMATCH` quando 4I referencia
+   um pagador AUSENTE do universo de pagadores de 4H.4 (`orphanInHighIncome`),
+   que é o único invariante de procedência válido (4I deriva de fatos de 4H). A
+   direção inversa — um pagador de renda de 4H.4 ausente do subconjunto
+   redutor/evidência de 4I — é **esperada e benigna** (um investidor
+   diversificado tem pagadores de dividendos sem evidência corporativa, ou
+   pagadores de JCP/FII) e **nunca** é erro.
 2. Códigos: `YEAR_MISMATCH`, `EXERCISE_MISMATCH`, `SOURCE_FINGERPRINT_MISMATCH`,
    `PAYER_IDENTITY_MISMATCH`, `STALE_CONFIRMATION`, `CONFLICTING_EVIDENCE`,
    `UPSTREAM_NOT_READY`.
@@ -28,6 +35,19 @@ não há bruto por pagador.
    **não é emitido por padrão**.
 4. Classificação fiscal legítima diferente para o mesmo fato (ex.: isento vs
    incluído) **nunca** é erro.
+5. **Evidência obsoleta (stale) é correlacionada ao requisito que ela de fato
+   satisfaz, por `evidenceType` + escopo — nunca por id bruto nem por "qualquer
+   row stale + qualquer requisito aberto".** O `subjectId` do requisito 4I é o
+   tax-subject agregado, namespace distinto do `payerId` da evidência; portanto
+   não se comparam ids diretamente. Cada row stale é mapeado (via a ingestão
+   congelada de 4I) ao código de requisito que alimenta e `STALE_CONFIRMATION`
+   só dispara quando ESSE requisito está não-resolvido (≠ SATISFIED/WAIVED):
+   `CORPORATE_TAX → CORPORATE_EFFECTIVE_TAX_EVIDENCE` (escopo pagador, exige
+   `payerId`), `ANNUAL_ADJUSTMENT_IRPF → ANNUAL_ADJUSTMENT_TAX_DUE` (anual),
+   `ANNUAL_INCOME_TOTAL → ANNUAL_INCOME_TOTAL` (anual). Um row obsoleto não
+   relacionado (ex.: `ANNUAL_INCOME_TOTAL` já satisfeito pela renda canônica de
+   4H) não transforma mais um pacote `REQUIRES_ACTION` em `BLOCKED` quando o
+   item aberto real é outro. `evidenceType` desconhecido falha FECHADO.
 
 ## Consequências
 
