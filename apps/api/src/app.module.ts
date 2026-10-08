@@ -1,4 +1,4 @@
-import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { DatabaseModule } from './database';
@@ -12,7 +12,7 @@ import { TransactionsModule } from './modules/transactions/transactions.module';
 import { PerformanceModule } from './modules/performance/performance.module';
 import { FiscalModule } from './modules/fiscal/fiscal.module';
 import { AiModule } from './modules/ai/ai.module';
-import { RequestIdMiddleware } from './common/middleware';
+import { RequestIdMiddleware, UnifiedAnnualNoStoreMiddleware } from './common/middleware';
 
 @Module({
   imports: [
@@ -48,5 +48,12 @@ import { RequestIdMiddleware } from './common/middleware';
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(RequestIdMiddleware).forRoutes('*');
+    // Phase 4J.1: the unified annual route must carry `private, no-store` on
+    // EVERY response (including 400/401/422/500 that bypass the successful
+    // handler), so the directive is applied in route-scoped middleware ahead of
+    // guards/pipes rather than only inside the handler body.
+    consumer
+      .apply(UnifiedAnnualNoStoreMiddleware)
+      .forRoutes({ path: 'api/v1/fiscal/annual/:calendarYear', method: RequestMethod.GET });
   }
 }

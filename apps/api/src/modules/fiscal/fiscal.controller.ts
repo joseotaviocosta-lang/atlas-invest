@@ -1180,7 +1180,9 @@ export class FiscalController {
       taxSubjectId: principal.userId,
       calendarYear: params.calendarYear,
     });
-    // Never cached by shared caches — the state reflects a subject's fiscal posture.
+    // `Cache-Control: private, no-store` is applied unconditionally for this
+    // route by UnifiedAnnualNoStoreMiddleware (covering 400/401/422/500 that
+    // never reach this success path); re-asserted here as defense-in-depth.
     res.setHeader('Cache-Control', 'private, no-store');
     return { data: toUnifiedAnnualResponse(state) };
   }

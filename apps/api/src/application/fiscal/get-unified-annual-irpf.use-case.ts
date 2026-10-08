@@ -815,7 +815,12 @@ export class UnifiedAnnualIrpfService {
             hasStaleRequiredEvidence: this.hasStaleRequiredHighIncomeEvidence(assessment),
             forcedUpstreamSnapshotInconsistent: false,
           }
-        : loaded.highIncome.snapshotInconsistent
+        : // A forced-snapshot UPSTREAM_NOT_READY is a HIGH_INCOME-only signal; it
+          // may only gate the unified package when HIGH_INCOME is MATERIAL to the
+          // requested year. A pre-2026 (non-material) 4I evidence-fence race must
+          // never force the general annual package to BLOCKED — the inner 4I
+          // snapshot inconsistency stays contained in a non-material module.
+          loaded.highIncome.snapshotInconsistent && highIncomeModule.material
           ? {
               upstreamIncomeFingerprint: '',
               upstreamCapitalMarketFingerprint: '',
