@@ -9,6 +9,21 @@ import { PRISMA_CLIENT } from '../../apps/api/src/database/tokens';
 import { FISCAL_CLOCK } from '../../apps/api/src/application/fiscal/tokens';
 import { createAuthenticatedUserSession, getTestPrismaClient, cleanDatabase } from '../api/setup';
 import { uuidFor } from '../tax-engine/helpers';
+import { Money, Quantity } from '@atlas/domain';
+
+/**
+ * Canonical transaction `amount` = unitPrice × quantity computed with the Atlas
+ * decimal value objects, never IEEE-754. `Money.multiply` runs on decimal.js
+ * with arbitrary precision, so the persisted string is exact.
+ */
+function canonicalAmount(unitPrice: string, quantity: string): string {
+  // Normalize the quantity through the domain value object, then multiply on
+  // Money's decimal engine. `.amount` is the bare decimal string (e.g.
+  // "1000.00"); `.toString()` would append the currency code and corrupt the
+  // persisted NUMERIC column. Pass the normalized decimal string (`.value`) to
+  // `multiply` so no float is involved at any step.
+  return Money.from(unitPrice, 'BRL').multiply(Quantity.from(quantity).value).amount;
+}
 
 const prisma = getTestPrismaClient();
 
@@ -114,7 +129,15 @@ async function seedDividendPortfolio(
   return portfolio.id;
 }
 
-/** Seed a BUY+SELL on a listed stock (drives capital-market + high-income gains). */
+/**
+ * Seed a BUY+SELL on a listed stock (drives capital-market + high-income gains).
+ *
+ * When `sharedAsset` is provided, both the asset id and the (ticker, exchange)
+ * identity are reused across subjects (idempotent upsert) so two independent
+ * ledgers can reference the SAME asset identity and differ ONLY in cost basis —
+ * proving the content-derived positions marker reacts to the cost, not merely a
+ * distinct asset row.
+ */
 async function seedBuySellPortfolio(
   userId: string,
   tag: string,
@@ -122,6 +145,8 @@ async function seedBuySellPortfolio(
   quantity = '100000',
   buyPrice = '10.00',
   sellPrice = '17.00',
+  sharedAsset?: { readonly id: string; readonly ticker: string; readonly exchange: string },
+  withSale = true,
 ): Promise<string> {
   const portfolio = await prisma.portfolio.create({
     data: {
@@ -146,16 +171,29 @@ async function seedBuySellPortfolio(
       currency: 'BRL',
     },
   });
-  const asset = await prisma.asset.create({
-    data: {
-      id: uuidFor(`asset-${tag}`),
-      ticker,
-      name: `${ticker} SA`,
-      type: 'STOCK',
-      exchange: 'B3',
-      currency: 'BRL',
-    },
-  });
+  const asset = sharedAsset
+    ? await prisma.asset.upsert({
+        where: { id: sharedAsset.id },
+        update: {},
+        create: {
+          id: sharedAsset.id,
+          ticker: sharedAsset.ticker,
+          name: `${sharedAsset.ticker} SA`,
+          type: 'STOCK',
+          exchange: sharedAsset.exchange,
+          currency: 'BRL',
+        },
+      })
+    : await prisma.asset.create({
+        data: {
+          id: uuidFor(`asset-${tag}`),
+          ticker,
+          name: `${ticker} SA`,
+          type: 'STOCK',
+          exchange: 'B3',
+          currency: 'BRL',
+        },
+      });
   await prisma.transaction.create({
     data: {
       id: uuidFor(`tx-buy-${tag}`),
@@ -167,25 +205,27 @@ async function seedBuySellPortfolio(
       settlementDate: new Date('2026-01-12T00:00:00Z'),
       quantity,
       unitPrice: buyPrice,
-      amount: `${Number(quantity) * Number(buyPrice)}`,
+      amount: canonicalAmount(buyPrice, quantity),
       currency: 'BRL',
     },
   });
-  await prisma.transaction.create({
-    data: {
-      id: uuidFor(`tx-sell-${tag}`),
-      portfolioId: portfolio.id,
-      accountId: account.id,
-      assetId: asset.id,
-      type: 'SELL',
-      tradeDate: new Date('2026-06-15T00:00:00Z'),
-      settlementDate: new Date('2026-06-17T00:00:00Z'),
-      quantity,
-      unitPrice: sellPrice,
-      amount: `${Number(quantity) * Number(sellPrice)}`,
-      currency: 'BRL',
-    },
-  });
+  if (withSale) {
+    await prisma.transaction.create({
+      data: {
+        id: uuidFor(`tx-sell-${tag}`),
+        portfolioId: portfolio.id,
+        accountId: account.id,
+        assetId: asset.id,
+        type: 'SELL',
+        tradeDate: new Date('2026-06-15T00:00:00Z'),
+        settlementDate: new Date('2026-06-17T00:00:00Z'),
+        quantity,
+        unitPrice: sellPrice,
+        amount: canonicalAmount(sellPrice, quantity),
+        currency: 'BRL',
+      },
+    });
+  }
   return portfolio.id;
 }
 
@@ -361,7 +401,7 @@ describe('Phase 4J.1 — Unified Annual IRPF Orchestration real-PG E2E (A–T)',
   // The frozen 4I posture returns UNSUPPORTED_YEAR for out-of-window years
   // (<2026); the unified layer treats HIGH_INCOME as non-material for those
   // years so it never forces BLOCKED/UNSUPPORTED on the whole package.
-  it('H: pre-2026 high-income is non-blocking (non-material out-of-window)', async () => {
+  it('H: pre-2026 empty subject -> NO_ACTIVITY (non-material high-income never drives the global state)', async () => {
     const userId = uuidFor('u-H');
     const token = await session(userId);
     const res = await request(app.getHttpServer())
@@ -371,10 +411,12 @@ describe('Phase 4J.1 — Unified Annual IRPF Orchestration real-PG E2E (A–T)',
     const hi = res.body.data.modules.find(
       (m: { module: string }) => m.module === 'HIGH_INCOME_MINIMUM_TAX',
     );
+    // Frozen 4I returns UNSUPPORTED_YEAR out of window -> non-material module.
     expect(['NOT_APPLICABLE', 'UNSUPPORTED']).toContain(hi.status);
-    // The non-material high-income status must not drive the global state.
-    expect(res.body.data.status).not.toBe('BLOCKED');
-    expect(res.body.data.status).not.toBe('UNSUPPORTED');
+    // A dormant pre-2026 subject is EXACTLY NO_ACTIVITY: the non-material
+    // UNSUPPORTED high-income module must not keep it out of NO_ACTIVITY, nor
+    // force a false READY_FOR_REVIEW / BLOCKED / UNSUPPORTED.
+    expect(res.body.data.status).toBe('NO_ACTIVITY');
   });
 
   // (Q) response carries no DB UUID / no subject id / no raw amount
@@ -392,7 +434,7 @@ describe('Phase 4J.1 — Unified Annual IRPF Orchestration real-PG E2E (A–T)',
     expect(body).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
   });
 
-  // (R) private/no-store header present
+  // (R) private/no-store header present on 200 (success)
   it('R: Cache-Control private, no-store header present', async () => {
     const token = await session(uuidFor('u-R'));
     const res = await request(app.getHttpServer())
@@ -401,6 +443,26 @@ describe('Phase 4J.1 — Unified Annual IRPF Orchestration real-PG E2E (A–T)',
       .expect(200);
     expect(res.headers['cache-control']).toContain('no-store');
     expect(res.headers['cache-control']).toContain('private');
+  });
+
+  // (R1) private/no-store header also present on the ERROR paths that never
+  // reach the successful handler body: the 400 param-validation failure and the
+  // 401 authentication failure both flow through the global exception filter
+  // AFTER the route-scoped no-store middleware has written the header.
+  it('R1: Cache-Control private, no-store header present on 400 (invalid param) and 401 (unauthenticated)', async () => {
+    // 400: non-integer year rejected by the Zod param guard before the handler.
+    const token = await session(uuidFor('u-R1'));
+    const res400 = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/annual/not-a-year')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
+    expect(res400.headers['cache-control']).toContain('no-store');
+    expect(res400.headers['cache-control']).toContain('private');
+
+    // 401: missing bearer token rejected by the auth guard before the handler.
+    const res401 = await request(app.getHttpServer()).get(URL(2026)).expect(401);
+    expect(res401.headers['cache-control']).toContain('no-store');
+    expect(res401.headers['cache-control']).toContain('private');
   });
 
   // (S) deterministic annualFingerprint across two identical requests
@@ -626,27 +688,60 @@ describe('Phase 4J.1 — Unified Annual IRPF Orchestration real-PG E2E (A–T)',
     }
   });
 
-  // Position provenance: a content change that preserves summary counts/status
-  // still changes the annualFingerprint (positionsMarker hashes full content).
-  it('position provenance: changing a position cost (same counts) changes annualFingerprint', async () => {
-    const userId = uuidFor('u-posfp');
-    const token = await session(userId);
-    await seedBuySellPortfolio(userId, 'posfp', 'PETR4', '100', '10.00', '12.00');
-    const before = await request(app.getHttpServer())
+  // Position provenance: a cost-basis difference that preserves summary
+  // counts/status still changes the annualFingerprint (positionsMarker hashes
+  // full per-position content, not just counts). Proven with TWO INDEPENDENT
+  // immutable ledgers — never by mutating the append-only Transaction ledger.
+  it('position provenance: two independent ledgers differing only in cost basis (same counts) hash differently', async () => {
+    // One shared asset identity referenced by both independent ledgers, so the
+    // positionsMarker's hashed assetId is IDENTICAL across subjects and the only
+    // varying input is the BUY cost basis.
+    const sharedAsset = { id: uuidFor('asset-posfp-shared'), ticker: 'PETR4', exchange: 'B3' };
+
+    // BUY-only (no sale) so each ledger keeps an OPEN year-end position whose
+    // historical cost is exactly the input distinguishing the two subjects.
+    // Subject A: lower BUY cost basis.
+    const userA = uuidFor('u-posfp-a');
+    const tokenA = await session(userA);
+    await seedBuySellPortfolio(
+      userA,
+      'posfpA',
+      'PETR4',
+      '100',
+      '10.00',
+      '12.00',
+      sharedAsset,
+      false,
+    );
+    const resA = await request(app.getHttpServer())
       .get(URL(2026))
-      .set('Authorization', `Bearer ${token}`)
+      .set('Authorization', `Bearer ${tokenA}`)
       .expect(200);
-    // Mutate the BUY unit price (changes cost basis, not asset/position counts).
-    await prisma.transaction.update({
-      where: { id: uuidFor('tx-buy-posfp') },
-      data: { unitPrice: '11.00', amount: '1100.00' },
-    });
-    const after = await request(app.getHttpServer())
+
+    // Subject B: SAME shared asset/quantity, higher BUY cost basis only. Same
+    // asset count, same open-position count, same completeness status.
+    const userB = uuidFor('u-posfp-b');
+    const tokenB = await session(userB);
+    await seedBuySellPortfolio(
+      userB,
+      'posfpB',
+      'PETR4',
+      '100',
+      '11.00',
+      '12.00',
+      sharedAsset,
+      false,
+    );
+    const resB = await request(app.getHttpServer())
       .get(URL(2026))
-      .set('Authorization', `Bearer ${token}`)
+      .set('Authorization', `Bearer ${tokenB}`)
       .expect(200);
-    expect(after.body.data.annualFingerprint).not.toBe(before.body.data.annualFingerprint);
-    expect(after.body.data.sourceFingerprint).not.toBe(before.body.data.sourceFingerprint);
+
+    // The only difference between the two immutable ledgers is the BUY cost
+    // basis; the derived position summary counts/status are identical. The
+    // content-derived marker must still diverge.
+    expect(resB.body.data.annualFingerprint).not.toBe(resA.body.data.annualFingerprint);
+    expect(resB.body.data.sourceFingerprint).not.toBe(resA.body.data.sourceFingerprint);
   });
 
   // Routing: literal annual/opening-positions still resolves to the 4H handler
