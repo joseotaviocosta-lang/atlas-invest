@@ -554,6 +554,14 @@ describe('Phase 4J.1A — direct UnifiedAnnualIrpfService scale (real service pa
     const { token } = await seedUnifiedSubject('retention', 10);
     const startHeap = heapMb();
     for (let i = 0; i < 100; i += 1) {
+      // Runner pacing only (no semantic change): the API throttler allows 100
+      // req/60s per client, so 100 back-to-back orchestrations plus the race
+      // reader in the same window trips 429 and invalidates the memory
+      // measurement. Pacing every iteration keeps each rolling 60s window
+      // under the limit; assertions and iteration count are untouched.
+      if (i > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 700));
+      }
       const res = await request(app.getHttpServer())
         .get(URL(2026))
         .set('Authorization', `Bearer ${token}`)
