@@ -2294,3 +2294,27 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Portfolio Engine, AI (3Q-3Z), Market Intelligence e fundacoes fiscais 4A-4J.1 permanecem inalterados e inviolaveis.
 8. **VERIFICACAO:**
    - Fiscalizado por `pnpm test:tax-engine` (unit/fuzz 20.000/differential), `test:fiscal-api` (E2E real-PG A-X, concorrencia, escala, seguranca), `test:architecture` e `test:web`(`:e2e`). Sem Receita submission, DIRPF, DARF, pagamento, restituicao, Tax-AI, matematica fiscal no cliente, pacote derivado persistido nem migration nova.
+
+---
+
+## 81. Invariantes Finais do Programa Anual Unificado do IRPF (Fase 4J.3 / Fechamento 4J)
+
+1. **PROIBIÇÃO TOTAL DE CÁLCULO TRIBUTÁRIO NO 4J:**
+   - A camada anual unificada (4J) nunca calcula ou recalcula ganho de capital, dividendos, retenções, juros, FII ou alíquotas de alta renda. Todas as regras fiscais pertencem exclusivamente aos motores autoritativos (4H e 4I).
+2. **DUPLA AUTORIDADE ESTRITA NO 4J:**
+   - A Fase 4J.1 (`UnifiedAnnualIrpfService`) é a única autoridade do estado consolidado anual (`UnifiedAnnualIrpfState`).
+   - A Fase 4J.2 (`UnifiedAnnualReviewPackageBuilder`) é a única autoridade da projeção do pacote de revisão (`UnifiedAnnualReviewPackage`).
+3. **FRESCO ESTABELECIDO POR CADEIA DE FINGERPRINTS:**
+   - A frescura e integridade dos estados anuais e pacotes de revisão são determinadas puramente pela cadeia criptográfica SHA-256 (`sourceFingerprint` → `annualFingerprint` → `packageFingerprint`).
+   - `generatedAt` é rigorosamente excluído do cálculo dos fingerprints.
+4. **DETECÇÃO DE STALENESS SEM PERSISTÊNCIA DE HISTÓRICO:**
+   - A comparação entre um artefato previamente gerado/exportado e o estado corrente do sistema é puramente funcional (`isPackageCurrent: packageFingerprint === currentPackageFingerprint`).
+   - Um pacote obsoleto (`stale package`) não representa o estado atual, mas permanece historicamente válido para a fotografia que capturou.
+5. **NÃO-OTIMISMO DE STATUS:**
+   - `package.status` nunca pode ser mais otimista que `annualState.overallStatus`.
+   - `READY_FOR_REVIEW` é estritamente impossível se houver pendências bloqueantes, evidências mandatórias não resolvidas ou módulos materiais em falha.
+   - `READY_FOR_REVIEW ≠ declarado/enviado/pago`.
+6. **PROIBIÇÃO DE MAPEAMENTO OFICIAL SEM PROVENIÊNCIA:**
+   - Nenhum campo da declaração anual da Receita Federal (DIRPF) pode ser marcado como oficial ou transmitível sem publicação e homologação expressa do leiaute oficial da RFB correspondente ao exercício fiscal.
+7. **BANCO DE DADOS CANÔNICO POSTGRESQL 16:**
+   - A persistência relacional do Atlas é fixada e comprovada em **PostgreSQL 16.x** (`postgres:16-alpine`), mantendo 18 migrations canônicas imutáveis sem uso de `prisma db push`.
