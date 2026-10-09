@@ -482,8 +482,8 @@ export function UnifiedAnnualSection({ calendarYear }: { calendarYear: number })
                   fontWeight: 700,
                 }}
               >
-                O pacote atual mudou desde a última exportação — exporte novamente para revisar
-                a versão atual.
+                O pacote atual mudou desde a última exportação — exporte novamente para revisar a
+                versão atual.
               </div>
             )}
             {exportError && (
