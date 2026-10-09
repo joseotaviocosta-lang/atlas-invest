@@ -214,10 +214,16 @@ function referenceFingerprint(pkg: ReturnType<typeof buildUnifiedAnnualReviewPac
 }
 
 describe('Phase 4J.2 — package assembly fuzz & differential', () => {
-  it('fuzz: 20000 deterministic cases run FULL package assembly + fingerprint and hold all invariants', () => {
+  it('fuzz: 20000 deterministic cases run FULL package assembly + fingerprint and hold all invariants', async () => {
     const rng = new DeterministicRandom(4210731);
     const iterations = 20000;
     for (let n = 0; n < iterations; n++) {
+      // Cooperative yield so the vitest worker stays responsive to
+      // orchestrator heartbeats during this long CPU-bound loop (same cases,
+      // same seed, same assertions — execution scheduling only).
+      if (n % 2000 === 0) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
       const state = randomState(rng);
       const pkg = buildUnifiedAnnualReviewPackage(state, {
         generatedAt: '2027-04-10T00:00:00.000Z',
@@ -251,10 +257,13 @@ describe('Phase 4J.2 — package assembly fuzz & differential', () => {
     }
   }, 120000);
 
-  it('differential: reference status + fingerprint agree with production on 20000 cases', () => {
+  it('differential: reference status + fingerprint agree with production on 20000 cases', async () => {
     const rng = new DeterministicRandom(777001);
     let mismatches = 0;
     for (let n = 0; n < 20000; n++) {
+      if (n % 2000 === 0) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
       const state = randomState(rng);
       const pkg = buildUnifiedAnnualReviewPackage(state, {
         generatedAt: '2027-04-10T00:00:00.000Z',

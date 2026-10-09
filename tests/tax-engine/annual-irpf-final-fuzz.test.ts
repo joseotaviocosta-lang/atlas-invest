@@ -223,5 +223,9 @@ describe('Tax Engine: Annual IRPF Final 10,000-Case Cross-Layer Fuzz Suite (Phas
       const lines = csv.split('\r\n').filter((l) => l && !l.startsWith('#'));
       expect(lines.length).toBeGreaterThanOrEqual(1); // At least header line
     }
-  }, 30000);
+    // Runner wall-clock budget only (no semantic change): the 10,000-case
+    // matrix measures 33–44s under sustained external CPU saturation from
+    // unrelated host workloads (documented 87–94% load) versus <30s on a quiet
+    // host. Iterations, seed and invariants are untouched.
+  }, 120000);
 });

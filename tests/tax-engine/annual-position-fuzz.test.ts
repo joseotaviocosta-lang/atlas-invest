@@ -217,5 +217,9 @@ describe('Phase 4H.2 — Annual IRPF Period & Position Fuzz & Invariant Testing 
     expect(invariant5Passed).toBe(10000);
     expect(invariant6Passed).toBe(10000);
     expect(duration).toBeGreaterThan(0);
-  }, 30000);
+    // Runner wall-clock budget only (no semantic change): the 10,000-case
+    // matrix measures 25–31s under sustained external CPU saturation from
+    // unrelated host workloads (documented 87–94% load) versus <30s on a quiet
+    // host. Seed, iterations and invariants are untouched.
+  }, 120000);
 });
