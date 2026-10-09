@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import {
   buildUnifiedAnnualIrpfState,
   buildUnifiedAnnualReviewPackage,
@@ -183,7 +184,7 @@ async function runScaleBenchmarks() {
     for (let r = 0; r < 5; r++) {
       const state = makeMockState(50, 50, reqs, 20);
       const t0 = performance.now();
-      const pkg = buildUnifiedAnnualReviewPackage(state, {
+      const _pkg = buildUnifiedAnnualReviewPackage(state, {
         generatedAt: '2027-04-15T12:00:00.000Z',
       });
       const t1 = performance.now();
