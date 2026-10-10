@@ -6,10 +6,11 @@ import {
 } from '@atlas/tax-engine';
 
 export const TaxComplianceTimelineQuerySchema = z.object({
-  calendarYear: z.coerce.number().int().optional(),
+  calendarYear: z.coerce.number().int().min(1900).max(2100).optional(),
   status: z.enum(TAX_COMPLIANCE_OBLIGATION_STATUSES).optional(),
   kind: z.enum(TAX_COMPLIANCE_OBLIGATION_KINDS).optional(),
   period: z.string().optional(),
+  portfolioId: z.string().uuid().optional(),
 });
 
 export type TaxComplianceTimelineQueryDto = z.infer<typeof TaxComplianceTimelineQuerySchema>;

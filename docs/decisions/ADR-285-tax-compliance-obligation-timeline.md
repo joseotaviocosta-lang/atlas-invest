@@ -57,14 +57,26 @@ Timeline items are deterministically sorted by:
 ### 3. State Transitions & Supersession
 
 - Initial state: Derived directly from engine outputs (`OPEN`, `ACTION_REQUIRED`, `AWAITING_EVIDENCE`, `READY`).
-- User updates: Recorded in append-only table `tax_compliance_actions`.
+- Persistence model: `REVISIONED_APPEND_ONLY` recorded in table `tax_compliance_actions`. Every state mutation (completion, dismissal, reopen) inserts a new monotonic revision record without mutating or deleting prior rows.
+- Concurrency control: Handled deterministically at database level by unique constraint on `(tax_subject_id, obligation_key, revision)`.
 - Replay: During timeline generation, if a user action exists with a matching `sourceFingerprint`, the state transitions to `COMPLETED` or `DISMISSED`. If the fingerprint differs, the obligation is flagged `SUPERSEDED` or re-evaluated to `ACTION_REQUIRED`.
+
+### 4. Pure Projection & Reconciliation Boundary
+
+- `compliance-timeline-engine.ts` is strictly a deterministic projection and reconciliation engine (`PURE_PROJECTION_AND_RECONCILIATION`).
+- It contains zero tax formulas, zero rate tables, zero deadline recomputations, zero floating-point arithmetic.
+- All monetary amounts, due dates, thresholds, and module readiness statuses are consumed directly from upstream authoritative engines (Phase 4G `TaxObligation` and Phase 4J `UnifiedAnnualIrpfState`).
+
+### 5. Multi-Platform Support (Web & Mobile)
+
+- Unified presentation across Web (`apps/web`) and Mobile (`apps/mobile`) via shared UI tokens and contracts in `@atlas/ui`.
+- Zero client-side fiscal calculations on either platform.
 
 ## Consequences
 
 - **Positive**:
-  - Investor has full clarity on all monthly and annual compliance steps in a single unified view.
+  - Investor has full clarity on all monthly and annual compliance steps in a single unified view across web and mobile.
   - Zero risk of fiscal drift or duplicate tax logic.
-  - Comprehensive audit trail of investor confirmations.
+  - Comprehensive, immutable revisioned audit trail of investor compliance actions.
 - **Negative / Constraints**:
   - Requires maintaining backward-compatible projection logic across 4G, 4H, 4I, 4J engines.

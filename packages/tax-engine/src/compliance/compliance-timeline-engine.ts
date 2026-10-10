@@ -147,7 +147,7 @@ export function projectTaxComplianceTimeline(
       status = 'READY';
       severity = 'INFO';
       actionType = 'NO_ACTION';
-      amount = null;
+      amount = monthly.principalAmount;
       title = `Competência ${competence} — Sem Imposto a Pagar`;
       description = `Não há imposto apurado a pagar para a competência ${competence}.`;
     } else if (monthly.status === 'PROVISIONAL') {

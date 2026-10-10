@@ -1307,6 +1307,7 @@ export class FiscalController {
       status: query.status,
       kind: query.kind,
       period: query.period,
+      portfolioId: query.portfolioId,
     });
     res.setHeader('Cache-Control', 'private, no-store');
     return { data };

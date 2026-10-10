@@ -1,4 +1,5 @@
 # PROJECT ATLAS — RELATÓRIO DE AVALIAÇÃO DE CONFORMIDADE E ENTREGA FINAL
+
 ## FASE 4K.1: UNIFIED TAX OBLIGATION TIMELINE & COMPLIANCE STATE FOUNDATION
 
 **Data de Emissão:** 10 de Outubro de 2026  
@@ -10,11 +11,12 @@
 
 ### 1. SUMÁRIO EXECUTIVO E ESCOPO DA FASE 4K.1
 
-A **Fase 4K.1** estabelece a infraestrutura operacional de **Tax Compliance** do Project Atlas, respondendo à pergunta essencial do investidor brasileiro: *"O que devo fazer a seguir com relação às minhas obrigações fiscais?"*.
+A **Fase 4K.1** estabelece a infraestrutura operacional de **Tax Compliance** do Project Atlas, respondendo à pergunta essencial do investidor brasileiro: _"O que devo fazer a seguir com relação às minhas obrigações fiscais?"_.
 
 Esta fase atua como uma camada determinística e pura de conformidade construída sobre os motores fiscais previamente certificados e imutáveis (Fase 4G - Mensal, Fase 4H - Anual Geral, Fase 4I - Altas Rendas, Fase 4J - IRPF Unificado).
 
 #### Fronteiras Rígidas e Garantias Negativas (Invioláveis)
+
 - **Zero Novo Motor de Cálculo Fiscal:** A camada de compliance não realiza cálculos fiscais, não recalcula tributos nem duplica fórmulas dos motores 4G/4H/4I/4J.
 - **Zero DARF / Sicalc:** Não gera guias DARF oficiais nem automatiza emissão no Sicalc (escopo futuro 4K.2).
 - **Zero Pagamento / Bancário:** Não executa pagamentos, PIX ou débito automático.
@@ -61,7 +63,7 @@ O motor `TaxComplianceTimelineEngine` opera em regime puramente funcional, sem I
 
 5. **Aviso Legal Obrigatório (`Compliance Disclaimer`):**
    - Toda obrigação marcada pelo usuário inclui compulsoriamente a mensagem padronizada:
-     *"O registro de cumprimento foi informado pelo usuário para controle pessoal no Atlas e não constitui comprovação de quitação junto à Secretaria Especial da Receita Federal do Brasil."*
+     _"O registro de cumprimento foi informado pelo usuário para controle pessoal no Atlas e não constitui comprovação de quitação junto à Secretaria Especial da Receita Federal do Brasil."_
 
 ---
 
@@ -119,16 +121,16 @@ O motor `TaxComplianceTimelineEngine` opera em regime puramente funcional, sem I
 
 ### 6. MATRIZ DE TESTES E EVIDÊNCIAS DE VALIDAÇÃO
 
-| Suíte de Validação | Quantidade de Testes / Arquivos | Resultado |
-| :--- | :--- | :--- |
-| **Tax Compliance Engine (Unit & Fuzz)** | 8 unitários + 20.000 casos fuzzing | **100% PASS** |
-| **Full Tax Engine Suite** | 724 testes / 63 arquivos | **100% PASS** |
-| **Database & Repositories** | 128 testes / 24 arquivos | **100% PASS** |
-| **Fiscal API & Compliance Integration** | 417 testes / 54 arquivos | **100% PASS** |
-| **E2E Browser Playwright Suite** | 330 testes em 3 viewports | **100% PASS** |
-| **Web Build (Next.js 15 App Router)** | 28/28 páginas estáticas compiladas | **100% PASS** |
-| **Foundation Gate (`validate:foundation`)** | Lint, Format, Typecheck, Security, Arch, Tests | **EXIT 0** |
-| **RC Gate (`validate:portfolio-engine-rc`)** | Replay Determinism, Property-based & Stress | **EXIT 0** |
+| Suíte de Validação                           | Quantidade de Testes / Arquivos                | Resultado     |
+| :------------------------------------------- | :--------------------------------------------- | :------------ |
+| **Tax Compliance Engine (Unit & Fuzz)**      | 8 unitários + 20.000 casos fuzzing             | **100% PASS** |
+| **Full Tax Engine Suite**                    | 724 testes / 63 arquivos                       | **100% PASS** |
+| **Database & Repositories**                  | 128 testes / 24 arquivos                       | **100% PASS** |
+| **Fiscal API & Compliance Integration**      | 417 testes / 54 arquivos                       | **100% PASS** |
+| **E2E Browser Playwright Suite**             | 330 testes em 3 viewports                      | **100% PASS** |
+| **Web Build (Next.js 15 App Router)**        | 28/28 páginas estáticas compiladas             | **100% PASS** |
+| **Foundation Gate (`validate:foundation`)**  | Lint, Format, Typecheck, Security, Arch, Tests | **EXIT 0**    |
+| **RC Gate (`validate:portfolio-engine-rc`)** | Replay Determinism, Property-based & Stress    | **EXIT 0**    |
 
 ---
 

@@ -1,6 +1,10 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Money } from '@atlas/domain';
-import { ITaxComplianceActionRepository, ITaxObligationRepository } from '@atlas/database';
+import {
+  ITaxComplianceActionRepository,
+  ITaxObligationRepository,
+  IPortfolioRepository,
+} from '@atlas/database';
 import {
   projectTaxComplianceTimeline,
   type MonthlyComplianceSource,
@@ -11,7 +15,11 @@ import {
   type TaxComplianceUserActionType,
   type UnifiedAnnualIrpfState,
 } from '@atlas/tax-engine';
-import { TAX_COMPLIANCE_ACTION_REPOSITORY, TAX_OBLIGATION_REPOSITORY } from '../../database/tokens';
+import {
+  TAX_COMPLIANCE_ACTION_REPOSITORY,
+  TAX_OBLIGATION_REPOSITORY,
+  PORTFOLIO_REPOSITORY,
+} from '../../database/tokens';
 import { FISCAL_CLOCK } from './tokens';
 import type { FiscalClock } from './fiscal-clock';
 import { UnifiedAnnualIrpfService } from './get-unified-annual-irpf.use-case';
@@ -22,6 +30,7 @@ export interface GetTaxComplianceTimelineInput {
   readonly status?: string;
   readonly kind?: string;
   readonly period?: string;
+  readonly portfolioId?: string;
 }
 
 @Injectable()
@@ -31,12 +40,24 @@ export class GetTaxComplianceTimelineUseCase {
     private readonly actionRepository: ITaxComplianceActionRepository,
     @Inject(TAX_OBLIGATION_REPOSITORY)
     private readonly obligationRepository: ITaxObligationRepository,
+    @Inject(PORTFOLIO_REPOSITORY)
+    private readonly portfolioRepository: IPortfolioRepository,
     @Inject(UnifiedAnnualIrpfService)
     private readonly unifiedAnnualIrpfService: UnifiedAnnualIrpfService,
     @Inject(FISCAL_CLOCK) private readonly clock: FiscalClock,
   ) {}
 
   async execute(input: GetTaxComplianceTimelineInput): Promise<TaxComplianceTimeline> {
+    if (input.portfolioId) {
+      const portfolio = await this.portfolioRepository.findByIdAndUserId(
+        input.portfolioId,
+        input.taxSubjectId,
+      );
+      if (!portfolio) {
+        throw new NotFoundException(`Portfolio '${input.portfolioId}' was not found.`);
+      }
+    }
+
     const today = this.clock.today();
     const currentYear = parseInt(today.substring(0, 4), 10);
     const calendarYear = input.calendarYear ?? currentYear;
