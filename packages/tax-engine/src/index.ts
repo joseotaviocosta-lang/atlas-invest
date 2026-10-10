@@ -386,3 +386,4 @@ export type {
 } from './darf-handoff';
 
 export * from './annual-irpf';
+export * from './compliance';

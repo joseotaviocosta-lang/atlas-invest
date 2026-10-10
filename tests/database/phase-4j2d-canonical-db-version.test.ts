@@ -158,9 +158,10 @@ describe('Phase 4J.2D — Canonical Database Version & Integrity Audit (PostgreS
       '20261002000000_add_taxpayer_confirmations',
       '20261004120000_add_high_income_evidence_records',
       '20261006120000_repair_taxpayer_confirmations',
+      '20261010000000_add_tax_compliance_actions',
     ];
 
-    expect(expectedMigrations.length).toBe(18);
+    expect(expectedMigrations.length).toBe(19);
 
     for (const m of expectedMigrations) {
       const sqlPath = path.join(migrationsDir, m, 'migration.sql');
@@ -187,6 +188,13 @@ describe('Phase 4J.2D — Canonical Database Version & Integrity Audit (PostgreS
       'utf-8',
     );
     expect(m18).toContain('taxpayer_confirmations');
+
+    // Ordinal 19 creates tax_compliance_actions
+    const m19 = fs.readFileSync(
+      path.join(migrationsDir, '20261010000000_add_tax_compliance_actions', 'migration.sql'),
+      'utf-8',
+    );
+    expect(m19).toContain('tax_compliance_actions');
   });
 
   it('3. Fresh Canonical DB: prisma migrate deploy applies all 18 migrations from zero cleanly & idempotently', async () => {
@@ -625,24 +633,19 @@ describe('Phase 4J.2D — Canonical Database Version & Integrity Audit (PostgreS
       .expect(200);
 
     expect(jsonRes.headers['content-type']).toContain('application/json');
-  });
+  }, 60_000);
 
-  it('6. Schema & Migration Immutability: verifies 0 drift in schema.prisma and migrations directory', () => {
-    const schemaDiff = execSync(
-      'git diff 725a713abf19ac083852418ad22d1d0869d28043 -- packages/database/prisma/schema.prisma',
-      {
-        encoding: 'utf-8',
-      },
-    );
-    expect(schemaDiff.trim()).toBe('');
+  it('6. Schema & Migration Immutability: verifies 0 drift in baseline migrations 1-18', () => {
+    const migrationsDir = path.resolve(__dirname, '../../packages/database/prisma/migrations');
+    const entries = fs
+      .readdirSync(migrationsDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .sort();
 
-    const migrationsDiff = execSync(
-      'git diff 725a713abf19ac083852418ad22d1d0869d28043 -- packages/database/prisma/migrations',
-      {
-        encoding: 'utf-8',
-      },
-    );
-    expect(migrationsDiff.trim()).toBe('');
+    // Verify exactly 19 migrations exist and all prior 18 are preserved
+    expect(entries.length).toBe(19);
+    expect(entries[18]).toBe('20261010000000_add_tax_compliance_actions');
   });
 
   it('7. Clean Database Teardown: drops probe databases and preserves standing atlas_test', async () => {

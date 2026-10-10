@@ -55,3 +55,5 @@ export * from './annual-high-income.read-model';
 export * from './get-annual-high-income-assessment.use-case';
 export * from './record-high-income-evidence.use-case';
 export * from './resolve-high-income-evidence.use-case';
+export * from './get-tax-compliance-timeline.use-case';
+export * from './record-tax-compliance-action.use-case';

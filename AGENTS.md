@@ -2318,3 +2318,32 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Nenhum campo da declaração anual da Receita Federal (DIRPF) pode ser marcado como oficial ou transmitível sem publicação e homologação expressa do leiaute oficial da RFB correspondente ao exercício fiscal.
 7. **BANCO DE DADOS CANÔNICO POSTGRESQL 16:**
    - A persistência relacional do Atlas é fixada e comprovada em **PostgreSQL 16.x** (`postgres:16-alpine`), mantendo 18 migrations canônicas imutáveis sem uso de `prisma db push`.
+
+---
+
+## 82. Linha do Tempo Unificada de Obrigações e Estado de Compliance Fiscal (Fase 4K.1)
+
+1. **PROJEÇÃO PURA E DETERMINÍSTICA, ZERO RECÁLCULO FISCAL (ADR-285):**
+   - A linha do tempo de obrigações (`TaxComplianceTimeline`, `TaxComplianceObligation`) é uma **projeção operacional puramente derivada** sobre os motores fiscais aprovados (4G mensal, 4H anual geral, 4I alta renda, 4J anual unificado) e ações de workflow do investidor.
+   - É **terminantemente proibido** calcular imposto, deduzir DARF, alterar alíquotas ou recalcular ganho de capital na camada de compliance.
+2. **IDENTIDADE DETERMINÍSTICA DE OBRIGAÇÃO:**
+   - A chave canônica é `${taxSubjectId}:${period}:${kind}:${sourceRef}`.
+   - Períodos mensais são `YYYY-MM` e anuais `YYYY`.
+3. **ORDENAÇÃO CANÔNICA ESTÁVEL:**
+   - A linha do tempo é ordenada estritamente por:
+     1. `dueDate ASC` (obrigações sem data de vencimento explícita vêm após itens com data, desempate no fim do ano base).
+     2. `severityWeight DESC` (`BLOCKING` > `WARNING` > `ACTION` > `INFO`).
+     3. `obligationKey ASC` (lexicográfico).
+4. **VALORES DECIMAIS E DISTINÇÃO STRICTA NULL vs "0.00":**
+   - Montantes financeiros são strings decimais canônicas (`"1250.00"`) ou `null` quando não aplicável.
+   - `null` (sem pagamento aplicável / informativo / pendência documental) **NUNCA** pode ser convertido para `"0.00"`.
+5. **AÇÕES DO USUÁRIO E SUPERSESSÃO CRIPTOGRÁFICA:**
+   - Ações manuais do usuário (`USER_REPORTED_COMPLETION`, `USER_DISMISSED`, `USER_ACKNOWLEDGED`, `USER_REOPENED`) são persistidas como log de auditoria na tabela `tax_compliance_actions`.
+   - Cada ação registra o `sourceFingerprint` do estado fiscal no momento da ação.
+   - Se o estado do motor fiscal for alterado (novo `sourceFingerprint`), a ação prévia torna-se `SUPERSEDED`, reabrindo a obrigação para reavaliação do investidor sem apagar o histórico de auditoria.
+6. **DISCLAIMER OBRIGATÓRIO (SEM VÍNCULO GOVERNAMENTAL):**
+   - Todo registro de conclusão pelo usuário (`USER_REPORTED_COMPLETION`) e toda visualização de timeline declara explicitamente que o Atlas realiza apenas controle operacional interno do investidor e **não** possui integração/comunicação com a Receita Federal do Brasil, Sicalc ou instituições bancárias.
+7. **ISOLAMENTO MULTITENANT E ANTI-ENUMERAÇÃO:**
+   - Ações e consultas exigem contribuinte autenticado. Acesso ou submissão para contribuinte de terceiro responde compulsoriamente com `404 Not Found` (nunca `403 Forbidden`).
+8. **RESPOSTA DA API COM NO-STORE:**
+   - O endpoint `GET /api/v1/fiscal/compliance` retorna cabeçalho `Cache-Control: private, no-store` e não expõe stack traces ou dados sensíveis.

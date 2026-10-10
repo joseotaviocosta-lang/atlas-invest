@@ -44,7 +44,7 @@ describe('Phase 4J.2A — Database Upgrade Path & Migration Reproducibility Proo
       .map((entry) => entry.name)
       .sort();
 
-    expect(allMigrationDirs.length).toBe(18);
+    expect(allMigrationDirs.length).toBe(19);
 
     // Create _prisma_migrations table
     await upgradePrisma.$executeRawUnsafe(`
@@ -183,14 +183,15 @@ describe('Phase 4J.2A — Database Upgrade Path & Migration Reproducibility Proo
       'Applying migration `20261004120000_add_high_income_evidence_records`',
     );
     expect(output).toContain('Applying migration `20261006120000_repair_taxpayer_confirmations`');
+    expect(output).toContain('Applying migration `20261010000000_add_tax_compliance_actions`');
     expect(output).toContain('All migrations have been successfully applied.');
   }, 60_000);
 
-  it('Step 3: post-upgrade verification confirms 18 migrations, 0 pending, and 100% data preservation', async () => {
+  it('Step 3: post-upgrade verification confirms 19 migrations, 0 pending, and 100% data preservation', async () => {
     const applied = await upgradePrisma.$queryRawUnsafe<Array<{ count: bigint }>>(
       `SELECT count(*) as count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL`,
     );
-    expect(Number(applied[0]!.count)).toBe(18);
+    expect(Number(applied[0]!.count)).toBe(19);
 
     // Verify data preservation
     const user = await upgradePrisma.user.findUnique({ where: { id: testUserId } });
@@ -212,6 +213,11 @@ describe('Phase 4J.2A — Database Upgrade Path & Migration Reproducibility Proo
       Array<{ regclassTaxpayerConf: string | null }>
     >(`SELECT to_regclass('public.taxpayer_confirmations')::text AS "regclassTaxpayerConf"`);
     expect(regclassTaxpayerConf).toBe('taxpayer_confirmations');
+
+    const [{ regclassComplianceActions }] = await upgradePrisma.$queryRawUnsafe<
+      Array<{ regclassComplianceActions: string | null }>
+    >(`SELECT to_regclass('public.tax_compliance_actions')::text AS "regclassComplianceActions"`);
+    expect(regclassComplianceActions).toBe('tax_compliance_actions');
 
     // Verify 0 orphans
     const orphanTx = await upgradePrisma.$queryRawUnsafe<Array<{ count: bigint }>>(`

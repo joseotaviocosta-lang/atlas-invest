@@ -66,6 +66,8 @@ import { ResolveHighIncomeEvidenceUseCase } from '../../application/fiscal/resol
 import { HighIncomeAnnualReviewPackageService } from '../../application/fiscal/get-high-income-annual-review-package.use-case';
 import { UnifiedAnnualIrpfService } from '../../application/fiscal/get-unified-annual-irpf.use-case';
 import { UnifiedAnnualReviewPackageService } from '../../application/fiscal/get-unified-annual-review-package.use-case';
+import { GetTaxComplianceTimelineUseCase } from '../../application/fiscal/get-tax-compliance-timeline.use-case';
+import { RecordTaxComplianceActionUseCase } from '../../application/fiscal/record-tax-compliance-action.use-case';
 import { ZodValidationPipe } from '../../common/pipes';
 
 import {
@@ -118,7 +120,16 @@ import type {
   UnifiedConsistencyIssue,
   UnifiedModuleSummary,
   UnifiedRequirement,
+  TaxComplianceTimeline,
 } from '@atlas/tax-engine';
+import {
+  TaxComplianceTimelineQueryDto,
+  TaxComplianceTimelineQuerySchema,
+  TaxComplianceActionParamDto,
+  TaxComplianceActionParamSchema,
+  RecordTaxComplianceActionBodyDto,
+  RecordTaxComplianceActionBodySchema,
+} from './dto/tax-compliance.dto';
 
 import {
   AdjustmentQuery,
@@ -274,6 +285,10 @@ export class FiscalController {
     private readonly unifiedAnnualIrpfService: UnifiedAnnualIrpfService,
     @Inject(UnifiedAnnualReviewPackageService)
     private readonly unifiedAnnualReviewPackageService: UnifiedAnnualReviewPackageService,
+    @Inject(GetTaxComplianceTimelineUseCase)
+    private readonly getTaxComplianceTimelineUseCase: GetTaxComplianceTimelineUseCase,
+    @Inject(RecordTaxComplianceActionUseCase)
+    private readonly recordTaxComplianceActionUseCase: RecordTaxComplianceActionUseCase,
   ) {}
 
   @Get('monthly/:competence')
@@ -1269,5 +1284,59 @@ export class FiscalController {
     // never reach this success path); re-asserted here as defense-in-depth.
     res.setHeader('Cache-Control', 'private, no-store');
     return { data: toUnifiedAnnualResponse(state) };
+  }
+
+  // --- Phase 4K.1: Tax Compliance Timeline & Workflow Actions ---
+
+  @Get('compliance')
+  @ApiOperation({
+    summary:
+      'Get the unified tax compliance obligation timeline: monthly obligations (4G), annual review & support (4H/4I/4J), status, and user-reported tracking. Derived projection only — zero tax recalculation.',
+  })
+  @ApiResponse({ status: 200, description: 'Unified tax compliance timeline' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  async getTaxComplianceTimeline(
+    @Query(new ZodValidationPipe(TaxComplianceTimelineQuerySchema))
+    query: TaxComplianceTimelineQueryDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ data: TaxComplianceTimeline }> {
+    const data = await this.getTaxComplianceTimelineUseCase.execute({
+      taxSubjectId: principal.userId,
+      calendarYear: query.calendarYear,
+      status: query.status,
+      kind: query.kind,
+      period: query.period,
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    return { data };
+  }
+
+  @Post('compliance/:obligationKey/actions')
+  @ApiOperation({
+    summary:
+      'Record a user compliance action (e.g. completion, dismissal, acknowledgment) for an obligation without mutating tax calculations. Anti-enumeration 404 for foreign obligation keys.',
+  })
+  @ApiParam({ name: 'obligationKey', description: 'Deterministic canonical obligation key' })
+  @ApiResponse({ status: 201, description: 'User action recorded' })
+  @ApiResponse({ status: 400, description: 'Invalid action payload' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  @ApiResponse({ status: 404, description: 'Obligation not found (anti-enumeration)' })
+  async recordTaxComplianceAction(
+    @Param(new ZodValidationPipe(TaxComplianceActionParamSchema))
+    params: TaxComplianceActionParamDto,
+    @Body(new ZodValidationPipe(RecordTaxComplianceActionBodySchema))
+    body: RecordTaxComplianceActionBodyDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.recordTaxComplianceActionUseCase.execute({
+      taxSubjectId: principal.userId,
+      obligationKey: params.obligationKey,
+      actionType: body.actionType,
+      sourceFingerprint: body.sourceFingerprint,
+      note: body.note,
+      metadata: body.metadata,
+    });
+    return { data: result.record };
   }
 }

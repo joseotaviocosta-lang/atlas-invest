@@ -36,6 +36,7 @@ model User {
   annualOpeningPositions  AnnualOpeningPositionInputRecord[]
   taxpayerConfirmations   TaxpayerConfirmationRecord[]
   highIncomeEvidence      HighIncomeEvidenceRecord[]
+  taxComplianceActions    TaxComplianceActionRecord[]
 
   @@map("users")
 }
@@ -725,4 +726,28 @@ model HighIncomeEvidenceRecord {
   @@index([taxSubjectId, calendarYear, evidenceType, payerKey], map: "hi_evidence_lookup_idx")
   @@index([taxSubjectId, calendarYear], map: "hi_evidence_year_idx")
   @@map("high_income_evidence_records")
+}
+
+/// Phase 4K.1 - persisted, audited taxpayer compliance workflow actions.
+/// Captures user-reported actions (e.g. completion, dismissal, acknowledgment)
+/// for operational compliance obligations without mutating tax calculations.
+/// Monotonic revision increments on updates; stale actions are detected if sourceFingerprint changes.
+model TaxComplianceActionRecord {
+  id                String    @id @default(uuid()) @db.Uuid
+  taxSubjectId      String    @map("tax_subject_id") @db.Uuid
+  obligationKey     String    @map("obligation_key") @db.VarChar(255)
+  actionType        String    @map("action_type") @db.VarChar(50)
+  sourceFingerprint String?   @map("source_fingerprint") @db.VarChar(64)
+  note              String?   @db.Text
+  metadata          Json?
+  revision          Int       @default(1)
+  occurredAt        DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+
+  @@unique([taxSubjectId, obligationKey, revision], name: "tax_compliance_action_revision_identity", map: "tax_compliance_action_rev_uniq")
+  @@index([taxSubjectId, obligationKey], map: "tax_compliance_action_lookup_idx")
+  @@index([taxSubjectId, occurredAt], map: "tax_compliance_action_time_idx")
+  @@map("tax_compliance_actions")
 }

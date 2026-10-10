@@ -80,13 +80,13 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
   // --------------------------------------------------------------------------
   // SECTION 1: FRESH DB DEPLOYMENT & MIGRATION INTEGRITY (Sections 6–7)
   // --------------------------------------------------------------------------
-  it('Fresh DB: prisma migrate deploy applies all 18 migrations from zero cleanly', async () => {
+  it('Fresh DB: prisma migrate deploy applies all 19 migrations from zero cleanly', async () => {
     const output = execSync('pnpm --filter @atlas/database exec prisma migrate deploy', {
       env: { ...process.env, DATABASE_URL: freshDbUrl },
       encoding: 'utf-8',
     });
 
-    expect(output).toContain('18 migrations found in prisma/migrations');
+    expect(output).toContain('19 migrations found in prisma/migrations');
     expect(output).toContain('All migrations have been successfully applied.');
 
     // Second deploy must be a clean no-op
@@ -100,7 +100,7 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
     const applied = await freshPrisma.$queryRawUnsafe<Array<{ count: bigint }>>(
       `SELECT count(*) as count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL`,
     );
-    expect(Number(applied[0]!.count)).toBe(18);
+    expect(Number(applied[0]!.count)).toBe(19);
   }, 60_000);
 
   // --------------------------------------------------------------------------
@@ -267,7 +267,7 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
       .map((entry) => entry.name)
       .sort();
 
-    expect(allMigrationDirs.length).toBe(18);
+    expect(allMigrationDirs.length).toBe(19);
 
     // Apply migrations 1..16 manually
     const preFinalMigrations = allMigrationDirs.slice(0, 16);
@@ -357,6 +357,7 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
       'Applying migration `20261004120000_add_high_income_evidence_records`',
     );
     expect(output).toContain('Applying migration `20261006120000_repair_taxpayer_confirmations`');
+    expect(output).toContain('Applying migration `20261010000000_add_tax_compliance_actions`');
     expect(output).toContain('All migrations have been successfully applied.');
 
     // Data preservation verification
@@ -544,7 +545,7 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
       .filter((e) => e.isDirectory())
       .map((e) => e.name);
 
-    expect(allDirs.length).toBe(18);
+    expect(allDirs.length).toBe(19);
 
     // Verify all directories have valid timestamp prefixes (YYYYMMDDHHMMSS)
     for (const dir of allDirs) {
@@ -560,10 +561,10 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
     // Verify timestamps are unique
     const timestamps = allDirs.map((d) => d.split('_')[0]);
     const uniqueTimestamps = new Set(timestamps);
-    expect(uniqueTimestamps.size).toBe(18);
+    expect(uniqueTimestamps.size).toBe(19);
 
     // Verify migration names are unique
     const uniqueNames = new Set(allDirs);
-    expect(uniqueNames.size).toBe(18);
+    expect(uniqueNames.size).toBe(19);
   });
 });

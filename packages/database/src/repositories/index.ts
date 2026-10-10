@@ -23,3 +23,4 @@ export * from './tax-compensation-election.repository';
 export * from './annual-opening-position.repository';
 export * from './taxpayer-confirmation.repository';
 export * from './high-income-evidence.repository';
+export * from './tax-compliance-action.repository';

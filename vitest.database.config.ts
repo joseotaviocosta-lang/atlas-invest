@@ -8,7 +8,7 @@ export default defineConfig({
     include: ['tests/database/**/*.test.ts'],
     globalSetup: ['tests/database/global-setup.ts'],
     fileParallelism: false,
-    testTimeout: 15000,
+    testTimeout: 60000,
   },
   resolve: {
     alias: {

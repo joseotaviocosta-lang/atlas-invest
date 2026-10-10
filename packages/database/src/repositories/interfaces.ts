@@ -1144,3 +1144,52 @@ export interface IHighIncomeEvidenceRepository {
     calendarYear: number;
   }): Promise<{ count: number; maxUpdatedAt: string | null }>;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4K.1 — taxpayer compliance workflow actions persistence
+// ---------------------------------------------------------------------------
+
+export type TaxComplianceActionWriteOutcome = 'CREATED' | 'IDEMPOTENT' | 'SUPERSEDED';
+
+export interface TaxComplianceActionRow {
+  id: string;
+  taxSubjectId: string;
+  obligationKey: string;
+  actionType: string;
+  sourceFingerprint: string | null;
+  note: string | null;
+  metadata: Record<string, unknown> | null;
+  revision: number;
+  occurredAt: Date;
+  createdAt: Date;
+}
+
+export interface TaxComplianceActionWriteInput {
+  id?: string;
+  taxSubjectId: string;
+  obligationKey: string;
+  actionType: string;
+  sourceFingerprint?: string | null;
+  note?: string | null;
+  metadata?: Record<string, unknown> | null;
+  occurredAt?: Date | string;
+}
+
+export interface ITaxComplianceActionRepository {
+  findById(id: string): Promise<TaxComplianceActionRow | null>;
+  findLatest(input: {
+    taxSubjectId: string;
+    obligationKey: string;
+  }): Promise<TaxComplianceActionRow | null>;
+  listBySubject(input: {
+    taxSubjectId: string;
+    obligationKey?: string;
+  }): Promise<TaxComplianceActionRow[]>;
+  listHistory(input: {
+    taxSubjectId: string;
+    obligationKey: string;
+  }): Promise<TaxComplianceActionRow[]>;
+  create(
+    input: TaxComplianceActionWriteInput,
+  ): Promise<{ outcome: TaxComplianceActionWriteOutcome; record: TaxComplianceActionRow }>;
+}

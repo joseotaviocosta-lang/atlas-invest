@@ -51,13 +51,13 @@ describe('Phase 4J.3 — Canonical Database Version & Integrity Verification (Po
     expect(ver).toMatch(/PostgreSQL 16\./i);
   });
 
-  it('2. Fresh DB: prisma migrate deploy applies all 18 migrations from zero cleanly', async () => {
+  it('2. Fresh DB: prisma migrate deploy applies all 19 migrations from zero cleanly', async () => {
     const deployOut = execSync('pnpm --filter @atlas/database exec prisma migrate deploy', {
       env: { ...process.env, DATABASE_URL: FRESH_DB_URL },
       encoding: 'utf-8',
     });
 
-    expect(deployOut).toContain('18 migrations found in prisma/migrations');
+    expect(deployOut).toContain('19 migrations found in prisma/migrations');
     expect(deployOut).toContain('Applying migration');
 
     // Confirm migrations recorded in _prisma_migrations
@@ -65,7 +65,7 @@ describe('Phase 4J.3 — Canonical Database Version & Integrity Verification (Po
       Array<{ migration_name: string; finished_at: Date | null }>
     >('SELECT migration_name, finished_at FROM "_prisma_migrations" ORDER BY migration_name ASC');
 
-    expect(applied.length).toBe(18);
+    expect(applied.length).toBe(19);
     for (const m of applied) {
       expect(m.finished_at).not.toBeNull();
     }
@@ -154,13 +154,13 @@ describe('Phase 4J.3 — Canonical Database Version & Integrity Verification (Po
     expect(txCount).toBe(1);
   });
 
-  it('5. Upgrade DB: applies all 18 migrations sequentially with 100% data preservation and 0 orphans', async () => {
+  it('5. Upgrade DB: applies all 19 migrations sequentially with 100% data preservation and 0 orphans', async () => {
     const deployOut = execSync('pnpm --filter @atlas/database exec prisma migrate deploy', {
       env: { ...process.env, DATABASE_URL: UPGRADE_DB_URL },
       encoding: 'utf-8',
     });
 
-    expect(deployOut).toContain('18 migrations found in prisma/migrations');
+    expect(deployOut).toContain('19 migrations found in prisma/migrations');
 
     const upgradeUserId = '11111111-1111-4111-8111-111111111111';
     const institutionId = '11111111-1111-4111-8111-111111111112';
