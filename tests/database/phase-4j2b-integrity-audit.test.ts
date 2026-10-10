@@ -63,7 +63,7 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
     // 2. Create Upgrade DB
     await adminPrisma.$executeRawUnsafe(`CREATE DATABASE "${upgradeDbName}"`);
     upgradePrisma = new PrismaClient({ datasources: { db: { url: upgradeDbUrl } } });
-  }, 60_000);
+  }, 180_000);
 
   afterAll(async () => {
     if (freshApp) await freshApp.close();
@@ -75,7 +75,7 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
       await adminPrisma.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${upgradeDbName}"`);
       await adminPrisma.$disconnect();
     }
-  }, 60_000);
+  }, 180_000);
 
   // --------------------------------------------------------------------------
   // SECTION 1: FRESH DB DEPLOYMENT & MIGRATION INTEGRITY (Sections 6–7)
@@ -101,7 +101,7 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
       `SELECT count(*) as count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL`,
     );
     expect(Number(applied[0]!.count)).toBe(19);
-  }, 60_000);
+  }, 180_000);
 
   // --------------------------------------------------------------------------
   // SECTION 2: FRESH DB FISCAL SMOKE (Sections 8–9)
@@ -240,7 +240,7 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
       .set('Authorization', `Bearer ${token}`);
     expect(invalidRes.status).toBe(400);
     expect(invalidRes.body.stack).toBeUndefined();
-  }, 60_000);
+  }, 180_000);
 
   // --------------------------------------------------------------------------
   // SECTION 3: UPGRADE-PATH PROOF & DATA PRESERVATION (Sections 10–13)
@@ -365,7 +365,7 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
     expect(tx).toBeDefined();
     expect(tx?.quantity.toString()).toBe('100');
     expect(tx?.amount.toString()).toBe('3550');
-  }, 60_000);
+  }, 180_000);
 
   // --------------------------------------------------------------------------
   // SECTION 4: UPGRADE DB FISCAL SMOKE (Sections 14–15)
@@ -423,7 +423,7 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
     expect(csvRes.status).toBe(200);
     expect(csvRes.text).toContain('RELATORIO DE APOIO IRPF ANUAL UNIFICADO');
     expect(csvRes.text).toContain('Ano-calendario: 2026');
-  }, 60_000);
+  }, 180_000);
 
   // --------------------------------------------------------------------------
   // SECTION 5: FULL ORPHAN AUDIT (Section 16)

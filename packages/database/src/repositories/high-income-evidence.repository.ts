@@ -255,25 +255,78 @@ export class HighIncomeEvidenceRepository implements IHighIncomeEvidenceReposito
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        return await this.prisma.$transaction(async (tx) => {
-          const payerKey = highIncomeEvidencePayerKey(input.payerId);
-          const profitPeriodExercise = input.profitPeriodExercise ?? null;
-          const existing = await tx.highIncomeEvidenceRecord.findFirst({
-            where: {
-              taxSubjectId: input.taxSubjectId,
-              calendarYear: input.calendarYear,
-              payerKey,
-              evidenceType: input.evidenceType,
-              profitPeriodExercise,
-            },
-            orderBy: { revision: 'desc' },
-          });
+        return await this.prisma.$transaction(
+          async (tx) => {
+            const payerKey = highIncomeEvidencePayerKey(input.payerId);
+            const profitPeriodExercise = input.profitPeriodExercise ?? null;
+            const existing = await tx.highIncomeEvidenceRecord.findFirst({
+              where: {
+                taxSubjectId: input.taxSubjectId,
+                calendarYear: input.calendarYear,
+                payerKey,
+                evidenceType: input.evidenceType,
+                profitPeriodExercise,
+              },
+              orderBy: { revision: 'desc' },
+            });
 
-          if (!existing) {
-            const content = this.contentInputOf(input, 'NONE');
+            if (!existing) {
+              const content = this.contentInputOf(input, 'NONE');
+              const sourceFingerprint =
+                input.sourceFingerprint ?? computeHighIncomeEvidenceContentFingerprint(content);
+              const revision = 1;
+              const created = await tx.highIncomeEvidenceRecord.create({
+                data: {
+                  id: input.id ?? randomUUID(),
+                  taxSubjectId: input.taxSubjectId,
+                  calendarYear: input.calendarYear,
+                  payerKey,
+                  payerId: input.payerId ?? null,
+                  evidenceType: input.evidenceType,
+                  payerType: input.payerType ?? null,
+                  profitPeriodExercise: input.profitPeriodExercise ?? null,
+                  evidenceMode: input.evidenceMode ?? null,
+                  accountingProfit: input.accountingProfit ?? null,
+                  irDue: input.irDue ?? null,
+                  csllDue: input.csllDue ?? null,
+                  prouniTaxCredit: input.prouniTaxCredit ?? null,
+                  simplifiedRevenue: input.simplifiedRevenue ?? null,
+                  adjustmentAmount: input.adjustmentAmount ?? null,
+                  authority: input.authority,
+                  evidenceSource: input.evidenceSource,
+                  conflictStatus: 'NONE',
+                  upstreamFingerprint: input.upstreamFingerprint ?? null,
+                  sourceFingerprint,
+                  revision,
+                  fingerprint: computeHighIncomeEvidenceFingerprint(sourceFingerprint, revision),
+                  supersedesId: null,
+                  resolutionNote: input.resolutionNote ?? null,
+                  createdByPrincipal: input.createdByPrincipal,
+                },
+              });
+              return { outcome: 'CREATED' as const, record: this.map(created) };
+            }
+
+            const candidate = this.contentInputOf(input, existing.conflictStatus);
+            const candidateSourceFingerprint =
+              input.sourceFingerprint ?? computeHighIncomeEvidenceContentFingerprint(candidate);
+            if (
+              existing.sourceFingerprint === candidateSourceFingerprint &&
+              existing.authority === input.authority &&
+              existing.evidenceSource === input.evidenceSource
+            ) {
+              return { outcome: 'IDEMPOTENT' as const, record: this.map(existing) };
+            }
+
+            const revision = existing.revision + 1;
+            const conflictStatus =
+              existing.authority === 'AUTHORITATIVE' &&
+              existing.evidenceSource !== input.evidenceSource
+                ? 'CONFLICT'
+                : 'NONE';
+            const withConflict = this.contentInputOf(input, conflictStatus);
             const sourceFingerprint =
-              input.sourceFingerprint ?? computeHighIncomeEvidenceContentFingerprint(content);
-            const revision = 1;
+              input.sourceFingerprint ?? computeHighIncomeEvidenceContentFingerprint(withConflict);
             const created = await tx.highIncomeEvidenceRecord.create({
               data: {
                 id: input.id ?? randomUUID(),
@@ -293,70 +346,20 @@ export class HighIncomeEvidenceRepository implements IHighIncomeEvidenceReposito
                 adjustmentAmount: input.adjustmentAmount ?? null,
                 authority: input.authority,
                 evidenceSource: input.evidenceSource,
-                conflictStatus: 'NONE',
+                conflictStatus,
                 upstreamFingerprint: input.upstreamFingerprint ?? null,
                 sourceFingerprint,
                 revision,
                 fingerprint: computeHighIncomeEvidenceFingerprint(sourceFingerprint, revision),
-                supersedesId: null,
+                supersedesId: existing.id,
                 resolutionNote: input.resolutionNote ?? null,
                 createdByPrincipal: input.createdByPrincipal,
               },
             });
-            return { outcome: 'CREATED' as const, record: this.map(created) };
-          }
-
-          const candidate = this.contentInputOf(input, existing.conflictStatus);
-          const candidateSourceFingerprint =
-            input.sourceFingerprint ?? computeHighIncomeEvidenceContentFingerprint(candidate);
-          if (
-            existing.sourceFingerprint === candidateSourceFingerprint &&
-            existing.authority === input.authority &&
-            existing.evidenceSource === input.evidenceSource
-          ) {
-            return { outcome: 'IDEMPOTENT' as const, record: this.map(existing) };
-          }
-
-          const revision = existing.revision + 1;
-          const conflictStatus =
-            existing.authority === 'AUTHORITATIVE' &&
-            existing.evidenceSource !== input.evidenceSource
-              ? 'CONFLICT'
-              : 'NONE';
-          const withConflict = this.contentInputOf(input, conflictStatus);
-          const sourceFingerprint =
-            input.sourceFingerprint ?? computeHighIncomeEvidenceContentFingerprint(withConflict);
-          const created = await tx.highIncomeEvidenceRecord.create({
-            data: {
-              id: input.id ?? randomUUID(),
-              taxSubjectId: input.taxSubjectId,
-              calendarYear: input.calendarYear,
-              payerKey,
-              payerId: input.payerId ?? null,
-              evidenceType: input.evidenceType,
-              payerType: input.payerType ?? null,
-              profitPeriodExercise: input.profitPeriodExercise ?? null,
-              evidenceMode: input.evidenceMode ?? null,
-              accountingProfit: input.accountingProfit ?? null,
-              irDue: input.irDue ?? null,
-              csllDue: input.csllDue ?? null,
-              prouniTaxCredit: input.prouniTaxCredit ?? null,
-              simplifiedRevenue: input.simplifiedRevenue ?? null,
-              adjustmentAmount: input.adjustmentAmount ?? null,
-              authority: input.authority,
-              evidenceSource: input.evidenceSource,
-              conflictStatus,
-              upstreamFingerprint: input.upstreamFingerprint ?? null,
-              sourceFingerprint,
-              revision,
-              fingerprint: computeHighIncomeEvidenceFingerprint(sourceFingerprint, revision),
-              supersedesId: existing.id,
-              resolutionNote: input.resolutionNote ?? null,
-              createdByPrincipal: input.createdByPrincipal,
-            },
-          });
-          return { outcome: 'SUPERSEDED' as const, record: this.map(created) };
-        });
+            return { outcome: 'SUPERSEDED' as const, record: this.map(created) };
+          },
+          { maxWait: 10000, timeout: 15000 },
+        );
       } catch (err: unknown) {
         const isUniqueConstraint =
           typeof err === 'object' && err !== null && 'code' in err && err.code === 'P2002';
@@ -378,76 +381,53 @@ export class HighIncomeEvidenceRepository implements IHighIncomeEvidenceReposito
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        return await this.prisma.$transaction(async (tx) => {
-          const current = await tx.highIncomeEvidenceRecord.findFirst({
-            where: { id: input.id, taxSubjectId: input.taxSubjectId },
-          });
-          if (!current) {
-            throw new PersistenceError(`High-income evidence ${input.id} not found for subject`);
-          }
-          const latest = await tx.highIncomeEvidenceRecord.findFirst({
-            where: {
-              taxSubjectId: input.taxSubjectId,
-              calendarYear: current.calendarYear,
-              payerKey: current.payerKey,
-              evidenceType: current.evidenceType,
-              profitPeriodExercise: current.profitPeriodExercise,
-            },
-            orderBy: { revision: 'desc' },
-          });
-          if (!latest || latest.id !== current.id) {
-            throw new PersistenceError(
-              `High-income evidence ${input.id} is not the current revision`,
-            );
-          }
-          if (latest.conflictStatus !== 'CONFLICT') {
-            throw new PersistenceError(`High-income evidence ${input.id} is not in conflict`);
-          }
-
-          let restore: EvidenceRecordShape | null = null;
-          if (input.decision === 'KEEP_EXISTING') {
-            if (!latest.supersedesId) {
-              throw new PersistenceError(
-                `High-income evidence ${input.id} has no previous revision to keep`,
-              );
-            }
-            restore = await tx.highIncomeEvidenceRecord.findUnique({
-              where: { id: latest.supersedesId },
+        return await this.prisma.$transaction(
+          async (tx) => {
+            const current = await tx.highIncomeEvidenceRecord.findFirst({
+              where: { id: input.id, taxSubjectId: input.taxSubjectId },
             });
-            if (!restore) {
+            if (!current) {
+              throw new PersistenceError(`High-income evidence ${input.id} not found for subject`);
+            }
+            const latest = await tx.highIncomeEvidenceRecord.findFirst({
+              where: {
+                taxSubjectId: input.taxSubjectId,
+                calendarYear: current.calendarYear,
+                payerKey: current.payerKey,
+                evidenceType: current.evidenceType,
+                profitPeriodExercise: current.profitPeriodExercise,
+              },
+              orderBy: { revision: 'desc' },
+            });
+            if (!latest || latest.id !== current.id) {
               throw new PersistenceError(
-                `Previous high-income evidence revision ${latest.supersedesId} not found`,
+                `High-income evidence ${input.id} is not the current revision`,
               );
             }
-          }
+            if (latest.conflictStatus !== 'CONFLICT') {
+              throw new PersistenceError(`High-income evidence ${input.id} is not in conflict`);
+            }
 
-          const source = restore ?? latest;
-          const revision = latest.revision + 1;
-          const content = {
-            taxSubjectId: source.taxSubjectId,
-            calendarYear: source.calendarYear,
-            payerKey: source.payerKey,
-            payerId: source.payerId,
-            evidenceType: source.evidenceType,
-            payerType: source.payerType,
-            profitPeriodExercise: source.profitPeriodExercise,
-            evidenceMode: source.evidenceMode,
-            accountingProfit: source.accountingProfit?.toString() ?? null,
-            irDue: source.irDue?.toString() ?? null,
-            csllDue: source.csllDue?.toString() ?? null,
-            prouniTaxCredit: source.prouniTaxCredit?.toString() ?? null,
-            simplifiedRevenue: source.simplifiedRevenue?.toString() ?? null,
-            adjustmentAmount: source.adjustmentAmount?.toString() ?? null,
-            authority: source.authority,
-            evidenceSource: source.evidenceSource,
-            conflictStatus: 'NONE',
-            upstreamFingerprint: source.upstreamFingerprint,
-            resolutionNote: input.decision,
-          };
-          const sourceFingerprint = computeHighIncomeEvidenceContentFingerprint(content);
-          const created = await tx.highIncomeEvidenceRecord.create({
-            data: {
-              id: randomUUID(),
+            let restore: EvidenceRecordShape | null = null;
+            if (input.decision === 'KEEP_EXISTING') {
+              if (!latest.supersedesId) {
+                throw new PersistenceError(
+                  `High-income evidence ${input.id} has no previous revision to keep`,
+                );
+              }
+              restore = await tx.highIncomeEvidenceRecord.findUnique({
+                where: { id: latest.supersedesId },
+              });
+              if (!restore) {
+                throw new PersistenceError(
+                  `Previous high-income evidence revision ${latest.supersedesId} not found`,
+                );
+              }
+            }
+
+            const source = restore ?? latest;
+            const revision = latest.revision + 1;
+            const content = {
               taxSubjectId: source.taxSubjectId,
               calendarYear: source.calendarYear,
               payerKey: source.payerKey,
@@ -466,16 +446,42 @@ export class HighIncomeEvidenceRepository implements IHighIncomeEvidenceReposito
               evidenceSource: source.evidenceSource,
               conflictStatus: 'NONE',
               upstreamFingerprint: source.upstreamFingerprint,
-              sourceFingerprint,
-              revision,
-              fingerprint: computeHighIncomeEvidenceFingerprint(sourceFingerprint, revision),
-              supersedesId: latest.id,
               resolutionNote: input.decision,
-              createdByPrincipal: input.createdByPrincipal,
-            },
-          });
-          return { outcome: 'SUPERSEDED' as const, record: this.map(created) };
-        });
+            };
+            const sourceFingerprint = computeHighIncomeEvidenceContentFingerprint(content);
+            const created = await tx.highIncomeEvidenceRecord.create({
+              data: {
+                id: randomUUID(),
+                taxSubjectId: source.taxSubjectId,
+                calendarYear: source.calendarYear,
+                payerKey: source.payerKey,
+                payerId: source.payerId,
+                evidenceType: source.evidenceType,
+                payerType: source.payerType,
+                profitPeriodExercise: source.profitPeriodExercise,
+                evidenceMode: source.evidenceMode,
+                accountingProfit: source.accountingProfit?.toString() ?? null,
+                irDue: source.irDue?.toString() ?? null,
+                csllDue: source.csllDue?.toString() ?? null,
+                prouniTaxCredit: source.prouniTaxCredit?.toString() ?? null,
+                simplifiedRevenue: source.simplifiedRevenue?.toString() ?? null,
+                adjustmentAmount: source.adjustmentAmount?.toString() ?? null,
+                authority: source.authority,
+                evidenceSource: source.evidenceSource,
+                conflictStatus: 'NONE',
+                upstreamFingerprint: source.upstreamFingerprint,
+                sourceFingerprint,
+                revision,
+                fingerprint: computeHighIncomeEvidenceFingerprint(sourceFingerprint, revision),
+                supersedesId: latest.id,
+                resolutionNote: input.decision,
+                createdByPrincipal: input.createdByPrincipal,
+              },
+            });
+            return { outcome: 'SUPERSEDED' as const, record: this.map(created) };
+          },
+          { maxWait: 10000, timeout: 15000 },
+        );
       } catch (err: unknown) {
         if (err instanceof PersistenceError) {
           throw err;

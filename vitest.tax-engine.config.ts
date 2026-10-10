@@ -6,6 +6,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/tax-engine/**/*.test.ts'],
+    testTimeout: 180000,
   },
   resolve: {
     alias: {

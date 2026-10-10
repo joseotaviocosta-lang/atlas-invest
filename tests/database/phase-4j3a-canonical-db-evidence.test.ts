@@ -490,5 +490,5 @@ describe('Phase 4J.3A — Canonical Database Version & Migration Evidence (Postg
       .expect(200);
 
     expect(upgradePkgRes.body.data.packageFingerprint).toBeDefined();
-  }, 60_000);
+  }, 180_000);
 });

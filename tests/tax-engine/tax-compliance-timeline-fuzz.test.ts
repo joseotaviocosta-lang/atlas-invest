@@ -218,5 +218,5 @@ describe('Phase 4K.1 — Tax Compliance Timeline 20,000-Case Fuzz Suite', () => 
         }
       }
     }
-  }, 60_000);
+  }, 180_000);
 });

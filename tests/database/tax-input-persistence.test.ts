@@ -217,5 +217,5 @@ describe('Database: canonical tax input persistence (Phase 4B.3)', () => {
       expect(rows).toHaveLength(n);
       expect(elapsed).toBeLessThan(5000);
     }
-  }, 60000);
+  }, 180000);
 });

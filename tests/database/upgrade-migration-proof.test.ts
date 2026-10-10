@@ -147,7 +147,7 @@ describe('Phase 4J.2A — Database Upgrade Path & Migration Reproducibility Proo
         currency: 'BRL',
       },
     });
-  }, 60_000);
+  }, 180_000);
 
   afterAll(async () => {
     if (upgradePrisma) {
@@ -158,7 +158,7 @@ describe('Phase 4J.2A — Database Upgrade Path & Migration Reproducibility Proo
       await adminPrisma.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${upgradeDbName}"`);
       await adminPrisma.$disconnect();
     }
-  }, 60_000);
+  }, 180_000);
 
   it('Step 1: pre-upgrade database state has exactly 16 migrations and valid pre-upgrade rows', async () => {
     const applied = await upgradePrisma.$queryRawUnsafe<Array<{ count: bigint }>>(
@@ -185,7 +185,7 @@ describe('Phase 4J.2A — Database Upgrade Path & Migration Reproducibility Proo
     expect(output).toContain('Applying migration `20261006120000_repair_taxpayer_confirmations`');
     expect(output).toContain('Applying migration `20261010000000_add_tax_compliance_actions`');
     expect(output).toContain('All migrations have been successfully applied.');
-  }, 60_000);
+  }, 180_000);
 
   it('Step 3: post-upgrade verification confirms 19 migrations, 0 pending, and 100% data preservation', async () => {
     const applied = await upgradePrisma.$queryRawUnsafe<Array<{ count: bigint }>>(

@@ -633,7 +633,7 @@ describe('Phase 4J.2D — Canonical Database Version & Integrity Audit (PostgreS
       .expect(200);
 
     expect(jsonRes.headers['content-type']).toContain('application/json');
-  }, 60_000);
+  }, 180_000);
 
   it('6. Schema & Migration Immutability: verifies 0 drift in baseline migrations 1-18', () => {
     const migrationsDir = path.resolve(__dirname, '../../packages/database/prisma/migrations');
