@@ -10,7 +10,7 @@ Project Atlas has completed the full calculation and orchestration pipeline for 
 
 - **Phase 4G**: Monthly capital markets calculation (equity normal/day-trade, FIIs, IRRF credit pools, composed 6015 DARFs).
 - **Phase 4H**: Annual IRPF calculation modules (capital markets annual summary, investment income categorization, Bens e Direitos opening/closing position valuation, declarations).
-- **Phase 4I**: High-income minimum effective taxation (PL 1087/2025 / Lei Complementar, corporate redutor facts, attested income).
+- **Phase 4I**: High-income minimum effective taxation (Lei nº 15.270/2025 amending Lei nº 9.250/1995, calendar year 2026 / exercise 2027, corporate redutor facts, attested income).
 - **Phase 4J**: Unified annual IRPF program orchestration, consistency checks, and multi-format review package exports.
 
 While these engines compute exact liabilities, positions, and readiness indicators, investors need a cohesive **Compliance Workspace**: an operational timeline answering:
