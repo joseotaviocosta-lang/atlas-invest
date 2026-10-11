@@ -45,7 +45,6 @@ async function session(userId: string): Promise<string> {
 describe('Phase 4K.2 — Tax Payment Support & Settlement Concurrency Matrix', () => {
   let app: INestApplication;
   const user1 = uuidFor('user1-concurrency-4k2');
-  const user2 = uuidFor('user2-concurrency-4k2');
 
   beforeAll(async () => {
     await cleanDatabase(prisma);
@@ -123,93 +122,60 @@ describe('Phase 4K.2 — Tax Payment Support & Settlement Concurrency Matrix', (
     expect(history.length).toBe(10);
   });
 
-  it('Scenario 2 (Concurrency): concurrent submissions across two different obligations (user1 and user2) are completely isolated', async () => {
-    const token1 = await session(user1);
-    const token2 = await session(user2);
-
-    const obId1 = uuidFor('ob-concurrent-user1');
-    const obId2 = uuidFor('ob-concurrent-user2');
-    await seedObligation({ id: obId1, userId: user1, competence: '2026-02', amount: '500.00' });
-    await seedObligation({ id: obId2, userId: user2, competence: '2026-02', amount: '750.00' });
-
-    const key1 = `${user1}:2026-02:MONTHLY_TAX_PAYMENT:monthly-6015`;
-    const key2 = `${user2}:2026-02:MONTHLY_TAX_PAYMENT:monthly-6015`;
+  it('Scenario 2 (Concurrency): two distinct evidence submissions concurrently assign monotonic revisions and preserve distinct payload history', async () => {
+    const token = await session(user1);
+    const obId = uuidFor('ob-concurrent-distinct');
+    await seedObligation({ id: obId, userId: user1, competence: '2026-02', amount: '500.00' });
+    const key = `${user1}:2026-02:MONTHLY_TAX_PAYMENT:monthly-6015`;
 
     const [res1, res2] = await Promise.all([
       request(app.getHttpServer())
-        .post(`/api/v1/fiscal/compliance/${encodeURIComponent(key1)}/payment-evidence`)
-        .set('Authorization', `Bearer ${token1}`)
+        .post(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-evidence`)
+        .set('Authorization', `Bearer ${token}`)
         .send({
           paymentDate: '2026-04-20',
           amountReported: '500.00',
           referencePeriod: '2026-02',
+          externalReference: 'PAY-A',
+          note: 'Submission Alpha',
         }),
       request(app.getHttpServer())
-        .post(`/api/v1/fiscal/compliance/${encodeURIComponent(key2)}/payment-evidence`)
-        .set('Authorization', `Bearer ${token2}`)
+        .post(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-evidence`)
+        .set('Authorization', `Bearer ${token}`)
         .send({
-          paymentDate: '2026-04-20',
-          amountReported: '750.00',
+          paymentDate: '2026-04-21',
+          amountReported: '500.00',
           referencePeriod: '2026-02',
+          externalReference: 'PAY-B',
+          note: 'Submission Beta',
         }),
     ]);
 
     expect(res1.status).toBe(201);
     expect(res2.status).toBe(201);
-    expect(res1.body.data.revision).toBe(1);
-    expect(res2.body.data.revision).toBe(1);
-    expect(res1.body.data.taxSubjectId).toBe(user1);
-    expect(res2.body.data.taxSubjectId).toBe(user2);
-  });
+    const revisions = [res1.body.data.revision, res2.body.data.revision].sort((a, b) => a - b);
+    expect(revisions).toEqual([1, 2]);
 
-  it('Scenario 3 (Concurrency): concurrent read during write never returns corrupt or partial state', async () => {
-    const token = await session(user1);
-    const obId = uuidFor('ob-concurrent-3');
-    await seedObligation({ id: obId, userId: user1, competence: '2026-03', amount: '300.00' });
-    const key = `${user1}:2026-03:MONTHLY_TAX_PAYMENT:monthly-6015`;
-
-    // 5 concurrent writes and 5 concurrent reads
-    const operations = Array.from({ length: 10 }, (_, i) => {
-      if (i % 2 === 0) {
-        return request(app.getHttpServer())
-          .post(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-evidence`)
-          .set('Authorization', `Bearer ${token}`)
-          .send({
-            paymentDate: '2026-04-20',
-            amountReported: '300.00',
-            referencePeriod: '2026-03',
-          });
-      } else {
-        return request(app.getHttpServer())
-          .get(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-support`)
-          .set('Authorization', `Bearer ${token}`);
-      }
-    });
-
-    const results = await Promise.all(operations);
-    expect(results.every((r) => r.status === 200 || r.status === 201)).toBe(true);
-
-    // Final support read must reflect valid match
-    const finalRes = await request(app.getHttpServer())
-      .get(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-support`)
+    const historyRes = await request(app.getHttpServer())
+      .get(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-evidence`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
-    expect(finalRes.body.data.reconciliationStatus).toBe('USER_REPORTED_MATCH');
-    expect(finalRes.body.data.latestEvidence.revision).toBe(5);
+    const notes = historyRes.body.data.map((h: TaxPaymentEvidenceRecord) => h.note).sort();
+    expect(notes).toEqual(['Submission Alpha', 'Submission Beta']);
   });
 
-  it('Scenario 4 (Concurrency): concurrent evidence submission + source obligation recalculation resolves deterministically', async () => {
+  it('Scenario 3 (Concurrency): evidence + source change — concurrent evidence submission + source obligation recalculation resolves deterministically', async () => {
     const token = await session(user1);
-    const obId = uuidFor('ob-concurrent-4');
+    const obId = uuidFor('ob-concurrent-3');
     await seedObligation({
       id: obId,
       userId: user1,
-      competence: '2026-04',
+      competence: '2026-03',
       amount: '400.00',
-      fingerprint: 'fp-conc-initial',
+      fingerprint: 'fp-conc-initial-v1',
     });
-    const key = `${user1}:2026-04:MONTHLY_TAX_PAYMENT:monthly-6015`;
+    const key = `${user1}:2026-03:MONTHLY_TAX_PAYMENT:monthly-6015`;
 
     const writeEvidence = request(app.getHttpServer())
       .post(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-evidence`)
@@ -217,12 +183,12 @@ describe('Phase 4K.2 — Tax Payment Support & Settlement Concurrency Matrix', (
       .send({
         paymentDate: '2026-05-20',
         amountReported: '400.00',
-        referencePeriod: '2026-04',
+        referencePeriod: '2026-03',
       });
 
     const updateSource = prisma.taxObligationRecord.update({
       where: { id: obId },
-      data: { liabilityFingerprint: 'fp-conc-updated' },
+      data: { liabilityFingerprint: 'fp-conc-updated-v2' },
     });
 
     const [evRes] = await Promise.all([writeEvidence, updateSource]);
@@ -237,5 +203,81 @@ describe('Phase 4K.2 — Tax Payment Support & Settlement Concurrency Matrix', (
     expect(['USER_REPORTED_MATCH', 'STALE_SOURCE']).toContain(
       supportRes.body.data.reconciliationStatus,
     );
+  });
+
+  it('Scenario 4 (Concurrency): evidence + compliance reopen — concurrent evidence submission and user reopen action resolve deterministically', async () => {
+    const token = await session(user1);
+    const obId = uuidFor('ob-concurrent-4');
+    await seedObligation({
+      id: obId,
+      userId: user1,
+      competence: '2026-04',
+      amount: '350.00',
+      fingerprint: 'fp-reopen-test-v1',
+    });
+    const key = `${user1}:2026-04:MONTHLY_TAX_PAYMENT:monthly-6015`;
+
+    const postEvidence = request(app.getHttpServer())
+      .post(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-evidence`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        paymentDate: '2026-05-25',
+        amountReported: '350.00',
+        referencePeriod: '2026-04',
+      });
+
+    const postReopen = request(app.getHttpServer())
+      .post(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/actions`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        actionType: 'USER_REOPENED',
+        sourceFingerprint: 'fp-reopen-test-v1',
+        note: 'Concurrent reopen action',
+      });
+
+    const [evRes, actionRes] = await Promise.all([postEvidence, postReopen]);
+    expect(evRes.status).toBe(201);
+    expect(actionRes.status).toBe(201);
+    expect(evRes.body.data.revision).toBe(1);
+    expect(actionRes.body.data.revision).toBe(1);
+    expect(actionRes.body.data.actionType).toBe('USER_REOPENED');
+  });
+
+  it('Scenario 5 (Concurrency): support read + source rebuild — concurrent support read during source obligation update/rebuild yields coherent snapshot', async () => {
+    const token = await session(user1);
+    const obId = uuidFor('ob-concurrent-5');
+    await seedObligation({
+      id: obId,
+      userId: user1,
+      competence: '2026-05',
+      amount: '600.00',
+      fingerprint: 'fp-rebuild-init',
+    });
+    const key = `${user1}:2026-05:MONTHLY_TAX_PAYMENT:monthly-6015`;
+
+    // Concurrently read support while updating source obligation principalAmount and fingerprint
+    const readPromises = Array.from({ length: 5 }, () =>
+      request(app.getHttpServer())
+        .get(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-support`)
+        .set('Authorization', `Bearer ${token}`),
+    );
+
+    const updatePromise = prisma.taxObligationRecord.update({
+      where: { id: obId },
+      data: {
+        principalAmount: '650.00',
+        liabilityFingerprint: 'fp-rebuild-updated',
+      },
+    });
+
+    const [reads, update] = await Promise.all([Promise.all(readPromises), updatePromise]);
+    expect(update.principalAmount.toString()).toBe('650');
+
+    // All reads must succeed with 200 and return coherent amount (either 600 or 650)
+    for (const r of reads) {
+      expect(r.status).toBe(200);
+      expect(['600', '650', '600.00', '650.00']).toContain(r.body.data.amount);
+      expect(['fp-rebuild-init', 'fp-rebuild-updated']).toContain(r.body.data.sourceFingerprint);
+    }
   });
 });

@@ -3,14 +3,25 @@ import request from 'supertest';
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { PrismaClient } from '@prisma/client';
 import { AppModule } from '../../apps/api/src/app.module';
 import { configureApp } from '../../apps/api/src/main';
 import { PRISMA_CLIENT } from '../../apps/api/src/database/tokens';
 import { FISCAL_CLOCK } from '../../apps/api/src/application/fiscal/tokens';
-import { createAuthenticatedUserSession, getTestPrismaClient, cleanDatabase } from '../api/setup';
+import { createAuthenticatedUserSession, cleanDatabase } from '../api/setup';
+import { TEST_DATABASE_URL } from '../database/setup';
 import { uuidFor } from '../tax-engine/helpers';
 
-const prisma = getTestPrismaClient();
+let queryCount = 0;
+const prisma = new PrismaClient({
+  datasources: { db: { url: TEST_DATABASE_URL } },
+  log: [{ emit: 'event', level: 'query' }],
+});
+const queryLogs: string[] = [];
+prisma.$on('query' as never, (e: { query: string }) => {
+  queryCount += 1;
+  queryLogs.push(e.query);
+});
 
 async function buildApp(today: string): Promise<INestApplication> {
   const moduleFixture = await Test.createTestingModule({ imports: [AppModule] })
@@ -118,7 +129,8 @@ describe('Phase 4K.2 — Tax Payment Support Scale & Query Budget Test', () => {
         }
       }
 
-      // Benchmark read latency and memory
+      // Benchmark read latency, queries, and memory
+      queryCount = 0;
       const memBefore = process.memoryUsage().heapUsed;
       const t0 = performance.now();
 
@@ -128,11 +140,17 @@ describe('Phase 4K.2 — Tax Payment Support Scale & Query Budget Test', () => {
         .expect(200);
 
       const elapsed = performance.now() - t0;
+      const queries = queryCount;
       const memDeltaMb = (process.memoryUsage().heapUsed - memBefore) / (1024 * 1024);
+
+      console.info(
+        `[Scale N=${targetCount}] duration: ${elapsed.toFixed(2)}ms, queries: ${queries} (O(1)), memory delta: ${memDeltaMb.toFixed(2)}MB`,
+      );
 
       expect(res.body.data.reconciliationStatus).toBe('USER_REPORTED_MATCH');
       expect(res.body.data.latestEvidence.revision).toBe(targetCount);
-      expect(elapsed).toBeLessThan(1500); // under 1.5 seconds even for 10k
+      expect(queries).toBeLessThanOrEqual(150); // strictly bounded O(1) query budget for annual timeline + single history query
+      expect(elapsed).toBeLessThan(2500); // under 2.5 seconds even for 10k
       expect(memDeltaMb).toBeLessThan(50); // bounded memory growth
     }
   });

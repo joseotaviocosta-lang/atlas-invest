@@ -1,4 +1,5 @@
 # Relatório de Encerramento Definitivo — Fase 4K.2
+
 ## Apoio a Pagamento de DARF e Evidência de Liquidação Fiscal
 
 **Data**: 11 de Outubro de 2026  
@@ -10,11 +11,13 @@
 
 ## 1. Sumário Executivo & Objetivos Atingidos
 
-A Fase 4K.1 respondeu à pergunta: *"O que o investidor precisa fazer a seguir?"* estabelecendo a linha do tempo canônica de compliance fiscal.  
-A **Fase 4K.2** responde com rigor absoluto à pergunta:  
+A Fase 4K.1 respondeu à pergunta: _"O que o investidor precisa fazer a seguir?"_ estabelecendo a linha do tempo canônica de compliance fiscal.  
+A **Fase 4K.2** responde com rigor absoluto à pergunta:
+
 > **"Como o Atlas pode apoiar o investidor a preparar de forma segura o pagamento de sua obrigação e documentar a evidência de liquidação?"**
 
 ### Fronteiras Inegociáveis Respeitadas:
+
 1. **ZERO Novo Motor Fiscal / ZERO Recálculo**: A camada de apoio a pagamento (`TaxPaymentSupportEngine`) é downstream pura de Phase 4G e Phase 4K.1. Nenhum tributo, alíquota, base de cálculo, compensação de prejuízo ou data de vencimento foi recalculado.
 2. **ZERO Cálculo de Juros / Multa / SELIC**: Atlas não calcula encargos moratórios nem atualiza DARF vencido. Status `OVERDUE_ADVISORY` informa atraso sem simular encargos.
 3. **ZERO Integração Bancária / PIX / Boleto**: Atlas não gera código de barras, PIX copia-e-cola nem emite guia oficial do Sicalc.
@@ -29,6 +32,7 @@ A **Fase 4K.2** responde com rigor absoluto à pergunta:
 ## 2. Arquitetura e Componentes Desenvolvidos
 
 ### 2.1 Camada de Domínio (`@atlas/tax-engine`)
+
 - **`payment-support-types.ts`**:
   - `TaxPaymentSupportStatus`: `READY_TO_PAY`, `NO_PAYMENT_REQUIRED`, `BELOW_MINIMUM_THRESHOLD`, `OVERDUE_ADVISORY`, `EXTERNAL_SETTLEMENT_RECORDED`.
   - `TaxPaymentReconciliationStatus`: `NONE`, `MATCHED`, `OVERPAID`, `UNDERPAID`, `SUPERSEDED`.
@@ -41,6 +45,7 @@ A **Fase 4K.2** responde com rigor absoluto à pergunta:
   - `exportTaxPaymentSupportToCsv(support)`: Exportação CSV sanitizada contra injeção de fórmulas (OWASP).
 
 ### 2.2 Camada de Persistência (`packages/database`)
+
 - **Prisma Schema & Migration 20 (`20261011000000_add_tax_settlement_records`)**:
   - Tabela `tax_settlement_records` criada em PostgreSQL 16.x.
   - Constraint de unicidade: `(tax_subject_id, obligation_key, revision)`.
@@ -50,6 +55,7 @@ A **Fase 4K.2** responde com rigor absoluto à pergunta:
   - Retry de concorrência otimista (até 5 tentativas em caso de colisão P2002 na revisão).
 
 ### 2.3 Camada de API HTTP (`apps/api`)
+
 - Use cases:
   - `GetTaxPaymentSupportUseCase`: Projeta o suporte e reconciliação a partir da obrigação e evidências salvas.
   - `RecordTaxPaymentEvidenceUseCase`: Registra nova revisão incremental de evidência.
@@ -61,6 +67,7 @@ A **Fase 4K.2** responde com rigor absoluto à pergunta:
   - `GET /api/v1/fiscal/compliance/:obligationKey/payment-evidence` (`200 OK`, `no-store`)
 
 ### 2.4 Camada de Interface (`@atlas/ui`, Web, Mobile)
+
 - **`@atlas/ui`**:
   - `TaxPaymentSupportViewModel`: Formatação pura e badges visuais sem matemática fiscal.
 - **`apps/web`**:
@@ -74,6 +81,7 @@ A **Fase 4K.2** responde com rigor absoluto à pergunta:
 ## 3. Matriz de Evidências de Teste
 
 ### 3.1 Testes de Domínio & Propriedades (`@atlas/tax-engine`)
+
 - **`tax-payment-support-properties.test.ts` (7/7 PASSED)**:
   1. Determinismo absoluto sobre as mesmas entradas.
   2. Imutabilidade e congelamento profundo de objetos (`Object.isFrozen`).
@@ -88,6 +96,7 @@ A **Fase 4K.2** responde com rigor absoluto à pergunta:
   - **68 arquivos / 747 testes aprovados (100% PASSED)**.
 
 ### 3.2 Testes de API & Integração (`tests/fiscal-api`)
+
 - **`tax-payment-support-e2e.test.ts` (36 cenários nomeados PASSED)**:
   - Cenários 1 a 6: Consulta de apoio para obrigações prontas, zeradas, acumuladas, vencidas e pagas.
   - Cenários 7 a 14: Registro de evidência, monotonicidade de revisão, auditoria, validação de campos.
@@ -107,6 +116,7 @@ A **Fase 4K.2** responde com rigor absoluto à pergunta:
   - **59 arquivos / 481 testes aprovados (100% PASSED)**.
 
 ### 3.3 Testes de Banco de Dados & Migrations (`pnpm test:database`)
+
 - Executado contra PostgreSQL 16.x real (`atlas_test` porta 5433).
 - **20 migrations canônicas verificadas e aprovadas**:
   - Prova de banco limpo (0 tabelas → 20 migrations aplicadas com sucesso).
@@ -115,6 +125,7 @@ A **Fase 4K.2** responde com rigor absoluto à pergunta:
 - **25 arquivos / 133 testes aprovados (100% PASSED)**.
 
 ### 3.4 Regressão de Plataforma & Foundation
+
 - `pnpm test:api`: 38 arquivos / 269 testes aprovados (100% PASSED).
 - `pnpm test:security`: 14 arquivos / 55 testes aprovados (100% PASSED).
 - `pnpm test:auth`: 9 arquivos / 31 testes aprovados (100% PASSED).
@@ -135,6 +146,7 @@ A **Fase 4K.2** responde com rigor absoluto à pergunta:
 ---
 
 ## 4. Governança e Contratos Atualizados
+
 - **Contrato Formal**: `docs/contracts/tax-payment-support-v1.md` criado e congelado.
 - **Registro de Decisão Arquitetural**: `docs/decisions/ADR-286-tax-payment-support-and-settlement-evidence.md` aceito e registrado.
 - **Regras de Agente**: `AGENTS.md` atualizado com a **Seção 83 (Apoio a Pagamento de DARF e Evidência de Liquidação Fiscal — Fase 4K.2)**.
