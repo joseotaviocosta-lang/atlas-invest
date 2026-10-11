@@ -2350,30 +2350,37 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
 
 ---
 
-## 83. Apoio a Pagamento de DARF e Evidência de Liquidação Fiscal (Fase 4K.2)
+## 83. Apoio a Pagamento de DARF e Evidência de Liquidação Fiscal (Fase 4K.2 / 4K.2B)
 
 1. **PROJEÇÃO PURA E ZERO RECÁLCULO FISCAL (ADR-286):**
    - O motor de apoio a pagamento de DARF (`deriveTaxPaymentSupport`) é uma **projeção puramente derivada** sobre a obrigação fiscal autoritativa upstream (Fases 4G e 4K.1).
    - É **terminantemente proibido** recalcular valores devidos, juros, multas de mora, taxas SELIC, compensações de prejuízo, ou datas de vencimento na camada de apoio a pagamento.
-2. **REGISTRO DE EVIDÊNCIA DE PAGAMENTO REVISIONADO E APPEND-ONLY:**
+   - Status de apoio a pagamento válidos: `READY`, `NOT_APPLICABLE`, `BLOCKED`, `STALE`, `REQUIRES_REVIEW`.
+2. **ISOLAMENTO DA AUTORIDADE FISCAL (LIMIAR MÍNIMO DE DARF):**
+   - O motor de apoio a pagamento **NÃO** implementa nem avalia regras locais de valor mínimo (`< R$ 10,00`).
+   - Regras de acúmulo de DARF mínimo pertencem exclusivamente aos motores tributários upstream (`TaxObligation` / `@atlas/tax-engine`). O apoio a pagamento apenas consome o montante e status autoritativos da obrigação.
+3. **REGISTRO DE EVIDÊNCIA DE PAGAMENTO E IDEMPOTÊNCIA SEMÂNTICA (MIGRAÇÃO 21):**
    - Evidências de pagamento informadas pelo investidor são persistidas na tabela `tax_settlement_records`.
-   - Inserções de nova evidência ou correções sempre gravam uma nova revisão incremental (`revision = max + 1`) sob a restrição de unicidade composta `(tax_subject_id, obligation_key, revision)`.
-   - É **proibido** atualizar in-place ou excluir linhas de evidência previamente registradas.
-3. **STATUS DE VERIFICAÇÃO ESTRITAMENTE `USER_REPORTED`:**
+   - Cada evidência computa deterministicamente um `evidence_fingerprint` (SHA-256) sobre os dados semânticos normalizados (`paymentDate`, `amountReported` decimal canônico, `revenueCodeReported`, `referencePeriod`, `externalReference`).
+   - Restrição de unicidade semântica: `@@unique([taxSubjectId, obligationKey, sourceFingerprint, evidenceFingerprint], name: "tax_settlement_record_semantic_identity", map: "tax_settlement_record_semantic_uniq")`.
+   - Submissões concorrentes ou repetidas com payload semanticamente idêntico retornam o registro existente (`outcome: 'IDEMPOTENT'`) com a mesma revisão 1, sem inflar contadores ou duplicar linhas.
+   - Submissões com dados distintos gravam compulsoriamente uma nova revisão incremental (`revision = max + 1`).
+   - É **proibido** atualizar in-place ou excluir linhas de evidência previamente registradas (append-only estrito).
+4. **STATUS DE VERIFICAÇÃO ESTRITAMENTE `USER_REPORTED`:**
    - Todo registro de pagamento externo é classificado compulsoriamente como `USER_REPORTED`.
    - O Atlas **NUNCA** afirma quitação fiscal oficial perante a Receita Federal do Brasil, nem alega verificação junto ao Sicalc, e-CAC ou rede arrecadadora bancária.
-4. **RECONCILIAÇÃO DETERMINÍSTICA E SUPERSESSÃO:**
+5. **RECONCILIAÇÃO DETERMINÍSTICA E ESTADO ESTÁVEL `STALE_SOURCE`:**
    - O estado de reconciliação entre as evidências registradas e a obrigação autoritativa é categorizado estritamente em:
-     - `NONE`: Nenhuma evidência registrada.
-     - `MATCHED`: A soma das parcelas registradas é exatamente igual ao valor a pagar (`totalPayable`).
-     - `OVERPAID`: A soma das parcelas registradas supera o valor a pagar.
-     - `UNDERPAID`: A soma das parcelas registradas é inferior ao valor a pagar.
-     - `SUPERSEDED`: O fingerprint ou valor da obrigação fiscal mudou após o registro da evidência, sinalizando necessidade de conferência sem destruir o histórico.
-5. **PRECISÃO ARBITRÁRIA DECIMAL (ZERO FLOATS):**
-   - Todos os montantes monetários (`principalAmount`, `totalPayable`, `paidAmount`) são serializados e manipulados como strings decimais canônicas baseadas em `Money` / `NUMERIC(38, 18)`. Tipos flutuantes (`number`) são rigorosamente proibidos.
-6. **SANITIZAÇÃO CONTRA INJEÇÃO DE FÓRMULAS EM EXPORTAÇÃO CSV:**
+     - `NO_EVIDENCE`: Nenhuma evidência registrada.
+     - `USER_REPORTED_MATCH`: A evidência mais recente coincide com o montante principal, período de referência e código de receita.
+     - `USER_REPORTED_MISMATCH`: Divergência de montante, período de referência ou código de receita.
+     - `STALE_SOURCE`: O `sourceFingerprint` da obrigação divergiu do fingerprint da evidência registrada (ex.: recálculo ou alteração upstream). O estado reconciliado final é estritamente assentado como `STALE_SOURCE`.
+     - `REQUIRES_REVIEW`: Anomalia que requer revisão manual do investidor.
+6. **PRECISÃO ARBITRÁRIA DECIMAL (ZERO FLOATS):**
+   - Todos os montantes monetários (`principalAmount`, `amount`, `amountReported`) são serializados e manipulados como strings decimais canônicas baseadas em `Money` / `NUMERIC(38, 18)`. Tipos flutuantes (`number`) são rigorosamente proibidos.
+7. **SANITIZAÇÃO CONTRA INJEÇÃO DE FÓRMULAS EM EXPORTAÇÃO CSV:**
    - O endpoint de exportação CSV sanitiza compulsoriamente caracteres de início de fórmula (`=`, `+`, `-`, `@`) prefixando-os com apóstrofo (`'`), prevenindo ataques de formula injection (OWASP CSV Injection).
-7. **ISOLAMENTO MULTITENANT E ANTI-ENUMERAÇÃO:**
+8. **ISOLAMENTO MULTITENANT E ANTI-ENUMERAÇÃO:**
    - Consultas de apoio a pagamento e submissões de evidência pertencentes a outro contribuinte respondem compulsoriamente com `404 Not Found`.
-8. **DISCLAIMER OBRIGATÓRIO EM TODAS AS INTERFACES E RESPOSTAS:**
+9. **DISCLAIMER OBRIGATÓRIO EM TODAS AS INTERFACES E RESPOSTAS:**
    - Toda resposta de API e interface (Web e Mobile) deve exibir de forma visível o aviso legal informando que o Atlas não realiza nem confirma pagamentos de DARF e que a liquidação deve ser feita pelo investidor em canais bancários autorizados.

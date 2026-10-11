@@ -4,7 +4,10 @@ import {
   TaxSettlementRow,
   TaxSettlementWriteOutcome,
 } from '@atlas/database';
-import { TaxPaymentEvidenceRecord } from '@atlas/tax-engine';
+import {
+  TaxPaymentEvidenceRecord,
+  computeTaxSettlementEvidenceFingerprint,
+} from '@atlas/tax-engine';
 import { TAX_SETTLEMENT_REPOSITORY } from '../../database/tokens';
 import { GetTaxComplianceTimelineUseCase } from './get-tax-compliance-timeline.use-case';
 
@@ -28,6 +31,7 @@ export function mapSettlementRowToEvidenceRecord(row: TaxSettlementRow): TaxPaym
     taxSubjectId: row.taxSubjectId,
     obligationKey: row.obligationKey,
     sourceFingerprint: row.sourceFingerprint,
+    evidenceFingerprint: row.evidenceFingerprint,
     revision: row.revision,
     paymentDate: `${y}-${m}-${d}`,
     amountReported: row.amountReported,
@@ -85,11 +89,26 @@ export class RecordTaxPaymentEvidenceUseCase {
       throw new NotFoundException(`Tax obligation '${input.obligationKey}' was not found.`);
     }
 
-    // 4. Record evidence in append-only / revisioned repository
+    // 4. Compute deterministic semantic evidence fingerprint
+    const evidenceFingerprint = computeTaxSettlementEvidenceFingerprint({
+      taxSubjectId: input.taxSubjectId,
+      obligationKey: input.obligationKey,
+      sourceFingerprint: obligation.sourceFingerprint,
+      paymentDate: input.paymentDate,
+      amountReported: input.amountReported,
+      revenueCodeReported: input.revenueCodeReported ?? null,
+      referencePeriod: input.referencePeriod,
+      externalReference: input.externalReference ?? null,
+      note: input.note ?? null,
+      verificationStatus: 'USER_REPORTED',
+    });
+
+    // 5. Record evidence in append-only / revisioned repository with DB-enforced idempotency
     const result = await this.settlementRepository.create({
       taxSubjectId: input.taxSubjectId,
       obligationKey: input.obligationKey,
       sourceFingerprint: obligation.sourceFingerprint,
+      evidenceFingerprint,
       paymentDate: input.paymentDate,
       amountReported: input.amountReported,
       revenueCodeReported: input.revenueCodeReported ?? null,

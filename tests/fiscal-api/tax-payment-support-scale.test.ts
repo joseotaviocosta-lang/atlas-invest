@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import request from 'supertest';
+import { createHash } from 'crypto';
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -108,16 +109,22 @@ describe('Phase 4K.2 — Tax Payment Support Scale & Query Budget Test', () => {
           const thisChunk = Math.min(chunkSize, toInsert - inserted);
           const chunkData = Array.from({ length: thisChunk }, (_, i) => {
             const rev = currentCount + inserted + i + 1;
+            const extRef = `SCALE-REF-${rev}`;
+            const evidenceFingerprint = createHash('sha256')
+              .update(`2026-04-20|1000|6015|2026-01|${extRef}`)
+              .digest('hex');
             return {
               id: uuidFor(`scale-${targetCount}-${rev}`),
               taxSubjectId: user1,
               obligationKey: key,
               revision: rev,
               sourceFingerprint: `fp-scale-2026-01`,
+              evidenceFingerprint,
               paymentDate: new Date('2026-04-20T00:00:00.000Z'),
               amountReported: '1000.00',
               revenueCodeReported: '6015',
               referencePeriod: '2026-01',
+              externalReference: extRef,
               verificationStatus: 'USER_REPORTED',
             };
           });

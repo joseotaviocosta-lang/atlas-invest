@@ -41,25 +41,42 @@ Atlas explicitly does not operate as a financial institution, payment initiation
 
 ### 1. Data Model (`tax_settlement_records`)
 
-Added via Migration 20 (`20261011000000_add_tax_settlement_records`):
+Added via Migration 20 (`20261011000000_add_tax_settlement_records`) and refined in Phase 4K.2B via Migration 21 (`20261011120000_add_tax_settlement_evidence_fingerprint`):
 
 - `id` (UUID PRIMARY KEY)
 - `tax_subject_id` (UUID NOT NULL, REFERENCES users)
 - `obligation_key` (VARCHAR NOT NULL)
 - `revision` (INTEGER NOT NULL)
-- `paid_amount` (NUMERIC(38, 18) NOT NULL)
-- `paid_at_date` (DATE NOT NULL)
-- `payment_method` (VARCHAR NOT NULL)
-- `bank_or_channel` (VARCHAR NULL)
-- `auth_code_or_protocol` (VARCHAR NULL)
-- `document_ref` (VARCHAR NULL)
-- `notes` (TEXT NULL)
-- `verification_status` (VARCHAR NOT NULL DEFAULT 'USER_REPORTED')
 - `source_fingerprint` (VARCHAR NOT NULL)
+- `evidence_fingerprint` (VARCHAR(64) NOT NULL)
+- `payment_date` (DATE NOT NULL)
+- `amount_reported` (NUMERIC(38, 18) NOT NULL)
+- `revenue_code_reported` (VARCHAR NULL)
+- `reference_period` (VARCHAR NOT NULL)
+- `external_reference` (VARCHAR NULL)
+- `note` (TEXT NULL)
+- `verification_status` (VARCHAR NOT NULL DEFAULT 'USER_REPORTED')
 - `created_at` (TIMESTAMPTZ NOT NULL DEFAULT NOW())
 
-Unique constraint: `(tax_subject_id, obligation_key, revision)`
-Index: `(tax_subject_id, obligation_key, revision DESC)`
+Constraints and Indexes:
+
+- Revision unique constraint: `@@unique([taxSubjectId, obligationKey, revision], name: "tax_settlement_record_rev_uniq")`
+- Semantic identity unique constraint (Phase 4K.2B): `@@unique([taxSubjectId, obligationKey, sourceFingerprint, evidenceFingerprint], name: "tax_settlement_record_semantic_identity", map: "tax_settlement_record_semantic_uniq")`
+- Revision ordering index: `@@index([taxSubjectId, obligationKey, revision(sort: Desc)], map: "tax_settlement_record_lookup_idx")`
+
+### 1.1 Semantic Idempotency & Dedup Invariant (Phase 4K.2B)
+
+When a client submits payment evidence identical to an existing record for the same tax subject, obligation key, and source fingerprint:
+
+- `computeTaxSettlementEvidenceFingerprint` produces a deterministic SHA-256 hash using normalized civil date and decimal strings.
+- The repository checks the semantic unique constraint and intercepts PostgreSQL `P2002` uniqueness conflicts, returning the existing record with `{ outcome: 'IDEMPOTENT' }`.
+- Revisions are monotonic: identical concurrent submissions return revision 1 without revision drift or duplicate rows. Distinct evidence submissions monotonically increment `revision = max + 1`.
+
+### 1.2 Fiscal Authority Boundary (Phase 4K.2B)
+
+- The payment support engine strictly isolates from tax computation rules. It contains **zero** local minimum-DARF (`< 10.00`) logic.
+- Obligation payable status and accumulation rules belong exclusively to upstream engines (`TaxObligation` / `@atlas/tax-engine`).
+- Payment support strictly checks `obligation.amount > 0` to decide `READY` status.
 
 ### 2. Reconciliation Engine
 

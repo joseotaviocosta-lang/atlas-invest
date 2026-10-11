@@ -760,6 +760,7 @@ model TaxSettlementRecord {
   taxSubjectId        String   @map("tax_subject_id") @db.Uuid
   obligationKey       String   @map("obligation_key") @db.VarChar(255)
   sourceFingerprint   String   @map("source_fingerprint") @db.VarChar(64)
+  evidenceFingerprint String   @map("evidence_fingerprint") @db.VarChar(64)
   revision            Int      @default(1)
   paymentDate         DateTime @map("payment_date") @db.Date
   amountReported      Decimal  @map("amount_reported") @db.Decimal(38, 18)
@@ -773,6 +774,7 @@ model TaxSettlementRecord {
   taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
 
   @@unique([taxSubjectId, obligationKey, revision], name: "tax_settlement_record_revision_identity", map: "tax_settlement_record_rev_uniq")
+  @@unique([taxSubjectId, obligationKey, sourceFingerprint, evidenceFingerprint], name: "tax_settlement_record_semantic_identity", map: "tax_settlement_record_semantic_uniq")
   @@index([taxSubjectId, obligationKey], map: "tax_settlement_record_lookup_idx")
   @@index([taxSubjectId, referencePeriod], map: "tax_settlement_record_period_idx")
   @@map("tax_settlement_records")

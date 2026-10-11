@@ -1205,6 +1205,7 @@ export interface TaxSettlementRow {
   taxSubjectId: string;
   obligationKey: string;
   sourceFingerprint: string;
+  evidenceFingerprint: string;
   revision: number;
   paymentDate: Date;
   amountReported: string;
@@ -1221,6 +1222,7 @@ export interface TaxSettlementWriteInput {
   taxSubjectId: string;
   obligationKey: string;
   sourceFingerprint: string;
+  evidenceFingerprint?: string;
   paymentDate: Date | string;
   amountReported: string;
   revenueCodeReported?: string | null;

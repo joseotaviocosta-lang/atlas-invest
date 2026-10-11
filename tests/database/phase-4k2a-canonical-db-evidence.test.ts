@@ -109,13 +109,14 @@ describe('Phase 4K.2A — Canonical Database Version & Migration 20 Evidence (Po
       .filter((e) => e.isDirectory() && /^\d{14}_/.test(e.name))
       .map((e) => e.name);
 
-    expect(migrationDirs.length).toBe(20);
+    expect(migrationDirs.length).toBe(21);
 
     const sorted = [...migrationDirs].sort();
     expect(migrationDirs).toEqual(sorted);
 
-    // Latest migration is Migration 20: 20261011000000_add_tax_settlement_records
+    // Latest migrations
     expect(sorted[19]).toBe('20261011000000_add_tax_settlement_records');
+    expect(sorted[20]).toBe('20261011120000_add_tax_settlement_evidence_fingerprint');
 
     // Every migration must have migration.sql
     for (let i = 0; i < sorted.length; i++) {
@@ -143,13 +144,13 @@ describe('Phase 4K.2A — Canonical Database Version & Migration 20 Evidence (Po
     );
     expect(preTables.length).toBe(0);
 
-    // Apply all 20 migrations
+    // Apply all 21 migrations
     const deployOutput = execSync('npx prisma migrate deploy', {
       cwd: path.resolve(__dirname, '../../packages/database'),
       env: { ...process.env, DATABASE_URL: freshDbUrl },
       encoding: 'utf-8',
     });
-    expect(deployOutput).toContain('20 migrations found');
+    expect(deployOutput).toContain('21 migrations found');
     expect(deployOutput).toContain('Applying migration');
 
     // 2nd deploy is idempotent
@@ -467,6 +468,7 @@ describe('Phase 4K.2A — Canonical Database Version & Migration 20 Evidence (Po
         referencePeriod: '2026-02',
         externalReference: 'UPG-SETTLE-1',
         verificationStatus: 'USER_REPORTED',
+        evidenceFingerprint: 'dummy-fingerprint-4k2a',
       },
     });
 

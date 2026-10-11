@@ -124,6 +124,19 @@ describe('Phase 4K.2 — Tax Payment Support Fuzz Test (20,000 iterations)', () 
         if (obligation.status === 'SUPERSEDED') {
           expect(res.supportStatus).toBe('STALE');
         }
+
+        // Fuzz Invariant: If latest evidence sourceFingerprint != current obligation sourceFingerprint,
+        // reconciliation MUST NEVER be USER_REPORTED_MATCH.
+        if (
+          res.latestEvidence &&
+          evidenceHistory.length > 0 &&
+          evidenceHistory[evidenceHistory.length - 1].sourceFingerprint !==
+            obligation.sourceFingerprint
+        ) {
+          expect(res.reconciliationStatus).not.toBe('USER_REPORTED_MATCH');
+          expect(res.reconciliationStatus).toBe('STALE_SOURCE');
+          expect(res.latestEvidence.isStale).toBe(true);
+        }
       }
     }
 

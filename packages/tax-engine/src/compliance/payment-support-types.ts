@@ -34,6 +34,7 @@ export interface TaxPaymentEvidenceRecord {
   readonly taxSubjectId: string;
   readonly obligationKey: string;
   readonly sourceFingerprint: string;
+  readonly evidenceFingerprint?: string;
   readonly revision: number;
   /** Civil date "YYYY-MM-DD" */
   readonly paymentDate: string;
@@ -51,6 +52,8 @@ export interface TaxPaymentEvidenceRecord {
 export interface TaxPaymentEvidenceSummary {
   readonly id: string;
   readonly revision: number;
+  readonly sourceFingerprint?: string;
+  readonly evidenceFingerprint?: string;
   readonly paymentDate: string;
   readonly amountReported: string;
   readonly revenueCodeReported: string | null;

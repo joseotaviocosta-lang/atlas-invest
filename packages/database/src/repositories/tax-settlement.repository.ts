@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Prisma, PrismaClient } from '@prisma/client';
 import {
   ITaxSettlementRepository,
@@ -8,6 +8,52 @@ import {
 } from './interfaces';
 import { PersistenceError } from '../errors/persistence-error';
 
+function computeFallbackEvidenceFingerprint(input: {
+  taxSubjectId: string;
+  obligationKey: string;
+  sourceFingerprint: string;
+  paymentDate: Date | string;
+  amountReported: string;
+  revenueCodeReported?: string | null;
+  referencePeriod: string;
+  externalReference?: string | null;
+  note?: string | null;
+  verificationStatus?: string;
+}): string {
+  const pDateStr =
+    typeof input.paymentDate === 'string'
+      ? input.paymentDate.trim().slice(0, 10)
+      : input.paymentDate.toISOString().slice(0, 10);
+
+  const trimmedAmt = input.amountReported.trim();
+  let canonicalAmt = trimmedAmt;
+  if (trimmedAmt.includes('.')) {
+    const [intP, fracP] = trimmedAmt.split('.');
+    const cleanInt = (intP ?? '0').replace(/^0+(?=\d)/, '') || '0';
+    const cleanFrac = (fracP ?? '').replace(/0+$/, '');
+    canonicalAmt = cleanFrac ? `${cleanInt}.${cleanFrac}` : cleanInt;
+  } else {
+    canonicalAmt = trimmedAmt.replace(/^0+(?=\d)/, '') || '0';
+  }
+
+  const payload = {
+    amountReported: canonicalAmt,
+    externalReference: input.externalReference ? input.externalReference.trim() : null,
+    note: input.note ? input.note.trim() : null,
+    obligationKey: input.obligationKey.trim(),
+    paymentDate: pDateStr,
+    referencePeriod: input.referencePeriod.trim(),
+    revenueCodeReported: input.revenueCodeReported ? input.revenueCodeReported.trim() : null,
+    sourceFingerprint: input.sourceFingerprint.trim(),
+    taxSubjectId: input.taxSubjectId.trim().toLowerCase(),
+    verificationStatus: (input.verificationStatus ?? 'USER_REPORTED').trim(),
+  };
+
+  const entries = Object.entries(payload).sort(([a], [b]) => a.localeCompare(b));
+  const serialized = `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${JSON.stringify(v)}`).join(',')}}`;
+  return createHash('sha256').update(serialized).digest('hex');
+}
+
 export class TaxSettlementRepository implements ITaxSettlementRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
@@ -16,6 +62,7 @@ export class TaxSettlementRepository implements ITaxSettlementRepository {
     taxSubjectId: string;
     obligationKey: string;
     sourceFingerprint: string;
+    evidenceFingerprint: string;
     revision: number;
     paymentDate: Date;
     amountReported: Prisma.Decimal;
@@ -31,6 +78,7 @@ export class TaxSettlementRepository implements ITaxSettlementRepository {
       taxSubjectId: row.taxSubjectId,
       obligationKey: row.obligationKey,
       sourceFingerprint: row.sourceFingerprint,
+      evidenceFingerprint: row.evidenceFingerprint,
       revision: row.revision,
       paymentDate: row.paymentDate,
       amountReported: row.amountReported.toString(),
@@ -121,6 +169,25 @@ export class TaxSettlementRepository implements ITaxSettlementRepository {
   async create(
     input: TaxSettlementWriteInput,
   ): Promise<{ outcome: TaxSettlementWriteOutcome; record: TaxSettlementRow }> {
+    const evidenceFingerprint =
+      input.evidenceFingerprint ?? computeFallbackEvidenceFingerprint(input);
+
+    // 1. Semantic uniqueness lookup: If identical evidence was already recorded for this
+    // (taxSubjectId, obligationKey, sourceFingerprint, evidenceFingerprint), return IDEMPOTENT.
+    const existing = await this.prisma.taxSettlementRecord.findUnique({
+      where: {
+        tax_settlement_record_semantic_identity: {
+          taxSubjectId: input.taxSubjectId,
+          obligationKey: input.obligationKey,
+          sourceFingerprint: input.sourceFingerprint,
+          evidenceFingerprint,
+        },
+      },
+    });
+    if (existing) {
+      return { outcome: 'IDEMPOTENT', record: this.map(existing) };
+    }
+
     const maxRetries = 5;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -129,21 +196,11 @@ export class TaxSettlementRepository implements ITaxSettlementRepository {
           obligationKey: input.obligationKey,
         });
 
-        const paymentDateStr =
-          typeof input.paymentDate === 'string'
-            ? input.paymentDate
-            : input.paymentDate.toISOString().slice(0, 10);
-
-        // Idempotency check: if all reported fields match the latest record, return IDEMPOTENT
+        // Double check latest matches semantic fingerprint
         if (
           latest &&
           latest.sourceFingerprint === input.sourceFingerprint &&
-          latest.amountReported === input.amountReported &&
-          latest.paymentDate.toISOString().slice(0, 10) === paymentDateStr &&
-          latest.referencePeriod === input.referencePeriod &&
-          latest.externalReference === (input.externalReference ?? null) &&
-          latest.revenueCodeReported === (input.revenueCodeReported ?? null) &&
-          latest.note === (input.note ?? null)
+          latest.evidenceFingerprint === evidenceFingerprint
         ) {
           return { outcome: 'IDEMPOTENT', record: latest };
         }
@@ -151,7 +208,7 @@ export class TaxSettlementRepository implements ITaxSettlementRepository {
         const nextRevision = latest ? latest.revision + 1 : 1;
         const paymentDateObj =
           typeof input.paymentDate === 'string'
-            ? new Date(`${input.paymentDate}T00:00:00.000Z`)
+            ? new Date(`${input.paymentDate.trim().slice(0, 10)}T00:00:00.000Z`)
             : input.paymentDate;
 
         const created = await this.prisma.taxSettlementRecord.create({
@@ -160,13 +217,16 @@ export class TaxSettlementRepository implements ITaxSettlementRepository {
             taxSubjectId: input.taxSubjectId,
             obligationKey: input.obligationKey,
             sourceFingerprint: input.sourceFingerprint,
+            evidenceFingerprint,
             revision: nextRevision,
             paymentDate: paymentDateObj,
             amountReported: new Prisma.Decimal(input.amountReported),
-            revenueCodeReported: input.revenueCodeReported ?? null,
-            referencePeriod: input.referencePeriod,
-            externalReference: input.externalReference ?? null,
-            note: input.note ?? null,
+            revenueCodeReported: input.revenueCodeReported
+              ? input.revenueCodeReported.trim()
+              : null,
+            referencePeriod: input.referencePeriod.trim(),
+            externalReference: input.externalReference ? input.externalReference.trim() : null,
+            note: input.note ? input.note.trim() : null,
             verificationStatus: input.verificationStatus ?? 'USER_REPORTED',
           },
         });
@@ -176,14 +236,28 @@ export class TaxSettlementRepository implements ITaxSettlementRepository {
           record: this.map(created),
         };
       } catch (err: unknown) {
-        if (
-          err instanceof Prisma.PrismaClientKnownRequestError &&
-          err.code === 'P2002' &&
-          attempt < maxRetries
-        ) {
-          // Retry on unique constraint collision on (taxSubjectId, obligationKey, revision)
-          await new Promise((resolve) => setTimeout(resolve, Math.random() * 25 + 5));
-          continue;
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          // Check if collision occurred on the semantic uniqueness constraint
+          const duplicate = await this.prisma.taxSettlementRecord.findUnique({
+            where: {
+              tax_settlement_record_semantic_identity: {
+                taxSubjectId: input.taxSubjectId,
+                obligationKey: input.obligationKey,
+                sourceFingerprint: input.sourceFingerprint,
+                evidenceFingerprint,
+              },
+            },
+          });
+          if (duplicate) {
+            return { outcome: 'IDEMPOTENT', record: this.map(duplicate) };
+          }
+
+          // Otherwise collision occurred on (taxSubjectId, obligationKey, revision).
+          // Concurrent distinct submissions raced for the same revision slot — retry with backoff.
+          if (attempt < maxRetries) {
+            await new Promise((resolve) => setTimeout(resolve, Math.random() * 25 + 5));
+            continue;
+          }
         }
         if (err instanceof PersistenceError) {
           throw err;

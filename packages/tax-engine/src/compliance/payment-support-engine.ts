@@ -106,6 +106,8 @@ export function deriveTaxPaymentSupport(
     latestEvidenceSummary = {
       id: latest.id,
       revision: latest.revision,
+      sourceFingerprint: latest.sourceFingerprint,
+      evidenceFingerprint: latest.evidenceFingerprint,
       paymentDate: latest.paymentDate,
       amountReported: latest.amountReported,
       revenueCodeReported: latest.revenueCodeReported,

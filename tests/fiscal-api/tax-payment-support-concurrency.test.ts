@@ -83,14 +83,14 @@ describe('Phase 4K.2 — Tax Payment Support & Settlement Concurrency Matrix', (
     });
   }
 
-  it('Scenario 1 (Concurrency): 10 concurrent duplicate evidence submissions on the same obligation assign monotonic revisions 1..10 with zero failures', async () => {
+  it('Scenario 1 (Concurrency): 10 concurrent identical evidence submissions are semantically idempotent and yield exactly 1 canonical record (revision 1) without revision inflation', async () => {
     const token = await session(user1);
     const obId = uuidFor('ob-concurrent-1');
     await seedObligation({ id: obId, userId: user1, competence: '2026-01', amount: '1000.00' });
     const key = `${user1}:2026-01:MONTHLY_TAX_PAYMENT:monthly-6015`;
 
-    // Fire 10 concurrent requests simultaneously
-    const requests = Array.from({ length: 10 }, (_, i) =>
+    // Fire 10 identical concurrent requests simultaneously with identical payload
+    const requests = Array.from({ length: 10 }, () =>
       request(app.getHttpServer())
         .post(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-evidence`)
         .set('Authorization', `Bearer ${token}`)
@@ -98,8 +98,8 @@ describe('Phase 4K.2 — Tax Payment Support & Settlement Concurrency Matrix', (
           paymentDate: '2026-04-20',
           amountReported: '1000.00',
           referencePeriod: '2026-01',
-          externalReference: `CONC-REQ-${i}`,
-          note: `Concurrent submission ${i}`,
+          externalReference: 'CONC-REQ-SAME',
+          note: 'Concurrent identical submission',
         }),
     );
 
@@ -107,19 +107,22 @@ describe('Phase 4K.2 — Tax Payment Support & Settlement Concurrency Matrix', (
     const statuses = responses.map((r) => r.status);
     expect(statuses.every((s) => s === 201)).toBe(true);
 
-    const revisions = responses
-      .map((r) => (r.body.data as TaxPaymentEvidenceRecord).revision)
-      .sort((a, b) => a - b);
-    expect(revisions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    // All callers receive the exact same canonical revision (1) with identical ID
+    const revisions = responses.map((r) => (r.body.data as TaxPaymentEvidenceRecord).revision);
+    expect(revisions.every((rev) => rev === 1)).toBe(true);
+    const canonicalId = responses[0].body.data.id;
+    expect(responses.every((r) => r.body.data.id === canonicalId)).toBe(true);
 
-    // Verify DB history
+    // Verify DB history has strictly 1 canonical record (zero duplicate semantic records, zero revision inflation)
     const historyRes = await request(app.getHttpServer())
       .get(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-evidence`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
     const history: TaxPaymentEvidenceRecord[] = historyRes.body.data;
-    expect(history.length).toBe(10);
+    expect(history.length).toBe(1);
+    expect(history[0].revision).toBe(1);
+    expect(history[0].id).toBe(canonicalId);
   });
 
   it('Scenario 2 (Concurrency): two distinct evidence submissions concurrently assign monotonic revisions and preserve distinct payload history', async () => {
@@ -165,7 +168,7 @@ describe('Phase 4K.2 — Tax Payment Support & Settlement Concurrency Matrix', (
     expect(notes).toEqual(['Submission Alpha', 'Submission Beta']);
   });
 
-  it('Scenario 3 (Concurrency): evidence + source change — concurrent evidence submission + source obligation recalculation resolves deterministically', async () => {
+  it('Scenario 3 (Concurrency): evidence + source change — settled state is strictly and deterministically STALE_SOURCE without ambiguity', async () => {
     const token = await session(user1);
     const obId = uuidFor('ob-concurrent-3');
     await seedObligation({
@@ -177,32 +180,72 @@ describe('Phase 4K.2 — Tax Payment Support & Settlement Concurrency Matrix', (
     });
     const key = `${user1}:2026-03:MONTHLY_TAX_PAYMENT:monthly-6015`;
 
-    const writeEvidence = request(app.getHttpServer())
+    // 1. Initial evidence recorded and matched against initial source fingerprint A
+    const evInit = await request(app.getHttpServer())
       .post(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-evidence`)
       .set('Authorization', `Bearer ${token}`)
       .send({
         paymentDate: '2026-05-20',
         amountReported: '400.00',
         referencePeriod: '2026-03',
-      });
+        externalReference: 'PAY-INIT-V1',
+      })
+      .expect(201);
+    expect(evInit.body.data.sourceFingerprint).toBe('fp-conc-initial-v1');
 
+    // Initial read verifies MATCH against initial source A
+    const initSupport = await request(app.getHttpServer())
+      .get(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-support`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(initSupport.body.data.reconciliationStatus).toBe('USER_REPORTED_MATCH');
+
+    // 2. Concurrently: source obligation updates to fingerprint B while concurrent reads take place
     const updateSource = prisma.taxObligationRecord.update({
       where: { id: obId },
-      data: { liabilityFingerprint: 'fp-conc-updated-v2' },
+      data: {
+        liabilityFingerprint: 'fp-conc-updated-v2',
+        principalAmount: '450.00',
+      },
     });
 
-    const [evRes] = await Promise.all([writeEvidence, updateSource]);
-    expect(evRes.status).toBe(201);
+    const readDuringUpdate = Promise.all(
+      Array.from({ length: 5 }, () =>
+        request(app.getHttpServer())
+          .get(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-support`)
+          .set('Authorization', `Bearer ${token}`),
+      ),
+    );
 
-    const supportRes = await request(app.getHttpServer())
+    const [updatedOb, readResults] = await Promise.all([updateSource, readDuringUpdate]);
+    expect(updatedOb.liabilityFingerprint).toBe('fp-conc-updated-v2');
+    expect(readResults.every((r) => r.status === 200)).toBe(true);
+
+    // 3. After all operations settle:
+    // Final reconciliation against current source B MUST strictly and deterministically be STALE_SOURCE!
+    const settledSupportRes = await request(app.getHttpServer())
       .get(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-support`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
-    // After source fingerprint update, support is either MATCH (if evidence was recorded after update) or STALE_SOURCE (if recorded before)
-    expect(['USER_REPORTED_MATCH', 'STALE_SOURCE']).toContain(
-      supportRes.body.data.reconciliationStatus,
-    );
+    const settled = settledSupportRes.body.data;
+    expect(settled.sourceFingerprint).toBe('fp-conc-updated-v2');
+    expect(['450', '450.00']).toContain(settled.amount);
+    expect(settled.latestEvidence).not.toBeNull();
+    expect(settled.latestEvidence.sourceFingerprint).toBe('fp-conc-initial-v1');
+    expect(settled.latestEvidence.revision).toBe(1);
+    expect(settled.latestEvidence.isStale).toBe(true);
+    // Invariant: Evidence bound to A never matches current source B. Settled state is strictly STALE_SOURCE.
+    expect(settled.reconciliationStatus).toBe('STALE_SOURCE');
+    expect(settled.supportStatus).toBe('STALE');
+
+    // Old evidence preserved historically (not overwritten or mutated)
+    const historyRes = await request(app.getHttpServer())
+      .get(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-evidence`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(historyRes.body.data.length).toBe(1);
+    expect(historyRes.body.data[0].sourceFingerprint).toBe('fp-conc-initial-v1');
   });
 
   it('Scenario 4 (Concurrency): evidence + compliance reopen — concurrent evidence submission and user reopen action resolve deterministically', async () => {

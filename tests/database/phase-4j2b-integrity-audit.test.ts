@@ -86,7 +86,7 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
       encoding: 'utf-8',
     });
 
-    expect(output).toContain('20 migrations found in prisma/migrations');
+    expect(output).toContain('21 migrations found in prisma/migrations');
     expect(output).toContain('All migrations have been successfully applied.');
 
     // Second deploy must be a clean no-op
@@ -100,7 +100,7 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
     const applied = await freshPrisma.$queryRawUnsafe<Array<{ count: bigint }>>(
       `SELECT count(*) as count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL`,
     );
-    expect(Number(applied[0]!.count)).toBe(20);
+    expect(Number(applied[0]!.count)).toBe(21);
   }, 180_000);
 
   // --------------------------------------------------------------------------
@@ -267,7 +267,7 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
       .map((entry) => entry.name)
       .sort();
 
-    expect(allMigrationDirs.length).toBe(20);
+    expect(allMigrationDirs.length).toBe(21);
 
     // Apply migrations 1..16 manually
     const preFinalMigrations = allMigrationDirs.slice(0, 16);
@@ -545,7 +545,7 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
       .filter((e) => e.isDirectory())
       .map((e) => e.name);
 
-    expect(allDirs.length).toBe(20);
+    expect(allDirs.length).toBe(21);
 
     // Verify all directories have valid timestamp prefixes (YYYYMMDDHHMMSS)
     for (const dir of allDirs) {
@@ -561,10 +561,10 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
     // Verify timestamps are unique
     const timestamps = allDirs.map((d) => d.split('_')[0]);
     const uniqueTimestamps = new Set(timestamps);
-    expect(uniqueTimestamps.size).toBe(20);
+    expect(uniqueTimestamps.size).toBe(21);
 
     // Verify migration names are unique
     const uniqueNames = new Set(allDirs);
-    expect(uniqueNames.size).toBe(20);
+    expect(uniqueNames.size).toBe(21);
   });
 });

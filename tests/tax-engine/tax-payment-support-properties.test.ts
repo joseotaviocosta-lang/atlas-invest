@@ -3,6 +3,7 @@ import {
   deriveTaxPaymentSupport,
   TaxComplianceObligation,
   TaxPaymentEvidenceRecord,
+  computeTaxSettlementEvidenceFingerprint,
 } from '../../packages/tax-engine/src';
 
 function mockObligation(overrides: Partial<TaxComplianceObligation> = {}): TaxComplianceObligation {
@@ -168,22 +169,49 @@ describe('Phase 4K.2A — Tax Payment Support Property Tests (All 8 Required)', 
     expect(res?.amount).toBe('600.00'); // Authoritative amount is preserved
   });
 
-  it('7. semantic dedup: duplicate evidence records in history are deduplicated deterministically by revision and timestamp', () => {
+  it('7. semantic dedup: N identical semantic evidence inputs produce exactly one identical evidenceFingerprint and canonical outcome', () => {
     const ob = mockObligation();
+    const basePayload = {
+      taxSubjectId: 'user-1',
+      obligationKey: ob.obligationKey,
+      sourceFingerprint: ob.sourceFingerprint,
+      paymentDate: '2026-04-20',
+      amountReported: '500.00',
+      revenueCodeReported: '6015',
+      referencePeriod: '2026-03',
+      externalReference: 'REF-SAME',
+      note: 'Same note',
+      verificationStatus: 'USER_REPORTED',
+    };
+
+    const fp = computeTaxSettlementEvidenceFingerprint(basePayload);
+    expect(fp).toMatch(/^[a-f0-9]{64}$/);
+
+    // Any number of duplicate identical submissions generate the exact same fingerprint
+    for (const count of [2, 5, 10, 50, 100]) {
+      const duplicateFps = Array.from({ length: count }, () =>
+        computeTaxSettlementEvidenceFingerprint(basePayload),
+      );
+      expect(new Set(duplicateFps).size).toBe(1);
+    }
+
     const evA = mockEvidence({
       id: 'ev-1a',
       revision: 1,
+      evidenceFingerprint: fp,
       createdAt: '2026-04-20T12:00:00.000Z',
     });
     const evB = mockEvidence({
       id: 'ev-1b',
       revision: 1,
-      createdAt: '2026-04-20T12:00:01.000Z', // Later timestamp wins if revision is identical
+      evidenceFingerprint: fp,
+      createdAt: '2026-04-20T12:00:01.000Z',
     });
 
     const res = deriveTaxPaymentSupport({ obligation: ob, evidenceHistory: [evA, evB] });
     expect(res?.latestEvidence?.id).toBe('ev-1b');
     expect(res?.latestEvidence?.revision).toBe(1);
+    expect(res?.latestEvidence?.evidenceFingerprint).toBe(fp);
     expect(res?.reconciliationStatus).toBe('USER_REPORTED_MATCH');
   });
 
@@ -219,5 +247,125 @@ describe('Phase 4K.2A — Tax Payment Support Property Tests (All 8 Required)', 
     expect(res2?.latestEvidence?.id).toBe('ev-rev-2');
     expect(res2?.latestEvidence?.revision).toBe(2);
     expect(res2?.reconciliationStatus).toBe('USER_REPORTED_MATCH');
+  });
+
+  it('9. distinctness property: changing any material evidence field produces a different evidenceFingerprint', () => {
+    const base = {
+      taxSubjectId: 'user-1',
+      obligationKey: 'user-1:2026-03:MONTHLY_TAX_PAYMENT:eq-6015',
+      sourceFingerprint: 'fp-auth-source-v1',
+      paymentDate: '2026-04-20',
+      amountReported: '500.00',
+      revenueCodeReported: '6015',
+      referencePeriod: '2026-03',
+      externalReference: 'REF-1',
+      note: 'Note 1',
+      verificationStatus: 'USER_REPORTED',
+    };
+    const baseFp = computeTaxSettlementEvidenceFingerprint(base);
+
+    // Material variations:
+    const diffAmount = computeTaxSettlementEvidenceFingerprint({
+      ...base,
+      amountReported: '500.01',
+    });
+    const diffDate = computeTaxSettlementEvidenceFingerprint({
+      ...base,
+      paymentDate: '2026-04-21',
+    });
+    const diffRevCode = computeTaxSettlementEvidenceFingerprint({
+      ...base,
+      revenueCodeReported: '8900',
+    });
+    const diffPeriod = computeTaxSettlementEvidenceFingerprint({
+      ...base,
+      referencePeriod: '2026-02',
+    });
+    const diffRef = computeTaxSettlementEvidenceFingerprint({
+      ...base,
+      externalReference: 'REF-2',
+    });
+    const diffNote = computeTaxSettlementEvidenceFingerprint({ ...base, note: 'Note 2' });
+    const diffSourceFp = computeTaxSettlementEvidenceFingerprint({
+      ...base,
+      sourceFingerprint: 'fp-auth-source-v2',
+    });
+    const diffSubject = computeTaxSettlementEvidenceFingerprint({
+      ...base,
+      taxSubjectId: 'user-2',
+    });
+
+    expect(diffAmount).not.toBe(baseFp);
+    expect(diffDate).not.toBe(baseFp);
+    expect(diffRevCode).not.toBe(baseFp);
+    expect(diffPeriod).not.toBe(baseFp);
+    expect(diffRef).not.toBe(baseFp);
+    expect(diffNote).not.toBe(baseFp);
+    expect(diffSourceFp).not.toBe(baseFp);
+    expect(diffSubject).not.toBe(baseFp);
+
+    // All variations must be pairwise distinct
+    const allFps = new Set([
+      baseFp,
+      diffAmount,
+      diffDate,
+      diffRevCode,
+      diffPeriod,
+      diffRef,
+      diffNote,
+      diffSourceFp,
+      diffSubject,
+    ]);
+    expect(allFps.size).toBe(9);
+  });
+
+  it('10. evidence replay property: replaying identical payload 1, 10, 100, 1,000 times yields same semantic identity', () => {
+    const payload = {
+      taxSubjectId: 'user-replay',
+      obligationKey: 'user-replay:2026-01:MONTHLY_TAX_PAYMENT:eq-6015',
+      sourceFingerprint: 'fp-replay-v1',
+      paymentDate: '2026-02-28',
+      amountReported: '1500.00',
+      revenueCodeReported: '6015',
+      referencePeriod: '2026-01',
+      externalReference: 'REPLAY-1',
+      note: 'Replay test',
+      verificationStatus: 'USER_REPORTED',
+    };
+
+    const first = computeTaxSettlementEvidenceFingerprint(payload);
+    for (const n of [1, 10, 100, 1000]) {
+      for (let i = 0; i < n; i++) {
+        expect(computeTaxSettlementEvidenceFingerprint(payload)).toBe(first);
+      }
+    }
+  });
+
+  it('11. stale-never-match invariant: evidence recorded against divergent source fingerprint NEVER reconciles as USER_REPORTED_MATCH', () => {
+    const obCurrent = mockObligation({
+      sourceFingerprint: 'fp-current-source-v2',
+      amount: '500.00',
+      period: '2026-03',
+    });
+
+    const evStale = mockEvidence({
+      sourceFingerprint: 'fp-old-source-v1',
+      amountReported: '500.00', // Identical amount
+      referencePeriod: '2026-03', // Identical period
+      revenueCodeReported: '6015', // Identical revenue code
+    });
+
+    const support = deriveTaxPaymentSupport({
+      obligation: obCurrent,
+      evidenceHistory: [evStale],
+    });
+
+    expect(support).not.toBeNull();
+    // Critical invariant: Even though amount, period and revenue code match, divergent sourceFingerprint
+    // guarantees that reconciliationStatus is NEVER USER_REPORTED_MATCH.
+    expect(support?.reconciliationStatus).not.toBe('USER_REPORTED_MATCH');
+    expect(support?.reconciliationStatus).toBe('STALE_SOURCE');
+    expect(support?.supportStatus).toBe('STALE');
+    expect(support?.latestEvidence?.isStale).toBe(true);
   });
 });

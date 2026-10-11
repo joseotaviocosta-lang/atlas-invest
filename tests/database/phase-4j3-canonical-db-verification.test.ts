@@ -57,7 +57,7 @@ describe('Phase 4J.3 — Canonical Database Version & Integrity Verification (Po
       encoding: 'utf-8',
     });
 
-    expect(deployOut).toContain('20 migrations found in prisma/migrations');
+    expect(deployOut).toContain('21 migrations found in prisma/migrations');
     expect(deployOut).toContain('Applying migration');
 
     // Confirm migrations recorded in _prisma_migrations
@@ -65,7 +65,7 @@ describe('Phase 4J.3 — Canonical Database Version & Integrity Verification (Po
       Array<{ migration_name: string; finished_at: Date | null }>
     >('SELECT migration_name, finished_at FROM "_prisma_migrations" ORDER BY migration_name ASC');
 
-    expect(applied.length).toBe(20);
+    expect(applied.length).toBe(21);
     for (const m of applied) {
       expect(m.finished_at).not.toBeNull();
     }
@@ -160,7 +160,7 @@ describe('Phase 4J.3 — Canonical Database Version & Integrity Verification (Po
       encoding: 'utf-8',
     });
 
-    expect(deployOut).toContain('20 migrations found in prisma/migrations');
+    expect(deployOut).toContain('21 migrations found in prisma/migrations');
 
     const upgradeUserId = '11111111-1111-4111-8111-111111111111';
     const institutionId = '11111111-1111-4111-8111-111111111112';

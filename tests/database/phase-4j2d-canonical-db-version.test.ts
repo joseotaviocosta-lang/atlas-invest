@@ -653,10 +653,11 @@ describe('Phase 4J.2D — Canonical Database Version & Integrity Audit (PostgreS
       .map((d) => d.name)
       .sort();
 
-    // Verify exactly 20 migrations exist and all prior 19 are preserved
-    expect(entries.length).toBe(20);
+    // Verify exactly 21 migrations exist and all prior are preserved
+    expect(entries.length).toBe(21);
     expect(entries[18]).toBe('20261010000000_add_tax_compliance_actions');
     expect(entries[19]).toBe('20261011000000_add_tax_settlement_records');
+    expect(entries[20]).toBe('20261011120000_add_tax_settlement_evidence_fingerprint');
   });
 
   it('7. Clean Database Teardown: drops probe databases and preserves standing atlas_test', async () => {

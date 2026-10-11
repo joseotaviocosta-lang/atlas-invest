@@ -28,8 +28,7 @@ describe('Phase 4I.6 — High-income review package DB-chain (migrations-only, n
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
 
-    // 4I.6 must not add a migration directory.
-    expect(trackedDirs.length).toBe(20);
+    expect(trackedDirs.length).toBe(21);
 
     const appliedRows = await prisma.$queryRawUnsafe<Array<{ migration_name: string }>>(
       `SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY migration_name`,
