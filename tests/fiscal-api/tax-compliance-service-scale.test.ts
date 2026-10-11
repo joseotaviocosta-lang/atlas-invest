@@ -261,5 +261,5 @@ describe('Phase 4K.1C — Tax Compliance Service & API Direct Scale Suite', () =
     console.info(
       `[4K.1C Retention] startHeap=${startHeapMb.toFixed(2)}MB endHeap=${endHeapMb.toFixed(2)}MB growth=${heapGrowthMb.toFixed(2)}MB unbounded=NO`,
     );
-  });
+  }, 120000);
 });

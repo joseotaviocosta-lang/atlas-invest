@@ -5,13 +5,19 @@ import {
   TAX_COMPLIANCE_USER_ACTION_TYPES,
 } from '@atlas/tax-engine';
 
-export const TaxComplianceTimelineQuerySchema = z.object({
-  calendarYear: z.coerce.number().int().min(1900).max(2100).optional(),
-  status: z.enum(TAX_COMPLIANCE_OBLIGATION_STATUSES).optional(),
-  kind: z.enum(TAX_COMPLIANCE_OBLIGATION_KINDS).optional(),
-  period: z.string().optional(),
-  portfolioId: z.string().uuid().optional(),
-});
+export const TaxComplianceTimelineQuerySchema = z
+  .object({
+    calendarYear: z.coerce.number().int().min(1900).max(2100).optional(),
+    year: z.coerce.number().int().min(1900).max(2100).optional(),
+    status: z.enum(TAX_COMPLIANCE_OBLIGATION_STATUSES).optional(),
+    kind: z.enum(TAX_COMPLIANCE_OBLIGATION_KINDS).optional(),
+    period: z.string().optional(),
+    portfolioId: z.string().uuid().optional(),
+  })
+  .transform((data) => ({
+    ...data,
+    calendarYear: data.calendarYear ?? data.year,
+  }));
 
 export type TaxComplianceTimelineQueryDto = z.infer<typeof TaxComplianceTimelineQuerySchema>;
 

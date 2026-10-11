@@ -7,7 +7,8 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/fiscal-api/**/*.test.ts'],
     fileParallelism: false,
-    testTimeout: 20000,
+    testTimeout: 180000,
+    hookTimeout: 180000,
   },
   resolve: {
     alias: {

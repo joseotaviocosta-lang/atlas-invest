@@ -135,7 +135,7 @@ describe('Phase 4K.1C — Tax Compliance Mandatory Property Test Matrix', () => 
     expect(fp1).toBe(fpPresentationReorder);
   });
 
-  it('Property 4 (Completion Replay Determinism): replaying same action history repeatedly produces same current workflow state', () => {
+  it('Property 4 (Completion Replay Determinism): replaying same action history across 50 iterations produces identical workflow state', () => {
     const actions: TaxComplianceUserActionRecord[] = [
       {
         id: 'act-1',
@@ -166,12 +166,16 @@ describe('Phase 4K.1C — Tax Compliance Mandatory Property Test Matrix', () => 
       userActions: actions,
     };
 
-    const res1 = projectTaxComplianceTimeline(input);
-    const res2 = projectTaxComplianceTimeline(input);
+    const canonical = projectTaxComplianceTimeline(input);
+    expect(canonical.obligations[0].status).toBe('COMPLETED');
+    expect(canonical.summary.completedCount).toBe(1);
 
-    expect(res1.obligations[0].status).toBe('COMPLETED');
-    expect(res2.obligations[0].status).toBe('COMPLETED');
-    expect(res1.summary.completedCount).toBe(res2.summary.completedCount);
+    for (let i = 0; i < 50; i++) {
+      const trial = projectTaxComplianceTimeline(input);
+      expect(trial.obligations[0].status).toBe('COMPLETED');
+      expect(trial.summary.completedCount).toBe(1);
+      expect(JSON.stringify(trial)).toBe(JSON.stringify(canonical));
+    }
   });
 
   it('Property 5 (Supersession Determinism): completed source A followed by changed source B always yields same superseded outcome', () => {
@@ -293,7 +297,7 @@ describe('Phase 4K.1C — Tax Compliance Mandatory Property Test Matrix', () => 
     expect(janItems[0].obligationKey).toBe(janItems[1].obligationKey);
   });
 
-  it('Property 8 (Workflow-History Preservation): replaying full revision history preserves completion, reopen, dismissal, supersession lineage', () => {
+  it('Property 8 (Workflow-History Preservation): replaying full revision history preserves OPEN -> COMPLETED -> REOPENED -> COMPLETED -> SUPERSEDED lineage', () => {
     const obKey = `${taxSubjectId}:2026-01:MONTHLY_TAX_PAYMENT:monthly-6015`;
 
     const history: TaxComplianceUserActionRecord[] = [
@@ -326,7 +330,8 @@ describe('Phase 4K.1C — Tax Compliance Mandatory Property Test Matrix', () => 
       },
     ];
 
-    const input: ProjectTaxComplianceTimelineInput = {
+    // Case A: Source still fp-1 -> COMPLETED at revision 3
+    const inputA: ProjectTaxComplianceTimelineInput = {
       taxSubjectId,
       calendarYear,
       todayCivilDate: today,
@@ -344,10 +349,33 @@ describe('Phase 4K.1C — Tax Compliance Mandatory Property Test Matrix', () => 
       userActions: history,
     };
 
-    const timeline = projectTaxComplianceTimeline(input);
+    const timelineA = projectTaxComplianceTimeline(inputA);
+    expect(timelineA.obligations[0].status).toBe('COMPLETED');
+    expect(timelineA.obligations[0].userAction?.revision).toBe(3);
+    expect(timelineA.obligations[0].userAction?.actionType).toBe('USER_REPORTED_COMPLETION');
 
-    expect(timeline.obligations[0].status).toBe('COMPLETED');
-    expect(timeline.obligations[0].userAction?.revision).toBe(3);
-    expect(timeline.obligations[0].userAction?.actionType).toBe('USER_REPORTED_COMPLETION');
+    // Case B: Source updated to fp-2 -> SUPERSEDED referencing the latest revision 3 action on fp-1
+    const inputB: ProjectTaxComplianceTimelineInput = {
+      taxSubjectId,
+      calendarYear,
+      todayCivilDate: today,
+      monthlySources: [
+        {
+          competence: '2026-01',
+          revenueCode: '6015',
+          principalAmount: '150.00',
+          dueDate: '2026-02-28',
+          status: 'OPEN',
+          darfReadiness: 'READY',
+          sourceFingerprint: 'fp-2',
+        },
+      ],
+      userActions: history,
+    };
+
+    const timelineB = projectTaxComplianceTimeline(inputB);
+    expect(timelineB.obligations[0].status).toBe('SUPERSEDED');
+    expect(timelineB.obligations[0].userAction?.revision).toBe(3);
+    expect(timelineB.obligations[0].userAction?.sourceFingerprint).toBe('fp-1');
   });
 });

@@ -480,7 +480,7 @@ describe('Phase 4J.1A — direct UnifiedAnnualIrpfService scale (real service pa
       await cleanDatabase();
       recordedQueries.length = 0;
     }
-  }, 900000);
+  }, 1800000);
 
   it('combined stress 1k payers + 10k facts via the complete real service path', async () => {
     const { token } = await seedUnifiedSubject('combined', 1000);

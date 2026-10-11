@@ -115,51 +115,69 @@ export class TaxComplianceActionRepository implements ITaxComplianceActionReposi
   async create(
     input: TaxComplianceActionWriteInput,
   ): Promise<{ outcome: TaxComplianceActionWriteOutcome; record: TaxComplianceActionRow }> {
-    try {
-      const latest = await this.findLatest({
-        taxSubjectId: input.taxSubjectId,
-        obligationKey: input.obligationKey,
-      });
-
-      // Idempotency check: if latest action matches actionType and sourceFingerprint and note, return IDEMPOTENT
-      if (
-        latest &&
-        latest.actionType === input.actionType &&
-        latest.sourceFingerprint === (input.sourceFingerprint ?? null) &&
-        latest.note === (input.note ?? null)
-      ) {
-        return { outcome: 'IDEMPOTENT', record: latest };
-      }
-
-      const nextRevision = latest ? latest.revision + 1 : 1;
-      const occurredAtDate = input.occurredAt
-        ? typeof input.occurredAt === 'string'
-          ? new Date(input.occurredAt)
-          : input.occurredAt
-        : new Date();
-
-      const created = await this.prisma.taxComplianceActionRecord.create({
-        data: {
-          id: input.id ?? randomUUID(),
+    const maxRetries = 5;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const latest = await this.findLatest({
           taxSubjectId: input.taxSubjectId,
           obligationKey: input.obligationKey,
-          actionType: input.actionType,
-          sourceFingerprint: input.sourceFingerprint ?? null,
-          note: input.note ?? null,
-          metadata: input.metadata ? (input.metadata as Prisma.InputJsonValue) : Prisma.JsonNull,
-          revision: nextRevision,
-          occurredAt: occurredAtDate,
-        },
-      });
+        });
 
-      return {
-        outcome: latest ? 'SUPERSEDED' : 'CREATED',
-        record: this.map(created),
-      };
-    } catch {
-      throw new PersistenceError(
-        `Failed to record tax compliance action for obligation ${input.obligationKey}`,
-      );
+        // Idempotency check: if latest action matches actionType and sourceFingerprint and note, return IDEMPOTENT
+        if (
+          latest &&
+          latest.actionType === input.actionType &&
+          latest.sourceFingerprint === (input.sourceFingerprint ?? null) &&
+          latest.note === (input.note ?? null)
+        ) {
+          return { outcome: 'IDEMPOTENT', record: latest };
+        }
+
+        const nextRevision = latest ? latest.revision + 1 : 1;
+        const occurredAtDate = input.occurredAt
+          ? typeof input.occurredAt === 'string'
+            ? new Date(input.occurredAt)
+            : input.occurredAt
+          : new Date();
+
+        const created = await this.prisma.taxComplianceActionRecord.create({
+          data: {
+            id: input.id ?? randomUUID(),
+            taxSubjectId: input.taxSubjectId,
+            obligationKey: input.obligationKey,
+            actionType: input.actionType,
+            sourceFingerprint: input.sourceFingerprint ?? null,
+            note: input.note ?? null,
+            metadata: input.metadata ? (input.metadata as Prisma.InputJsonValue) : Prisma.JsonNull,
+            revision: nextRevision,
+            occurredAt: occurredAtDate,
+          },
+        });
+
+        return {
+          outcome: latest ? 'SUPERSEDED' : 'CREATED',
+          record: this.map(created),
+        };
+      } catch (err: unknown) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2002' &&
+          attempt < maxRetries
+        ) {
+          // Retry on unique constraint collision on revision
+          await new Promise((resolve) => setTimeout(resolve, Math.random() * 25 + 5));
+          continue;
+        }
+        if (err instanceof PersistenceError) {
+          throw err;
+        }
+        throw new PersistenceError(
+          `Failed to record tax compliance action for obligation ${input.obligationKey}`,
+        );
+      }
     }
+    throw new PersistenceError(
+      `Failed to record tax compliance action for obligation ${input.obligationKey}`,
+    );
   }
 }
