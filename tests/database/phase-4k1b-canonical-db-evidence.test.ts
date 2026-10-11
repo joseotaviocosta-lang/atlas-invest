@@ -112,7 +112,7 @@ describe('Phase 4K.1B — Canonical Database Version & Migration 19 Evidence (Po
       .map((d) => d.name)
       .sort();
 
-    expect(entries.length).toBe(19);
+    expect(entries.length).toBe(20);
 
     const expected = [
       '20260915000000_init_financial_persistence',
@@ -134,6 +134,7 @@ describe('Phase 4K.1B — Canonical Database Version & Migration 19 Evidence (Po
       '20261004120000_add_high_income_evidence_records',
       '20261006120000_repair_taxpayer_confirmations',
       '20261010000000_add_tax_compliance_actions',
+      '20261011000000_add_tax_settlement_records',
     ];
 
     expect(entries).toEqual(expected);
@@ -163,13 +164,13 @@ describe('Phase 4K.1B — Canonical Database Version & Migration 19 Evidence (Po
     );
     expect(preTables.length).toBe(0);
 
-    // Apply all 19 migrations
+    // Apply all 20 migrations
     const deployOutput = execSync('npx prisma migrate deploy', {
       cwd: path.resolve(__dirname, '../../packages/database'),
       env: { ...process.env, DATABASE_URL: freshDbUrl },
       encoding: 'utf-8',
     });
-    expect(deployOutput).toContain('19 migrations found');
+    expect(deployOutput).toContain('20 migrations found');
     expect(deployOutput).toContain('Applying migration');
 
     // 2nd deploy is idempotent
@@ -194,6 +195,7 @@ describe('Phase 4K.1B — Canonical Database Version & Migration 19 Evidence (Po
     );
     const tableNames = postTables.map((t) => t.tablename);
     expect(tableNames).toContain('tax_compliance_actions');
+    expect(tableNames).toContain('tax_settlement_records');
     expect(tableNames).toContain('tax_obligations');
     expect(tableNames).toContain('users');
     expect(tableNames).toContain('portfolios');

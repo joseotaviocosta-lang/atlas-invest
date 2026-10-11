@@ -1193,3 +1193,55 @@ export interface ITaxComplianceActionRepository {
     input: TaxComplianceActionWriteInput,
   ): Promise<{ outcome: TaxComplianceActionWriteOutcome; record: TaxComplianceActionRow }>;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4K.2 — taxpayer payment settlement evidence persistence
+// ---------------------------------------------------------------------------
+
+export type TaxSettlementWriteOutcome = 'CREATED' | 'IDEMPOTENT' | 'SUPERSEDED';
+
+export interface TaxSettlementRow {
+  id: string;
+  taxSubjectId: string;
+  obligationKey: string;
+  sourceFingerprint: string;
+  revision: number;
+  paymentDate: Date;
+  amountReported: string;
+  revenueCodeReported: string | null;
+  referencePeriod: string;
+  externalReference: string | null;
+  note: string | null;
+  verificationStatus: string;
+  createdAt: Date;
+}
+
+export interface TaxSettlementWriteInput {
+  id?: string;
+  taxSubjectId: string;
+  obligationKey: string;
+  sourceFingerprint: string;
+  paymentDate: Date | string;
+  amountReported: string;
+  revenueCodeReported?: string | null;
+  referencePeriod: string;
+  externalReference?: string | null;
+  note?: string | null;
+  verificationStatus?: string;
+}
+
+export interface ITaxSettlementRepository {
+  findById(id: string): Promise<TaxSettlementRow | null>;
+  findLatest(input: {
+    taxSubjectId: string;
+    obligationKey: string;
+  }): Promise<TaxSettlementRow | null>;
+  listBySubject(input: {
+    taxSubjectId: string;
+    obligationKey?: string;
+  }): Promise<TaxSettlementRow[]>;
+  listHistory(input: { taxSubjectId: string; obligationKey: string }): Promise<TaxSettlementRow[]>;
+  create(
+    input: TaxSettlementWriteInput,
+  ): Promise<{ outcome: TaxSettlementWriteOutcome; record: TaxSettlementRow }>;
+}

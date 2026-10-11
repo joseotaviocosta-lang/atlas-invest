@@ -68,6 +68,9 @@ import { UnifiedAnnualIrpfService } from '../../application/fiscal/get-unified-a
 import { UnifiedAnnualReviewPackageService } from '../../application/fiscal/get-unified-annual-review-package.use-case';
 import { GetTaxComplianceTimelineUseCase } from '../../application/fiscal/get-tax-compliance-timeline.use-case';
 import { RecordTaxComplianceActionUseCase } from '../../application/fiscal/record-tax-compliance-action.use-case';
+import { GetTaxPaymentSupportUseCase } from '../../application/fiscal/get-tax-payment-support.use-case';
+import { RecordTaxPaymentEvidenceUseCase } from '../../application/fiscal/record-tax-payment-evidence.use-case';
+import { ListTaxPaymentEvidenceUseCase } from '../../application/fiscal/list-tax-payment-evidence.use-case';
 import { ZodValidationPipe } from '../../common/pipes';
 
 import {
@@ -121,7 +124,10 @@ import type {
   UnifiedModuleSummary,
   UnifiedRequirement,
   TaxComplianceTimeline,
+  TaxPaymentSupport,
+  TaxPaymentEvidenceRecord,
 } from '@atlas/tax-engine';
+import { exportTaxPaymentSupportToCsv, serializeTaxPaymentSupportToJson } from '@atlas/tax-engine';
 import {
   TaxComplianceTimelineQueryDto,
   TaxComplianceTimelineQuerySchema,
@@ -129,6 +135,10 @@ import {
   TaxComplianceActionParamSchema,
   RecordTaxComplianceActionBodyDto,
   RecordTaxComplianceActionBodySchema,
+  RecordTaxPaymentEvidenceBodyDto,
+  RecordTaxPaymentEvidenceBodySchema,
+  PaymentSupportExportQueryDto,
+  PaymentSupportExportQuerySchema,
 } from './dto/tax-compliance.dto';
 
 import {
@@ -289,6 +299,12 @@ export class FiscalController {
     private readonly getTaxComplianceTimelineUseCase: GetTaxComplianceTimelineUseCase,
     @Inject(RecordTaxComplianceActionUseCase)
     private readonly recordTaxComplianceActionUseCase: RecordTaxComplianceActionUseCase,
+    @Inject(GetTaxPaymentSupportUseCase)
+    private readonly getTaxPaymentSupportUseCase: GetTaxPaymentSupportUseCase,
+    @Inject(RecordTaxPaymentEvidenceUseCase)
+    private readonly recordTaxPaymentEvidenceUseCase: RecordTaxPaymentEvidenceUseCase,
+    @Inject(ListTaxPaymentEvidenceUseCase)
+    private readonly listTaxPaymentEvidenceUseCase: ListTaxPaymentEvidenceUseCase,
   ) {}
 
   @Get('monthly/:competence')
@@ -1339,5 +1355,139 @@ export class FiscalController {
       metadata: body.metadata,
     });
     return { data: result.record };
+  }
+
+  @Get('compliance/:obligationKey/payment-support')
+  @ApiOperation({
+    summary:
+      'Get structured DARF payment support for an obligation. Never recomputes tax. Anti-enumeration 404 for foreign obligation keys.',
+  })
+  @ApiParam({ name: 'obligationKey', description: 'Deterministic canonical obligation key' })
+  @ApiResponse({ status: 200, description: 'Payment support projection' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  @ApiResponse({
+    status: 404,
+    description: 'Obligation not found or not eligible (anti-enumeration)',
+  })
+  async getTaxPaymentSupport(
+    @Param(new ZodValidationPipe(TaxComplianceActionParamSchema))
+    params: TaxComplianceActionParamDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ data: TaxPaymentSupport }> {
+    const data = await this.getTaxPaymentSupportUseCase.execute({
+      taxSubjectId: principal.userId,
+      obligationKey: params.obligationKey,
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    return { data };
+  }
+
+  @Get('compliance/:obligationKey/payment-support/export')
+  @ApiOperation({
+    summary:
+      'Export structured DARF payment support in JSON or CSV format. Formula injection protected. Anti-enumeration 404.',
+  })
+  @ApiParam({ name: 'obligationKey', description: 'Deterministic canonical obligation key' })
+  @ApiResponse({ status: 200, description: 'Export content in chosen format' })
+  @ApiResponse({ status: 400, description: 'Invalid format query parameter' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  @ApiResponse({
+    status: 404,
+    description: 'Obligation not found or not eligible (anti-enumeration)',
+  })
+  async exportTaxPaymentSupport(
+    @Param(new ZodValidationPipe(TaxComplianceActionParamSchema))
+    params: TaxComplianceActionParamDto,
+    @Query(new ZodValidationPipe(PaymentSupportExportQuerySchema))
+    query: PaymentSupportExportQueryDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<string> {
+    const data = await this.getTaxPaymentSupportUseCase.execute({
+      taxSubjectId: principal.userId,
+      obligationKey: params.obligationKey,
+    });
+
+    const format = query.format ?? 'json';
+    const safeKey = params.obligationKey.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const ext = format === 'csv' ? 'csv' : 'json';
+    const filename = `atlas-darf-apoio-${safeKey}.${ext}`;
+
+    const body =
+      format === 'csv'
+        ? exportTaxPaymentSupportToCsv(data)
+        : serializeTaxPaymentSupportToJson(data);
+
+    res.setHeader(
+      'Content-Type',
+      format === 'csv' ? 'text/csv; charset=utf-8' : 'application/json; charset=utf-8',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Pragma', 'no-cache');
+    return body;
+  }
+
+  @Post('compliance/:obligationKey/payment-evidence')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary:
+      'Record user-reported external payment evidence metadata for an obligation. Never verified by government. Anti-enumeration 404.',
+  })
+  @ApiParam({ name: 'obligationKey', description: 'Deterministic canonical obligation key' })
+  @ApiResponse({ status: 201, description: 'Payment evidence recorded' })
+  @ApiResponse({ status: 400, description: 'Invalid payment evidence payload' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  @ApiResponse({
+    status: 404,
+    description: 'Obligation not found or not eligible (anti-enumeration)',
+  })
+  async recordTaxPaymentEvidence(
+    @Param(new ZodValidationPipe(TaxComplianceActionParamSchema))
+    params: TaxComplianceActionParamDto,
+    @Body(new ZodValidationPipe(RecordTaxPaymentEvidenceBodySchema))
+    body: RecordTaxPaymentEvidenceBodyDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ data: TaxPaymentEvidenceRecord }> {
+    const result = await this.recordTaxPaymentEvidenceUseCase.execute({
+      taxSubjectId: principal.userId,
+      obligationKey: params.obligationKey,
+      paymentDate: body.paymentDate,
+      amountReported: body.amountReported,
+      revenueCodeReported: body.revenueCodeReported,
+      referencePeriod: body.referencePeriod,
+      externalReference: body.externalReference,
+      note: body.note,
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    return { data: result.record };
+  }
+
+  @Get('compliance/:obligationKey/payment-evidence')
+  @ApiOperation({
+    summary:
+      'List append-only user-reported payment evidence history for an obligation. Anti-enumeration 404.',
+  })
+  @ApiParam({ name: 'obligationKey', description: 'Deterministic canonical obligation key' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of payment evidence records in descending revision order',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  @ApiResponse({ status: 404, description: 'Obligation not found (anti-enumeration)' })
+  async listTaxPaymentEvidence(
+    @Param(new ZodValidationPipe(TaxComplianceActionParamSchema))
+    params: TaxComplianceActionParamDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ data: readonly TaxPaymentEvidenceRecord[] }> {
+    const data = await this.listTaxPaymentEvidenceUseCase.execute({
+      taxSubjectId: principal.userId,
+      obligationKey: params.obligationKey,
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    return { data };
   }
 }

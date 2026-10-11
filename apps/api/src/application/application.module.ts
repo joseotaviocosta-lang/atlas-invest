@@ -71,6 +71,9 @@ import { UnifiedAnnualIrpfService } from './fiscal/get-unified-annual-irpf.use-c
 import { UnifiedAnnualReviewPackageService } from './fiscal/get-unified-annual-review-package.use-case';
 import { GetTaxComplianceTimelineUseCase } from './fiscal/get-tax-compliance-timeline.use-case';
 import { RecordTaxComplianceActionUseCase } from './fiscal/record-tax-compliance-action.use-case';
+import { GetTaxPaymentSupportUseCase } from './fiscal/get-tax-payment-support.use-case';
+import { RecordTaxPaymentEvidenceUseCase } from './fiscal/record-tax-payment-evidence.use-case';
+import { ListTaxPaymentEvidenceUseCase } from './fiscal/list-tax-payment-evidence.use-case';
 import { SystemFiscalClock } from './fiscal/fiscal-clock';
 import { EMPTY_TAX_INPUT_ADAPTER_REGISTRY } from './fiscal/tax-input-source-adapter';
 import {
@@ -154,6 +157,9 @@ const USE_CASES = [
   UnifiedAnnualReviewPackageService,
   GetTaxComplianceTimelineUseCase,
   RecordTaxComplianceActionUseCase,
+  GetTaxPaymentSupportUseCase,
+  RecordTaxPaymentEvidenceUseCase,
+  ListTaxPaymentEvidenceUseCase,
   GetPortfolioAiGroundingContextUseCase,
   GetPortfolioAssetAiGroundingContextUseCase,
   GetPortfolioTimelineAiGroundingContextUseCase,

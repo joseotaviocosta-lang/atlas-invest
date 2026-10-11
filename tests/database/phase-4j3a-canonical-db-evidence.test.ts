@@ -104,18 +104,19 @@ describe('Phase 4J.3A — Canonical Database Version & Migration Evidence (Postg
     expect(portRes[0]?.inet_server_port).toBe(5433);
   });
 
-  it('2. Migration Chain: exact 18 migrations exist, ordered and non-empty except documented baseline #16', () => {
+  it('2. Migration Chain: exact 20 migrations exist, ordered and non-empty except documented baseline #16', () => {
     const migrationsDir = path.resolve(process.cwd(), 'packages/database/prisma/migrations');
     const entries = fs
       .readdirSync(migrationsDir)
       .filter((d) => fs.statSync(path.join(migrationsDir, d)).isDirectory())
       .sort();
 
-    expect(entries.length).toBe(19);
+    expect(entries.length).toBe(20);
     expect(entries[15]).toBe('20261002000000_add_taxpayer_confirmations');
     expect(entries[16]).toBe('20261004120000_add_high_income_evidence_records');
     expect(entries[17]).toBe('20261006120000_repair_taxpayer_confirmations');
     expect(entries[18]).toBe('20261010000000_add_tax_compliance_actions');
+    expect(entries[19]).toBe('20261011000000_add_tax_settlement_records');
 
     const mig16File = path.join(migrationsDir, entries[15]!, 'migration.sql');
     const mig16Content = fs.readFileSync(mig16File, 'utf-8');
@@ -132,9 +133,13 @@ describe('Phase 4J.3A — Canonical Database Version & Migration Evidence (Postg
     const mig19File = path.join(migrationsDir, entries[18]!, 'migration.sql');
     const mig19Content = fs.readFileSync(mig19File, 'utf-8');
     expect(mig19Content).toContain('tax_compliance_actions');
+
+    const mig20File = path.join(migrationsDir, entries[19]!, 'migration.sql');
+    const mig20Content = fs.readFileSync(mig20File, 'utf-8');
+    expect(mig20Content).toContain('tax_settlement_records');
   });
 
-  it('3. Fresh PG16 Probe: 0 tables before, applies 19 migrations cleanly, idempotent on 2nd run, no drift', async () => {
+  it('3. Fresh PG16 Probe: 0 tables before, applies 20 migrations cleanly, idempotent on 2nd run, no drift', async () => {
     await adminPrisma.$executeRawUnsafe(`CREATE DATABASE ${freshDbName} OWNER atlas`);
 
     freshPrisma = new PrismaClient({ datasources: { db: { url: freshDbUrl } } });
@@ -149,7 +154,7 @@ describe('Phase 4J.3A — Canonical Database Version & Migration Evidence (Postg
       env: { ...process.env, DATABASE_URL: freshDbUrl },
       encoding: 'utf-8',
     });
-    expect(deployOut).toContain('19 migrations found in prisma/migrations');
+    expect(deployOut).toContain('20 migrations found in prisma/migrations');
     expect(deployOut).toContain('All migrations have been successfully applied.');
 
     const deploy2Out = execSync('pnpm --filter @atlas/database exec prisma migrate deploy', {
@@ -165,6 +170,7 @@ describe('Phase 4J.3A — Canonical Database Version & Migration Evidence (Postg
     expect(tableNames).toContain('high_income_evidence_records');
     expect(tableNames).toContain('taxpayer_confirmations');
     expect(tableNames).toContain('tax_compliance_actions');
+    expect(tableNames).toContain('tax_settlement_records');
     expect(tableNames).toContain('_prisma_migrations');
   });
 
@@ -409,6 +415,7 @@ describe('Phase 4J.3A — Canonical Database Version & Migration Evidence (Postg
     const postTableNames = postTables.map((t) => t.tablename);
     expect(postTableNames).toContain('high_income_evidence_records');
     expect(postTableNames).toContain('taxpayer_confirmations');
+    expect(postTableNames).toContain('tax_settlement_records');
 
     const userCount = await upgradePrisma.$queryRawUnsafe<Array<{ count: bigint }>>(
       'SELECT count(*) FROM users',

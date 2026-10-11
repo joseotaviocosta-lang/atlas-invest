@@ -14,6 +14,7 @@ import {
   type TaxComplianceObligationViewModel,
 } from '@atlas/ui';
 import { Card, Skeleton, EmptyState, SectionHeader, Badge, Button } from '@/components/ui';
+import { TaxPaymentSupportModal } from './TaxPaymentSupportModal';
 
 export function ComplianceTimelineSection({ initialYear }: { initialYear?: number }) {
   const queryClient = useQueryClient();
@@ -23,6 +24,7 @@ export function ComplianceTimelineSection({ initialYear }: { initialYear?: numbe
   const [actionNotes, setActionNotes] = useState<Record<string, string>>({});
   const [activeModalKey, setActiveModalKey] = useState<string | null>(null);
   const [pendingActionType, setPendingActionType] = useState<TaxComplianceActionType | null>(null);
+  const [paymentSupportKey, setPaymentSupportKey] = useState<string | null>(null);
 
   const {
     data: rawData,
@@ -409,6 +411,16 @@ export function ComplianceTimelineSection({ initialYear }: { initialYear?: numbe
                       </Button>
                     )}
 
+                    {ob.kind === 'MONTHLY_TAX_PAYMENT' && ob.amount && ob.amount !== '0' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setPaymentSupportKey(ob.obligationKey)}
+                      >
+                        Apoio ao Pagamento (DARF)
+                      </Button>
+                    )}
+
                     {(ob.status === 'COMPLETED' || ob.status === 'DISMISSED') && (
                       <Button
                         size="sm"
@@ -510,6 +522,14 @@ export function ComplianceTimelineSection({ initialYear }: { initialYear?: numbe
             <strong>Aviso de responsabilidade e independência:</strong> {viewModel.disclaimer}
           </div>
         </>
+      )}
+
+      {paymentSupportKey && (
+        <TaxPaymentSupportModal
+          obligationKey={paymentSupportKey}
+          isOpen={Boolean(paymentSupportKey)}
+          onClose={() => setPaymentSupportKey(null)}
+        />
       )}
     </div>
   );

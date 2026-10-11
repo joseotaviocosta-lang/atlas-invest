@@ -159,9 +159,10 @@ describe('Phase 4J.2D — Canonical Database Version & Integrity Audit (PostgreS
       '20261004120000_add_high_income_evidence_records',
       '20261006120000_repair_taxpayer_confirmations',
       '20261010000000_add_tax_compliance_actions',
+      '20261011000000_add_tax_settlement_records',
     ];
 
-    expect(expectedMigrations.length).toBe(19);
+    expect(expectedMigrations.length).toBe(20);
 
     for (const m of expectedMigrations) {
       const sqlPath = path.join(migrationsDir, m, 'migration.sql');
@@ -195,6 +196,13 @@ describe('Phase 4J.2D — Canonical Database Version & Integrity Audit (PostgreS
       'utf-8',
     );
     expect(m19).toContain('tax_compliance_actions');
+
+    // Ordinal 20 creates tax_settlement_records
+    const m20 = fs.readFileSync(
+      path.join(migrationsDir, '20261011000000_add_tax_settlement_records', 'migration.sql'),
+      'utf-8',
+    );
+    expect(m20).toContain('tax_settlement_records');
   });
 
   it('3. Fresh Canonical DB: prisma migrate deploy applies all 18 migrations from zero cleanly & idempotently', async () => {
@@ -566,6 +574,8 @@ describe('Phase 4J.2D — Canonical Database Version & Integrity Audit (PostgreS
     const postTableNames = postTables.map((t) => t.table_name);
     expect(postTableNames).toContain('taxpayer_confirmations');
     expect(postTableNames).toContain('high_income_evidence_records');
+    expect(postTableNames).toContain('tax_compliance_actions');
+    expect(postTableNames).toContain('tax_settlement_records');
 
     // Verify 100% data preservation
     const postTxCount = await upgradePrisma.transaction.count();
@@ -643,9 +653,10 @@ describe('Phase 4J.2D — Canonical Database Version & Integrity Audit (PostgreS
       .map((d) => d.name)
       .sort();
 
-    // Verify exactly 19 migrations exist and all prior 18 are preserved
-    expect(entries.length).toBe(19);
+    // Verify exactly 20 migrations exist and all prior 19 are preserved
+    expect(entries.length).toBe(20);
     expect(entries[18]).toBe('20261010000000_add_tax_compliance_actions');
+    expect(entries[19]).toBe('20261011000000_add_tax_settlement_records');
   });
 
   it('7. Clean Database Teardown: drops probe databases and preserves standing atlas_test', async () => {

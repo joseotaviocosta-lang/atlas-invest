@@ -35,3 +35,20 @@ export const RecordTaxComplianceActionBodySchema = z.object({
 });
 
 export type RecordTaxComplianceActionBodyDto = z.infer<typeof RecordTaxComplianceActionBodySchema>;
+
+export const RecordTaxPaymentEvidenceBodySchema = z.object({
+  paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD'),
+  amountReported: z.string().regex(/^\d+(\.\d{1,18})?$/, 'Must be valid positive decimal string'),
+  revenueCodeReported: z.string().min(1).max(16).optional(),
+  referencePeriod: z.string().regex(/^\d{4}-\d{2}$/, 'Must be YYYY-MM'),
+  externalReference: z.string().max(255).optional(),
+  note: z.string().max(1000).optional(),
+});
+
+export type RecordTaxPaymentEvidenceBodyDto = z.infer<typeof RecordTaxPaymentEvidenceBodySchema>;
+
+export const PaymentSupportExportQuerySchema = z.object({
+  format: z.enum(['json', 'csv']).default('json'),
+});
+
+export type PaymentSupportExportQueryDto = z.infer<typeof PaymentSupportExportQuerySchema>;

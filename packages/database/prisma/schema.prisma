@@ -37,6 +37,7 @@ model User {
   taxpayerConfirmations   TaxpayerConfirmationRecord[]
   highIncomeEvidence      HighIncomeEvidenceRecord[]
   taxComplianceActions    TaxComplianceActionRecord[]
+  taxSettlementRecords    TaxSettlementRecord[]
 
   @@map("users")
 }
@@ -750,4 +751,29 @@ model TaxComplianceActionRecord {
   @@index([taxSubjectId, obligationKey], map: "tax_compliance_action_lookup_idx")
   @@index([taxSubjectId, occurredAt], map: "tax_compliance_action_time_idx")
   @@map("tax_compliance_actions")
+}
+
+/// Phase 4K.2 — user-reported external payment evidence / settlement record.
+/// Immutable per revision; stale if underlying obligation sourceFingerprint changes (ADR-286).
+model TaxSettlementRecord {
+  id                  String   @id @default(uuid()) @db.Uuid
+  taxSubjectId        String   @map("tax_subject_id") @db.Uuid
+  obligationKey       String   @map("obligation_key") @db.VarChar(255)
+  sourceFingerprint   String   @map("source_fingerprint") @db.VarChar(64)
+  revision            Int      @default(1)
+  paymentDate         DateTime @map("payment_date") @db.Date
+  amountReported      Decimal  @map("amount_reported") @db.Decimal(38, 18)
+  revenueCodeReported String?  @map("revenue_code_reported") @db.VarChar(16)
+  referencePeriod     String   @map("reference_period") @db.VarChar(16)
+  externalReference   String?  @map("external_reference") @db.VarChar(255)
+  note                String?  @db.Text
+  verificationStatus  String   @default("USER_REPORTED") @map("verification_status") @db.VarChar(32)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+
+  @@unique([taxSubjectId, obligationKey, revision], name: "tax_settlement_record_revision_identity", map: "tax_settlement_record_rev_uniq")
+  @@index([taxSubjectId, obligationKey], map: "tax_settlement_record_lookup_idx")
+  @@index([taxSubjectId, referencePeriod], map: "tax_settlement_record_period_idx")
+  @@map("tax_settlement_records")
 }
