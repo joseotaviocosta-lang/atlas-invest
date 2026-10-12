@@ -46,6 +46,7 @@ export * from './view-models/high-income-review-package.view-model';
 export * from './view-models/tax-compliance-timeline.view-model';
 export * from './view-models/tax-payment-support.view-model';
 export * from './view-models/tax-compliance-reminders.view-model';
+export * from './view-models/tax-compliance-action-center.view-model';
 
 import { colors } from './tokens/colors';
 import { spacing } from './tokens/spacing';

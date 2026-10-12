@@ -2417,3 +2417,29 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Logs nunca carregam valores, evidencias, recibos, banco, credenciais, tokens ou payloads de notificacao.
 10. **CLIENTE SEM MATEMATICA FISCAL:**
     - Web/Mobile apenas formatam strings do servidor; proibido calcular tributo, vencimento, minimo DARF, multa, juros ou SELIC.
+
+## 85. Central de Acoes e Calendario Fiscal (Fase 4K.4)
+
+1. **ORQUESTRACAO DERIVADA, NUNCA CALCULO (ADR-288):**
+   - A Central (`assembleTaxComplianceActionCenter` + `projectTaxComplianceCalendar`) e projecao pura sobre 4K.1 (obrigacoes), 4K.2 (payment hints/evidencia), 4K.3 (lembretes) e revisao anual 4J/4H/4I.
+   - E **terminantemente proibido** recalcular imposto, vencimento legal, minimo DARF, multa, juros, SELIC, IRRF, compensacao de prejuizo, verificacao de pagamento ou politica de trigger de lembretes.
+2. **IDENTIDADE SEMANTICA E ESTADO DERIVADO NAO PERSISTIDO:**
+   - `actionKey = obligationKey:kind:sourceFingerprint`. Sem UUID aleatorio como identidade; sem duplicata semantica.
+   - Estado atual da Central e derivado, nunca persistido (`NO new migration`; sem tabela `tax_compliance_action_items`).
+3. **PRIORIDADE E PROXIMA ACAO SAO POLITICA DE UX:**
+   - `CRITICAL/HIGH/MEDIUM/LOW` e next-action (`REVIEW_OBLIGATION`, `PREPARE_PAYMENT`, `ADD_PAYMENT_EVIDENCE`, `REVIEW_STALE_EVIDENCE`, `CONFIRM_INFORMATION`, `OPEN_ANNUAL_REVIEW`, `ACKNOWLEDGE_REMINDER`, `VIEW_DETAILS`) derivam deterministicamente de fatos autoritativos; nunca alteram tributo, vencimento ou estado de pagamento.
+   - Ordem canonica congelada: `priority DESC, dueDate ASC NULLS LAST, period ASC, actionKey ASC`.
+4. **SEM FALSA CONCLUSAO E SEM VERIFICACAO GOVERNAMENTAL:**
+   - Lembrete reconhecido/dispensado, suporte visualizado, CSV exportado ou tela aberta **NUNCA** concluem obrigacao.
+   - `USER_REPORTED_MATCH` significa apenas evidencia do investidor compativel com o Atlas; nunca `GOVERNMENT_VERIFIED`/`RECEITA_CONFIRMED`.
+5. **MUDANCA DE FONTE E COERENCIA DE SNAPSHOT:**
+   - Mudanca de `sourceFingerprint` supersedeia o item atual (vira historico); leitura monta um snapshot coerente unico (timeline + evidencias + acoes de lembrete + preferencias) — nunca item misto A/B.
+   - Fingerprint da Central exclui `generatedAt` e e invariante a ordem de entrada.
+6. **CALENDARIO USA DATAS AUTORITATIVAS:**
+   - Somente `dueDate`, triggers/efetivas de lembrete, `snoozedUntil` e data civil corrente para revisao. Nenhuma data legal inferida; range maximo 24 meses (falha fechada 400); `calendarYear != exercise` sempre distintos.
+   - Irmaos de revisao/informativos nunca projetam segundo `OBLIGATION_DUE` para a mesma obrigacao semantica.
+7. **CONTADORES RECONCILIAM E ENDPOINTS SAO PRIVADOS:**
+   - Contadores de resumo reconciliam exatamente a classificacao; sem agregacao no cliente.
+   - `GET action-center` / `GET calendar` com principal autenticado, anti-enumeracao 404, `Cache-Control: private, no-store`, sem log de payload fiscal.
+8. **CLIENTE SEM MATEMATICA FISCAL:**
+   - Web/Mobile apenas formatam strings do servidor e agrupam por data civil; proibido calcular tributo, vencimento, minimo DARF, multa, juros, SELIC ou totais anuais; proibido importar `@atlas/tax-engine` no cliente.

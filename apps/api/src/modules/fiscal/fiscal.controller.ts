@@ -75,6 +75,8 @@ import { GetTaxComplianceRemindersUseCase } from '../../application/fiscal/get-t
 import { RecordTaxReminderActionUseCase } from '../../application/fiscal/record-tax-reminder-action.use-case';
 import { TaxReminderPreferencesUseCase } from '../../application/fiscal/tax-reminder-preferences.use-case';
 import { RecordTaxNotificationDeliveryUseCase } from '../../application/fiscal/record-tax-notification-delivery.use-case';
+import { GetTaxComplianceActionCenterUseCase } from '../../application/fiscal/get-tax-compliance-action-center.use-case';
+import { GetTaxComplianceCalendarUseCase } from '../../application/fiscal/get-tax-compliance-calendar.use-case';
 import { ZodValidationPipe } from '../../common/pipes';
 
 import {
@@ -156,6 +158,12 @@ import {
   TaxReminderPreferencesBodyDto,
   TaxReminderPreferencesBodySchema,
 } from './dto/tax-compliance-reminders.dto';
+import {
+  TaxComplianceActionCenterQueryDto,
+  TaxComplianceActionCenterQuerySchema,
+  TaxComplianceCalendarQueryDto,
+  TaxComplianceCalendarQuerySchema,
+} from './dto/tax-compliance-action-center.dto';
 
 import {
   AdjustmentQuery,
@@ -329,6 +337,10 @@ export class FiscalController {
     private readonly taxReminderPreferencesUseCase: TaxReminderPreferencesUseCase,
     @Inject(RecordTaxNotificationDeliveryUseCase)
     private readonly recordTaxNotificationDeliveryUseCase: RecordTaxNotificationDeliveryUseCase,
+    @Inject(GetTaxComplianceActionCenterUseCase)
+    private readonly getTaxComplianceActionCenterUseCase: GetTaxComplianceActionCenterUseCase,
+    @Inject(GetTaxComplianceCalendarUseCase)
+    private readonly getTaxComplianceCalendarUseCase: GetTaxComplianceCalendarUseCase,
   ) {}
 
   @Get('monthly/:competence')
@@ -1507,6 +1519,72 @@ export class FiscalController {
     });
     res.setHeader('Cache-Control', 'private, no-store');
     return { data: result.preferences };
+  }
+
+  @Get('compliance/action-center')
+  @ApiOperation({
+    summary:
+      'Get the unified tax compliance action center: prioritized operational items with next actions, summary counters and center fingerprint. Pure orchestration over 4K.1/4K.2/4K.3/annual state — zero tax recomputation.',
+  })
+  @ApiResponse({ status: 200, description: 'Unified action center page' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  async getTaxComplianceActionCenter(
+    @Query(new ZodValidationPipe(TaxComplianceActionCenterQuerySchema))
+    query: TaxComplianceActionCenterQueryDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.getTaxComplianceActionCenterUseCase.execute({
+      taxSubjectId: principal.userId,
+      calendarYear: query.calendarYear,
+      month: query.month,
+      status: query.status,
+      priority: query.priority,
+      kind: query.kind,
+      limit: query.limit,
+      offset: query.offset,
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    return {
+      data: result.items,
+      meta: {
+        summary: result.summary,
+        centerFingerprint: result.centerFingerprint,
+        generatedAt: result.generatedAt,
+        totalCount: result.totalCount,
+        limit: result.limit,
+        offset: result.offset,
+      },
+    };
+  }
+
+  @Get('compliance/calendar')
+  @ApiOperation({
+    summary:
+      'Get the fiscal calendar projection over authoritative dates only (due dates, reminder triggers, snoozes). Ranges are bounded to 24 months.',
+  })
+  @ApiResponse({ status: 200, description: 'Calendar events in range' })
+  @ApiResponse({ status: 400, description: 'Invalid range' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  async getTaxComplianceCalendar(
+    @Query(new ZodValidationPipe(TaxComplianceCalendarQuerySchema))
+    query: TaxComplianceCalendarQueryDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.getTaxComplianceCalendarUseCase.execute({
+      taxSubjectId: principal.userId,
+      calendarYear: query.calendarYear,
+      from: query.from,
+      to: query.to,
+      eventType: query.eventType,
+      status: query.status,
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    return {
+      data: result.events,
+      meta: { from: result.from, to: result.to, totalCount: result.totalCount },
+    };
   }
 
   @Post('compliance/:obligationKey/actions')

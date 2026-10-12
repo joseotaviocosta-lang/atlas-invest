@@ -6,3 +6,5 @@ export * from './payment-support-fingerprint';
 export * from './payment-support-engine';
 export * from './reminder-types';
 export * from './reminder-engine';
+export * from './action-center-types';
+export * from './action-center-engine';
