@@ -77,6 +77,11 @@ import { TaxReminderPreferencesUseCase } from '../../application/fiscal/tax-remi
 import { RecordTaxNotificationDeliveryUseCase } from '../../application/fiscal/record-tax-notification-delivery.use-case';
 import { GetTaxComplianceActionCenterUseCase } from '../../application/fiscal/get-tax-compliance-action-center.use-case';
 import { GetTaxComplianceCalendarUseCase } from '../../application/fiscal/get-tax-compliance-calendar.use-case';
+import { GetPeriodCloseReadinessUseCase } from '../../application/fiscal/get-period-close-readiness.use-case';
+import { CloseCompliancePeriodUseCase } from '../../application/fiscal/close-compliance-period.use-case';
+import { ReopenCompliancePeriodUseCase } from '../../application/fiscal/reopen-compliance-period.use-case';
+import { ExportPeriodCloseBinderUseCase } from '../../application/fiscal/export-period-close-binder.use-case';
+import { ListPeriodCloseHistoryUseCase } from '../../application/fiscal/list-period-close-history.use-case';
 import { ZodValidationPipe } from '../../common/pipes';
 
 import {
@@ -164,6 +169,18 @@ import {
   TaxComplianceCalendarQueryDto,
   TaxComplianceCalendarQuerySchema,
 } from './dto/tax-compliance-action-center.dto';
+import {
+  PeriodCloseBodyDto,
+  PeriodCloseBodySchema,
+  PeriodCloseExportQueryDto,
+  PeriodCloseExportQuerySchema,
+  PeriodCloseHistoryQueryDto,
+  PeriodCloseHistoryQuerySchema,
+  PeriodCloseReadinessQueryDto,
+  PeriodCloseReadinessQuerySchema,
+  PeriodCloseReopenBodyDto,
+  PeriodCloseReopenBodySchema,
+} from './dto/tax-compliance-period-close.dto';
 
 import {
   AdjustmentQuery,
@@ -341,6 +358,16 @@ export class FiscalController {
     private readonly getTaxComplianceActionCenterUseCase: GetTaxComplianceActionCenterUseCase,
     @Inject(GetTaxComplianceCalendarUseCase)
     private readonly getTaxComplianceCalendarUseCase: GetTaxComplianceCalendarUseCase,
+    @Inject(GetPeriodCloseReadinessUseCase)
+    private readonly getPeriodCloseReadinessUseCase: GetPeriodCloseReadinessUseCase,
+    @Inject(CloseCompliancePeriodUseCase)
+    private readonly closeCompliancePeriodUseCase: CloseCompliancePeriodUseCase,
+    @Inject(ReopenCompliancePeriodUseCase)
+    private readonly reopenCompliancePeriodUseCase: ReopenCompliancePeriodUseCase,
+    @Inject(ExportPeriodCloseBinderUseCase)
+    private readonly exportPeriodCloseBinderUseCase: ExportPeriodCloseBinderUseCase,
+    @Inject(ListPeriodCloseHistoryUseCase)
+    private readonly listPeriodCloseHistoryUseCase: ListPeriodCloseHistoryUseCase,
   ) {}
 
   @Get('monthly/:competence')
@@ -1585,6 +1612,174 @@ export class FiscalController {
       data: result.events,
       meta: { from: result.from, to: result.to, totalCount: result.totalCount },
     };
+  }
+
+  @Get('compliance/period-close/readiness')
+  @ApiOperation({
+    summary:
+      'Assess operational period-close readiness for a month or year: derived checklist, unresolved items, source fingerprint and staleness vs preserved close history. Pure orchestration over 4K.1/4K.2/4K.3/4K.4/annual state — zero tax recomputation.',
+  })
+  @ApiResponse({ status: 200, description: 'Close readiness assessment' })
+  @ApiResponse({ status: 400, description: 'Invalid scope/period' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  async getPeriodCloseReadiness(
+    @Query(new ZodValidationPipe(PeriodCloseReadinessQuerySchema))
+    query: PeriodCloseReadinessQueryDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const snapshot = await this.getPeriodCloseReadinessUseCase.executeSnapshot({
+      taxSubjectId: principal.userId,
+      scope: query.scope,
+      calendarYear: query.calendarYear,
+      month: query.month,
+      exercise: query.exercise,
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    return {
+      data: snapshot.readiness,
+      meta: {
+        binderFingerprint: snapshot.binder.binderFingerprint,
+        totalCloseCount: snapshot.totalCloseCount,
+      },
+    };
+  }
+
+  @Post('compliance/period-close')
+  @ApiOperation({
+    summary:
+      'Record an operational period close (CLEAN only, when readiness allows). Semantically idempotent: repeated identical closes return the canonical revision. Operational support only — never legal settlement or Receita acceptance.',
+  })
+  @ApiResponse({ status: 201, description: 'Period closed' })
+  @ApiResponse({ status: 200, description: 'Identical close already recorded (idempotent)' })
+  @ApiResponse({ status: 400, description: 'Invalid scope/period' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  @ApiResponse({ status: 422, description: 'Period not ready for clean close' })
+  async closeCompliancePeriod(
+    @Body(new ZodValidationPipe(PeriodCloseBodySchema))
+    body: PeriodCloseBodyDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.closeCompliancePeriodUseCase.execute({
+      taxSubjectId: principal.userId,
+      scope: body.scope,
+      calendarYear: body.calendarYear,
+      month: body.month,
+      exercise: body.exercise,
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.status(result.created ? 201 : 200);
+    return { data: result.record, meta: { created: result.created, readiness: result.readiness } };
+  }
+
+  @Post('compliance/period-close/:id/reopen')
+  @ApiOperation({
+    summary:
+      'Reopen a closed period with an explicit reason. Appends a REOPENED revision; prior CLOSED history is preserved, never mutated.',
+  })
+  @ApiParam({ name: 'id', description: 'Close record id (UUID)' })
+  @ApiResponse({ status: 201, description: 'Period reopened' })
+  @ApiResponse({ status: 400, description: 'Invalid reason' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  @ApiResponse({ status: 404, description: 'Close record not found (anti-enumeration)' })
+  @ApiResponse({ status: 422, description: 'Record is not the latest CLOSED revision' })
+  async reopenCompliancePeriod(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(PeriodCloseReopenBodySchema))
+    body: PeriodCloseReopenBodyDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.reopenCompliancePeriodUseCase.execute({
+      taxSubjectId: principal.userId,
+      closeId: id,
+      reason: body.reason,
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.status(result.created ? 201 : 200);
+    return { data: result.record, meta: { created: result.created } };
+  }
+
+  @Get('compliance/period-close/history')
+  @ApiOperation({
+    summary:
+      'List preserved period-close history (CLOSED/REOPENED revisions). Deterministic order: scope ASC, period DESC, revision DESC.',
+  })
+  @ApiResponse({ status: 200, description: 'Close history page' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  async listPeriodCloseHistory(
+    @Query(new ZodValidationPipe(PeriodCloseHistoryQuerySchema))
+    query: PeriodCloseHistoryQueryDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.listPeriodCloseHistoryUseCase.execute({
+      taxSubjectId: principal.userId,
+      scope: query.scope,
+      period: query.period,
+      limit: query.limit,
+      offset: query.offset,
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    return {
+      data: result.entries,
+      meta: { totalCount: result.totalCount, limit: result.limit, offset: result.offset },
+    };
+  }
+
+  @Get('compliance/period-close/binder')
+  @ApiOperation({
+    summary:
+      'Get the current human-readable evidence binder for a period: readiness, obligations, action center, payment support/evidence, reminders, unresolved items, source metadata, disclaimers and audit fingerprint.',
+  })
+  @ApiResponse({ status: 200, description: 'Evidence binder' })
+  @ApiResponse({ status: 400, description: 'Invalid scope/period' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  async getPeriodCloseBinder(
+    @Query(new ZodValidationPipe(PeriodCloseReadinessQuerySchema))
+    query: PeriodCloseReadinessQueryDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const snapshot = await this.getPeriodCloseReadinessUseCase.executeSnapshot({
+      taxSubjectId: principal.userId,
+      scope: query.scope,
+      calendarYear: query.calendarYear,
+      month: query.month,
+      exercise: query.exercise,
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    return { data: snapshot.binder };
+  }
+
+  @Get('compliance/period-close/binder/export')
+  @ApiOperation({
+    summary:
+      'Export the evidence binder as a downloadable support document (CSV default, or JSON). SUPPORT ONLY — never a Receita file, DARF, payment proof or clearance certificate.',
+  })
+  @ApiResponse({ status: 200, description: 'Downloadable support document (CSV or JSON)' })
+  @ApiResponse({ status: 400, description: 'Invalid scope/period/format' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  async exportPeriodCloseBinder(
+    @Query(new ZodValidationPipe(PeriodCloseExportQuerySchema))
+    query: PeriodCloseExportQueryDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<string> {
+    const result = await this.exportPeriodCloseBinderUseCase.execute({
+      taxSubjectId: principal.userId,
+      scope: query.scope,
+      calendarYear: query.calendarYear,
+      month: query.month,
+      exercise: query.exercise,
+      format: query.format,
+    });
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Pragma', 'no-cache');
+    return result.body;
   }
 
   @Post('compliance/:obligationKey/actions')

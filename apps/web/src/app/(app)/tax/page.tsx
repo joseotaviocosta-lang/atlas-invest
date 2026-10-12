@@ -31,6 +31,7 @@ import { AnnualReportingSection } from '@/components/fiscal/AnnualReportingSecti
 import { ComplianceTimelineSection } from '@/components/fiscal/ComplianceTimelineSection';
 import { TaxComplianceRemindersSection } from '@/components/fiscal/TaxComplianceRemindersSection';
 import { TaxComplianceActionCenterSection } from '@/components/fiscal/TaxComplianceActionCenterSection';
+import { TaxCompliancePeriodCloseSection } from '@/components/fiscal/TaxCompliancePeriodCloseSection';
 
 function currentCompetence(): string {
   const now = new Date();
@@ -538,6 +539,8 @@ function FiscalContent() {
           <ComplianceTimelineSection />
 
           <TaxComplianceActionCenterSection />
+
+          <TaxCompliancePeriodCloseSection />
 
           <TaxComplianceRemindersSection />
 

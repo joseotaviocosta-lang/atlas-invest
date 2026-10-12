@@ -653,8 +653,8 @@ describe('Phase 4J.2D — Canonical Database Version & Integrity Audit (PostgreS
       .map((d) => d.name)
       .sort();
 
-    // Verify exactly 22 migrations exist and all prior are preserved
-    expect(entries.length).toBe(22);
+    // Verify exactly 23 migrations exist and all prior are preserved
+    expect(entries.length).toBe(23);
     expect(entries[18]).toBe('20261010000000_add_tax_compliance_actions');
     expect(entries[19]).toBe('20261011000000_add_tax_settlement_records');
     expect(entries[20]).toBe('20261011120000_add_tax_settlement_evidence_fingerprint');

@@ -179,7 +179,7 @@ export function TaxComplianceActionCenterSection() {
     () => mapToTaxComplianceActionItemListViewModel(rawItems?.data ?? null),
     [rawItems],
   );
-  const summary = rawItems?.meta.summary ?? null;
+  const summary = rawItems?.meta?.summary ?? null;
 
   const grouped = useMemo(() => {
     const map = new Map<TaxComplianceActionSection, TaxComplianceActionItemViewModel[]>();

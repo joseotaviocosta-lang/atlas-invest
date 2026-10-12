@@ -80,6 +80,11 @@ import { TaxReminderPreferencesUseCase } from './fiscal/tax-reminder-preferences
 import { RecordTaxNotificationDeliveryUseCase } from './fiscal/record-tax-notification-delivery.use-case';
 import { GetTaxComplianceActionCenterUseCase } from './fiscal/get-tax-compliance-action-center.use-case';
 import { GetTaxComplianceCalendarUseCase } from './fiscal/get-tax-compliance-calendar.use-case';
+import { GetPeriodCloseReadinessUseCase } from './fiscal/get-period-close-readiness.use-case';
+import { CloseCompliancePeriodUseCase } from './fiscal/close-compliance-period.use-case';
+import { ReopenCompliancePeriodUseCase } from './fiscal/reopen-compliance-period.use-case';
+import { ExportPeriodCloseBinderUseCase } from './fiscal/export-period-close-binder.use-case';
+import { ListPeriodCloseHistoryUseCase } from './fiscal/list-period-close-history.use-case';
 import { SystemFiscalClock } from './fiscal/fiscal-clock';
 import { EMPTY_TAX_INPUT_ADAPTER_REGISTRY } from './fiscal/tax-input-source-adapter';
 import {
@@ -172,6 +177,11 @@ const USE_CASES = [
   RecordTaxNotificationDeliveryUseCase,
   GetTaxComplianceActionCenterUseCase,
   GetTaxComplianceCalendarUseCase,
+  GetPeriodCloseReadinessUseCase,
+  CloseCompliancePeriodUseCase,
+  ReopenCompliancePeriodUseCase,
+  ExportPeriodCloseBinderUseCase,
+  ListPeriodCloseHistoryUseCase,
   GetPortfolioAiGroundingContextUseCase,
   GetPortfolioAssetAiGroundingContextUseCase,
   GetPortfolioTimelineAiGroundingContextUseCase,

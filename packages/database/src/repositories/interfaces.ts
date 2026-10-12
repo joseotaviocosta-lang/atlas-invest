@@ -1363,3 +1363,85 @@ export interface ITaxReminderPreferencesRepository {
     input: TaxReminderPreferencesWriteInput,
   ): Promise<{ created: boolean; record: TaxReminderPreferencesRow }>;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4K.5 — operational period close history (support snapshots only)
+// ---------------------------------------------------------------------------
+
+export type TaxPeriodCloseScope = 'MONTHLY' | 'ANNUAL';
+
+export type TaxPeriodCloseRecordStatus = 'CLOSED' | 'REOPENED';
+
+export type TaxPeriodCloseWriteOutcome = 'CREATED' | 'IDEMPOTENT' | 'REOPENED';
+
+export interface TaxPeriodCloseRow {
+  id: string;
+  taxSubjectId: string;
+  scope: string;
+  period: string;
+  calendarYear: number;
+  month: string | null;
+  exercise: number | null;
+  revision: number;
+  recordStatus: string;
+  statusAtClose: string | null;
+  closeMode: string | null;
+  sourceFingerprint: string;
+  binderFingerprint: string;
+  reason: string | null;
+  closedAt: Date | null;
+  createdAt: Date;
+}
+
+export interface TaxPeriodCloseWriteInput {
+  id?: string;
+  taxSubjectId: string;
+  scope: string;
+  period: string;
+  calendarYear: number;
+  month?: string | null;
+  exercise?: number | null;
+  statusAtClose?: string | null;
+  closeMode?: string | null;
+  sourceFingerprint: string;
+  binderFingerprint: string;
+  closedAt?: Date | string | null;
+}
+
+export interface TaxPeriodReopenInput {
+  id?: string;
+  taxSubjectId: string;
+  scope: string;
+  period: string;
+  reason: string;
+}
+
+export interface ITaxPeriodCloseRepository {
+  findLatest(input: {
+    taxSubjectId: string;
+    scope: string;
+    period: string;
+  }): Promise<TaxPeriodCloseRow | null>;
+  findById(id: string, taxSubjectId: string): Promise<TaxPeriodCloseRow | null>;
+  findClosedByFingerprints(input: {
+    taxSubjectId: string;
+    scope: string;
+    period: string;
+    sourceFingerprint: string;
+    binderFingerprint: string;
+  }): Promise<TaxPeriodCloseRow | null>;
+  listHistory(input: {
+    taxSubjectId: string;
+    scope?: string;
+    period?: string;
+    limit: number;
+    offset: number;
+  }): Promise<TaxPeriodCloseRow[]>;
+  countHistory(input: { taxSubjectId: string; scope?: string; period?: string }): Promise<number>;
+  recordClose(
+    input: TaxPeriodCloseWriteInput,
+  ): Promise<{ outcome: 'CREATED' | 'IDEMPOTENT'; record: TaxPeriodCloseRow }>;
+  recordReopen(
+    input: TaxPeriodReopenInput,
+  ): Promise<{ outcome: TaxPeriodCloseWriteOutcome; record: TaxPeriodCloseRow }>;
+}

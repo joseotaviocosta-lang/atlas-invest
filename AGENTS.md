@@ -2443,3 +2443,28 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - `GET action-center` / `GET calendar` com principal autenticado, anti-enumeracao 404, `Cache-Control: private, no-store`, sem log de payload fiscal.
 8. **CLIENTE SEM MATEMATICA FISCAL:**
    - Web/Mobile apenas formatam strings do servidor e agrupam por data civil; proibido calcular tributo, vencimento, minimo DARF, multa, juros, SELIC ou totais anuais; proibido importar `@atlas/tax-engine` no cliente.
+
+## 86. Fechamento de Periodo, Dossie de Evidencias e Handoff Profissional (Fase 4K.5)
+
+1. **FECHAMENTO E OPERACIONAL, NUNCA QUITACAO (ADR-289):**
+   - Period close (`assessPeriodCloseReadiness` + `assembleEvidenceBinder`) e projecao pura sobre 4K.1/4K.2/4K.3/4K.4/anual; `READY_TO_CLOSE` significa apenas "sem pendencia operacional conhecida no Atlas".
+   - Fechamento **NUNCA** significa liquidacao governamental, declaracao oficial, homologacao ou extincao de debito.
+2. **PRONTIDAO DETERMINISTICA COM PRECEDENCIA CONGELADA:**
+   - `BLOCKED > STALE > REQUIRES_REVIEW > PARTIAL > READY_TO_CLOSE > NO_ACTIVITY`.
+   - Clean close permitido somente em `READY_TO_CLOSE`/`NO_ACTIVITY`; demais estados falham fechado (422). Sem modo excepcional silencioso na v1.
+3. **CHECKLIST DERIVADO E ITENS PENDENTES OBRIGATORIOS:**
+   - Checklist deriva de estado autoritativo; usuario nunca marca condicao fiscal manualmente.
+   - Binder expoe todos os itens materiais nao resolvidos (bloqueadores, parciais, desatualizados, mismatches, confirmacoes anuais); vedada omissao silenciosa.
+4. **HISTORICO IMUTAVEL, REVISIONADO E IDEMPOTENTE:**
+   - Linhas de `tax_compliance_period_close_records` sao imutaveis; reopen/reclose inserem nova revisao monotônica, nunca mutam o historico.
+   - Close duplicado converge idempotente (excecao: apos reopen explicito, o reclose e novo evento). `closed(A)` nunca implica `closed(B)`.
+   - Mudanca de fonte torna o fechamento anterior STALE; acoes de lembrete (ack/snooze/dismiss) nunca desatualizam fechamento.
+5. **BINDER NAO RECALCULA E EVIDENCIA E USER_REPORTED:**
+   - Binder consome valores upstream verbatim; sem formulas, sem anexos binarios (metadados 4K.2 apenas).
+   - `USER_REPORTED_MATCH` nunca e verificacao governamental; exports nunca imitam DARF/recibo oficial.
+6. **EXPORT SOMENTE-APOIO COM SEGURANCA:**
+   - JSON + CSV unico (`;`, CRLF, `escapeCsvCell` OWASP); sem ZIP; filenames apenas escopo+periodo (sem PII, sem traversal); disclaimer compulsorio em todo artefato.
+   - `calendarYear != exercise` sempre distintos; endpoints com principal autenticado, anti-enumeracao 404, `Cache-Control: private, no-store`.
+7. **PERSISTENCIA ADITIVA E CLIENTE SEM MATEMATICA:**
+   - Uma tabela aditiva (migration 23) com barreira de unicidade por revisao; migrations 1-22 intocadas; sem `db push`.
+   - Web/Mobile apenas formatam strings do servidor; proibido importar `@atlas/tax-engine` no cliente e calcular qualquer grandeza fiscal.

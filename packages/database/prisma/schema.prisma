@@ -41,6 +41,7 @@ model User {
   taxReminderActions      TaxComplianceReminderActionRecord[]
   taxNotificationEvents   TaxComplianceNotificationEventRecord[]
   taxReminderPreferences  TaxComplianceReminderPreferenceRecord?
+  taxPeriodCloseRecords   TaxCompliancePeriodCloseRecord[]
 
   @@map("users")
 }
@@ -846,4 +847,33 @@ model TaxComplianceReminderPreferenceRecord {
   taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
 
   @@map("tax_compliance_reminder_preferences")
+}
+
+/// Phase 4K.5 — operational period close history (support snapshots only).
+/// Append-only per (scope, period, revision). CLOSED rows freeze the
+/// semantic fingerprints current at close time; REOPENED rows supersede the
+/// current state without deleting history. Fiscal truth stays upstream.
+model TaxCompliancePeriodCloseRecord {
+  id                String    @id @default(uuid()) @db.Uuid
+  taxSubjectId      String    @map("tax_subject_id") @db.Uuid
+  scope             String    @db.VarChar(16)
+  period            String    @db.VarChar(16)
+  calendarYear      Int       @map("calendar_year")
+  month             String?   @db.VarChar(7)
+  exercise          Int?
+  revision          Int       @default(1)
+  recordStatus      String    @map("record_status") @db.VarChar(16)
+  statusAtClose     String?   @map("status_at_close") @db.VarChar(32)
+  closeMode         String?   @map("close_mode") @db.VarChar(32)
+  sourceFingerprint String    @map("source_fingerprint") @db.VarChar(64)
+  binderFingerprint String    @map("binder_fingerprint") @db.VarChar(64)
+  reason            String?   @db.Text
+  closedAt          DateTime? @map("closed_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+
+  @@unique([taxSubjectId, scope, period, revision], name: "tax_period_close_revision_identity", map: "tax_period_close_rev_uniq")
+  @@index([taxSubjectId, scope, period], map: "tax_period_close_lookup_idx")
+  @@map("tax_compliance_period_close_records")
 }

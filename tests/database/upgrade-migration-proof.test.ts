@@ -44,7 +44,7 @@ describe('Phase 4J.2A — Database Upgrade Path & Migration Reproducibility Proo
       .map((entry) => entry.name)
       .sort();
 
-    expect(allMigrationDirs.length).toBe(22);
+    expect(allMigrationDirs.length).toBe(23);
 
     // Create _prisma_migrations table
     await upgradePrisma.$executeRawUnsafe(`
@@ -191,11 +191,11 @@ describe('Phase 4J.2A — Database Upgrade Path & Migration Reproducibility Proo
     expect(output).toContain('All migrations have been successfully applied.');
   }, 180_000);
 
-  it('Step 3: post-upgrade verification confirms 22 migrations, 0 pending, and 100% data preservation', async () => {
+  it('Step 3: post-upgrade verification confirms 23 migrations, 0 pending, and 100% data preservation', async () => {
     const applied = await upgradePrisma.$queryRawUnsafe<Array<{ count: bigint }>>(
       `SELECT count(*) as count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL`,
     );
-    expect(Number(applied[0]!.count)).toBe(22);
+    expect(Number(applied[0]!.count)).toBe(23);
 
     // Verify data preservation
     const user = await upgradePrisma.user.findUnique({ where: { id: testUserId } });

@@ -19,7 +19,7 @@ import { TokenService } from '../../apps/api/src/auth/services/token.service';
  *
  * Verifies:
  * 1. Canonical PostgreSQL 16.x instance on port 5433 (SELECT version()).
- * 2. Exact 22 migrations, chronological ordering, and hash integrity.
+ * 2. Exact 23 migrations, chronological ordering, and hash integrity.
  * 3. Fresh PG16 Probe: `atlas_4k3_fresh_probe` (0 tables initially, 22 applied,
  *    2nd deploy idempotent, pending NO, drift NO, reminder/action/event/preference
  *    tables present with dedup uniqueness).
@@ -110,11 +110,12 @@ describe('Phase 4K.3 — Canonical Database Version & Migration 22 Evidence (Pos
     expect(portRows[0]!['port'] ?? portRows[0]!['setting']).toBe('5433');
   });
 
-  it('2. Migration 22 Integrity: exact 22 migrations, chronological ordering, and hash verification', async () => {
+  it('2. Migration 22 Integrity: exact 23 migrations, chronological ordering, and hash verification', async () => {
     const migrationDirs = sortedMigrations();
-    expect(migrationDirs.length).toBe(22);
+    expect(migrationDirs.length).toBe(23);
     expect([...migrationDirs].sort()).toEqual(migrationDirs);
     expect(migrationDirs[21]).toBe('20261012000000_add_tax_compliance_reminders');
+    expect(migrationDirs[22]).toBe('20261013000000_add_tax_compliance_period_close');
 
     const migrationsDir = path.resolve(__dirname, '../../packages/database/prisma/migrations');
     for (let i = 0; i < migrationDirs.length; i++) {
@@ -130,7 +131,7 @@ describe('Phase 4K.3 — Canonical Database Version & Migration 22 Evidence (Pos
     }
   });
 
-  it('3. Fresh PG16 Probe: 0 tables before, applies 22 migrations cleanly, idempotent on 2nd run, no drift, reminder tables present', async () => {
+  it('3. Fresh PG16 Probe: 0 tables before, applies 23 migrations cleanly, idempotent on 2nd run, no drift, reminder tables present', async () => {
     await adminPrisma.$executeRawUnsafe(`CREATE DATABASE ${freshDbName}`);
     freshPrisma = new PrismaClient({ datasources: { db: { url: freshDbUrl } } });
 
@@ -144,7 +145,7 @@ describe('Phase 4K.3 — Canonical Database Version & Migration 22 Evidence (Pos
       env: { ...process.env, DATABASE_URL: freshDbUrl },
       encoding: 'utf-8',
     });
-    expect(deployOutput).toContain('22 migrations found');
+    expect(deployOutput).toContain('23 migrations found');
     expect(deployOutput).toContain('Applying migration');
 
     const secondDeploy = execSync('npx prisma migrate deploy', {
@@ -327,7 +328,7 @@ describe('Phase 4K.3 — Canonical Database Version & Migration 22 Evidence (Pos
 
     const migrationsDir = path.resolve(__dirname, '../../packages/database/prisma/migrations');
     const sorted = sortedMigrations();
-    expect(sorted.length).toBe(22);
+    expect(sorted.length).toBe(23);
 
     await upgradePrisma.$executeRawUnsafe(`
       CREATE TABLE "_prisma_migrations" (

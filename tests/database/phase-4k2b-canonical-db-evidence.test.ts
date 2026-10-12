@@ -19,7 +19,7 @@ import { TokenService } from '../../apps/api/src/auth/services/token.service';
  *
  * Verifies:
  * 1. Canonical PostgreSQL 16.x instance on port 5433 (SELECT version()).
- * 2. Exact 22 migrations, chronological ordering, and hash integrity.
+ * 2. Exact 23 migrations, chronological ordering, and hash integrity.
  * 3. Fresh PG16 Probe: `atlas_4k2b_fresh_probe` (0 tables initially, 22 applied, 2nd deploy idempotency,
  *    pending NO, drift NO, `tax_settlement_records` present with `evidence_fingerprint` and semantic uniqueness).
  * 4. Fresh PG16 Fiscal Smoke & Payment Support E2E (records evidence, verifies duplicate idempotency, queries support).
@@ -105,14 +105,14 @@ describe('Phase 4K.2B — Canonical Database Version & Migration 21 Evidence (Po
     expect(portRows[0]!['port'] ?? portRows[0]!['setting']).toBe('5433');
   });
 
-  it('2. Migration 22 Integrity: exact 22 migrations, chronological ordering, and hash verification', async () => {
+  it('2. Migration 22 Integrity: exact 23 migrations, chronological ordering, and hash verification', async () => {
     const migrationsDir = path.resolve(__dirname, '../../packages/database/prisma/migrations');
     const entries = fs.readdirSync(migrationsDir, { withFileTypes: true });
     const migrationDirs = entries
       .filter((e) => e.isDirectory() && /^\d{14}_/.test(e.name))
       .map((e) => e.name);
 
-    expect(migrationDirs.length).toBe(22);
+    expect(migrationDirs.length).toBe(23);
 
     const sorted = [...migrationDirs].sort();
     expect(migrationDirs).toEqual(sorted);
@@ -135,7 +135,7 @@ describe('Phase 4K.2B — Canonical Database Version & Migration 21 Evidence (Po
     }
   });
 
-  it('3. Fresh PG16 Probe: 0 tables before, applies 22 migrations cleanly, idempotent on 2nd run, no drift, tax_settlement_records present with evidence_fingerprint', async () => {
+  it('3. Fresh PG16 Probe: 0 tables before, applies 23 migrations cleanly, idempotent on 2nd run, no drift, tax_settlement_records present with evidence_fingerprint', async () => {
     await adminPrisma.$executeRawUnsafe(`CREATE DATABASE ${freshDbName}`);
 
     freshPrisma = new PrismaClient({ datasources: { db: { url: freshDbUrl } } });
@@ -146,13 +146,13 @@ describe('Phase 4K.2B — Canonical Database Version & Migration 21 Evidence (Po
     );
     expect(preTables.length).toBe(0);
 
-    // Apply all 22 migrations
+    // Apply all 23 migrations
     const deployOutput = execSync('npx prisma migrate deploy', {
       cwd: path.resolve(__dirname, '../../packages/database'),
       env: { ...process.env, DATABASE_URL: freshDbUrl },
       encoding: 'utf-8',
     });
-    expect(deployOutput).toContain('22 migrations found');
+    expect(deployOutput).toContain('23 migrations found');
     expect(deployOutput).toContain('Applying migration');
 
     // 2nd deploy is idempotent

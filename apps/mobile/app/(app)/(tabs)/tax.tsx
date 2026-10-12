@@ -35,6 +35,7 @@ import { EquityFiscalCard } from '../../../src/components/fiscal/EquityFiscalCar
 import { Composed6015Card } from '../../../src/components/fiscal/Composed6015Card';
 import { ComplianceTimelineCard } from '../../../src/components/fiscal/ComplianceTimelineCard';
 import { TaxComplianceActionCenterCard } from '../../../src/components/fiscal/TaxComplianceActionCenterCard';
+import { TaxCompliancePeriodCloseCard } from '../../../src/components/fiscal/TaxCompliancePeriodCloseCard';
 import { TaxComplianceRemindersCard } from '../../../src/components/fiscal/TaxComplianceRemindersCard';
 
 /** Allowlisted official origin for the Sicalc handoff (open-redirect defense). */
@@ -480,6 +481,11 @@ export default function TaxScreen() {
             <ComplianceTimelineCard calendarYear={parseInt(competence.split('-')[0]!, 10)} />
 
             <TaxComplianceActionCenterCard calendarYear={parseInt(competence.split('-')[0]!, 10)} />
+
+            <TaxCompliancePeriodCloseCard
+              calendarYear={parseInt(competence.split('-')[0]!, 10)}
+              competence={competence}
+            />
 
             <TaxComplianceRemindersCard calendarYear={parseInt(competence.split('-')[0]!, 10)} />
 
