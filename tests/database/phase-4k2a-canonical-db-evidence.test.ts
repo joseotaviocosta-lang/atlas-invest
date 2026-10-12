@@ -109,7 +109,7 @@ describe('Phase 4K.2A — Canonical Database Version & Migration 20 Evidence (Po
       .filter((e) => e.isDirectory() && /^\d{14}_/.test(e.name))
       .map((e) => e.name);
 
-    expect(migrationDirs.length).toBe(21);
+    expect(migrationDirs.length).toBe(22);
 
     const sorted = [...migrationDirs].sort();
     expect(migrationDirs).toEqual(sorted);
@@ -144,13 +144,13 @@ describe('Phase 4K.2A — Canonical Database Version & Migration 20 Evidence (Po
     );
     expect(preTables.length).toBe(0);
 
-    // Apply all 21 migrations
+    // Apply all 22 migrations
     const deployOutput = execSync('npx prisma migrate deploy', {
       cwd: path.resolve(__dirname, '../../packages/database'),
       env: { ...process.env, DATABASE_URL: freshDbUrl },
       encoding: 'utf-8',
     });
-    expect(deployOutput).toContain('21 migrations found');
+    expect(deployOutput).toContain('22 migrations found');
     expect(deployOutput).toContain('Applying migration');
 
     // 2nd deploy is idempotent

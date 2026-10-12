@@ -112,7 +112,7 @@ describe('Phase 4K.1B — Canonical Database Version & Migration 19 Evidence (Po
       .map((d) => d.name)
       .sort();
 
-    expect(entries.length).toBe(21);
+    expect(entries.length).toBe(22);
 
     const expected = [
       '20260915000000_init_financial_persistence',
@@ -136,6 +136,7 @@ describe('Phase 4K.1B — Canonical Database Version & Migration 19 Evidence (Po
       '20261010000000_add_tax_compliance_actions',
       '20261011000000_add_tax_settlement_records',
       '20261011120000_add_tax_settlement_evidence_fingerprint',
+      '20261012000000_add_tax_compliance_reminders',
     ];
 
     expect(entries).toEqual(expected);
@@ -171,7 +172,7 @@ describe('Phase 4K.1B — Canonical Database Version & Migration 19 Evidence (Po
       env: { ...process.env, DATABASE_URL: freshDbUrl },
       encoding: 'utf-8',
     });
-    expect(deployOutput).toContain('21 migrations found');
+    expect(deployOutput).toContain('22 migrations found');
     expect(deployOutput).toContain('Applying migration');
 
     // 2nd deploy is idempotent

@@ -25,3 +25,6 @@ export * from './taxpayer-confirmation.repository';
 export * from './high-income-evidence.repository';
 export * from './tax-compliance-action.repository';
 export * from './tax-settlement.repository';
+export * from './tax-reminder-action.repository';
+export * from './tax-notification-event.repository';
+export * from './tax-reminder-preferences.repository';

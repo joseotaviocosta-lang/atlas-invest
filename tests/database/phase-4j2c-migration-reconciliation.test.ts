@@ -115,7 +115,7 @@ describe('Phase 4J.2C — Canonical PostgreSQL & Migration History Reconciliatio
       .map((d) => d.name)
       .sort();
 
-    expect(entries.length).toBe(21);
+    expect(entries.length).toBe(22);
 
     const expectedMigrations = [
       '20260915000000_init_financial_persistence',
@@ -139,6 +139,7 @@ describe('Phase 4J.2C — Canonical PostgreSQL & Migration History Reconciliatio
       '20261010000000_add_tax_compliance_actions',
       '20261011000000_add_tax_settlement_records',
       '20261011120000_add_tax_settlement_evidence_fingerprint',
+      '20261012000000_add_tax_compliance_reminders',
     ];
 
     expect(entries).toEqual(expectedMigrations);
@@ -189,7 +190,7 @@ describe('Phase 4J.2C — Canonical PostgreSQL & Migration History Reconciliatio
         }>
       >`SELECT migration_name, finished_at, rolled_back_at, applied_steps_count, checksum FROM _prisma_migrations ORDER BY migration_name ASC;`;
 
-      expect(rows.length).toBe(21);
+      expect(rows.length).toBe(22);
 
       const migrationsDir = path.resolve(__dirname, '../../packages/database/prisma/migrations');
 
@@ -216,7 +217,7 @@ describe('Phase 4J.2C — Canonical PostgreSQL & Migration History Reconciliatio
       env: { ...process.env, DATABASE_URL: freshDbUrl },
       encoding: 'utf8',
     });
-    expect(deployOutput1).toContain('21 migrations found in prisma/migrations');
+    expect(deployOutput1).toContain('22 migrations found in prisma/migrations');
     expect(deployOutput1).toContain('All migrations have been successfully applied.');
 
     // Second deploy: idempotent (0 pending)

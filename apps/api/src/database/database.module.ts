@@ -26,6 +26,9 @@ import {
   HighIncomeEvidenceRepository,
   TaxComplianceActionRepository,
   TaxSettlementRepository,
+  TaxReminderActionRepository,
+  TaxNotificationEventRepository,
+  TaxReminderPreferencesRepository,
 } from '@atlas/database';
 import {
   PRISMA_CLIENT,
@@ -54,6 +57,9 @@ import {
   HIGH_INCOME_EVIDENCE_REPOSITORY,
   TAX_COMPLIANCE_ACTION_REPOSITORY,
   TAX_SETTLEMENT_REPOSITORY,
+  TAX_REMINDER_ACTION_REPOSITORY,
+  TAX_NOTIFICATION_EVENT_REPOSITORY,
+  TAX_REMINDER_PREFERENCES_REPOSITORY,
 } from './tokens';
 
 type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
@@ -190,6 +196,21 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
       useFactory: (prisma: AtlasPrismaClient) => new TaxSettlementRepository(prisma),
       inject: [PRISMA_CLIENT],
     },
+    {
+      provide: TAX_REMINDER_ACTION_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new TaxReminderActionRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
+    {
+      provide: TAX_NOTIFICATION_EVENT_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new TaxNotificationEventRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
+    {
+      provide: TAX_REMINDER_PREFERENCES_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new TaxReminderPreferencesRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
   ],
   exports: [
     PRISMA_CLIENT,
@@ -218,6 +239,9 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     HIGH_INCOME_EVIDENCE_REPOSITORY,
     TAX_COMPLIANCE_ACTION_REPOSITORY,
     TAX_SETTLEMENT_REPOSITORY,
+    TAX_REMINDER_ACTION_REPOSITORY,
+    TAX_NOTIFICATION_EVENT_REPOSITORY,
+    TAX_REMINDER_PREFERENCES_REPOSITORY,
   ],
 })
 export class DatabaseModule {}

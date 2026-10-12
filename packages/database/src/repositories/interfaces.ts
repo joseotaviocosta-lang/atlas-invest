@@ -1247,3 +1247,119 @@ export interface ITaxSettlementRepository {
     input: TaxSettlementWriteInput,
   ): Promise<{ outcome: TaxSettlementWriteOutcome; record: TaxSettlementRow }>;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4K.3 — compliance reminder actions, notification events, preferences
+// ---------------------------------------------------------------------------
+
+export type TaxReminderActionWriteOutcome = 'CREATED' | 'IDEMPOTENT' | 'SUPERSEDED';
+
+export interface TaxReminderActionRow {
+  id: string;
+  taxSubjectId: string;
+  reminderKey: string;
+  obligationKey: string;
+  reminderKind: string;
+  triggerAt: Date;
+  sourceFingerprint: string;
+  actionType: string;
+  snoozedUntil: Date | null;
+  revision: number;
+  occurredAt: Date;
+  createdAt: Date;
+}
+
+export interface TaxReminderActionWriteInput {
+  id?: string;
+  taxSubjectId: string;
+  reminderKey: string;
+  obligationKey: string;
+  reminderKind: string;
+  triggerAt: Date | string;
+  sourceFingerprint: string;
+  actionType: string;
+  snoozedUntil?: Date | string | null;
+  occurredAt?: Date | string;
+}
+
+export interface ITaxReminderActionRepository {
+  findLatest(input: {
+    taxSubjectId: string;
+    reminderKey: string;
+  }): Promise<TaxReminderActionRow | null>;
+  listBySubject(input: {
+    taxSubjectId: string;
+    reminderKey?: string;
+  }): Promise<TaxReminderActionRow[]>;
+  create(
+    input: TaxReminderActionWriteInput,
+  ): Promise<{ outcome: TaxReminderActionWriteOutcome; record: TaxReminderActionRow }>;
+}
+
+export type TaxNotificationEventWriteOutcome = 'DELIVERED' | 'IDEMPOTENT';
+
+export interface TaxNotificationEventRow {
+  id: string;
+  taxSubjectId: string;
+  reminderKey: string;
+  sourceFingerprint: string;
+  channel: string;
+  triggerAt: Date;
+  deliveredAt: Date;
+  deliveryStatus: string;
+  attempt: number;
+  dedupKey: string;
+  createdAt: Date;
+}
+
+export interface TaxNotificationEventWriteInput {
+  id?: string;
+  taxSubjectId: string;
+  reminderKey: string;
+  sourceFingerprint: string;
+  channel: string;
+  triggerAt: Date | string;
+  deliveryStatus?: string;
+  dedupKey: string;
+}
+
+export interface ITaxNotificationEventRepository {
+  findByDedup(input: {
+    taxSubjectId: string;
+    dedupKey: string;
+  }): Promise<TaxNotificationEventRow | null>;
+  listBySubject(input: {
+    taxSubjectId: string;
+    reminderKey?: string;
+  }): Promise<TaxNotificationEventRow[]>;
+  create(
+    input: TaxNotificationEventWriteInput,
+  ): Promise<{ outcome: TaxNotificationEventWriteOutcome; record: TaxNotificationEventRow }>;
+}
+
+export interface TaxReminderPreferencesRow {
+  taxSubjectId: string;
+  remindersEnabled: boolean;
+  upcomingEnabled: boolean;
+  overdueEnabled: boolean;
+  annualEnabled: boolean;
+  leadTimes: number[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TaxReminderPreferencesWriteInput {
+  taxSubjectId: string;
+  remindersEnabled: boolean;
+  upcomingEnabled: boolean;
+  overdueEnabled: boolean;
+  annualEnabled: boolean;
+  leadTimes: number[];
+}
+
+export interface ITaxReminderPreferencesRepository {
+  findBySubject(taxSubjectId: string): Promise<TaxReminderPreferencesRow | null>;
+  upsert(
+    input: TaxReminderPreferencesWriteInput,
+  ): Promise<{ created: boolean; record: TaxReminderPreferencesRow }>;
+}

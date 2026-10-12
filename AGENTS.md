@@ -2384,3 +2384,36 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - Consultas de apoio a pagamento e submissões de evidência pertencentes a outro contribuinte respondem compulsoriamente com `404 Not Found`.
 9. **DISCLAIMER OBRIGATÓRIO EM TODAS AS INTERFACES E RESPOSTAS:**
    - Toda resposta de API e interface (Web e Mobile) deve exibir de forma visível o aviso legal informando que o Atlas não realiza nem confirma pagamentos de DARF e que a liquidação deve ser feita pelo investidor em canais bancários autorizados.
+
+## 84. Lembretes de Compliance e Orquestracao de Notificacoes (Fase 4K.3)
+
+1. **PROJECAO PURA E ZERO RECALCULO FISCAL (ADR-287):**
+   - Lembretes (`projectTaxComplianceReminders`) sao projecao deterministicamente derivada sobre 4K.1 (obrigacoes) e 4K.2 (payment support/evidence).
+   - E **terminantemente proibido** calcular imposto, vencimento legal, minimo DARF, multa, juros ou SELIC na camada de lembretes.
+2. **IDENTIDADE SEMANTICA E DEDUP DETERMINISTICO:**
+   - `reminderKey = obligationKey:kind:triggerAt`; `dedupKey = reminderKey:sourceFingerprint`. Sem UUID aleatorio como identidade de negocio.
+   - Mesmo lembrete semantico gera exatamente um evento canonico por trigger/canal.
+3. **TEMPO DERIVA DO VENCIMENTO AUTORITATIVO:**
+   - `reminderAt = dueDate - leadTime` (lead times padrao 7/3/1 sao politica de UX, nao lei tributaria).
+   - Relogio injetado (`FISCAL_CLOCK`, civil `YYYY-MM-DD`); nenhum `Date.now()` na logica pura.
+4. **ACOES DO USUARIO NAO RESOLVEM COMPLIANCE:**
+   - `ACKNOWLEDGE` (viu), `DISMISS` (ocultar instancia) e `SNOOZE` (reagendar exibicao, futuro <=365 dias, expiracao reexpoe) **NUNCA** significam pago/entregue/resolvido/aceito pela Receita.
+   - Snooze altera apenas o momento de exibicao; jamais dueDate, status, pagamento ou tributo.
+5. **MUDANCA DE FONTE INVALIDA SUPRESSAO:**
+   - Lembrete vincula `(obligationKey, sourceFingerprint)`; fonte alterada supersedeia a instancia antiga (`SUPERSEDED`, historico preservado) e gera instancia nova acionavel. Ack/dismissal antigos nunca sao reutilizados.
+6. **EVIDENCIA DE PAGAMENTO:**
+   - `USER_REPORTED_MATCH` nao gera cobranca pendente redundante (match continua sendo alegacao do usuario, nunca confirmacao governamental).
+   - `USER_REPORTED_MISMATCH` gera `PAYMENT_EVIDENCE_REVIEW`; `STALE_SOURCE` gera alerta de revisao.
+   - Atraso gera exatamente uma instancia `OVERDUE` por fonte, sem spam por ciclo e sem calculo de penalidade.
+7. **ENTREGA IN-APP IDEMPOTENTE E HISTORICO APPEND-ONLY:**
+   - Entrega e registrada explicitamente por `(reminder, channel, source)` com unicidade de dedup; retry retorna o evento canonico.
+   - Entrega contra fingerprint obsoleto e rejeitada (404), nunca inventada. Falha de entrega nunca altera compliance.
+8. **PREFERENCIAS COM ESCOPO E SEGURANCA:**
+   - Preferencias (habilitadores + leadTimes 1..30, max 5) sao politica de produto por sujeito (upsert), com padroes seguros nao-spam.
+   - Endpoints com principal autenticado, anti-enumeracao 404, `Cache-Control: private, no-store`, DTOs Zod estritos.
+9. **PRIVACIDADE E SEM AFIRMACAO EXTERNA:**
+   - Titulos lock-screen-safe, sem valores/credenciais; detalhes apenas no app autenticado.
+   - Lembretes nunca afirmam envio pela Receita, confirmacao governamental ou cobranca oficial al�m da fonte Atlas.
+   - Logs nunca carregam valores, evidencias, recibos, banco, credenciais, tokens ou payloads de notificacao.
+10. **CLIENTE SEM MATEMATICA FISCAL:**
+    - Web/Mobile apenas formatam strings do servidor; proibido calcular tributo, vencimento, minimo DARF, multa, juros ou SELIC.

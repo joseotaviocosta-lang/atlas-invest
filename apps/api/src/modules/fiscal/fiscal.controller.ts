@@ -71,6 +71,10 @@ import { RecordTaxComplianceActionUseCase } from '../../application/fiscal/recor
 import { GetTaxPaymentSupportUseCase } from '../../application/fiscal/get-tax-payment-support.use-case';
 import { RecordTaxPaymentEvidenceUseCase } from '../../application/fiscal/record-tax-payment-evidence.use-case';
 import { ListTaxPaymentEvidenceUseCase } from '../../application/fiscal/list-tax-payment-evidence.use-case';
+import { GetTaxComplianceRemindersUseCase } from '../../application/fiscal/get-tax-compliance-reminders.use-case';
+import { RecordTaxReminderActionUseCase } from '../../application/fiscal/record-tax-reminder-action.use-case';
+import { TaxReminderPreferencesUseCase } from '../../application/fiscal/tax-reminder-preferences.use-case';
+import { RecordTaxNotificationDeliveryUseCase } from '../../application/fiscal/record-tax-notification-delivery.use-case';
 import { ZodValidationPipe } from '../../common/pipes';
 
 import {
@@ -140,6 +144,18 @@ import {
   PaymentSupportExportQueryDto,
   PaymentSupportExportQuerySchema,
 } from './dto/tax-compliance.dto';
+import {
+  TaxComplianceRemindersQueryDto,
+  TaxComplianceRemindersQuerySchema,
+  TaxComplianceReminderParamDto,
+  TaxComplianceReminderParamSchema,
+  RecordTaxReminderActionBodyDto,
+  RecordTaxReminderActionBodySchema,
+  RecordTaxNotificationDeliveryBodyDto,
+  RecordTaxNotificationDeliveryBodySchema,
+  TaxReminderPreferencesBodyDto,
+  TaxReminderPreferencesBodySchema,
+} from './dto/tax-compliance-reminders.dto';
 
 import {
   AdjustmentQuery,
@@ -305,6 +321,14 @@ export class FiscalController {
     private readonly recordTaxPaymentEvidenceUseCase: RecordTaxPaymentEvidenceUseCase,
     @Inject(ListTaxPaymentEvidenceUseCase)
     private readonly listTaxPaymentEvidenceUseCase: ListTaxPaymentEvidenceUseCase,
+    @Inject(GetTaxComplianceRemindersUseCase)
+    private readonly getTaxComplianceRemindersUseCase: GetTaxComplianceRemindersUseCase,
+    @Inject(RecordTaxReminderActionUseCase)
+    private readonly recordTaxReminderActionUseCase: RecordTaxReminderActionUseCase,
+    @Inject(TaxReminderPreferencesUseCase)
+    private readonly taxReminderPreferencesUseCase: TaxReminderPreferencesUseCase,
+    @Inject(RecordTaxNotificationDeliveryUseCase)
+    private readonly recordTaxNotificationDeliveryUseCase: RecordTaxNotificationDeliveryUseCase,
   ) {}
 
   @Get('monthly/:competence')
@@ -1327,6 +1351,162 @@ export class FiscalController {
     });
     res.setHeader('Cache-Control', 'private, no-store');
     return { data };
+  }
+
+  // --- Phase 4K.3: Tax Compliance Reminders & Notification Orchestration ---
+  // NOTE (route ordering): literal `compliance/reminders...` routes are declared
+  // BEFORE the parameterized `compliance/:obligationKey/...` routes so Express
+  // never captures `reminders` as an obligationKey.
+
+  @Get('compliance/reminders')
+  @ApiOperation({
+    summary:
+      'Get derived tax compliance reminders (upcoming, due-today, overdue, action, stale, annual). Pure projection over 4K.1/4K.2 state — zero tax or deadline recomputation.',
+  })
+  @ApiResponse({ status: 200, description: 'Derived reminder list' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  async getTaxComplianceReminders(
+    @Query(new ZodValidationPipe(TaxComplianceRemindersQuerySchema))
+    query: TaxComplianceRemindersQueryDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.getTaxComplianceRemindersUseCase.execute({
+      taxSubjectId: principal.userId,
+      calendarYear: query.calendarYear,
+      status: query.status,
+      kind: query.kind,
+      triggerFrom: query.triggerFrom,
+      triggerTo: query.triggerTo,
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    return {
+      data: result.reminders,
+      meta: { totalCount: result.totalCount, generatedAt: result.generatedAt },
+    };
+  }
+
+  @Post('compliance/reminders/:reminderKey/actions')
+  @ApiOperation({
+    summary:
+      'Record a user reminder action (acknowledge, snooze, dismiss). Changes reminder surfacing only — never resolves the fiscal obligation. Anti-enumeration 404 for foreign reminder keys.',
+  })
+  @ApiParam({ name: 'reminderKey', description: 'Deterministic semantic reminder key' })
+  @ApiResponse({ status: 201, description: 'Reminder action recorded' })
+  @ApiResponse({ status: 400, description: 'Invalid action payload' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  @ApiResponse({ status: 404, description: 'Reminder not found (anti-enumeration)' })
+  async recordTaxReminderAction(
+    @Param(new ZodValidationPipe(TaxComplianceReminderParamSchema))
+    params: TaxComplianceReminderParamDto,
+    @Body(new ZodValidationPipe(RecordTaxReminderActionBodySchema))
+    body: RecordTaxReminderActionBodyDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.recordTaxReminderActionUseCase.execute({
+      taxSubjectId: principal.userId,
+      reminderKey: params.reminderKey,
+      actionType: body.actionType,
+      obligationKey: body.obligationKey,
+      reminderKind: body.reminderKind,
+      triggerAt: body.triggerAt,
+      sourceFingerprint: body.sourceFingerprint,
+      snoozedUntil: body.snoozedUntil,
+      note: body.note,
+    });
+    return { data: result.record };
+  }
+
+  @Post('compliance/reminders/:reminderKey/deliveries')
+  @ApiOperation({
+    summary:
+      'Record an in-app delivery surfacing event for a reminder. Idempotent per (reminder, channel, source). Stale fingerprints are rejected, never invented.',
+  })
+  @ApiParam({ name: 'reminderKey', description: 'Deterministic semantic reminder key' })
+  @ApiResponse({ status: 201, description: 'Delivery recorded (DELIVERED or IDEMPOTENT)' })
+  @ApiResponse({ status: 400, description: 'Invalid delivery payload' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  @ApiResponse({ status: 404, description: 'Reminder not found (anti-enumeration)' })
+  async recordTaxNotificationDelivery(
+    @Param(new ZodValidationPipe(TaxComplianceReminderParamSchema))
+    params: TaxComplianceReminderParamDto,
+    @Body(new ZodValidationPipe(RecordTaxNotificationDeliveryBodySchema))
+    body: RecordTaxNotificationDeliveryBodyDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.recordTaxNotificationDeliveryUseCase.execute({
+      taxSubjectId: principal.userId,
+      reminderKey: params.reminderKey,
+      sourceFingerprint: body.sourceFingerprint,
+      channel: body.channel,
+      triggerAt: body.triggerAt,
+    });
+    return { data: result.record };
+  }
+
+  @Get('compliance/reminders/:reminderKey/deliveries')
+  @ApiOperation({
+    summary:
+      'Get in-app delivery history for a reminder. Anti-enumeration 404 for foreign reminder keys.',
+  })
+  @ApiParam({ name: 'reminderKey', description: 'Deterministic semantic reminder key' })
+  @ApiResponse({ status: 200, description: 'Delivery history (newest first)' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  @ApiResponse({ status: 404, description: 'Reminder not found (anti-enumeration)' })
+  async listTaxNotificationDeliveries(
+    @Param(new ZodValidationPipe(TaxComplianceReminderParamSchema))
+    params: TaxComplianceReminderParamDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const records = await this.recordTaxNotificationDeliveryUseCase.listDeliveries({
+      taxSubjectId: principal.userId,
+      reminderKey: params.reminderKey,
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    return { data: records };
+  }
+
+  @Get('compliance/reminder-preferences')
+  @ApiOperation({
+    summary:
+      'Get the authenticated subject reminder preferences (product UX policy). Defaults apply when never configured.',
+  })
+  @ApiResponse({ status: 200, description: 'Reminder preferences' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  async getTaxReminderPreferences(
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const preferences = await this.taxReminderPreferencesUseCase.getPreferences(principal.userId);
+    res.setHeader('Cache-Control', 'private, no-store');
+    return { data: preferences };
+  }
+
+  @Put('compliance/reminder-preferences')
+  @ApiOperation({
+    summary:
+      'Replace the authenticated subject reminder preferences. Validated product policy only — no fiscal effect.',
+  })
+  @ApiResponse({ status: 200, description: 'Reminder preferences saved' })
+  @ApiResponse({ status: 400, description: 'Invalid preferences payload' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  async putTaxReminderPreferences(
+    @Body(new ZodValidationPipe(TaxReminderPreferencesBodySchema))
+    body: TaxReminderPreferencesBodyDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.taxReminderPreferencesUseCase.upsertPreferences({
+      taxSubjectId: principal.userId,
+      remindersEnabled: body.remindersEnabled,
+      upcomingEnabled: body.upcomingEnabled,
+      overdueEnabled: body.overdueEnabled,
+      annualEnabled: body.annualEnabled,
+      leadTimes: body.leadTimes,
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    return { data: result.preferences };
   }
 
   @Post('compliance/:obligationKey/actions')

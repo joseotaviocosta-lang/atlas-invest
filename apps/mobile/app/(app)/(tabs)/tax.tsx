@@ -34,6 +34,7 @@ import { apiClient, ApiError } from '../../../src/api/client';
 import { EquityFiscalCard } from '../../../src/components/fiscal/EquityFiscalCard';
 import { Composed6015Card } from '../../../src/components/fiscal/Composed6015Card';
 import { ComplianceTimelineCard } from '../../../src/components/fiscal/ComplianceTimelineCard';
+import { TaxComplianceRemindersCard } from '../../../src/components/fiscal/TaxComplianceRemindersCard';
 
 /** Allowlisted official origin for the Sicalc handoff (open-redirect defense). */
 const OFFICIAL_DARF_ORIGIN = 'https://sicalc.receita.fazenda.gov.br/';
@@ -476,6 +477,8 @@ export default function TaxScreen() {
             )}
 
             <ComplianceTimelineCard calendarYear={parseInt(competence.split('-')[0]!, 10)} />
+
+            <TaxComplianceRemindersCard calendarYear={parseInt(competence.split('-')[0]!, 10)} />
 
             <Text style={styles.notice}>{vm.foundationNotice}</Text>
           </>

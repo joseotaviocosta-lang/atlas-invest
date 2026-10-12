@@ -74,6 +74,10 @@ import { RecordTaxComplianceActionUseCase } from './fiscal/record-tax-compliance
 import { GetTaxPaymentSupportUseCase } from './fiscal/get-tax-payment-support.use-case';
 import { RecordTaxPaymentEvidenceUseCase } from './fiscal/record-tax-payment-evidence.use-case';
 import { ListTaxPaymentEvidenceUseCase } from './fiscal/list-tax-payment-evidence.use-case';
+import { GetTaxComplianceRemindersUseCase } from './fiscal/get-tax-compliance-reminders.use-case';
+import { RecordTaxReminderActionUseCase } from './fiscal/record-tax-reminder-action.use-case';
+import { TaxReminderPreferencesUseCase } from './fiscal/tax-reminder-preferences.use-case';
+import { RecordTaxNotificationDeliveryUseCase } from './fiscal/record-tax-notification-delivery.use-case';
 import { SystemFiscalClock } from './fiscal/fiscal-clock';
 import { EMPTY_TAX_INPUT_ADAPTER_REGISTRY } from './fiscal/tax-input-source-adapter';
 import {
@@ -160,6 +164,10 @@ const USE_CASES = [
   GetTaxPaymentSupportUseCase,
   RecordTaxPaymentEvidenceUseCase,
   ListTaxPaymentEvidenceUseCase,
+  GetTaxComplianceRemindersUseCase,
+  RecordTaxReminderActionUseCase,
+  TaxReminderPreferencesUseCase,
+  RecordTaxNotificationDeliveryUseCase,
   GetPortfolioAiGroundingContextUseCase,
   GetPortfolioAssetAiGroundingContextUseCase,
   GetPortfolioTimelineAiGroundingContextUseCase,

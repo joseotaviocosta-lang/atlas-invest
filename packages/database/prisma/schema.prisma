@@ -38,6 +38,9 @@ model User {
   highIncomeEvidence      HighIncomeEvidenceRecord[]
   taxComplianceActions    TaxComplianceActionRecord[]
   taxSettlementRecords    TaxSettlementRecord[]
+  taxReminderActions      TaxComplianceReminderActionRecord[]
+  taxNotificationEvents   TaxComplianceNotificationEventRecord[]
+  taxReminderPreferences  TaxComplianceReminderPreferenceRecord?
 
   @@map("users")
 }
@@ -778,4 +781,69 @@ model TaxSettlementRecord {
   @@index([taxSubjectId, obligationKey], map: "tax_settlement_record_lookup_idx")
   @@index([taxSubjectId, referencePeriod], map: "tax_settlement_record_period_idx")
   @@map("tax_settlement_records")
+}
+
+/// Phase 4K.3 — user interactions with derived compliance reminders.
+/// Append-only per (reminderKey, revision); actions bind to the
+/// sourceFingerprint current at interaction time and are never reused
+/// across a changed source. Snooze shifts surfacing only, never fiscal state.
+model TaxComplianceReminderActionRecord {
+  id                String   @id @default(uuid()) @db.Uuid
+  taxSubjectId      String   @map("tax_subject_id") @db.Uuid
+  reminderKey       String   @map("reminder_key") @db.VarChar(255)
+  obligationKey     String   @map("obligation_key") @db.VarChar(255)
+  reminderKind      String   @map("reminder_kind") @db.VarChar(50)
+  triggerAt         DateTime @map("trigger_at") @db.Date
+  sourceFingerprint String   @map("source_fingerprint") @db.VarChar(64)
+  actionType        String   @map("action_type") @db.VarChar(20)
+  snoozedUntil      DateTime? @map("snoozed_until") @db.Date
+  revision          Int      @default(1)
+  occurredAt        DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+
+  @@unique([taxSubjectId, reminderKey, revision], name: "tax_compliance_reminder_action_revision_identity", map: "tax_compliance_reminder_action_rev_uniq")
+  @@index([taxSubjectId, reminderKey], map: "tax_compliance_reminder_action_lookup_idx")
+  @@index([taxSubjectId, occurredAt], map: "tax_compliance_reminder_action_time_idx")
+  @@map("tax_compliance_reminder_actions")
+}
+
+/// Phase 4K.3 — in-app notification delivery events.
+/// One canonical event per (taxSubjectId, dedupKey); retries are idempotent.
+model TaxComplianceNotificationEventRecord {
+  id                String   @id @default(uuid()) @db.Uuid
+  taxSubjectId      String   @map("tax_subject_id") @db.Uuid
+  reminderKey       String   @map("reminder_key") @db.VarChar(255)
+  sourceFingerprint String   @map("source_fingerprint") @db.VarChar(64)
+  channel           String   @map("channel") @db.VarChar(20)
+  triggerAt         DateTime @map("trigger_at") @db.Date
+  deliveredAt       DateTime @default(now()) @map("delivered_at") @db.Timestamptz(6)
+  deliveryStatus    String   @default("DELIVERED") @map("delivery_status") @db.VarChar(30)
+  attempt           Int      @default(1)
+  dedupKey          String   @map("dedup_key") @db.VarChar(512)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+
+  @@unique([taxSubjectId, dedupKey], name: "tax_compliance_notification_event_dedup_identity", map: "tax_compliance_notification_event_dedup_uniq")
+  @@index([taxSubjectId, reminderKey], map: "tax_compliance_notification_event_lookup_idx")
+  @@map("tax_compliance_notification_events")
+}
+
+/// Phase 4K.3 — per-subject reminder preferences (product UX policy, not tax law).
+/// Single mutable settings row per subject; upserted, never part of fiscal truth.
+model TaxComplianceReminderPreferenceRecord {
+  taxSubjectId      String   @id @map("tax_subject_id") @db.Uuid
+  remindersEnabled  Boolean  @default(true) @map("reminders_enabled")
+  upcomingEnabled   Boolean  @default(true) @map("upcoming_enabled")
+  overdueEnabled    Boolean  @default(true) @map("overdue_enabled")
+  annualEnabled     Boolean  @default(true) @map("annual_enabled")
+  leadTimes         Int[]    @default([7, 3, 1]) @map("lead_times")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+
+  @@map("tax_compliance_reminder_preferences")
 }

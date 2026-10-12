@@ -111,7 +111,7 @@ describe('Phase 4J.3A — Canonical Database Version & Migration Evidence (Postg
       .filter((d) => fs.statSync(path.join(migrationsDir, d)).isDirectory())
       .sort();
 
-    expect(entries.length).toBe(21);
+    expect(entries.length).toBe(22);
     expect(entries[15]).toBe('20261002000000_add_taxpayer_confirmations');
     expect(entries[16]).toBe('20261004120000_add_high_income_evidence_records');
     expect(entries[17]).toBe('20261006120000_repair_taxpayer_confirmations');
@@ -144,7 +144,7 @@ describe('Phase 4J.3A — Canonical Database Version & Migration Evidence (Postg
     expect(mig21Content).toContain('evidence_fingerprint');
   });
 
-  it('3. Fresh PG16 Probe: 0 tables before, applies 21 migrations cleanly, idempotent on 2nd run, no drift', async () => {
+  it('3. Fresh PG16 Probe: 0 tables before, applies 22 migrations cleanly, idempotent on 2nd run, no drift', async () => {
     await adminPrisma.$executeRawUnsafe(`CREATE DATABASE ${freshDbName} OWNER atlas`);
 
     freshPrisma = new PrismaClient({ datasources: { db: { url: freshDbUrl } } });
@@ -159,7 +159,7 @@ describe('Phase 4J.3A — Canonical Database Version & Migration Evidence (Postg
       env: { ...process.env, DATABASE_URL: freshDbUrl },
       encoding: 'utf-8',
     });
-    expect(deployOut).toContain('21 migrations found in prisma/migrations');
+    expect(deployOut).toContain('22 migrations found in prisma/migrations');
     expect(deployOut).toContain('All migrations have been successfully applied.');
 
     const deploy2Out = execSync('pnpm --filter @atlas/database exec prisma migrate deploy', {
