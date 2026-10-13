@@ -209,6 +209,18 @@ describe('Web: tax compliance action center UX (Phase 4K.4)', () => {
     expect(taxComplianceCalendarQueryKey('2026-04-01', '2026-04-30')).toContain('calendar');
   });
 
+  it('handles response with missing or null meta without throwing (runtime robustness proof)', () => {
+    const rawWithoutMeta: { data: RawTaxComplianceActionItem[]; meta?: unknown } = {
+      data: [sampleItem()],
+      meta: null,
+    };
+    const summary =
+      (rawWithoutMeta.meta as { summary?: unknown } | null | undefined)?.summary ?? null;
+    expect(summary).toBeNull();
+    const vms = mapToTaxComplianceActionItemListViewModel(rawWithoutMeta.data);
+    expect(vms).toHaveLength(1);
+  });
+
   it('renders sections, filters, calendar grid and disclaimers', () => {
     const component = fs.readFileSync(path.join(process.cwd(), COMPONENT), 'utf8');
     expect(component).toContain('Precisa de atenção');
