@@ -12,52 +12,70 @@
 export function invariant_sourceFingerprintPropagation(
   state: any,
   expectedFingerprint: string
-): boolean {
-  return state.sourceFingerprint === expectedFingerprint
+): { pass: boolean; reason: string } {
+  return { pass: state.sourceFingerprint === expectedFingerprint, reason: 'source fingerprint check' }
 }
 
 // I2: Stale evidence never MATCH
 export function invariant_staleEvidenceNeverMatch(
   state: any,
   previousState: any
-): boolean {
-  return !state.stale && previousState.sourceFingerprint !== state.sourceFingerprint
+): { pass: boolean; reason: string } {
+  return {
+    pass: !state.stale && previousState.sourceFingerprint !== state.sourceFingerprint,
+    reason: 'stale evidence match check'
+  }
 }
 
 // I3: Reminder dismissal != obligation completion
 export function invariant_reminderDismissalNotCompletion(
   state: any
-): boolean {
-  return state.reminderDismissed !== state.obligationCompleted
+): { pass: boolean; reason: string } {
+  return {
+    pass: state.reminderDismissed !== state.obligationCompleted,
+    reason: 'reminder dismissal vs obligation completion check'
+  }
 }
 
 // I4: Acknowledgement != payment
 export function invariant_acknowledgementNotPayment(
   state: any
-): boolean {
-  return state.acknowledged !== state.paymentCompleted
+): { pass: boolean; reason: string } {
+  return {
+    pass: state.acknowledged !== state.paymentCompleted,
+    reason: 'acknowledgement vs payment check'
+  }
 }
 
 // I5: Snooze != legal due-date change
 export function invariant_snoozeNotDueDateChange(
   state: any
-): boolean {
-  return state.snoozedUntil !== state.dueDateChanged
+): { pass: boolean; reason: string } {
+  return {
+    pass: state.snoozedUntil !== state.dueDateChanged,
+    reason: 'snooze vs due-date change check'
+  }
 }
 
 // I6: Action Center does not recompute due date
 export function invariant_actionCenterNoDueDateRecompute(
   state: any
-): boolean {
-  return state.actionCenterDueDate === state.canonicalDueDate
+): { pass: boolean; reason: string } {
+  return {
+    pass: state.actionCenterDueDate === state.canonicalDueDate,
+    reason: 'action center due date reconcile check'
+  }
 }
 
 // I7: Action Center counters reconcile
 export function invariant_actionCenterCountersReconcile(
   state: any
-): boolean {
+): { pass: boolean; reason: string } {
   const { counterA, counterB, counterC } = state.actionCenter
-  return counterA + counterB + counterC === state.totalActionItems
+  return {
+    pass: counterA + counterB + counterC === state.totalActionItems,
+    reason: 'action center counters reconcile check'
+  }
 }
 
 // I8: Close READY does not mean government settlement
