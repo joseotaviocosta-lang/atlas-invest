@@ -1,4 +1,9 @@
-import { getInMemoryAccessToken, useAuthStore } from '@/stores/auth.store';
+import {
+  getInMemoryAccessToken,
+  useAuthStore,
+  getActiveRestorePromise,
+  registerExternalRefreshGetter,
+} from '@/stores/auth.store';
 import { clearQueryCache } from '@/lib/react-query';
 import { ApiErrorResponse } from './types';
 
@@ -56,9 +61,29 @@ export class ApiClient {
    * Single-flight refresh interceptor mutex:
    * Serializes concurrent 401 refresh calls into a single network invocation.
    */
+  getActiveRefreshPromise(): Promise<string> | null {
+    return this.activeRefreshPromise;
+  }
+
   async performSingleFlightRefresh(): Promise<string> {
     if (this.activeRefreshPromise) {
       return this.activeRefreshPromise;
+    }
+
+    // Defer to an in-flight AuthProvider session restore so concurrent refresh
+    // triggers (e.g. a boot-time restore racing a 401-triggered interceptor
+    // refresh after a full page reload) issue exactly one network refresh.
+    // Without this, two concurrent refreshes with the same cookie token make
+    // the backend revoke the whole session as suspected token reuse.
+    const pendingRestore = getActiveRestorePromise();
+    if (pendingRestore) {
+      const restored = await pendingRestore;
+      const token = getInMemoryAccessToken();
+      if (restored && token) {
+        return token;
+      }
+      this.handleAuthFailure();
+      throw new ApiError('Session refresh failed', 401, 'AUTH.REFRESH_FAILED');
     }
 
     this.activeRefreshPromise = (async () => {
@@ -324,3 +349,8 @@ export class ApiClient {
 }
 
 export const apiClient = new ApiClient();
+
+// Register the interceptor refresh slot so AuthProvider session restore can
+// defer to it instead of firing a second concurrent refresh (H3 fix).
+// Placed here (client imports store, never the reverse) to avoid a module cycle.
+registerExternalRefreshGetter(() => apiClient.getActiveRefreshPromise());

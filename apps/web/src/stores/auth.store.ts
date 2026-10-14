@@ -32,6 +32,41 @@ let inMemoryAccessToken: string | null = null;
 // would kill the session and bounce the user to login on every full page reload.
 let activeRestorePromise: Promise<boolean> | null = null;
 
+export function getActiveRestorePromise(): Promise<boolean> | null {
+  return activeRestorePromise;
+}
+
+// External refresh coordination hook (dependency inversion so the store never
+// imports the HTTP client, avoiding a module cycle).
+// ApiClient registers a getter for its own in-flight refresh promise. Session
+// restore defers to it instead of firing a second concurrent
+// POST /api/auth/refresh with the same cookie token, which the backend would
+// treat as token reuse and revoke the whole session.
+let externalRefreshGetter: (() => Promise<string> | null) | null = null;
+
+export function registerExternalRefreshGetter(getter: () => Promise<string> | null): void {
+  externalRefreshGetter = getter;
+}
+
+// Fetch the current user with a fresh access token. Returns null when the
+// BFF /me lookup fails so callers can clear the session identically.
+async function fetchCurrentUser(accessToken: string): Promise<AuthUser | null> {
+  const meRes = await fetch('/api/auth/me', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: 'application/json',
+    },
+  });
+
+  if (!meRes.ok) {
+    return null;
+  }
+
+  const meData = await meRes.json();
+  return (meData?.data as AuthUser | null) ?? null;
+}
+
 export const getInMemoryAccessToken = (): string | null => inMemoryAccessToken;
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -99,6 +134,40 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return activeRestorePromise;
     }
 
+    // Defer to an in-flight ApiClient refresh (e.g. a 401-triggered interceptor
+    // refresh racing this restore) so only one network refresh runs per runtime.
+    const externalRefresh = externalRefreshGetter?.();
+    if (externalRefresh) {
+      activeRestorePromise = (async (): Promise<boolean> => {
+        try {
+          const accessToken = await externalRefresh;
+          if (!accessToken) {
+            get().clearSession();
+            return false;
+          }
+          const user = await fetchCurrentUser(accessToken);
+          if (!user) {
+            get().clearSession();
+            return false;
+          }
+          inMemoryAccessToken = accessToken;
+          set({
+            status: 'authenticated',
+            user,
+            accessToken,
+            isInitialized: true,
+          });
+          return true;
+        } catch {
+          get().clearSession();
+          return false;
+        } finally {
+          activeRestorePromise = null;
+        }
+      })();
+      return activeRestorePromise;
+    }
+
     activeRestorePromise = (async (): Promise<boolean> => {
       try {
         set({ status: 'refreshing' });
@@ -125,24 +194,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           return false;
         }
 
-        inMemoryAccessToken = accessToken;
-
-        // Fetch current user with new access token
-        const meRes = await fetch('/api/auth/me', {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            Accept: 'application/json',
-          },
-        });
-
-        if (!meRes.ok) {
+        const user = await fetchCurrentUser(accessToken);
+        if (!user) {
           get().clearSession();
           return false;
         }
 
-        const meData = await meRes.json();
-        const user = meData?.data;
+        inMemoryAccessToken = accessToken;
 
         set({
           status: 'authenticated',

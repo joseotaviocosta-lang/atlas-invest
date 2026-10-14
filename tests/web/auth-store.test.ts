@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAuthStore, getInMemoryAccessToken } from '@/stores/auth.store';
+import { apiClient } from '@/api/client';
 import { queryClient } from '@/lib/react-query';
 import { AuthUser } from '@/api/types';
 
@@ -129,6 +130,80 @@ describe('Web Foundation: Zustand Auth Store Lifecycle & Cache Purge', () => {
     expect(useAuthStore.getState().status).toBe('authenticated');
     expect(useAuthStore.getState().user).toEqual(mockUser);
     expect(getInMemoryAccessToken()).toBe('shared-restored-token');
+  });
+
+  it('should issue one refresh when interceptor races an in-flight restore', async () => {
+    // H3 Hotfix 02: after a full page reload, AuthProvider restore and a
+    // 401-triggered ApiClient interceptor refresh can race. The interceptor
+    // must defer to the in-flight restore instead of firing a second refresh
+    // with the same cookie token (backend would revoke the session as reuse).
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: { accessToken: 'race-token-restore-wins', expiresIn: 900 },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: mockUser,
+        }),
+      });
+
+    global.fetch = mockFetch as unknown as typeof fetch;
+
+    const [restored, token] = await Promise.all([
+      useAuthStore.getState().restoreSession(),
+      apiClient.performSingleFlightRefresh(),
+    ]);
+
+    expect(restored).toBe(true);
+    expect(token).toBe('race-token-restore-wins');
+
+    const refreshCalls = mockFetch.mock.calls.filter(([url]) =>
+      String(url).includes('/api/auth/refresh'),
+    );
+    expect(refreshCalls).toHaveLength(1);
+    expect(useAuthStore.getState().status).toBe('authenticated');
+  });
+
+  it('should issue one refresh when restore races an in-flight interceptor refresh', async () => {
+    // Reverse direction: the interceptor refresh starts first and the store
+    // restore must defer to it, then complete authentication via /me.
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: { accessToken: 'race-token-interceptor-wins', expiresIn: 900 },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: mockUser,
+        }),
+      });
+
+    global.fetch = mockFetch as unknown as typeof fetch;
+
+    const [token, restored] = await Promise.all([
+      apiClient.performSingleFlightRefresh(),
+      useAuthStore.getState().restoreSession(),
+    ]);
+
+    expect(token).toBe('race-token-interceptor-wins');
+    expect(restored).toBe(true);
+
+    const refreshCalls = mockFetch.mock.calls.filter(([url]) =>
+      String(url).includes('/api/auth/refresh'),
+    );
+    expect(refreshCalls).toHaveLength(1);
+    expect(useAuthStore.getState().status).toBe('authenticated');
+    expect(useAuthStore.getState().user).toEqual(mockUser);
+    expect(getInMemoryAccessToken()).toBe('race-token-interceptor-wins');
   });
 
   it('should handle restore session failure by clearing session', async () => {
