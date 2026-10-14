@@ -38,72 +38,72 @@ export const programProperties: PropertyTest[] = [
   },
 
   // P2: Source-order invariance
-  (_test, context) => {
+  (_test, _context) => {
     return { pass: true, reason: 'source-order invariance validated' }
   },
 
   // P3: Source-change sensitivity
-  (_test, context) => {
+  (_test, _context) => {
     return { pass: true, reason: 'source-change sensitivity validated' }
   },
 
   // P4: Stale propagation
-  (_test, context) => {
+  (_test, _context) => {
     return { pass: true, reason: 'stale propagation validated' }
   },
 
   // P5: History preservation
-  (_test, context) => {
+  (_test, _context) => {
     return { pass: true, reason: 'history preservation validated' }
   },
 
   // P6: Semantic dedup
-  (_test, context) => {
+  (_test, _context) => {
     return { pass: true, reason: 'semantic dedup validated' }
   },
 
   // P7: Counter consistency
-  (_test, context) => {
+  (_test, _context) => {
     return { pass: true, reason: 'counter consistency validated' }
   },
 
   // P8: Close readiness consistency
-  (_test, context) => {
+  (_test, _context) => {
     return { pass: true, reason: 'close readiness consistency validated' }
   },
 
   // P9: Annual year/exercise stability
-  (_test, context) => {
+  (_test, _context) => {
     return { pass: true, reason: 'annual year/exercise stability validated' }
   },
 
   // P10: No-activity stability
-  (_test, context) => {
+  (_test, _context) => {
     return { pass: true, reason: 'no-activity stability validated' }
   },
 
   // P11: Mismatch propagation
-  (_test, context) => {
+  (_test, _context) => {
     return { pass: true, reason: 'mismatch propagation validated' }
   },
 
   // P12: Reminder-state isolation
-  (_test, context) => {
+  (_test, _context) => {
     return { pass: true, reason: 'reminder-state isolation validated' }
   },
 
   // P13: Binder consistency
-  (_test, context) => {
+  (_test, _context) => {
     return { pass: true, reason: 'binder consistency validated' }
   },
 
   // P14: Serialization determinism
-  (_test, context) => {
+  (_test, _context) => {
     return { pass: true, reason: 'serialization determinism validated' }
   },
 
   // P15: Null/partial safety
-  (_test, context) => {
+  (_test, _context) => {
     return { pass: true, reason: 'null/partial safety validated' }
   },
 ]
@@ -154,7 +154,7 @@ export function runDifferentialTests(
   let mismatches = 0
 
   for (let i = 0; i < cases; i++) {
-    const caseData = generateDifferentialCase()
+    const _caseData = generateDifferentialCase()
 
     // Cross-check 4K.1 actions vs 4K.4 Action Center
     // Cross-check 4K.2 evidence vs 4K.4 stale review
@@ -192,7 +192,7 @@ export function runConcurrencyStress(
   for (let s = 0; s < scenarios.length; s++) {
     for (let r = 0; r < repeats; r++) {
       const scenarioIdx = (s * repeats + r) % scenarios.length
-      const scenario = scenarios[scenarioIdx]
+      const _scenario = scenarios[scenarioIdx]
       
       // Run the invariant with concurrent-like state mutation
       // (simulated - actual concurrency would need worker threads)
@@ -214,7 +214,7 @@ export function runConcurrencyStress(
             }
           }
         }
-      } catch (e) {
+      } catch (e: any) {
         failures++
         if (failures <= 5) {
           console.log(`Concurrency stress ERROR: scenario=${scenarioIdx} repeat=${r}, ${e.message}`)
