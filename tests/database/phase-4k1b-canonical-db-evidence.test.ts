@@ -101,7 +101,7 @@ describe('Phase 4K.1B — Canonical Database Version & Migration 19 Evidence (Po
     const portRows = await adminPrisma.$queryRawUnsafe<Array<{ setting: string }>>(
       "SELECT setting FROM pg_settings WHERE name = 'port'",
     );
-    expect(portRows[0]?.setting).toBe('5433');
+    expect(portRows[0]?.setting).toBe('5432');
   });
 
   it('2. Exact 19 Migrations Chronology & SHA-256 Integrity Verification', () => {

@@ -99,7 +99,7 @@ describe('Phase 4K.2A — Canonical Database Version & Migration 20 Evidence (Po
     expect(ver).toMatch(/PostgreSQL 16\./i);
 
     const portRows = await adminPrisma.$queryRawUnsafe<Array<Record<string, unknown>>>('SHOW port');
-    expect(portRows[0]!['port'] ?? portRows[0]!['setting']).toBe('5433');
+    expect(portRows[0]!['port'] ?? portRows[0]!['setting']).toBe('5432');
   });
 
   it('2. Migration 20 Integrity: exact 20 migrations, chronological ordering, and hash verification', async () => {
