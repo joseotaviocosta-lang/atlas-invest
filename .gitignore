@@ -1,59 +1,7 @@
-# Dependencies
-node_modules/
-.pnpm-store/
+# PostgreSQL test data directories (preserved for audit)
+.test_pgdata
+.test_pgdata.pg18-backup
 
-# Environment files
-.env
-.env.*
-!.env.example
-
-# Next.js build output
-.next/
-out/
-
-# Expo & React Native
-.expo/
-web-build/
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-*.orig.*
-
-# Build outputs
-dist/
-build/
-*.tsbuildinfo
-
-# Turborepo
-.turbo/
-
-# Testing & Coverage
-coverage/
-test-results/
-playwright-report/
-
-# OS files
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# IDE & Editor files
-.idea/
-.vscode/*
-!.vscode/settings.json
-!.vscode/extensions.json
-*.swp
-*.swo
-*~
-
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Local Test DB
-.test_pgdata/
+# Environment-specific configs
+.env*.local
+node_modules
