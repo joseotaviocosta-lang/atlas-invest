@@ -89,6 +89,48 @@ describe('Web Foundation: Zustand Auth Store Lifecycle & Cache Purge', () => {
     expect(getInMemoryAccessToken()).toBe('new-restored-token');
   });
 
+  it('should single-flight concurrent restoreSession calls into one refresh request', async () => {
+    // Regression for H3 blocker: React 18 StrictMode double-invokes the
+    // AuthProvider mount effect in development, firing two concurrent
+    // POST /api/auth/refresh with the same cookie token. The backend rotates
+    // refresh tokens on every use and revokes the session on reuse, so the
+    // second concurrent restore killed the session and bounced the user to
+    // login on every full page reload (e.g. "Acessar Carteira" CTA).
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: { accessToken: 'shared-restored-token', expiresIn: 900 },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: mockUser,
+        }),
+      });
+
+    global.fetch = mockFetch as unknown as typeof fetch;
+
+    const [first, second] = await Promise.all([
+      useAuthStore.getState().restoreSession(),
+      useAuthStore.getState().restoreSession(),
+    ]);
+
+    expect(first).toBe(true);
+    expect(second).toBe(true);
+
+    const refreshCalls = mockFetch.mock.calls.filter(([url]) =>
+      String(url).includes('/api/auth/refresh'),
+    );
+    expect(refreshCalls).toHaveLength(1);
+
+    expect(useAuthStore.getState().status).toBe('authenticated');
+    expect(useAuthStore.getState().user).toEqual(mockUser);
+    expect(getInMemoryAccessToken()).toBe('shared-restored-token');
+  });
+
   it('should handle restore session failure by clearing session', async () => {
     const mockFetch = vi.fn().mockResolvedValueOnce({
       ok: false,

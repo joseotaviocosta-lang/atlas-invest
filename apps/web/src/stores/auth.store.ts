@@ -24,6 +24,14 @@ export interface AuthState {
 // In-memory volatile reference for access token (never persisted to storage)
 let inMemoryAccessToken: string | null = null;
 
+// Single-flight guard for session restore (mirrors ApiClient refresh mutex).
+// React 18 StrictMode double-invokes mount effects in development, which would
+// otherwise fire two concurrent POST /api/auth/refresh with the same cookie token.
+// The backend rotates refresh tokens on every use and revokes the whole session
+// when an already-rotated token is presented, so the second concurrent restore
+// would kill the session and bounce the user to login on every full page reload.
+let activeRestorePromise: Promise<boolean> | null = null;
+
 export const getInMemoryAccessToken = (): string | null => inMemoryAccessToken;
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -86,62 +94,72 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  restoreSession: async () => {
-    try {
-      set({ status: 'refreshing' });
-
-      // Call BFF /api/auth/refresh which reads HttpOnly cookie
-      const refreshRes = await fetch('/api/auth/refresh', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-      });
-
-      if (!refreshRes.ok) {
-        get().clearSession();
-        return false;
-      }
-
-      const refreshData = await refreshRes.json();
-      const accessToken = refreshData?.data?.accessToken;
-
-      if (!accessToken) {
-        get().clearSession();
-        return false;
-      }
-
-      inMemoryAccessToken = accessToken;
-
-      // Fetch current user with new access token
-      const meRes = await fetch('/api/auth/me', {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: 'application/json',
-        },
-      });
-
-      if (!meRes.ok) {
-        get().clearSession();
-        return false;
-      }
-
-      const meData = await meRes.json();
-      const user = meData?.data;
-
-      set({
-        status: 'authenticated',
-        user,
-        accessToken,
-        isInitialized: true,
-      });
-
-      return true;
-    } catch {
-      get().clearSession();
-      return false;
+  restoreSession: () => {
+    if (activeRestorePromise) {
+      return activeRestorePromise;
     }
+
+    activeRestorePromise = (async (): Promise<boolean> => {
+      try {
+        set({ status: 'refreshing' });
+
+        // Call BFF /api/auth/refresh which reads HttpOnly cookie
+        const refreshRes = await fetch('/api/auth/refresh', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+        });
+
+        if (!refreshRes.ok) {
+          get().clearSession();
+          return false;
+        }
+
+        const refreshData = await refreshRes.json();
+        const accessToken = refreshData?.data?.accessToken;
+
+        if (!accessToken) {
+          get().clearSession();
+          return false;
+        }
+
+        inMemoryAccessToken = accessToken;
+
+        // Fetch current user with new access token
+        const meRes = await fetch('/api/auth/me', {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: 'application/json',
+          },
+        });
+
+        if (!meRes.ok) {
+          get().clearSession();
+          return false;
+        }
+
+        const meData = await meRes.json();
+        const user = meData?.data;
+
+        set({
+          status: 'authenticated',
+          user,
+          accessToken,
+          isInitialized: true,
+        });
+
+        return true;
+      } catch {
+        get().clearSession();
+        return false;
+      } finally {
+        activeRestorePromise = null;
+      }
+    })();
+
+    return activeRestorePromise;
   },
 }));
