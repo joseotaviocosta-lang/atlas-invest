@@ -23,6 +23,7 @@ import {
   CreateTransactionUseCase,
   GetTransactionUseCase,
   ListTransactionsUseCase,
+  RectifyPortfolioTransactionUseCase,
 } from '../../application/transactions';
 import {
   CreateTransactionBody,
@@ -30,6 +31,11 @@ import {
   CreateTransactionSwaggerDto,
 } from './dto/create-transaction.dto';
 import { ListTransactionsQuery, ListTransactionsQuerySchema } from './dto/list-transactions.dto';
+import {
+  RectifyTransactionBody,
+  RectifyTransactionBodySchema,
+  RectifyTransactionSwaggerDto,
+} from './dto/rectify-transaction.dto';
 import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
 import { CurrentPrincipal, AuthenticatedPrincipal } from '../../auth';
 
@@ -42,6 +48,8 @@ export class PortfolioTransactionsController {
     private readonly createTransactionUseCase: CreateTransactionUseCase,
     @Inject(ListTransactionsUseCase)
     private readonly listTransactionsUseCase: ListTransactionsUseCase,
+    @Inject(RectifyPortfolioTransactionUseCase)
+    private readonly rectifyPortfolioTransactionUseCase: RectifyPortfolioTransactionUseCase,
   ) {}
 
   @Post()
@@ -143,6 +151,49 @@ export class PortfolioTransactionsController {
         cursor: result.cursor ?? null,
         nextCursor: result.nextCursor,
         hasMore: result.hasMore,
+      },
+    };
+  }
+
+  @Post(':transactionId/rectify')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Atomically rectify or cancel a transaction in the immutable ledger',
+    description:
+      'Creates compensating reversal and optional replacement transaction in a single atomic database transaction. Never updates or deletes original transaction.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the target portfolio' })
+  @ApiParam({ name: 'transactionId', description: 'UUID of the original transaction to rectify' })
+  @ApiBody({ type: RectifyTransactionSwaggerDto })
+  @ApiResponse({ status: 200, description: 'Transaction rectified or cancelled successfully' })
+  @ApiResponse({ status: 400, description: 'Validation failed or transaction ineligible' })
+  @ApiResponse({ status: 404, description: 'Portfolio or transaction not found' })
+  async rectify(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Param('transactionId', UUIDParamPipe) transactionId: string,
+    @Body(new ZodValidationPipe(RectifyTransactionBodySchema)) body: RectifyTransactionBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.rectifyPortfolioTransactionUseCase.execute({
+      portfolioId,
+      originalTransactionId: transactionId,
+      mode: body.mode,
+      reason: body.reason,
+      idempotencyKey: body.idempotencyKey,
+      replacement: body.replacement,
+      userId: principal.userId,
+    });
+
+    return {
+      data: {
+        originalTransactionId: result.originalTransactionId,
+        mode: result.mode,
+        compensatingTransaction: serializeTransaction(result.compensatingTransaction),
+        replacementTransaction: result.replacementTransaction
+          ? serializeTransaction(result.replacementTransaction)
+          : null,
+        isIdempotentReplay: result.isIdempotentReplay,
+        summary: result.summary,
       },
     };
   }

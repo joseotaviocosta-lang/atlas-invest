@@ -23,12 +23,28 @@ export class TransactionRepository implements ITransactionRepository {
   }
 
   async createMany(transactions: Transaction[]): Promise<Transaction[]> {
-    const results: Transaction[] = [];
-    for (const tx of transactions) {
-      const created = await this.create(tx);
-      results.push(created);
+    if (transactions.length === 0) return [];
+    if (transactions.length === 1) {
+      const created = await this.create(transactions[0]!);
+      return [created];
     }
-    return results;
+
+    try {
+      return await this.prisma.$transaction(async (txClient) => {
+        const results: Transaction[] = [];
+        for (const tx of transactions) {
+          const data = TransactionMapper.toPersistence(tx);
+          const created = await txClient.transaction.create({ data });
+          results.push(TransactionMapper.toDomain(created));
+        }
+        return results;
+      });
+    } catch (error) {
+      for (const tx of transactions) {
+        await this.handlePrismaError(error, tx);
+      }
+      throw error;
+    }
   }
 
   async findById(id: string): Promise<Transaction | null> {

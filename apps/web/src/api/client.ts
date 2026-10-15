@@ -221,6 +221,17 @@ export class ApiClient {
       throw new ApiError(msg, response.status, errData?.code, errData?.details);
     }
 
+    const contentType = response.headers?.get?.('content-type') || '';
+    const acceptHeader = (options.headers as Record<string, string> | undefined)?.['Accept'];
+    if (
+      contentType.includes('text/csv') ||
+      contentType.includes('text/plain') ||
+      acceptHeader === 'text/csv' ||
+      acceptHeader === 'text/plain'
+    ) {
+      return (await response.text()) as T;
+    }
+
     return response.json();
   }
 

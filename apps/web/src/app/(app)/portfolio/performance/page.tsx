@@ -53,17 +53,26 @@ function PerformancePageContent() {
   const today = useMemo(() => getTodayLocalDateString(), []);
 
   // Fetch portfolios for selector
-  const { data: portfoliosData } = useQuery<{ data: Array<{ id: string; name: string }> }>({
+  const { data: rawPortfolios = [] } = useQuery<Array<{ id: string; name: string }>, ApiError>({
     queryKey: ['portfolios'],
-    queryFn: () =>
-      apiClient.get<{ data: Array<{ id: string; name: string }> }>('/api/v1/portfolios'),
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: Array<{ id: string; name: string }> }>(
+        '/api/v1/portfolios',
+      );
+      return res.data || [];
+    },
     staleTime: 60000,
   });
-  const portfolios = portfoliosData?.data ?? [];
+  const portfolios: Array<{ id: string; name: string }> = Array.isArray(rawPortfolios)
+    ? rawPortfolios
+    : ((rawPortfolios as unknown as { data?: Array<{ id: string; name: string }> })?.data ?? []);
+
   const activePortfolioIdResolved =
     (portfolioIdParam && portfolios.some((p) => p.id === portfolioIdParam)
       ? portfolioIdParam
       : portfolios[0]?.id) ?? null;
+
+  const activePortfolio = portfolios.find((p) => p.id === activePortfolioIdResolved) ?? null;
 
   const selectedPreset: PerformancePeriodPreset = PERFORMANCE_PERIOD_OPTIONS.some(
     (o) => o.value === periodParam,
@@ -437,15 +446,32 @@ function PerformancePageContent() {
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', padding: `${spacing.base}px` }}>
-      <PageHeader title="Performance" subtitle="Retorno da carteira no período" />
+      <PageHeader
+        title="Performance"
+        subtitle={
+          activePortfolio
+            ? `Retorno da carteira "${activePortfolio.name}" no período`
+            : 'Retorno da carteira no período'
+        }
+      />
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        <Link href="/portfolio" style={{ textDecoration: 'none' }}>
+        <Link
+          href={
+            activePortfolioIdResolved
+              ? `/portfolio?portfolioId=${activePortfolioIdResolved}`
+              : '/portfolio'
+          }
+          style={{ textDecoration: 'none' }}
+        >
           <Button variant="secondary" size="sm">
             ← Carteira
           </Button>
         </Link>
-        <Link href="/portfolio/performance" style={{ textDecoration: 'none' }}>
+        <Link
+          href={`/portfolio/performance${activePortfolioIdResolved ? `?portfolioId=${activePortfolioIdResolved}` : ''}`}
+          style={{ textDecoration: 'none' }}
+        >
           <Button variant="primary" size="sm">
             Performance
           </Button>

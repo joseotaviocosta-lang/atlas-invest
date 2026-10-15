@@ -108,6 +108,7 @@ import {
   CreateTransactionUseCase,
   GetTransactionUseCase,
   ListTransactionsUseCase,
+  RectifyPortfolioTransactionUseCase,
 } from './transactions';
 
 const USE_CASES = [
@@ -197,6 +198,7 @@ const USE_CASES = [
   CreateTransactionUseCase,
   GetTransactionUseCase,
   ListTransactionsUseCase,
+  RectifyPortfolioTransactionUseCase,
 ];
 
 @Module({

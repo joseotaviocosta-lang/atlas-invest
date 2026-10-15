@@ -205,9 +205,9 @@ export function mapReportingItemToVM(item: RawAnnualTaxReportingItem): AnnualTax
     closingQuantity: item.closingQuantity,
     currency: item.currency,
     reportingStatus: item.reportingStatus,
-    isBlocked: item.isBlocked,
-    blockingReasons: item.blockingReasons,
-    sourceReferences: item.sourceReferences,
+    isBlocked: Boolean(item.isBlocked),
+    blockingReasons: item.blockingReasons ?? [],
+    sourceReferences: item.sourceReferences ?? [],
     sourceFingerprint: item.sourceFingerprint,
     evidenceStatus: item.evidenceStatus,
     confirmationStatus: item.confirmationStatus,
@@ -221,10 +221,10 @@ export function mapReportingPackageToViewModel(
 ): AnnualTaxReportingViewModel {
   const overallBadge = mapStatusToBadge(raw.overallStatus);
 
-  const sections: ReportingSectionVM[] = raw.sections.map(
+  const sections: ReportingSectionVM[] = (raw.sections ?? []).map(
     (sec: RawAnnualTaxReportingSectionSummary) => {
       const badge = mapStatusToBadge(sec.status);
-      const itemVMs = sec.items.map((i: RawAnnualTaxReportingItem) => mapReportingItemToVM(i));
+      const itemVMs = (sec.items ?? []).map((i: RawAnnualTaxReportingItem) => mapReportingItemToVM(i));
       const blockedCount = itemVMs.filter((i) => i.isBlocked).length;
       return {
         section: sec.section,
@@ -232,10 +232,10 @@ export function mapReportingPackageToViewModel(
         status: sec.status,
         statusLabel: badge.label,
         statusVariant: badge.variant,
-        itemCount: sec.itemCount,
+        itemCount: sec.itemCount ?? itemVMs.length,
         blockedCount,
         isComplete: sec.isComplete,
-        blockingReasons: sec.blockingReasons,
+        blockingReasons: sec.blockingReasons ?? [],
         items: itemVMs,
       };
     },

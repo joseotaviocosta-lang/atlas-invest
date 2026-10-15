@@ -21,6 +21,8 @@ export function AnnualReportingSection() {
   const [calendarYear, setCalendarYear] = useState<number>(currentYear > 2000 ? currentYear : 2025);
   const [activeSection, setActiveSection] = useState<AnnualTaxReportingSection | 'ALL'>('ALL');
   const [selectedItem, setSelectedItem] = useState<AnnualTaxReportingItemVM | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: annualTaxReportingQueryKey(calendarYear),
@@ -129,7 +131,10 @@ export function AnnualReportingSection() {
 
             <button
               data-testid="export-reporting-csv-btn"
+              disabled={isExporting}
               onClick={async () => {
+                setIsExporting(true);
+                setExportError(null);
                 try {
                   const res = await apiClient.get<string>(
                     `/api/v1/fiscal/annual/${calendarYear}/reporting/export`,
@@ -141,6 +146,9 @@ export function AnnualReportingSection() {
                       : typeof res === 'object' && res !== null && 'data' in res
                         ? String((res as { data: unknown }).data)
                         : '';
+                  if (!csvData) {
+                    throw new Error('Conteúdo CSV não recebido do servidor.');
+                  }
                   const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
                   const url = URL.createObjectURL(blob);
                   const link = document.createElement('a');
@@ -151,7 +159,11 @@ export function AnnualReportingSection() {
                   document.body.removeChild(link);
                   URL.revokeObjectURL(url);
                 } catch (e) {
+                  const msg = e instanceof Error ? e.message : 'Falha ao exportar CSV.';
+                  setExportError(msg);
                   console.error('Falha ao exportar CSV:', e);
+                } finally {
+                  setIsExporting(false);
                 }
               }}
               style={{
@@ -162,15 +174,31 @@ export function AnnualReportingSection() {
                 backgroundColor: colors.surface,
                 color: colors.accent,
                 fontSize: '0.8125rem',
-                cursor: 'pointer',
+                cursor: isExporting ? 'not-allowed' : 'pointer',
+                opacity: isExporting ? 0.7 : 1,
                 fontWeight: 600,
                 display: 'flex',
                 alignItems: 'center',
                 gap: `${spacing.xs}px`,
               }}
             >
-              📥 Exportar Guia (.CSV)
+              {isExporting ? '⏳ Exportando...' : '📥 Exportar Guia (.CSV)'}
             </button>
+          </div>
+        )}
+        {exportError && (
+          <div
+            role="alert"
+            style={{
+              padding: `${spacing.sm}px ${spacing.md}px`,
+              borderRadius: `${borderRadius.md}px`,
+              backgroundColor: colors.negativeSubtle,
+              color: colors.negative,
+              fontSize: '0.875rem',
+              marginTop: `${spacing.sm}px`,
+            }}
+          >
+            {exportError}
           </div>
         )}
       </div>
@@ -368,7 +396,7 @@ function ReportingSectionCard({
         </span>
       </div>
 
-      {section.blockingReasons.length > 0 && (
+      {(section.blockingReasons?.length ?? 0) > 0 && (
         <div
           style={{
             marginBottom: `${spacing.md}px`,
@@ -385,7 +413,7 @@ function ReportingSectionCard({
         </div>
       )}
 
-      {section.items.length === 0 ? (
+      {(section.items?.length ?? 0) === 0 ? (
         <div
           style={{
             padding: `${spacing.md}px`,
@@ -398,7 +426,7 @@ function ReportingSectionCard({
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.sm}px` }}>
-          {section.items.map((item) => (
+          {section.items?.map((item) => (
             <div
               key={item.reportingItemId}
               onClick={() => onSelectItem(item)}
@@ -621,7 +649,7 @@ function ItemDetailModal({
                 color: colors.textPrimary,
               }}
             >
-              {item.blockingReasons.map((r, i) => (
+              {item.blockingReasons?.map((r, i) => (
                 <li key={i}>{r}</li>
               ))}
             </ul>

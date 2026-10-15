@@ -164,7 +164,7 @@ function PortfolioPageContent() {
 
   // Fetch Portfolios
   const {
-    data: portfolios = [],
+    data: rawPortfolios = [],
     isLoading,
     isError,
     error,
@@ -177,9 +177,29 @@ function PortfolioPageContent() {
     },
   });
 
+  const portfolios: PortfolioDto[] = Array.isArray(rawPortfolios)
+    ? rawPortfolios
+    : ((rawPortfolios as unknown as { data?: PortfolioDto[] })?.data ?? []);
+
   // Keep active portfolio selected
   const activePortfolio =
     portfolios.find((p) => p.id === selectedPortfolioId) || portfolios[0] || null;
+
+  const handleTabChange = (tabId: string) => {
+    if (tabId === 'returns') {
+      router.push(
+        `/portfolio/performance${activePortfolio ? `?portfolioId=${activePortfolio.id}` : ''}`,
+      );
+      return;
+    }
+    if (tabId === 'dividends') {
+      router.push(
+        `/portfolio/income${activePortfolio ? `?portfolioId=${activePortfolio.id}` : ''}`,
+      );
+      return;
+    }
+    setActiveTab(tabId);
+  };
 
   // Fetch Portfolio State (current or historical server replay via `asOf`)
   const {
@@ -347,11 +367,18 @@ function PortfolioPageContent() {
   const [assetSearch, setAssetSearch] = useState('');
   const [opFormError, setOpFormError] = useState<string | null>(null);
 
-  // Guided transaction correction modal state (C2)
+  // Guided transaction correction modal state (C2 / Append-Only Guided Correction)
   const [isCorrectModalOpen, setIsCorrectModalOpen] = useState(false);
   const [correctingTx, setCorrectingTx] = useState<LedgerTransactionDto | null>(null);
+  const [corrMode, setCorrMode] = useState<'rectify' | 'cancel'>('rectify');
+  const [corrQuantity, setCorrQuantity] = useState('');
+  const [corrUnitPrice, setCorrUnitPrice] = useState('');
+  const [corrTradeDate, setCorrTradeDate] = useState('');
+  const [corrFees, setCorrFees] = useState('');
+  const [corrNotes, setCorrNotes] = useState('');
   const [corrReason, setCorrReason] = useState('');
   const [corrFormError, setCorrFormError] = useState<string | null>(null);
+  const [isCorrecting, setIsCorrecting] = useState(false);
 
   const { data: transactionsData = [], isLoading: isTxLoading } = useQuery<
     LedgerTransactionDto[],
@@ -405,6 +432,17 @@ function PortfolioPageContent() {
     }
     return m;
   }, [assetsCatalog]);
+
+  const compensatedTxIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of transactionsData) {
+      const match = t.notes?.match(/\[COMPENSAÇÃO ref ([0-9a-fA-F-]+)\]/);
+      if (match?.[1]) {
+        set.add(match[1]);
+      }
+    }
+    return set;
+  }, [transactionsData]);
 
   const openOpModal = () => {
     setOpFormError(null);
@@ -529,84 +567,115 @@ function PortfolioPageContent() {
     createTxMutation.mutate(payload);
   };
 
-  const correctTxMutation = useMutation({
-    mutationFn: async ({ reversalPayload }: { reversalPayload: Record<string, string> }) => {
-      const res = await apiClient.post<{ data: LedgerTransactionDto }>(
-        `/api/v1/portfolios/${activePortfolio!.id}/transactions`,
-        reversalPayload,
-      );
-      return res.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['portfolio-transactions', activePortfolio?.id],
-      });
-      if (activePortfolio?.id) {
-        queryClient.invalidateQueries({
-          queryKey: stateQueryKey(activePortfolio.id, temporal.asOf),
-        });
-      }
-      setIsCorrectModalOpen(false);
-      setCorrectingTx(null);
-      setCorrReason('');
-      setCorrFormError(null);
-      showToast('Lançamento compensatório registrado com sucesso no livro-razão!', 'positive');
-    },
-    onError: (err: ApiError) => {
-      setCorrFormError(err.message || 'Falha ao registrar compensação no livro-razão.');
-    },
-  });
-
-  const handleCorrectionSubmit = (e: React.FormEvent) => {
+  const handleCorrectionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setCorrFormError(null);
 
     if (!correctingTx || !activePortfolio?.id) return;
+    if (isCorrecting) return; // double-submit guard
 
-    // Build the compensating entry adhering to Section 11/12 (Append-Only Reversal)
-    const reason = corrReason.trim();
-    const reversalNotes = `[COMPENSAÇÃO ref ${correctingTx.id}]${reason ? ` ${reason}` : ''}`;
-
-    let reversalPayload: Record<string, string>;
-
-    if (correctingTx.type === 'BUY') {
-      // Reversing a BUY requires a SELL with exact same asset, quantity, and unitPrice
-      reversalPayload = {
-        accountId: correctingTx.accountId,
-        type: 'SELL',
-        currency: correctingTx.currency,
-        tradeDate: correctingTx.tradeDate,
-        assetId: correctingTx.assetId!,
-        quantity:
-          typeof correctingTx.quantity === 'string'
-            ? correctingTx.quantity
-            : String(correctingTx.quantity),
-        unitPrice: moneyAmountOf(correctingTx.unitPrice),
-        notes: reversalNotes,
-        source: 'MANUAL',
-      };
-    } else if (correctingTx.type === 'SELL') {
-      // Reversing a SELL requires a BUY with exact same asset, quantity, and unitPrice
-      reversalPayload = {
-        accountId: correctingTx.accountId,
-        type: 'BUY',
-        currency: correctingTx.currency,
-        tradeDate: correctingTx.tradeDate,
-        assetId: correctingTx.assetId!,
-        quantity:
-          typeof correctingTx.quantity === 'string'
-            ? correctingTx.quantity
-            : String(correctingTx.quantity),
-        unitPrice: moneyAmountOf(correctingTx.unitPrice),
-        notes: reversalNotes,
-        source: 'MANUAL',
-      };
-    } else {
+    if (correctingTx.type !== 'BUY' && correctingTx.type !== 'SELL') {
       setCorrFormError(`Compensação automática não suportada para o tipo ${correctingTx.type}.`);
       return;
     }
 
-    correctTxMutation.mutate({ reversalPayload });
+    const reason = corrReason.trim();
+    let replacementPayload: Record<string, string> | undefined;
+
+    if (corrMode === 'rectify') {
+      const normalizedQuantity = normalizeDecimalInput(corrQuantity);
+      if (!isPositiveDecimalString(normalizedQuantity)) {
+        setCorrFormError('Informe uma quantidade válida e positiva (ex: 10 ou 10.5).');
+        return;
+      }
+
+      const normalizedUnitPrice = normalizeDecimalInput(corrUnitPrice);
+      if (!isPositiveDecimalString(normalizedUnitPrice)) {
+        setCorrFormError('Informe um preço unitário válido e positivo (ex: 25.50).');
+        return;
+      }
+
+      const normalizedTradeDate = corrTradeDate.trim();
+      if (!CIVIL_DATE_RE.test(normalizedTradeDate)) {
+        setCorrFormError('Informe a data da operação em formato civil válido (AAAA-MM-DD).');
+        return;
+      }
+
+      const trimmedFees = corrFees.trim();
+      let normalizedFees = '0';
+      if (trimmedFees !== '') {
+        normalizedFees = normalizeDecimalInput(trimmedFees);
+        if (!isNonNegativeDecimalString(normalizedFees)) {
+          setCorrFormError('Taxas e corretagem devem ser um valor não-negativo (ex: 4.90).');
+          return;
+        }
+      }
+
+      replacementPayload = {
+        type: correctingTx.type,
+        quantity: normalizedQuantity,
+        unitPrice: normalizedUnitPrice,
+        tradeDate: normalizedTradeDate,
+        fees: normalizedFees,
+        notes: corrNotes.trim(),
+      };
+    }
+
+    // Client idempotency key for network retry safety
+    const idempotencyKey =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `corr-${correctingTx.id}-${Date.now()}`;
+
+    setIsCorrecting(true);
+
+    try {
+      await apiClient.post(
+        `/api/v1/portfolios/${activePortfolio.id}/transactions/${correctingTx.id}/rectify`,
+        {
+          mode: corrMode === 'rectify' ? 'RECTIFY' : 'CANCEL',
+          reason,
+          idempotencyKey,
+          replacement: replacementPayload,
+        },
+      );
+
+      // Invalidate queries so positions, ledger, and state update immediately
+      queryClient.invalidateQueries({
+        queryKey: ['portfolio-transactions', activePortfolio.id],
+      });
+      queryClient.invalidateQueries({
+        queryKey: stateQueryKey(activePortfolio.id, temporal.asOf),
+      });
+
+      setIsCorrectModalOpen(false);
+      setCorrectingTx(null);
+      setCorrReason('');
+      setCorrNotes('');
+      setCorrQuantity('');
+      setCorrUnitPrice('');
+      setCorrFees('');
+      setCorrTradeDate('');
+      setCorrFormError(null);
+
+      showToast(
+        corrMode === 'rectify'
+          ? 'Operação retificada com sucesso! Lançamento compensatório e nova operação registrados atomicamente no livro-razão.'
+          : 'Lançamento compensatório (estorno) registrado com sucesso no livro-razão!',
+        'positive',
+      );
+    } catch (err: unknown) {
+      const apiErr = err as ApiError;
+      if (apiErr.statusCode === 0) {
+        setCorrFormError(
+          'Não foi possível alcançar o servidor. Verifique sua conexão e tente novamente.',
+        );
+      } else {
+        setCorrFormError(apiErr.message || 'Falha ao processar correção no livro-razão.');
+      }
+    } finally {
+      setIsCorrecting(false);
+    }
   };
 
   const getBadgeVariant = (
@@ -687,7 +756,7 @@ function PortfolioPageContent() {
       {/* Active Tabs Navigation & Content */}
       {!isLoading && !isError && portfolios.length > 0 && (
         <div>
-          <Tabs tabs={CARTEIRA_TABS} activeTab={activeTab} onTabChange={setActiveTab} />
+          <Tabs tabs={CARTEIRA_TABS} activeTab={activeTab} onTabChange={handleTabChange} />
 
           {/* TAB 1: VISÃO GERAL */}
           {activeTab === 'overview' && (
@@ -1404,20 +1473,41 @@ function PortfolioPageContent() {
                           <Badge variant={tx.type === 'SELL' ? 'warning' : 'primary'}>
                             {OPERATION_TYPE_LABELS[tx.type] ?? tx.type}
                           </Badge>
-                          {(tx.type === 'BUY' || tx.type === 'SELL') && (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => {
-                                setCorrectingTx(tx);
-                                setCorrReason('');
-                                setCorrFormError(null);
-                                setIsCorrectModalOpen(true);
-                              }}
-                            >
-                              Corrigir
-                            </Button>
+                          {tx.notes?.includes('[COMPENSAÇÃO') && (
+                            <Badge variant="warning">Compensação</Badge>
                           )}
+                          {tx.notes?.includes('[CORREÇÃO') && (
+                            <Badge variant="positive">Correção</Badge>
+                          )}
+                          {compensatedTxIds.has(tx.id) && (
+                            <Badge variant="default">Corrigida</Badge>
+                          )}
+                          {(tx.type === 'BUY' || tx.type === 'SELL') &&
+                            !compensatedTxIds.has(tx.id) &&
+                            !tx.notes?.includes('[COMPENSAÇÃO') && (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => {
+                                  setCorrectingTx(tx);
+                                  setCorrMode('rectify');
+                                  setCorrQuantity(
+                                    typeof tx.quantity === 'string'
+                                      ? tx.quantity
+                                      : String(tx.quantity ?? ''),
+                                  );
+                                  setCorrUnitPrice(moneyAmountOf(tx.unitPrice));
+                                  setCorrTradeDate(tx.tradeDate);
+                                  setCorrFees(tx.fees ? moneyAmountOf(tx.fees) : '');
+                                  setCorrNotes('');
+                                  setCorrReason('');
+                                  setCorrFormError(null);
+                                  setIsCorrectModalOpen(true);
+                                }}
+                              >
+                                Corrigir
+                              </Button>
+                            )}
                         </div>
                       </div>
                     </Card>
@@ -1594,12 +1684,14 @@ function PortfolioPageContent() {
                 </form>
               </Modal>
 
-              {/* Guided Transaction Correction Modal (C2 / Append-Only) */}
+              {/* Guided Transaction Correction Modal (C2 / Append-Only Guided Correction) */}
               <Modal
                 isOpen={isCorrectModalOpen}
                 onClose={() => {
-                  setIsCorrectModalOpen(false);
-                  setCorrectingTx(null);
+                  if (!isCorrecting) {
+                    setIsCorrectModalOpen(false);
+                    setCorrectingTx(null);
+                  }
                 }}
                 title="Corrigir Operação no Livro-Razão"
               >
@@ -1634,12 +1726,14 @@ function PortfolioPageContent() {
                     }}
                   >
                     <strong style={{ color: colors.textPrimary }}>
-                      Princípio de Imutabilidade:
+                      Princípio de Imutabilidade (Append-Only):
                     </strong>
-                    <br />O registro original nunca é alterado ou excluído. O Atlas registrará um{' '}
-                    <strong>lançamento compensatório (reversão)</strong> no livro-razão para anular
-                    o impacto desta operação em custódia e fiscal. Você poderá em seguida registrar
-                    a operação correta.
+                    <br />O registro original permanece no histórico. O Atlas registrará um{' '}
+                    <strong>lançamento compensatório (estorno)</strong> para neutralizar a operação
+                    e
+                    {corrMode === 'rectify'
+                      ? ', em seguida, criará a nova operação com os dados corrigidos.'
+                      : ' anulará seu efeito patrimonial e fiscal.'}
                   </div>
 
                   {correctingTx && (
@@ -1653,17 +1747,156 @@ function PortfolioPageContent() {
                         fontSize: '0.875rem',
                       }}
                     >
+                      <div style={{ fontWeight: 600, marginBottom: 4, color: colors.textPrimary }}>
+                        Operação Original:
+                      </div>
                       <div>
-                        Operação:{' '}
-                        <strong>
-                          {OPERATION_TYPE_LABELS[correctingTx.type] ?? correctingTx.type} •{' '}
-                          {assetLabelById.get(correctingTx.assetId ?? '') ?? 'Ativo'}
-                        </strong>
+                        {OPERATION_TYPE_LABELS[correctingTx.type] ?? correctingTx.type} •{' '}
+                        <strong>{assetLabelById.get(correctingTx.assetId ?? '') ?? 'Ativo'}</strong>
                       </div>
                       <div style={{ color: colors.textSecondary, marginTop: '4px' }}>
                         Data: {correctingTx.tradeDate} • Quantidade: {correctingTx.quantity} •
                         Preço: {moneyAmountOf(correctingTx.unitPrice)} {correctingTx.currency}
+                        {correctingTx.fees ? ` • Taxas: ${moneyAmountOf(correctingTx.fees)}` : ''}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Mode selector */}
+                  <div style={{ marginBottom: `${spacing.base}px` }}>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.875rem',
+                        fontWeight: 600,
+                        marginBottom: `${spacing.xs}px`,
+                        color: colors.textPrimary,
+                      }}
+                    >
+                      Tipo de Correção:
+                    </label>
+                    <div style={{ display: 'flex', gap: `${spacing.base}px`, flexWrap: 'wrap' }}>
+                      <label
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: '0.875rem',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="corrMode"
+                          value="rectify"
+                          checked={corrMode === 'rectify'}
+                          onChange={() => setCorrMode('rectify')}
+                          disabled={isCorrecting}
+                        />
+                        Retificar com novos valores (estorno + nova operação)
+                      </label>
+                      <label
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: '0.875rem',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="corrMode"
+                          value="cancel"
+                          checked={corrMode === 'cancel'}
+                          onChange={() => setCorrMode('cancel')}
+                          disabled={isCorrecting}
+                        />
+                        Apenas anular (estorno cancelatório)
+                      </label>
+                    </div>
+                  </div>
+
+                  {corrMode === 'rectify' && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: `${spacing.sm}px`,
+                        marginBottom: `${spacing.base}px`,
+                        padding: `${spacing.base}px`,
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: `${borderRadius.md}px`,
+                        backgroundColor: colors.surfaceElevated,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          fontSize: '0.875rem',
+                          color: colors.textPrimary,
+                          marginBottom: 4,
+                        }}
+                      >
+                        Dados da Operação Corrigida:
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                          gap: `${spacing.sm}px`,
+                        }}
+                      >
+                        <Input
+                          label="Quantidade Corrigida"
+                          placeholder="Ex: 10"
+                          value={corrQuantity}
+                          onChange={(e) => setCorrQuantity(e.target.value)}
+                          disabled={isCorrecting}
+                          required
+                        />
+                        <Input
+                          label="Preço Unitário Corrigido"
+                          placeholder="Ex: 30,00"
+                          value={corrUnitPrice}
+                          onChange={(e) => setCorrUnitPrice(e.target.value)}
+                          disabled={isCorrecting}
+                          required
+                        />
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                          gap: `${spacing.sm}px`,
+                        }}
+                      >
+                        <Input
+                          label="Data da Operação (AAAA-MM-DD)"
+                          placeholder="AAAA-MM-DD"
+                          value={corrTradeDate}
+                          onChange={(e) => setCorrTradeDate(e.target.value)}
+                          disabled={isCorrecting}
+                          required
+                        />
+                        <Input
+                          label="Taxas / Custos (opcional)"
+                          placeholder="Ex: 4,90"
+                          value={corrFees}
+                          onChange={(e) => setCorrFees(e.target.value)}
+                          disabled={isCorrecting}
+                        />
+                      </div>
+
+                      <Input
+                        label="Observações Adicionais (opcional)"
+                        placeholder="Ex: Ajustado conforme nota de corretagem"
+                        value={corrNotes}
+                        onChange={(e) => setCorrNotes(e.target.value)}
+                        disabled={isCorrecting}
+                      />
                     </div>
                   )}
 
@@ -1672,7 +1905,7 @@ function PortfolioPageContent() {
                     placeholder="Ex: Quantidade informada incorretamente"
                     value={corrReason}
                     onChange={(e) => setCorrReason(e.target.value)}
-                    disabled={correctTxMutation.isPending}
+                    disabled={isCorrecting}
                   />
 
                   <div
@@ -1690,12 +1923,14 @@ function PortfolioPageContent() {
                         setIsCorrectModalOpen(false);
                         setCorrectingTx(null);
                       }}
-                      disabled={correctTxMutation.isPending}
+                      disabled={isCorrecting}
                     >
                       Cancelar
                     </Button>
-                    <Button type="submit" isLoading={correctTxMutation.isPending}>
-                      Confirmar Reversão Compensatória
+                    <Button type="submit" isLoading={isCorrecting}>
+                      {corrMode === 'rectify'
+                        ? 'Confirmar Retificação'
+                        : 'Confirmar Estorno Cancelatório'}
                     </Button>
                   </div>
                 </form>

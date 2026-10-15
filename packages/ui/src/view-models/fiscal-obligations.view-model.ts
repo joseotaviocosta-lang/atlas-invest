@@ -169,8 +169,9 @@ export function mapToTaxObligationViewModel(
     label: data.darfReadiness,
     color: colors.textMuted,
   };
-  const [year, month] = data.competence.split('-');
-  const paid = data.payments.length > 0 ? data.payments[data.payments.length - 1]! : null;
+  const [year, month] = (data.competence || '2026-01').split('-');
+  const payments = Array.isArray(data.payments) ? data.payments : [];
+  const paid = payments.length > 0 ? payments[payments.length - 1]! : null;
 
   const sourceNote = data.deadline
     ? 'Vencimento oficial conforme Agenda Tributária da Receita Federal'

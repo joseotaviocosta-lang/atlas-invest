@@ -77,8 +77,8 @@ export function TaxInputEntry({
           `/api/v1/fiscal/inputs/withholdings?competence=${competence}`,
         ),
       ]);
-      setTradeRows(t.data);
-      setWithholdingRows(w.data);
+      setTradeRows(Array.isArray(t?.data) ? t.data : []);
+      setWithholdingRows(Array.isArray(w?.data) ? w.data : []);
     } catch {
       /* ignore load errors; readiness remains authoritative */
     }
@@ -171,15 +171,15 @@ export function TaxInputEntry({
   }
 
   const conflicts = [
-    ...tradeRows
-      .filter((r) => r.conflictStatus === 'CONFLICT')
+    ...(tradeRows ?? [])
+      .filter((r) => r?.conflictStatus === 'CONFLICT')
       .map((r) => ({
         entity: 'trade-classification',
         id: r.id,
-        label: `Classificação · ${r.transactionId.slice(0, 8)}`,
+        label: `Classificação · ${r.transactionId?.slice(0, 8) ?? ''}`,
       })),
-    ...withholdingRows
-      .filter((r) => r.conflictStatus === 'CONFLICT')
+    ...(withholdingRows ?? [])
+      .filter((r) => r?.conflictStatus === 'CONFLICT')
       .map((r) => ({ entity: 'withholding', id: r.id, label: `Retenção · ${r.category}` })),
   ];
 
