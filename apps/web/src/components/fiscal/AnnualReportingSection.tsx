@@ -149,7 +149,10 @@ export function AnnualReportingSection() {
                   if (!csvData) {
                     throw new Error('Conteúdo CSV não recebido do servidor.');
                   }
-                  const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+                  const blob = new Blob(
+                    [csvData.startsWith('\uFEFF') ? csvData : '\uFEFF' + csvData],
+                    { type: 'text/csv;charset=utf-8;' },
+                  );
                   const url = URL.createObjectURL(blob);
                   const link = document.createElement('a');
                   link.href = url;

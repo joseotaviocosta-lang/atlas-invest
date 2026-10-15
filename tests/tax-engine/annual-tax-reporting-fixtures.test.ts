@@ -673,7 +673,7 @@ describe('Domain Unit: Annual Tax Reporting Engine Fixtures A–Z (Phase 4H.6)',
     expect(isentosSection?.items[1]?.payerId).toBe('22.222.222/0001-22');
   });
 
-  it('CSV Support Document Export generation test', () => {
+  it('CSV Support Document Export generation test with Excel-safe UTF-8 BOM', () => {
     const pkg = buildAnnualTaxReportingPackage({
       taxSubjectId: 'user-csv-test',
       calendarYear: 2025,
@@ -695,10 +695,22 @@ describe('Domain Unit: Annual Tax Reporting Engine Fixtures A–Z (Phase 4H.6)',
     });
 
     const csv = exportAnnualTaxReportingToCsv(pkg);
-    expect(csv).toContain('PROJECT ATLAS - DOCUMENTO DE SUPORTE');
+    // Excel-safe UTF-8 Byte Order Mark (BOM: \uFEFF / 0xEF, 0xBB, 0xBF)
+    expect(csv.startsWith('\uFEFF')).toBe(true);
+    const buf = Buffer.from(csv, 'utf-8');
+    expect(buf[0]).toBe(0xef);
+    expect(buf[1]).toBe(0xbb);
+    expect(buf[2]).toBe(0xbf);
+
+    // Portuguese accented characters preserved without mojibake
+    expect(csv).toContain('PROJECT ATLAS - DOCUMENTO DE SUPORTE E CONFERÊNCIA IRPF');
     expect(csv).toContain('NÃO É UM ARQUIVO DE TRANSMISSÃO');
     expect(csv).toContain('PETR4');
     expect(csv).toContain('3500.00');
     expect(csv).toContain('03-01');
+
+    // Delimiter and CRLF line endings
+    expect(csv).toContain('Secao;Codigo Declaracao;Item / Categoria');
+    expect(csv.endsWith('\r\n')).toBe(true);
   });
 });
