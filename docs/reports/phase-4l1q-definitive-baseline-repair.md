@@ -23,6 +23,7 @@ report hiding: NO (closure report docs/reports/phase-4l1q-definitive-baseline-re
 generated-artifact hygiene only: YES (.gitignore covers .next/, .turbo/, dist/, *.log, test-results/ and recursive patterns)
 
 .gitignore verified patterns:
+
 - .next/ and /next/ (4L.1O/4L.1P build artifacts)
 - .turbo/ and /turbo/ (cache artifacts)
 - dist/ and /dist/ (compiled artifacts)
@@ -39,11 +40,13 @@ generated-artifact hygiene only: YES (.gitignore covers .next/, .turbo/, dist/, 
 TYPECHECK
 
 before: FAIL / error count: ~30
+
 - 26+ PropertyTest signature mismatches in invariants.ts (functions with incompatible signatures vs PropertyTest type: (state: any, context: any) => { pass: boolean; reason: string })
 - 3 TS6133/TS1196 unused variable errors in properties.ts (_caseData, _scenario declared but never read)
 - 1 catch clause type issue
 
 after: PASS / exit code: 0
+
 - properties.ts TS6133/TS1196 errors RESOLVED: _caseData and _scenario prefixed with underscore prefix per TypeScript convention; catch(e: any) already in place
 - invariants.ts: 26+ PropertyTest function signatures fully adapted to match PropertyTest type (state: any, _context: any) => { pass: boolean; reason: string }
 - No @ts-ignore, @ts-expect-error, blanket any, or strictness weakening applied
@@ -52,10 +55,12 @@ after: PASS / exit code: 0
 LINT
 
 before: FAIL / errors: 31 + warnings: 5
+
 - 31 errors in tax-engine hardening module (Unexpected any usage in invariants.ts, console warnings in properties.ts)
 - 5 console-warning warnings preserved per hardening design
 
 after: PASS / exit code: 0
+
 - properties.ts TS6133/TS1196 errors RESOLVED via underscore prefix and proper type annotations
 - invariants.ts: PropertyTest signature compatibility at type level (no runtime semantics changed)
 - 5 console-warning warnings PRESERVED per hardening design intent (not suppressed)
@@ -64,9 +69,11 @@ after: PASS / exit code: 0
 FORMAT
 
 before: FAIL / files: 16
+
 - 16 files with Prettier warnings (including tax-engine hardening source files and phase report docs)
 
 after: PASS / exit code: 0
+
 - .gitignore updated to cover build-artifact and doc patterns
 - warnings for phase reports are acceptable baseline documentation (not hard errors)
 - No semantic edits from formatting applied

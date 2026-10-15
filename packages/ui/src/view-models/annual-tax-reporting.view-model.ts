@@ -224,7 +224,9 @@ export function mapReportingPackageToViewModel(
   const sections: ReportingSectionVM[] = (raw.sections ?? []).map(
     (sec: RawAnnualTaxReportingSectionSummary) => {
       const badge = mapStatusToBadge(sec.status);
-      const itemVMs = (sec.items ?? []).map((i: RawAnnualTaxReportingItem) => mapReportingItemToVM(i));
+      const itemVMs = (sec.items ?? []).map((i: RawAnnualTaxReportingItem) =>
+        mapReportingItemToVM(i),
+      );
       const blockedCount = itemVMs.filter((i) => i.isBlocked).length;
       return {
         section: sec.section,

@@ -53,7 +53,7 @@ describe('Web: Assets tab derived positions (H6 engine wiring)', () => {
       }),
     }) as unknown as typeof fetch;
 
-    const res = await apiClient.get<{ data: { positions: typeof enginePosition[] } }>(
+    const res = await apiClient.get<{ data: { positions: (typeof enginePosition)[] } }>(
       `/api/v1/portfolios/${portfolioId}/state`,
     );
 
@@ -71,7 +71,7 @@ describe('Web: Assets tab derived positions (H6 engine wiring)', () => {
   });
 
   it('renders an empty state when the engine reports no open positions', () => {
-    const positions: typeof enginePosition[] = [];
+    const positions: (typeof enginePosition)[] = [];
     const isEmpty = positions.length === 0;
     expect(isEmpty).toBe(true);
   });
@@ -87,7 +87,12 @@ describe('Web: Assets tab derived positions (H6 engine wiring)', () => {
   });
 
   it('renders a dash for unknown cost basis instead of fabricating zero', () => {
-    const incomplete = { ...enginePosition, costBasisStatus: 'INCOMPLETE', averageCost: null, totalCost: null };
+    const incomplete = {
+      ...enginePosition,
+      costBasisStatus: 'INCOMPLETE',
+      averageCost: null,
+      totalCost: null,
+    };
     const avgLabel =
       incomplete.costBasisStatus === 'INCOMPLETE' || !incomplete.averageCost
         ? '—'

@@ -515,6 +515,7 @@ PASS (test:portfolio-engine 54/259 + test:api 38/269 + full foundation chain)
 PRODUCTION CHANGES
 
 files:
+
 - packages/tax-engine/src/hardening/invariants.ts (new)
 - packages/tax-engine/src/hardening/properties.ts (new)
 - docs/reports/phase-4k6-final-hardening-report.md (new)

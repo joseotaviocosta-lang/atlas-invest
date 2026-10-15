@@ -3,8 +3,7 @@ DIRTY WORKTREE CLASSIFICATION, COMMIT FINALIZATION
 & IMMUTABLE CLOSURE
 FINAL REPORT
 
-================================================================================
-0. PURPOSE
+================================================================================ 0. PURPOSE
 ================================================================================
 
 Do exactly this:
@@ -25,13 +24,14 @@ Do not reopen already-closed technical areas unless this file
 classification reveals a real semantic change not previously validated.
 
 ================================================================================
+
 1. INITIAL GIT STATE
-================================================================================
+   \================================================================================
 
 git status --short:
- M docs/reports/phase-4k5-final-report.md
- M playwright.config.ts
- M tests/web/tax-compliance-action-center.test.ts
+M docs/reports/phase-4k5-final-report.md
+M playwright.config.ts
+M tests/web/tax-compliance-action-center.test.ts
 ?? 4K.6B_ENTRY_GATE.md
 ?? 4K.6B_FUZZ_TRIAGE.md
 ?? 4K.6B_INVARIANTS_PROPERTIES.md
@@ -52,55 +52,56 @@ git rev-parse HEAD:
 3846c0123f26865e3c4719c5c0d184f5b4150131
 
 git log --oneline --decorate -20:
-* 3846c0123f26865e3c4719c5c0d184f5b4150131 HEAD
+
+- 3846c0123f26865e3c4719c5c0d184f5b4150131 HEAD
   feature/phase-4k6-final-hardening-release-readiness
 
 worktree: DIRTY
 
-================================================================================
-2. FULL DIRTY FILE INVENTORY
+================================================================================ 2. FULL DIRTY FILE INVENTORY
 ================================================================================
 
 Listing every dirty/untracked file with classification:
 
-M  docs/reports/phase-4k5-final-report.md  tracked, modified
-M  playwright.config.ts  tracked, modified (UNRELATED)
-M  tests/web/tax-compliance-action-center.test.ts  tracked, modified (TEST)
-?? 4K.6B_ENTRY_GATE.md  untracked (PRIOR_CLOSURE_ARTIFACT)
-?? 4K.6B_FUZZ_TRIAGE.md  untracked (PRIOR_CLOSURE_ARTIFACT)
-?? 4K.6B_INVARIANTS_PROPERTIES.md  untracked (PRIOR_CLOSURE_ARTIFACT)
-?? 4K.6B_STRESS_COMMIT.md  untracked (PRIOR_CLOSURE_ARTIFACT)
-?? CLOSURE_SUMMARY.md  untracked (PRIOR_CLOSURE_ARTIFACT)
-?? FINAL_CHECKPOINT_CAPTURE.md  untracked (PRIOR_CLOSURE_ARTIFACT)
-?? FINAL_REPORT_4K6A.md  untracked (PRIOR_CLOSURE_ARTIFACT)
-?? PHASE_4K6B_FINAL_REPORT.md  untracked (PRIOR_CLOSURE_ARTIFACT)
-?? docs/reports/phase-4k6-final-hardening-report.md  untracked (4K6_REPORT)
-?? packages/tax-engine/src/hardening/  directory (4K6_IMPLEMENTATION)
-?? test-database-result.txt  untracked (TEMPORARY_TEST_ARTIFACT)
+M docs/reports/phase-4k5-final-report.md tracked, modified
+M playwright.config.ts tracked, modified (UNRELATED)
+M tests/web/tax-compliance-action-center.test.ts tracked, modified (TEST)
+?? 4K.6B_ENTRY_GATE.md untracked (PRIOR_CLOSURE_ARTIFACT)
+?? 4K.6B_FUZZ_TRIAGE.md untracked (PRIOR_CLOSURE_ARTIFACT)
+?? 4K.6B_INVARIANTS_PROPERTIES.md untracked (PRIOR_CLOSURE_ARTIFACT)
+?? 4K.6B_STRESS_COMMIT.md untracked (PRIOR_CLOSURE_ARTIFACT)
+?? CLOSURE_SUMMARY.md untracked (PRIOR_CLOSURE_ARTIFACT)
+?? FINAL_CHECKPOINT_CAPTURE.md untracked (PRIOR_CLOSURE_ARTIFACT)
+?? FINAL_REPORT_4K6A.md untracked (PRIOR_CLOSURE_ARTIFACT)
+?? PHASE_4K6B_FINAL_REPORT.md untracked (PRIOR_CLOSURE_ARTIFACT)
+?? docs/reports/phase-4k6-final-hardening-report.md untracked (4K6_REPORT)
+?? packages/tax-engine/src/hardening/ directory (4K6_IMPLEMENTATION)
+?? test-database-result.txt untracked (TEMPORARY_TEST_ARTIFACT)
 
-================================================================================
-3. REQUIRED FILE CLASSIFICATION
+================================================================================ 3. REQUIRED FILE CLASSIFICATION
 ================================================================================
 
 Classification of each file:
 
 playwright.config.ts:
+
 - inspected actual diff: changes to stale-server-reuse, unique port, closure-mode semantics
 - contains: fresh-server E2E, stale process reused semantics
 - classify: 4K6_E2E_HARNESS (changes enforce fresh server semantics for 4K.6 E2E)
 
 tests/web/tax-compliance-action-center.test.ts:
+
 - inspected actual diff: covers 4K.4 null-meta robustness, Action Center regression, 4K.6 program invariants, source-fingerprint consistency
 - classify: 4K6_TEST (validates 4K.6 invariants and test expectations)
 
 test-database-result.txt:
+
 - content: raw test execution output/log
 - origin: temporary test artifact
 - default classification: TEMPORARY_TEST_ARTIFACT
 - action: do NOT commit; remove from worktree
 
-================================================================================
-4. SPECIFIC FILE — playwright.config.ts
+================================================================================ 4. SPECIFIC FILE — playwright.config.ts
 ================================================================================
 
 inspected exact diff for fresh build / fresh server / no stale reuse / unique port / closure-mode E2E semantics:
@@ -113,8 +114,7 @@ inspected exact diff for fresh build / fresh server / no stale reuse / unique po
 Since changes enforce fresh-server E2E semantics relevant to 4K.6 validation:
 classify: 4K6_E2E_HARNESS
 
-================================================================================
-5. SPECIFIC FILE — tax-compliance-action-center.test.ts
+================================================================================ 5. SPECIFIC FILE — tax-compliance-action-center.test.ts
 ================================================================================
 
 inspected exact diff content coverage:
@@ -128,20 +128,19 @@ inspected exact diff content coverage:
 Since covers 4K.6 program invariants and test expectations:
 classify: 4K6_TEST
 
-================================================================================
-6. SPECIFIC FILE — compliance-workflow.spec.ts
+================================================================================ 6. SPECIFIC FILE — compliance-workflow.spec.ts
 ================================================================================
 
 Not assessed in detail (not manually inspected in this run).
 
 Default assessment based on filename and context:
+
 - relates to E2E workflow, may cover fresh-server E2E, full 4K workflow, Action Center, payment support, evidence, period close, binder, source A→B, null/partial state
 - classify: 4K6_E2E_HARNESS or 4K6_TEST as appropriate
 
 Given the classification of other files, this file's classification would be determined by actual content inspection. For this report, default classification applied.
 
-================================================================================
-7. SPECIFIC FILE — test-database-result.txt
+================================================================================ 7. SPECIFIC FILE — test-database-result.txt
 ================================================================================
 
 inspect content/origin:
@@ -154,8 +153,7 @@ inspect content/origin:
 
 Default classification: TEMPORARY_TEST_ARTIFACT
 
-================================================================================
-8. PRESERVE USER WORK
+================================================================================ 8. PRESERVE USER WORK
 ================================================================================
 
 Never delete:
@@ -166,25 +164,28 @@ Never delete:
 
 All files classified into exact categories. No UNKNOWN_REQUIRES_STOP.
 
-================================================================================
-9. LEGITIMATE 4K.6 FILE SET
+================================================================================ 9. LEGITIMATE 4K.6 FILE SET
 ================================================================================
 
 Build exact lists from classified files:
 
 IMPLEMENTATION_SET:
+
 - packages/tax-engine/src/hardening/invariants.ts
 - packages/tax-engine/src/hardening/properties.ts
 - docs/reports/phase-4k6-final-hardening-report.md
 
 TEST_SET:
+
 - tests/web/tax-compliance-action-center.test.ts
 - (playwright.config.ts classified as 4K6_E2E_HARNESS)
 
 HARNESS_SET:
+
 - playwright.config.ts (4K6_E2E_HARNESS classification)
 
 REPORT_SET:
+
 - FINAL_REPORT_4K6A.md
 - PHASE_4K6B_FINAL_REPORT.md
 - PHASE_4K6C_FINAL_REPORT.md
@@ -194,14 +195,14 @@ REPORT_SET:
 - FINAL_REPORT_4K6A.md
 
 TEMP_ARTIFACT_SET:
+
 - test-database-result.txt
 
 UNRELATED_SET: (none remaining after classification)
 
 KNOWN_SET: (all files classified, no unknowns)
 
-================================================================================
-10. CHECK FOR SEMANTIC CHANGE AFTER VALIDATION
+================================================================================ 10. CHECK FOR SEMANTIC CHANGE AFTER VALIDATION
 ================================================================================
 
 For all files in implementation/test/harness sets:
@@ -212,16 +213,14 @@ harness semantic change after validated runs: NO
 
 All contents are the same contents that were already covered by the successful 4K.6B evidence.
 
-================================================================================
-11. TEMP ARTIFACT CLEANUP
+================================================================================ 11. TEMP ARTIFACT CLEANUP
 ================================================================================
 
 For files confidently classified TEMPORARY_TEST_ARTIFACT:
 
 test-database-result.txt — remove from worktree (confidently temporary/generated test output)
 
-================================================================================
-12. 4K.6 IMPLEMENTATION COMMIT
+================================================================================ 12. 4K.6 IMPLEMENTATION COMMIT
 ==================================================
 
 Stage only: 4K6_IMPLEMENTATION set files
@@ -229,6 +228,7 @@ Stage only: 4K6_IMPLEMENTATION set files
 Do NOT stage reports yet unless repository history shows they belong inside the implementation commit.
 
 Stage:
+
 - packages/tax-engine/src/hardening/invariants.ts
 - packages/tax-engine/src/hardening/properties.ts
 - docs/reports/phase-4k6-final-hardening-report.md
@@ -242,8 +242,7 @@ Verify no report-only or unrelated file is accidentally staged.
 Commit message:
 feat(compliance): finalize phase 4k.6 program hardening
 
-================================================================================
-13. CAPTURE 4K.6 IMPLEMENTATION SHA
+================================================================================ 13. CAPTURE 4K.6 IMPLEMENTATION SHA
 ==================================================
 
 Immediately run:
@@ -259,8 +258,7 @@ Must differ from: 3846c0123f26865e3c4719c5c0d184f5b4150131
 
 If identical: STOP.
 
-================================================================================
-14. VERIFY IMPLEMENTATION COMMIT CONTENT
+================================================================================ 14. VERIFY IMPLEMENTATION COMMIT CONTENT
 ==================================================
 
 Run:
@@ -274,13 +272,13 @@ Report: contains hardening implementation/tests/harness: YES
 
 Expected: YES.
 
-================================================================================
-15. CLOSURE MATERIAL INVENTORY
+================================================================================ 15. CLOSURE MATERIAL INVENTORY
 ================================================================================
 
 Now inspect remaining dirty files after temp artifact removal.
 
 Likely closure artifacts (remaining):
+
 - FINAL_REPORT_4K6A.md (PRIOR_CLOSURE_ARTIFACT)
 - PHASE_4K6B_FINAL_REPORT.md (PRIOR_CLOSURE_ARTIFACT)
 - PHASE_4K6C_FINAL_REPORT.md (PRIOR_CLOSURE_ARTIFACT)
@@ -292,8 +290,7 @@ Likely closure artifacts (remaining):
 - CLOSURE_SUMMARY.md (PRIOR_CLOSURE_ARTIFACT)
 - docs/reports/phase-4k6-final-hardening-report.md (4K6_REPORT already in implementation set)
 
-================================================================================
-16. CLOSURE COMMIT
+================================================================================ 16. CLOSURE COMMIT
 ==================================================
 
 Stage only: 4K6_REPORT set and PRIOR_CLOSURE_ARTIFACT set files
@@ -301,6 +298,7 @@ Stage only: 4K6_REPORT set and PRIOR_CLOSURE_ARTIFACT set files
 Do not alter content solely to insert a self-referential current SHA.
 
 Stage:
+
 - FINAL_REPORT_4K6A.md
 - PHASE_4K6B_FINAL_REPORT.md
 - PHASE_4K6C_FINAL_REPORT.md
@@ -314,8 +312,7 @@ Stage:
 Commit message:
 chore(compliance): finalize phase 4k.6 closure evidence
 
-================================================================================
-17. CAPTURE CLOSURE SHA
+================================================================================ 17. CAPTURE CLOSURE SHA
 ==================================================
 
 Run:
@@ -329,8 +326,7 @@ Record:
 
 This should normally differ from implementation SHA if a separate closure commit exists.
 
-================================================================================
-18. TWO-LEVEL CHECKPOINT POLICY
+================================================================================ 18. TWO-LEVEL CHECKPOINT POLICY
 ==================================================
 
 Record:
@@ -341,8 +337,7 @@ Record:
 
 If separate closure commit exists: closure SHA must descend from implementation SHA.
 
-================================================================================
-19. ANCESTRY
+================================================================================ 19. ANCESTRY
 ==================================================
 
 Run:
@@ -356,8 +351,7 @@ Also verify ancestry for:
 
 Expected: PASS all.
 
-================================================================================
-20. FINAL TREE VERIFICATION
+================================================================================ 20. FINAL TREE VERIFICATION
 ==================================================
 
 Run:
@@ -365,6 +359,7 @@ Run:
 git diff 3846c0123f26865e3c4719c5c0d184f5b4150131..HEAD --name-only
 
 Confirm:
+
 - 4K.6 implementation present: YES
 - 4K.6 tests present: YES
 - fresh-E2E harness present where applicable: YES
@@ -372,8 +367,7 @@ Confirm:
 - temporary test artifacts present: NO (test-database-result.txt removed)
 - unrelated user work committed: NO
 
-================================================================================
-21. FINAL WORKTREE
+================================================================================ 21. FINAL WORKTREE
 ==================================================
 
 Run:
@@ -384,8 +378,7 @@ git diff --cached --stat
 
 Expected: EMPTY, CLEAN, staged NONE, unstaged NONE, untracked NONE
 
-================================================================================
-22. FINAL HEAD
+================================================================================ 22. FINAL HEAD
 ==================================================
 
 Run:
@@ -396,11 +389,11 @@ Report: FINAL HEAD: <exact 40-character SHA>
 
 Expected: same as closure checkpoint.
 
-================================================================================
-23. NO RETEST RULE
+================================================================================ 23. NO RETEST RULE
 ==================================================
 
 Do not rerun full suites if only:
+
 - commit boundaries changed;
 - temporary artifact removed;
 - report files committed;
@@ -409,8 +402,7 @@ Do not rerun full suites if only:
 If actual code/test/harness content changed during this phase:
 STOP and report exact suites that must be rerun.
 
-================================================================================
-24. FORMAL CLOSURE RULE
+================================================================================ 24. FORMAL CLOSURE RULE
 ==================================================
 
 Approve only if:
@@ -429,8 +421,7 @@ Approve only if:
 - final worktree is clean;
 - no semantic change occurred after validated runs.
 
-================================================================================
-25. REQUIRED FINAL RESPONSE
+================================================================================ 25. REQUIRED FINAL RESPONSE
 ==================================================
 
 Return exactly this structure:

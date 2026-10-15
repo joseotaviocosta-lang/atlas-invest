@@ -421,10 +421,12 @@ describe('API Integration: Annual Tax Readiness Real E2E Suite (Phase 4H.5 / 4H.
   // Scenario 13: Opening 0 / Closing 2 Positions wiring (H10 Hotfix-01)
   it('Scenario 13: Annual Readiness reflects 2 closing positions at 31/12 with READY status and agrees with DIRPF support', async () => {
     const userId = uuidFor('user-readiness-closing-2');
-    const { token, portfolioId, accountId, assetId: petr4Id } = await setupPortfolioWithAsset(
-      userId,
-      'PETR4',
-    );
+    const {
+      token,
+      portfolioId,
+      accountId,
+      assetId: petr4Id,
+    } = await setupPortfolioWithAsset(userId, 'PETR4');
 
     const createdVale = Asset.create({
       ticker: 'VALE3',
@@ -612,10 +614,12 @@ describe('API Integration: Annual Tax Readiness Real E2E Suite (Phase 4H.5 / 4H.
     const userA = uuidFor('user-a-iso');
     const userB = uuidFor('user-b-iso');
 
-    const { token: tokenA, portfolioId, accountId, assetId } = await setupPortfolioWithAsset(
-      userA,
-      'ISO_A',
-    );
+    const {
+      token: tokenA,
+      portfolioId,
+      accountId,
+      assetId,
+    } = await setupPortfolioWithAsset(userA, 'ISO_A');
     const tokenB = await session(userB);
 
     // User A has 1 position
@@ -654,4 +658,3 @@ describe('API Integration: Annual Tax Readiness Real E2E Suite (Phase 4H.5 / 4H.
     expect(closingB.status).toBe('NO_ACTIVITY');
   });
 });
-

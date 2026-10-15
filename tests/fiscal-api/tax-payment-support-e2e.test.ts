@@ -78,7 +78,10 @@ describe('Phase 4K.2 — DARF Payment Support & Settlement Evidence 36-Scenario 
         revision: 1,
         principalAmount: params.amount,
         currency: 'BRL',
-        dueDate: params.dueDate === null ? null : new Date(`${params.dueDate ?? '2026-04-30'}T00:00:00.000Z`),
+        dueDate:
+          params.dueDate === null
+            ? null
+            : new Date(`${params.dueDate ?? '2026-04-30'}T00:00:00.000Z`),
         status: params.status ?? 'OPEN',
         darfReadiness: 'READY',
         dataQuality: 'COMPLETE',

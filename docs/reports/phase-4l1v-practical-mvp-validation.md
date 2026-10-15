@@ -338,5 +338,3 @@
   - Full regression across 4 fiscal suites: 53/53 tests green.
 - **Live verification**: `GET /api/v1/fiscal/annual/2026/readiness` for the human user (`c0affdd5-71ee-4aae-8951-a6c27fa21041`) now returns `section: "ANNUAL_POSITIONS"` with `status: "READY"`, `isComplete: true`, `blockingReasons: []`.
 - **Human retest**: PENDING owner verification in web browser.
-
-

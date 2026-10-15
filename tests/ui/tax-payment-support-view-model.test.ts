@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  mapToTaxPaymentSupportViewModel,
-  type RawTaxPaymentSupport,
-} from '@atlas/ui';
+import { mapToTaxPaymentSupportViewModel, type RawTaxPaymentSupport } from '@atlas/ui';
 
 /**
  * Focused tests for H9-01: the payment-support view-model must distinguish a

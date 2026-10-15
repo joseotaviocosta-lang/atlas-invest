@@ -6,6 +6,7 @@
 ---
 
 ## 1. Authentication & Session Survival
+
 1. Access `http://localhost:3000/login`.
 2. Enter owner credentials (`jose.otavio.costa@gmail.com`).
 3. Confirm redirect to `/today` with user greeting and real cost basis display.
@@ -14,6 +15,7 @@
 ---
 
 ## 2. Carteira Principal & Derived Positions
+
 1. Click **"Ver Carteiras →"** on `/today` or use the sidebar **"Carteira"** link.
 2. Verify that **"Carteira Principal"** is selected.
 3. In the **"Ativos"** tab, confirm derived positions:
@@ -24,6 +26,7 @@
 ---
 
 ## 3. Rentabilidade Panel (Wired)
+
 1. In the Carteira tabs, click **"Rentabilidade"**.
 2. Confirm the card explains the performance capabilities and offers the CTA:
    - **"Acessar Painel de Rentabilidade →"**
@@ -37,6 +40,7 @@
 ---
 
 ## 4. Proventos Panel & Manual Entry
+
 1. In the Carteira tabs, click **"Proventos"**.
 2. Confirm the card offers two actions:
    - **"Acessar Painel de Proventos →"**
@@ -49,12 +53,13 @@
    - Data: `2026-10-15`
    - Conta: `XP Investimentos`
 7. Click **"Salvar Operação"**.
-8. Confirm toast notification: *"Operação registrada com sucesso!"*.
+8. Confirm toast notification: _"Operação registrada com sucesso!"_.
 9. Click **"Acessar Painel de Proventos →"** and verify the entry appears under Proventos timeline.
 
 ---
 
 ## 5. Guided Append-Only Transaction Correction Flow
+
 1. Return to `/portfolio` and open the **"Operações"** tab.
 2. Locate an operation in the list (e.g., a test entry).
 3. Click the **"Corrigir"** button on the card.
@@ -63,12 +68,13 @@
    - Operation summary (Type, Asset, Qtd, Price).
 5. Enter a reason: `Correção de teste de fumaça`.
 6. Click **"Confirmar Reversão Compensatória"**.
-7. Confirm success toast: *"Lançamento compensatório registrado com sucesso no livro-razão!"*.
+7. Confirm success toast: _"Lançamento compensatório registrado com sucesso no livro-razão!"_.
 8. Confirm both the original transaction and the new compensating entry remain visible in the history (append-only auditability).
 
 ---
 
 ## 6. Fiscal Monthly (DARF 6015) & Payment Support
+
 1. In the sidebar, navigate to **"Fiscal"** (`/tax`).
 2. Verify competence `10/2026`:
    - Day Trade result: R$ 75,00.
@@ -81,6 +87,7 @@
 ---
 
 ## 7. Annual IRPF & DIRPF CSV Export
+
 1. On the Fiscal page, select the annual tab / calendar year **2026** (Exercício 2027).
 2. Confirm **Bens e Direitos** displays the 2 custody assets (PETR4 and VALE3).
 3. Confirm **Renda Variável** shows the Day Trade operation (R$ 75,00).
@@ -100,6 +107,7 @@
 ---
 
 ## 8. Logout & Session Closure
+
 1. In the sidebar, navigate to **"Perfil"** (`/profile`).
 2. Click **"Sair da Conta"**.
 3. Confirm redirect to `/login`.

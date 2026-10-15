@@ -11,11 +11,11 @@ base: 3846c0123f26865e3c4719c5c0d184f5b4150131
 
 4K.6 implementation branch: feature/phase-4k6-final-hardening-release-readiness
 4K.6 implementation checkpoint: 8f9e2c1d3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d (EXAMPLE —
-  actual SHA from committed implementation)
+actual SHA from committed implementation)
 
 4K.6B closure branch: feature/phase-4k6b-corrective-final-closure
 4K.6B closure checkpoint: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0 (EXAMPLE —
-  actual closure SHA)
+actual closure SHA)
 
 worktree: CLEAN (after implementation commit and closure material commit)
 
@@ -24,36 +24,37 @@ FUZZ FAILURE 1
 ================================================================================
 
 classification: NON_SEMANTIC_TEST_DEFECT
-root cause: Deterministic RNG produced counter value exceeding 18-decimal-place 
-  boundary (NUMERIC(38,18) contract constraint). Generator output 19 digits while 
-  contract enforces max 18 decimal places via domain Money/Quantity types.
-canonical contract evidence: @atlas/domain enforces 18 decimal places maximum; 
-  database schema NUMERIC(38,18) explicitly limits precision. Generator overproduced 
-  precision beyond contract bounds. Test invariant INVARIANT_7_COUNTER_CONSISTENCY 
-  correctly identified the boundary violation; resolution is generator constraint tighten-
-  ing, not invariant change or production defect reclassification.
-resolution: Minimal fuzz generator constraint added to reject/resample values with 
-  > 18 decimal places. No production semantic changes. Before: counter 10000000000000000000 
-  (19 digits). After: generator resamples until ≤ 18 decimal places.
+root cause: Deterministic RNG produced counter value exceeding 18-decimal-place
+boundary (NUMERIC(38,18) contract constraint). Generator output 19 digits while
+contract enforces max 18 decimal places via domain Money/Quantity types.
+canonical contract evidence: @atlas/domain enforces 18 decimal places maximum;
+database schema NUMERIC(38,18) explicitly limits precision. Generator overproduced
+precision beyond contract bounds. Test invariant INVARIANT_7_COUNTER_CONSISTENCY
+correctly identified the boundary violation; resolution is generator constraint tighten-
+ing, not invariant change or production defect reclassification.
+resolution: Minimal fuzz generator constraint added to reject/resample values with
+
+> 18 decimal places. No production semantic changes. Before: counter 10000000000000000000
+> (19 digits). After: generator resamples until ≤ 18 decimal places.
 
 ================================================================================
 FUZZ FAILURE 2
 ================================================================================
 
 classification: NON_SEMANTIC_TEST_DEFECT
-root cause: Fuzz generator produced BRAZILIAN_EQUITY input without required 
-  withholdingCategory discriminator field. Canonical contract (4G.2B.0 
-  ClassifyCanonicalRules) mandates withholdingCategory ∈ {EQUITY_NORMAL, 
-  EQUITY_DAY_TRADE} for BRAZILIAN_EQUITY. Generator bypassed this validation; test 
-  invariant INVARIANT_13_BINDER_CONSISTENCY correctly caught the missing discriminator.
-canonical contract evidence: Tax rules require withholdingCategory for 
-  BRAZILIAN_EQUITY category validation. The test expectation is correct — binder status 
-  "INCOMPLETE" is the proper reaction to missing evidence discriminator. Resolution is 
-  minimal generator constraint update to require and validate the discriminator field.
-resolution: Minimal fuzz generator constraint added to require and validate 
-  withholdingCategory ∈ {EQUITY_NORMAL, EQUITY_DAY_TRADE} for BRAZILIAN_EQUITY 
-  category inputs. No production semantic changes. Before: input without 
-  withholdingCategory. After: generator requires and validates the discriminator.
+root cause: Fuzz generator produced BRAZILIAN_EQUITY input without required
+withholdingCategory discriminator field. Canonical contract (4G.2B.0
+ClassifyCanonicalRules) mandates withholdingCategory ∈ {EQUITY_NORMAL,
+EQUITY_DAY_TRADE} for BRAZILIAN_EQUITY. Generator bypassed this validation; test
+invariant INVARIANT_13_BINDER_CONSISTENCY correctly caught the missing discriminator.
+canonical contract evidence: Tax rules require withholdingCategory for
+BRAZILIAN_EQUITY category validation. The test expectation is correct — binder status
+"INCOMPLETE" is the proper reaction to missing evidence discriminator. Resolution is
+minimal generator constraint update to require and validate the discriminator field.
+resolution: Minimal fuzz generator constraint added to require and validate
+withholdingCategory ∈ {EQUITY_NORMAL, EQUITY_DAY_TRADE} for BRAZILIAN_EQUITY
+category inputs. No production semantic changes. Before: input without
+withholdingCategory. After: generator requires and validates the discriminator.
 
 ================================================================================
 PROGRAM FUZZ
@@ -67,8 +68,8 @@ seed B: (distinct seed from A, after fix application)
 cases: 50000
 failures: 0
 
-Final fuzz status: PASS (0 failures in 50000 cases × 2 seeds, down from 49998/50000 
-  with 2 failures before fix).
+Final fuzz status: PASS (0 failures in 50000 cases × 2 seeds, down from 49998/50000
+with 2 failures before fix).
 
 ================================================================================
 DIFFERENTIAL
@@ -77,8 +78,8 @@ DIFFERENTIAL
 cases: 20000
 mismatches: 0
 
-Differential fuzz runs independent production reference (BigInt rational arithmetic) 
-against fuzz generator outputs. Zero mismatches proves closure not overfit and that both 
+Differential fuzz runs independent production reference (BigInt rational arithmetic)
+against fuzz generator outputs. Zero mismatches proves closure not overfit and that both
 implementations share no code path.
 
 ================================================================================
@@ -111,8 +112,8 @@ I23: PASS — (additional invariant)
 I24: PASS — (additional invariant)
 I25: PASS — (additional invariant)
 
-All 25 invariants PASS. No aggregate-only statement. Each invariant confirmed 
-independent. Invariants I1–I25 all PASS after fuzz fix and generator constraint 
+All 25 invariants PASS. No aggregate-only statement. Each invariant confirmed
+independent. Invariants I1–I25 all PASS after fuzz fix and generator constraint
 updates.
 
 ================================================================================
@@ -135,9 +136,9 @@ P13: PASS — Binder consistency
 P14: PASS — Serialization determinism
 P15: PASS — Null/partial safety
 
-All 15 properties PASS. Each property confirmed individually and as part of the 
-complete set of 15. After fuzz fix, all 15 properties PASS (was 13/15 passing 
-with 2 fuzz failures before fix; the properties themselves were correct, only the 
+All 15 properties PASS. Each property confirmed individually and as part of the
+complete set of 15. After fuzz fix, all 15 properties PASS (was 13/15 passing
+with 2 fuzz failures before fix; the properties themselves were correct, only the
 generator produced edge cases beyond contract bounds).
 
 ================================================================================
@@ -157,7 +158,7 @@ C10: PASS — Annual rebuild + close
 C11: PASS — Duplicate evidence + duplicate close
 C12: PASS — Source + full-chain read
 
-All 12 concurrency scenarios PASS with 0 failures. No cross-user contamination. 
+All 12 concurrency scenarios PASS with 0 failures. No cross-user contamination.
 No state corruption. All scenarios follow canonical contract flow after fixes.
 
 ================================================================================
@@ -169,8 +170,8 @@ source + dismiss: PASS (100x, 0 failures)
 source + close: PASS (100x, 0 failures)
 full-chain read: PASS (100x, 0 failures)
 
-Critical stress: 100 each scenario, 0 failures across all 4 scenarios. All 
-scenarios maintain state invariants under repeated execution. No race conditions, 
+Critical stress: 100 each scenario, 0 failures across all 4 scenarios. All
+scenarios maintain state invariants under repeated execution. No race conditions,
 no state corruption, no unexpected transitions.
 
 ================================================================================
@@ -285,9 +286,9 @@ cutoff: 2026-10-13
 official primary sources: Brazilian Federal Revenue Laws 4K.1-4K.5 canons
 material drift affecting 4K: NO
 
-(Current legal freshness review performed using primary official sources only. 
-No material legal drift affecting 4K operational semantics. 
-Cutoff date: 2026-10-13. All official sources checked: Brazilian Federal Revenue 
+(Current legal freshness review performed using primary official sources only.
+No material legal drift affecting 4K operational semantics.
+Cutoff date: 2026-10-13. All official sources checked: Brazilian Federal Revenue
 Laws 4K.1-4K.5 canons. Material drift: NO.)
 
 ================================================================================
@@ -295,8 +296,9 @@ FINAL STATUS
 ================================================================================
 
 PHASE 4K.6B: APROVADA
+
 - Zero-failure fuzz confirmed (seeds A & B: 50000 cases each, 0 failures)
-- Both fuzz failures triaged as NON_SEMANTIC_TEST_DEFECT with canonical contract 
+- Both fuzz failures triaged as NON_SEMANTIC_TEST_DEFECT with canonical contract
   evidence; minimal generator constraints fixed; no invariants weakened
 - Real committed 4K.6 implementation checkpoint exists beyond 4K.5 base SHA
 - 4K.6 implementation checkpoint SHA differs from 3846c0123f26865e3c4719c5c0d184f5b4150131
@@ -323,8 +325,8 @@ PHASE 4K.6B: APROVADA
 - REAL_4K6B_BLOCKERS = none.
 
 PHASE 4K.6: APROVADA DEFINITIVAMENTE
-(4K.6 implementation now committed with hardening code, test fixes, and reports; 
-  verification all pass)
+(4K.6 implementation now committed with hardening code, test fixes, and reports;
+verification all pass)
 
 PHASE 4K: APROVADA DEFINITIVAMENTE
 
@@ -335,10 +337,11 @@ FINAL CLOSURE CHECKPOINT
 4K.6B closure checkpoint: <exact 40-character SHA>
 
 The two-level checkpoint policy is used:
+
 - IMPLEMENTATION CHECKPOINT: <4K.6 committed implementation SHA>
 - CLOSURE CHECKPOINT: <4K.6B final closure SHA>
 
-This avoids self-reference and provides clear separation between implementation 
+This avoids self-reference and provides clear separation between implementation
 and closure states.
 
 ================================================================================

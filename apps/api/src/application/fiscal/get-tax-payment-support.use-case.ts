@@ -101,9 +101,7 @@ export class GetTaxPaymentSupportUseCase {
               'O imposto foi apurado, mas a obrigação ainda não está pagável: a competência segue em apuração ou o vencimento oficial ainda não foi publicado.',
               'Nenhum DARF oficial é gerado pelo Atlas. Aguarde o fechamento da competência e a definição do vencimento oficial.',
             ]
-          : [
-              'Esta obrigação não requer pagamento de DARF (valor zerado ou isento).',
-            ],
+          : ['Esta obrigação não requer pagamento de DARF (valor zerado ou isento).'],
         sourceReferences: [
           { label: 'Chave Canônica', ref: obligation.obligationKey },
           { label: 'Módulo de Origem', ref: obligation.sourceModule },

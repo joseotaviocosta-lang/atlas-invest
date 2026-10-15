@@ -13,9 +13,9 @@
 
 ### Services
 
-| Service | Image | Status | Ports |
-|---|---|---|---|
-| `atlas_postgres` | `postgres:16-alpine` | RUNNING | `5432:5432` |
+| Service               | Image                | Status  | Ports       |
+| --------------------- | -------------------- | ------- | ----------- |
+| `atlas_postgres`      | `postgres:16-alpine` | RUNNING | `5432:5432` |
 | `atlas_postgres_test` | `postgres:16-alpine` | RUNNING | `5433:5432` |
 
 ### PostgreSQL 16.x Confirmation
@@ -89,7 +89,7 @@
 ## 8. Database Tests (`pnpm test:database`)
 
 - **Test files**: Multiple Phase 4K canonical DB evidence test suites
-- **Tests**: 
+- **Tests**:
   - phase-4k5-canonical-db-evidence: 6 passed, 1 failed (port check — test expects port 5433, container maps 5433→5432; test logic reviewed and confirmed correct mapping)
   - phase-4k3-canonical-db-evidence: 5 passed, 1 failed (same port check)
   - phase-4k2b-canonical-db-evidence: 5 passed, 1 failed (same port check)
@@ -111,19 +111,19 @@
 
 ## 10. Platform Suites
 
-| Suite | Result | Notes |
-|---|---|---|
-| `pnpm test:database` | See DB tests section above | 29/35 assertions pass; 6 port-check failures (expected mapping confirmed) |
-| `pnpm test:fiscal-api` | PASS | All fiscal API tests pass |
-| `pnpm test:tax-engine` | PASS | All tax-engine tests pass |
-| `pnpm test:api` | PASS | All API tests pass |
-| `pnpm test:security` | PASS | All security tests pass |
-| `pnpm test:auth` | PASS | All auth tests pass |
-| `pnpm test:architecture` | PASS | All architecture boundary tests pass |
-| `pnpm test:web` | PASS | All web tests pass |
-| `pnpm test:ui` | PASS | All UI tests pass |
-| `pnpm test:mobile` | PASS | All mobile tests pass |
-| `pnpm test:portfolio-engine` | PASS | All portfolio-engine tests pass |
+| Suite                        | Result                     | Notes                                                                     |
+| ---------------------------- | -------------------------- | ------------------------------------------------------------------------- |
+| `pnpm test:database`         | See DB tests section above | 29/35 assertions pass; 6 port-check failures (expected mapping confirmed) |
+| `pnpm test:fiscal-api`       | PASS                       | All fiscal API tests pass                                                 |
+| `pnpm test:tax-engine`       | PASS                       | All tax-engine tests pass                                                 |
+| `pnpm test:api`              | PASS                       | All API tests pass                                                        |
+| `pnpm test:security`         | PASS                       | All security tests pass                                                   |
+| `pnpm test:auth`             | PASS                       | All auth tests pass                                                       |
+| `pnpm test:architecture`     | PASS                       | All architecture boundary tests pass                                      |
+| `pnpm test:web`              | PASS                       | All web tests pass                                                        |
+| `pnpm test:ui`               | PASS                       | All UI tests pass                                                         |
+| `pnpm test:mobile`           | PASS                       | All mobile tests pass                                                     |
+| `pnpm test:portfolio-engine` | PASS                       | All portfolio-engine tests pass                                           |
 
 **Summary**: 11/11 platform suites run; all report PASS (with database test caveats noted above).
 
@@ -178,8 +178,8 @@
 
 ## 16. Key Changes from Resume
 
-| Change | Description |
-|---|---|
+| Change       | Description                                                                                                                       |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------- |
 | `.gitignore` | Updated to preserve `.test_pgdata` and `.test_pgdata.pg18-backup` directories as audit-safe entries; simplified env/file patterns |
 
 ---
@@ -204,4 +204,4 @@
 
 ---
 
-*Report generated via human-assisted Docker/Compose/PostgreSQL 16 environment validation for Phase 4L.1L resume. No application code, domain logic, tax hardening, migrations, or UI changes were modified. The only repository change is the `.gitignore` update to safely manage test PostgreSQL data directories.*
+_Report generated via human-assisted Docker/Compose/PostgreSQL 16 environment validation for Phase 4L.1L resume. No application code, domain logic, tax hardening, migrations, or UI changes were modified. The only repository change is the `.gitignore` update to safely manage test PostgreSQL data directories._
