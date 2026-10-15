@@ -2,7 +2,6 @@
 
 import React, { useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { apiClient, ApiError } from '@/api/client';
 import {
@@ -19,6 +18,7 @@ import {
   PortfolioHistoryFilters,
   HistoryFilterState,
   PortfolioHistoryTimeline,
+  PortfolioShell,
 } from '@/components/portfolio';
 import { Card, Skeleton, ErrorState } from '@/components/ui';
 
@@ -257,71 +257,16 @@ function PortfolioIncomeContent() {
   }
 
   return (
-    <div
-      style={{ maxWidth: '1000px', margin: '0 auto', padding: `${spacing.xl}px ${spacing.base}px` }}
+    <PortfolioShell
+      activeTab="dividends"
+      selectedPortfolioId={activePortfolioId}
+      portfolios={portfolios}
     >
-      <nav aria-label="Breadcrumb" style={{ marginBottom: `${spacing.md}px` }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: `${spacing.xs}px`,
-            fontSize: '0.875rem',
-            color: colors.textSecondary,
-          }}
-        >
-          <Link
-            href={`/portfolio${activePortfolioId ? `?portfolioId=${activePortfolioId}` : ''}`}
-            style={{ color: colors.accent, textDecoration: 'none', fontWeight: 500 }}
-          >
-            Carteira
-          </Link>
-          <span>/</span>
-          <span style={{ color: colors.textPrimary, fontWeight: 600 }}>Rendimentos</span>
-        </div>
-      </nav>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: `${spacing.sm}px`,
-          marginBottom: `${spacing.lg}px`,
-        }}
-      >
-        <div>
-          <h1
-            style={{
-              fontSize: '1.75rem',
-              fontWeight: 800,
-              color: colors.textPrimary,
-              margin: '0 0 4px 0',
-              letterSpacing: '-0.02em',
-            }}
-          >
-            Rendimentos
-          </h1>
-          <p style={{ fontSize: '0.875rem', color: colors.textSecondary, margin: 0 }}>
-            Dividendos, JCP e rendimentos de FII creditados na carteira{' '}
-            <strong style={{ color: colors.textPrimary }}>{activePortfolio?.name}</strong>
-          </p>
-        </div>
-        <Link
-          href={`/portfolio${activePortfolioId ? `?portfolioId=${activePortfolioId}` : ''}`}
-          style={{ textDecoration: 'none' }}
-        >
-          <span
-            style={{
-              fontSize: '0.875rem',
-              color: colors.accent,
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            ← Voltar para Visão Geral
-          </span>
-        </Link>
+      <div style={{ marginBottom: `${spacing.md}px` }}>
+        <p style={{ fontSize: '0.875rem', color: colors.textSecondary, margin: 0 }}>
+          Dividendos, JCP e rendimentos de FII creditados na carteira{' '}
+          <strong style={{ color: colors.textPrimary }}>{activePortfolio?.name}</strong>
+        </p>
       </div>
       {incomeViewModel.summaryCards.length > 0 && (
         <div
@@ -380,7 +325,7 @@ function PortfolioIncomeContent() {
         loadMoreError={isHistoryError ? (historyError as ApiError)?.message : null}
         hasActiveFilters={hasActiveFilters}
       />
-    </div>
+    </PortfolioShell>
   );
 }
 

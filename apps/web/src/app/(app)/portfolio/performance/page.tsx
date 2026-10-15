@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useMemo, Suspense } from 'react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, ApiError } from '@/api/client';
-import { Card, Badge, Skeleton, EmptyState, ErrorState, PageHeader, Button } from '@/components/ui';
-import { colors, spacing } from '@atlas/ui';
+import { Card, Badge, Skeleton, EmptyState, ErrorState, Button } from '@/components/ui';
+import { colors } from '@atlas/ui';
+import { PortfolioShell } from '@/components/portfolio';
 import {
   mapToPortfolioPerformanceViewModel,
   mapToPortfolioPerformanceSeriesViewModel,
@@ -445,39 +445,20 @@ function PerformancePageContent() {
   };
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', padding: `${spacing.base}px` }}>
-      <PageHeader
-        title="Performance"
-        subtitle={
-          activePortfolio
-            ? `Retorno da carteira "${activePortfolio.name}" no período`
-            : 'Retorno da carteira no período'
-        }
-      />
-
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        <Link
-          href={
-            activePortfolioIdResolved
-              ? `/portfolio?portfolioId=${activePortfolioIdResolved}`
-              : '/portfolio'
-          }
-          style={{ textDecoration: 'none' }}
-        >
-          <Button variant="secondary" size="sm">
-            ← Carteira
-          </Button>
-        </Link>
-        <Link
-          href={`/portfolio/performance${activePortfolioIdResolved ? `?portfolioId=${activePortfolioIdResolved}` : ''}`}
-          style={{ textDecoration: 'none' }}
-        >
-          <Button variant="primary" size="sm">
-            Performance
-          </Button>
-        </Link>
-      </div>
-
+    <PortfolioShell
+      activeTab="returns"
+      selectedPortfolioId={activePortfolioIdResolved}
+      subtitle={
+        activePortfolio
+          ? `Retorno da carteira "${activePortfolio.name}" no período`
+          : 'Retorno da carteira no período'
+      }
+      onSelectPortfolio={(id) => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('portfolioId', id);
+        router.replace(`/portfolio/performance?${params.toString()}`);
+      }}
+    >
       <Card style={{ padding: 16, marginBottom: 16 }}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontWeight: 600, fontSize: 13 }}>Período:</span>
@@ -1009,7 +990,7 @@ function PerformancePageContent() {
           <ScenarioSection portfolioId={activePortfolioIdResolved} />
         </div>
       )}
-    </div>
+    </PortfolioShell>
   );
 }
 

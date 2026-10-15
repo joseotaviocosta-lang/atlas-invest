@@ -16,10 +16,7 @@ import {
   Skeleton,
   EmptyState,
   ErrorState,
-  PageHeader,
   SectionHeader,
-  Tabs,
-  PortfolioSwitcher,
   useToast,
 } from '@/components/ui';
 import { colors, spacing, borderRadius, formatCurrency, formatQuantity } from '@atlas/ui';
@@ -38,6 +35,7 @@ import {
   PortfolioDateSelector,
   PortfolioHistoricalBanner,
   PortfolioValuationSection,
+  PortfolioShell,
   valuationQueryKey,
 } from '@/components/portfolio';
 import {
@@ -64,15 +62,6 @@ const PORTFOLIO_TYPE_OPTIONS = [
   { value: 'FAMILY', label: 'Família (Gestão conjunta)' },
   { value: 'COMPANY', label: 'Empresa (Pessoa Jurídica)' },
   { value: 'SIMULATION', label: 'Simulação (Estratégias/Testes)' },
-];
-
-const CARTEIRA_TABS = [
-  { id: 'overview', label: 'Visão Geral' },
-  { id: 'assets', label: 'Ativos' },
-  { id: 'returns', label: 'Rentabilidade' },
-  { id: 'dividends', label: 'Proventos' },
-  { id: 'allocation', label: 'Alocação' },
-  { id: 'operations', label: 'Operações' },
 ];
 
 interface LedgerTransactionDto {
@@ -143,18 +132,31 @@ function PortfolioPageContent() {
     clearAsOf();
   };
 
+  const portfolioIdParam = searchParams.get('portfolioId');
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(portfolioIdParam);
+
+  React.useEffect(() => {
+    if (portfolioIdParam && portfolioIdParam !== selectedPortfolioId) {
+      setSelectedPortfolioId(portfolioIdParam);
+    }
+  }, [portfolioIdParam, selectedPortfolioId]);
+
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(() => {
+    if (tabParam && ['assets', 'allocation', 'operations'].includes(tabParam)) {
+      return tabParam;
+    }
+    return 'overview';
+  });
+
   const handleSelectPortfolio = (id: string) => {
     setSelectedPortfolioId(id);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('portfolioId', id);
     // Never carry a historical snapshot across portfolios (§39).
-    if (searchParams.get('asOf')) {
-      const params = new URLSearchParams(searchParams.toString());
-      params.delete('asOf');
-      navigateWithParams(params);
-    }
+    params.delete('asOf');
+    navigateWithParams(params);
   };
-
-  const [activeTab, setActiveTab] = useState('overview');
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [name, setName] = useState('');
@@ -185,6 +187,20 @@ function PortfolioPageContent() {
   const activePortfolio =
     portfolios.find((p) => p.id === selectedPortfolioId) || portfolios[0] || null;
 
+  React.useEffect(() => {
+    if (tabParam === 'returns') {
+      router.replace(
+        `/portfolio/performance${activePortfolio ? `?portfolioId=${activePortfolio.id}` : ''}`,
+      );
+    } else if (tabParam === 'dividends') {
+      router.replace(
+        `/portfolio/income${activePortfolio ? `?portfolioId=${activePortfolio.id}` : ''}`,
+      );
+    } else if (tabParam && ['overview', 'assets', 'allocation', 'operations'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam, activePortfolio, router]);
+
   const handleTabChange = (tabId: string) => {
     if (tabId === 'returns') {
       router.push(
@@ -199,6 +215,13 @@ function PortfolioPageContent() {
       return;
     }
     setActiveTab(tabId);
+    const params = new URLSearchParams(searchParams.toString());
+    if (tabId === 'overview') {
+      params.delete('tab');
+    } else {
+      params.set('tab', tabId);
+    }
+    navigateWithParams(params);
   };
 
   // Fetch Portfolio State (current or historical server replay via `asOf`)
@@ -695,25 +718,14 @@ function PortfolioPageContent() {
   };
 
   return (
-    <div>
-      {/* Header with Title and Portfolio Switcher */}
-      <PageHeader
-        title="Carteira"
-        subtitle="Gerencie suas carteiras e acompanhe seus investimentos estruturados"
-        action={
-          <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px` }}>
-            {portfolios.length > 0 && (
-              <PortfolioSwitcher
-                portfolios={portfolios}
-                selectedPortfolioId={activePortfolio?.id || null}
-                onSelectPortfolio={handleSelectPortfolio}
-                onCreatePortfolio={() => setIsModalOpen(true)}
-              />
-            )}
-            <Button onClick={() => setIsModalOpen(true)}>+ Nova Carteira</Button>
-          </div>
-        }
-      />
+    <PortfolioShell
+      activeTab={activeTab}
+      selectedPortfolioId={activePortfolio?.id}
+      portfolios={portfolios}
+      onSelectPortfolio={handleSelectPortfolio}
+      onTabChange={handleTabChange}
+      onCreatePortfolio={() => setIsModalOpen(true)}
+    >
 
       {/* Loading Skeletons */}
       {isLoading && (
@@ -756,8 +768,6 @@ function PortfolioPageContent() {
       {/* Active Tabs Navigation & Content */}
       {!isLoading && !isError && portfolios.length > 0 && (
         <div>
-          <Tabs tabs={CARTEIRA_TABS} activeTab={activeTab} onTabChange={handleTabChange} />
-
           {/* TAB 1: VISÃO GERAL */}
           {activeTab === 'overview' && (
             <div>
@@ -1279,91 +1289,6 @@ function PortfolioPageContent() {
               </div>
             ))}
 
-          {/* TAB 3: RENTABILIDADE (Wired to Performance Engine view) */}
-          {activeTab === 'returns' && (
-            <Card style={{ padding: `${spacing.xl}px`, textAlign: 'center' }}>
-              <div style={{ maxWidth: '600px', margin: '0 auto' }}>
-                <h3
-                  style={{
-                    fontSize: '1.125rem',
-                    fontWeight: 700,
-                    color: colors.textPrimary,
-                    margin: '0 0 8px 0',
-                  }}
-                >
-                  Análise Completa de Rentabilidade
-                </h3>
-                <p
-                  style={{
-                    fontSize: '0.875rem',
-                    color: colors.textSecondary,
-                    lineHeight: '1.5',
-                    marginBottom: `${spacing.lg}px`,
-                  }}
-                >
-                  Acesse o painel dedicado com cálculo de TWR, séries temporais, métricas de risco,
-                  análise de cauda e comparação com benchmarks (CDI e Ibovespa).
-                </p>
-                <Link
-                  href={`/portfolio/performance${activePortfolio ? `?portfolioId=${activePortfolio.id}` : ''}`}
-                >
-                  <Button>Acessar Painel de Rentabilidade →</Button>
-                </Link>
-              </div>
-            </Card>
-          )}
-
-          {/* TAB 4: PROVENTOS (Wired to Income view) */}
-          {activeTab === 'dividends' && (
-            <Card style={{ padding: `${spacing.xl}px`, textAlign: 'center' }}>
-              <div style={{ maxWidth: '600px', margin: '0 auto' }}>
-                <h3
-                  style={{
-                    fontSize: '1.125rem',
-                    fontWeight: 700,
-                    color: colors.textPrimary,
-                    margin: '0 0 8px 0',
-                  }}
-                >
-                  Gestão e Histórico de Proventos
-                </h3>
-                <p
-                  style={{
-                    fontSize: '0.875rem',
-                    color: colors.textSecondary,
-                    lineHeight: '1.5',
-                    marginBottom: `${spacing.lg}px`,
-                  }}
-                >
-                  Visualize o consolidado de proventos recebidos (Dividendos, JCP, Rendimentos de
-                  FII) por ativo e período, integrados ao livro-razão e ao relatório anual DIRPF.
-                </p>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'center',
-                    gap: `${spacing.md}px`,
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <Link
-                    href={`/portfolio/income${activePortfolio ? `?portfolioId=${activePortfolio.id}` : ''}`}
-                  >
-                    <Button>Acessar Painel de Proventos →</Button>
-                  </Link>
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setOpType('DIVIDEND');
-                      openOpModal();
-                    }}
-                  >
-                    + Lançar Provento
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          )}
 
           {/* TAB 5: ALOCAÇÃO */}
           {activeTab === 'allocation' && (
@@ -2008,7 +1933,7 @@ function PortfolioPageContent() {
           </div>
         </form>
       </Modal>
-    </div>
+    </PortfolioShell>
   );
 }
 
