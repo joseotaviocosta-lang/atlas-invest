@@ -44,6 +44,7 @@ import { IntelligenceSummarySection } from '@/components/portfolio/IntelligenceS
 function PerformancePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const portfolioIdParam = searchParams.get('portfolioId');
   const periodParam = (searchParams.get('period') as PerformancePeriodPreset) || '1Y';
   const customStart = searchParams.get('startDate') ?? undefined;
   const customEnd = searchParams.get('endDate') ?? undefined;
@@ -59,7 +60,10 @@ function PerformancePageContent() {
     staleTime: 60000,
   });
   const portfolios = portfoliosData?.data ?? [];
-  const activePortfolioIdResolved = portfolios[0]?.id ?? null;
+  const activePortfolioIdResolved =
+    (portfolioIdParam && portfolios.some((p) => p.id === portfolioIdParam)
+      ? portfolioIdParam
+      : portfolios[0]?.id) ?? null;
 
   const selectedPreset: PerformancePeriodPreset = PERFORMANCE_PERIOD_OPTIONS.some(
     (o) => o.value === periodParam,
