@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   colors,
   spacing,
@@ -16,7 +16,17 @@ import {
   appendAsOf,
 } from '@atlas/ui';
 import { apiClient, ApiError } from '@/api/client';
-import { Card, Skeleton, EmptyState, ErrorState } from '@/components/ui';
+import {
+  Button,
+  Card,
+  Input,
+  Modal,
+  Select,
+  Skeleton,
+  EmptyState,
+  ErrorState,
+} from '@/components/ui';
+import { useToast } from '@/components/ui';
 import { Badge } from '@/components/ui/Badge';
 import { PortfolioHistoricalBanner } from '@/components/portfolio';
 
@@ -135,6 +145,73 @@ function PortfolioAccountsContent() {
 
   const isLoading = isPortfoliosLoading || (isStateLoading && !stateData);
 
+  // Create Account flow (H4): backend POST /api/v1/portfolios/:id/accounts
+  // already exists and is ownership-scoped by the authenticated principal.
+  // The page only wires the missing UI: empty-state CTA + modal form.
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const [isModalOpen, setIsModalOpen] = React.useState(false);
+  const [accountName, setAccountName] = React.useState('');
+  const [institutionId, setInstitutionId] = React.useState('');
+  const [currency, setCurrency] = React.useState('BRL');
+  const [formError, setFormError] = React.useState<string | null>(null);
+
+  const openCreateModal = () => {
+    setFormError(null);
+    if (!institutionId && institutionsData[0]) {
+      setInstitutionId(institutionsData[0].id);
+    }
+    setIsModalOpen(true);
+  };
+
+  const createAccountMutation = useMutation({
+    mutationFn: async (payload: { institutionId: string; name: string; currency: string }) => {
+      const res = await apiClient.post<{ data: AccountDto }>(
+        `/api/v1/portfolios/${activePortfolioId}/accounts`,
+        payload,
+      );
+      return res.data;
+    },
+    onSuccess: (newAccount) => {
+      queryClient.invalidateQueries({ queryKey: ['portfolio-accounts', activePortfolioId] });
+      queryClient.invalidateQueries({
+        queryKey: accountStateQueryKey(activePortfolioId, 'overview', temporal.asOf),
+      });
+      setIsModalOpen(false);
+      setAccountName('');
+      setCurrency('BRL');
+      setFormError(null);
+      showToast(`Conta '${newAccount.name}' criada com sucesso!`, 'positive');
+    },
+    onError: (err: ApiError) => {
+      setFormError(err.message || 'Falha ao criar conta. Verifique os dados.');
+    },
+  });
+
+  const handleCreateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+
+    if (!activePortfolioId) {
+      setFormError('Selecione uma carteira antes de criar a conta.');
+      return;
+    }
+    if (!accountName.trim()) {
+      setFormError('Informe o nome da conta.');
+      return;
+    }
+    if (!institutionId) {
+      setFormError('Selecione a instituição da conta.');
+      return;
+    }
+
+    createAccountMutation.mutate({
+      institutionId,
+      name: accountName.trim(),
+      currency,
+    });
+  };
+
   if (isLoading) {
     return (
       <div
@@ -205,22 +282,36 @@ function PortfolioAccountsContent() {
         </Link>
       </nav>
 
-      <div style={{ marginBottom: `${spacing.lg}px` }}>
-        <h1
-          style={{
-            fontSize: '1.75rem',
-            fontWeight: 800,
-            color: colors.textPrimary,
-            margin: '0 0 4px 0',
-            letterSpacing: '-0.02em',
-          }}
-        >
-          Contas
-        </h1>
-        <p style={{ fontSize: '0.875rem', color: colors.textSecondary, margin: 0 }}>
-          Contas de custódia de{' '}
-          <strong style={{ color: colors.textPrimary }}>{activePortfolio?.name}</strong>
-        </p>
+      <div
+        style={{
+          marginBottom: `${spacing.lg}px`,
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: `${spacing.md}px`,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <h1
+            style={{
+              fontSize: '1.75rem',
+              fontWeight: 800,
+              color: colors.textPrimary,
+              margin: '0 0 4px 0',
+              letterSpacing: '-0.02em',
+            }}
+          >
+            Contas
+          </h1>
+          <p style={{ fontSize: '0.875rem', color: colors.textSecondary, margin: 0 }}>
+            Contas de custódia de{' '}
+            <strong style={{ color: colors.textPrimary }}>{activePortfolio?.name}</strong>
+          </p>
+        </div>
+        <Button onClick={openCreateModal} disabled={!activePortfolioId}>
+          + Nova conta
+        </Button>
       </div>
 
       {!accountsViewModel || accountsViewModel.isEmpty ? (
@@ -228,6 +319,8 @@ function PortfolioAccountsContent() {
           <EmptyState
             title="Nenhuma conta cadastrada"
             description="Cadastre uma conta em uma corretora ou instituição para começar a organizar a custódia dos seus ativos."
+            actionLabel="Adicionar conta"
+            onAction={openCreateModal}
           />
         </Card>
       ) : (
@@ -316,6 +409,81 @@ function PortfolioAccountsContent() {
           ))}
         </div>
       )}
+
+      {/* Create Account Modal */}
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Adicionar Conta">
+        <form onSubmit={handleCreateSubmit}>
+          {formError && (
+            <div
+              role="alert"
+              style={{
+                backgroundColor: colors.negativeSubtle,
+                border: `1px solid ${colors.negative}`,
+                color: colors.negative,
+                padding: `${spacing.md}px`,
+                borderRadius: `${borderRadius.md}px`,
+                fontSize: '0.875rem',
+                marginBottom: `${spacing.base}px`,
+              }}
+            >
+              {formError}
+            </div>
+          )}
+
+          <Input
+            label="Nome da Conta"
+            placeholder="Ex: Conta XP Principal"
+            value={accountName}
+            onChange={(e) => setAccountName(e.target.value)}
+            disabled={createAccountMutation.isPending}
+            required
+          />
+
+          <Select
+            label="Instituição"
+            options={institutionsData.map((institution) => ({
+              value: institution.id,
+              label: institution.name,
+            }))}
+            value={institutionId}
+            onChange={(e) => setInstitutionId(e.target.value)}
+            disabled={createAccountMutation.isPending || institutionsData.length === 0}
+          />
+
+          <Select
+            label="Moeda"
+            options={[
+              { value: 'BRL', label: 'BRL — Real brasileiro' },
+              { value: 'USD', label: 'USD — Dólar americano' },
+              { value: 'EUR', label: 'EUR — Euro' },
+            ]}
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+            disabled={createAccountMutation.isPending}
+          />
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: `${spacing.sm}px`,
+              marginTop: `${spacing.xl}px`,
+            }}
+          >
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setIsModalOpen(false)}
+              disabled={createAccountMutation.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" isLoading={createAccountMutation.isPending}>
+              Salvar Conta
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

@@ -166,4 +166,63 @@ describe('Web: Accounts Overview & Detail (Fase 2E)', () => {
       expect(url).toContain(`accountId=${accountXp}`);
     }
   });
+
+  it('creates an account scoped to the active portfolio (H4 first-account flow)', async () => {
+    const created = {
+      id: 'd0000000-0000-4000-8000-000000000003',
+      portfolioId,
+      institutionId: instXp,
+      name: 'Conta XP Principal',
+      currency: 'BRL',
+      status: 'ACTIVE',
+    };
+
+    const calls: Array<{ url: string; body: unknown }> = [];
+    global.fetch = vi.fn().mockImplementation(async (url: unknown, init?: RequestInit) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
+      return {
+        ok: true,
+        status: 201,
+        json: async () => ({ data: created }),
+      };
+    }) as unknown as typeof fetch;
+
+    const res = await apiClient.post<{ data: typeof created }>(
+      `/api/v1/portfolios/${portfolioId}/accounts`,
+      { institutionId: instXp, name: 'Conta XP Principal', currency: 'BRL' },
+    );
+
+    // Portfolio association is automatic via the URL (no manual portfolioId field)
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toContain(`/api/v1/portfolios/${portfolioId}/accounts`);
+    expect(calls[0]!.body).toEqual({
+      institutionId: instXp,
+      name: 'Conta XP Principal',
+      currency: 'BRL',
+    });
+    expect(res.data.id).toBe(created.id);
+    expect(res.data.portfolioId).toBe(portfolioId);
+  });
+
+  it('surfaces cross-user portfolio rejection as a visible error (no silent failure)', async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      json: async () => ({
+        statusCode: 404,
+        error: 'Not Found',
+        code: 'ACCOUNT.PORTFOLIO_NOT_FOUND',
+        message: 'Portfolio not found.',
+      }),
+    }) as unknown as typeof fetch;
+
+    await expect(
+      apiClient.post(`/api/v1/portfolios/${portfolioId}/accounts`, {
+        institutionId: instXp,
+        name: 'Conta Estrangeira',
+        currency: 'BRL',
+      }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
 });
