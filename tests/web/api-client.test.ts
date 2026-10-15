@@ -188,4 +188,24 @@ describe('Web Foundation: ApiClient & Single-Flight Refresh Mutex', () => {
     expect(useAuthStore.getState().status).toBe('unauthenticated');
     expect(clearSpy).toHaveBeenCalled();
   });
+
+  it('should return raw text when content-type is text/csv or text/plain', async () => {
+    const csvContent = 'ticker;quantity;cost\nPETR4;200;4404.90';
+    const mockFetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'text/csv; charset=utf-8' }),
+      text: async () => csvContent,
+      json: async () => {
+        throw new Error('Unexpected JSON parse on CSV content');
+      },
+    });
+    global.fetch = mockFetch as unknown as typeof fetch;
+
+    const res = await client.get<string>('/api/v1/fiscal/annual/2026/reporting/export', {
+      headers: { Accept: 'text/csv' },
+    });
+
+    expect(res).toBe(csvContent);
+  });
 });

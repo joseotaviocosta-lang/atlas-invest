@@ -253,4 +253,165 @@ describe('Web: Manual Operation Entry (H5 first-transaction flow)', () => {
     });
     expect(res.data.id).toBe(compensatingCreated.id);
   });
+
+  it('executes atomic server-side cancellation in a single request', async () => {
+    const originalTx = {
+      id: 'f0000000-0000-4000-8000-000000000020',
+      type: 'SELL',
+      tradeDate: '2026-10-15',
+      currency: 'BRL',
+      accountId: accountXp,
+      assetId: assetPetr4,
+      quantity: '5',
+      unitPrice: '45.00',
+    };
+
+    const rectifyResult = {
+      originalTransactionId: originalTx.id,
+      mode: 'CANCEL',
+      compensatingTransaction: {
+        id: 'f0000000-0000-4000-8000-000000000098',
+        portfolioId,
+        accountId: accountXp,
+        type: 'BUY',
+        currency: 'BRL',
+        tradeDate: '2026-10-15',
+        assetId: assetPetr4,
+        quantity: '5',
+        unitPrice: { amount: '45.00', currency: 'BRL' },
+        notes: `[COMPENSAÇÃO ref ${originalTx.id}] Estorno cancelatório`,
+        source: 'MANUAL',
+      },
+      replacementTransaction: null,
+      isIdempotentReplay: false,
+      summary: 'Transação estornada com sucesso no ledger.',
+    };
+
+    const calls: Array<{ url: string; body: unknown }> = [];
+    global.fetch = vi.fn().mockImplementation(async (url: unknown, init?: RequestInit) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ data: rectifyResult }),
+      };
+    }) as unknown as typeof fetch;
+
+    const res = await apiClient.post<{ data: typeof rectifyResult }>(
+      `/api/v1/portfolios/${portfolioId}/transactions/${originalTx.id}/rectify`,
+      {
+        mode: 'CANCEL',
+        reason: 'Cancelamento total',
+        idempotencyKey: 'test-cancel-idemp',
+      },
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toContain(
+      `/api/v1/portfolios/${portfolioId}/transactions/${originalTx.id}/rectify`,
+    );
+    expect(calls[0]!.body).toEqual({
+      mode: 'CANCEL',
+      reason: 'Cancelamento total',
+      idempotencyKey: 'test-cancel-idemp',
+    });
+    expect(res.data.compensatingTransaction.id).toBe(rectifyResult.compensatingTransaction.id);
+    expect(res.data.replacementTransaction).toBeNull();
+  });
+
+  it('executes atomic server-side rectification in a single request (B1 Hotfix 02)', async () => {
+    // Owner smoke scenario: SELL 5 VALE3 @ 45 rectified to SELL 3 VALE3 @ 45
+    const originalTx = {
+      id: 'f0000000-0000-4000-8000-000000000025',
+      type: 'SELL',
+      tradeDate: '2026-10-15',
+      currency: 'BRL',
+      accountId: accountXp,
+      assetId: assetPetr4,
+      quantity: '5',
+      unitPrice: '45.00',
+    };
+
+    const rectifyResult = {
+      originalTransactionId: originalTx.id,
+      mode: 'RECTIFY',
+      compensatingTransaction: {
+        id: 'f0000000-0000-4000-8000-000000000026',
+        portfolioId,
+        accountId: accountXp,
+        type: 'BUY',
+        currency: 'BRL',
+        tradeDate: '2026-10-15',
+        assetId: assetPetr4,
+        quantity: '5',
+        unitPrice: { amount: '45.00', currency: 'BRL' },
+        notes: `[COMPENSAÇÃO ref ${originalTx.id}] Estorno para retificação: Correção de quantidade`,
+        source: 'MANUAL',
+      },
+      replacementTransaction: {
+        id: 'f0000000-0000-4000-8000-000000000027',
+        portfolioId,
+        accountId: accountXp,
+        type: 'SELL',
+        currency: 'BRL',
+        tradeDate: '2026-10-15',
+        assetId: assetPetr4,
+        quantity: '3',
+        unitPrice: { amount: '45.00', currency: 'BRL' },
+        notes: `[CORREÇÃO ref ${originalTx.id}] Correção de quantidade — Ajustado para 3 ações`,
+        source: 'MANUAL',
+      },
+      isIdempotentReplay: false,
+      summary: 'Transação retificada com sucesso: estorno e nova operação registradas no ledger.',
+    };
+
+    const calls: Array<{ url: string; body: unknown }> = [];
+    global.fetch = vi.fn().mockImplementation(async (url: unknown, init?: RequestInit) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ data: rectifyResult }),
+      };
+    }) as unknown as typeof fetch;
+
+    const res = await apiClient.post<{ data: typeof rectifyResult }>(
+      `/api/v1/portfolios/${portfolioId}/transactions/${originalTx.id}/rectify`,
+      {
+        mode: 'RECTIFY',
+        reason: 'Correção de quantidade',
+        idempotencyKey: 'idemp-vale3-smoke-01',
+        replacement: {
+          type: 'SELL',
+          quantity: '3',
+          unitPrice: '45.00',
+          tradeDate: '2026-10-15',
+          fees: '0',
+          notes: 'Ajustado para 3 ações',
+        },
+      },
+    );
+
+    // Assert strictly single HTTP request
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toContain(
+      `/api/v1/portfolios/${portfolioId}/transactions/${originalTx.id}/rectify`,
+    );
+    expect(calls[0]!.body).toMatchObject({
+      mode: 'RECTIFY',
+      reason: 'Correção de quantidade',
+      idempotencyKey: 'idemp-vale3-smoke-01',
+      replacement: {
+        type: 'SELL',
+        quantity: '3',
+        unitPrice: '45.00',
+        tradeDate: '2026-10-15',
+      },
+    });
+
+    // Assert both child transactions returned
+    expect(res.data.compensatingTransaction.id).toBe(rectifyResult.compensatingTransaction.id);
+    expect(res.data.replacementTransaction?.id).toBe(rectifyResult.replacementTransaction.id);
+    expect(res.data.isIdempotentReplay).toBe(false);
+  });
 });
