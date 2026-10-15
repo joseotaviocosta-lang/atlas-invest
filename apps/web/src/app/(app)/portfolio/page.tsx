@@ -44,6 +44,7 @@ import {
   OPERATION_TYPE_OPTIONS,
   OPERATION_TYPE_LABELS,
   OPERATION_CURRENCY_OPTIONS,
+  ManualOperationType,
   normalizeDecimalInput,
   isPositiveDecimalString,
   isNonNegativeDecimalString,
@@ -330,20 +331,27 @@ function PortfolioPageContent() {
     });
   };
 
-  // Manual operation entry (H5): the ledger POST endpoint already exists and is
-  // ownership-scoped by the authenticated principal. The page only wires the
-  // missing UI: tab CTA + entry modal + compact ledger list.
+  // Manual operation entry (H5 & C2): supports BUY, SELL, and income types
+  // (DIVIDEND, JCP, FII_INCOME) with append-only ledger storage.
   const [isOpModalOpen, setIsOpModalOpen] = useState(false);
-  const [opType, setOpType] = useState<'BUY' | 'SELL'>('BUY');
+  const [opType, setOpType] = useState<ManualOperationType>('BUY');
   const [opAssetId, setOpAssetId] = useState('');
   const [opAccountId, setOpAccountId] = useState('');
   const [opQuantity, setOpQuantity] = useState('');
   const [opUnitPrice, setOpUnitPrice] = useState('');
+  const [opAmount, setOpAmount] = useState('');
   const [opTradeDate, setOpTradeDate] = useState('');
   const [opFees, setOpFees] = useState('');
   const [opNotes, setOpNotes] = useState('');
   const [opCurrency, setOpCurrency] = useState('BRL');
+  const [assetSearch, setAssetSearch] = useState('');
   const [opFormError, setOpFormError] = useState<string | null>(null);
+
+  // Guided transaction correction modal state (C2)
+  const [isCorrectModalOpen, setIsCorrectModalOpen] = useState(false);
+  const [correctingTx, setCorrectingTx] = useState<LedgerTransactionDto | null>(null);
+  const [corrReason, setCorrReason] = useState('');
+  const [corrFormError, setCorrFormError] = useState<string | null>(null);
 
   const { data: transactionsData = [], isLoading: isTxLoading } = useQuery<
     LedgerTransactionDto[],
@@ -447,6 +455,16 @@ function PortfolioPageContent() {
     },
   });
 
+  const isIncomeType = opType === 'DIVIDEND' || opType === 'JCP' || opType === 'FII_INCOME';
+
+  const filteredAssets = useMemo(() => {
+    if (!assetSearch.trim()) return assetsCatalog;
+    const q = assetSearch.toLowerCase();
+    return assetsCatalog.filter(
+      (a) => a.ticker.toLowerCase().includes(q) || a.name.toLowerCase().includes(q),
+    );
+  }, [assetsCatalog, assetSearch]);
+
   const handleOpSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setOpFormError(null);
@@ -463,23 +481,8 @@ function PortfolioPageContent() {
       setOpFormError('Selecione o ativo da operação.');
       return;
     }
-    const quantity = normalizeDecimalInput(opQuantity);
-    if (!isPositiveDecimalString(quantity)) {
-      setOpFormError('Informe uma quantidade válida maior que zero (ex: 10).');
-      return;
-    }
-    const unitPrice = normalizeDecimalInput(opUnitPrice);
-    if (!isNonNegativeDecimalString(unitPrice)) {
-      setOpFormError('Informe um preço unitário válido (ex: 30.00).');
-      return;
-    }
     if (!CIVIL_DATE_RE.test(opTradeDate)) {
       setOpFormError('Informe a data da operação (AAAA-MM-DD).');
-      return;
-    }
-    const fees = normalizeDecimalInput(opFees);
-    if (fees !== '' && !isNonNegativeDecimalString(fees)) {
-      setOpFormError('Informe taxas válidas ou deixe em branco (ex: 4.90).');
       return;
     }
 
@@ -489,15 +492,121 @@ function PortfolioPageContent() {
       currency: opCurrency,
       tradeDate: opTradeDate,
       assetId: opAssetId,
-      quantity,
-      unitPrice,
       source: 'MANUAL',
     };
-    if (fees !== '') payload.fees = fees;
+
+    if (isIncomeType) {
+      const amount = normalizeDecimalInput(opAmount);
+      if (!isPositiveDecimalString(amount)) {
+        setOpFormError('Informe um valor de rendimento válido maior que zero (ex: 50.00).');
+        return;
+      }
+      payload.amount = amount;
+    } else {
+      const quantity = normalizeDecimalInput(opQuantity);
+      if (!isPositiveDecimalString(quantity)) {
+        setOpFormError('Informe uma quantidade válida maior que zero (ex: 10).');
+        return;
+      }
+      const unitPrice = normalizeDecimalInput(opUnitPrice);
+      if (!isNonNegativeDecimalString(unitPrice)) {
+        setOpFormError('Informe um preço unitário válido (ex: 30.00).');
+        return;
+      }
+      const fees = normalizeDecimalInput(opFees);
+      if (fees !== '' && !isNonNegativeDecimalString(fees)) {
+        setOpFormError('Informe taxas válidas ou deixe em branco (ex: 4.90).');
+        return;
+      }
+      payload.quantity = quantity;
+      payload.unitPrice = unitPrice;
+      if (fees !== '') payload.fees = fees;
+    }
+
     const notes = opNotes.trim();
     if (notes !== '') payload.notes = notes;
 
     createTxMutation.mutate(payload);
+  };
+
+  const correctTxMutation = useMutation({
+    mutationFn: async ({ reversalPayload }: { reversalPayload: Record<string, string> }) => {
+      const res = await apiClient.post<{ data: LedgerTransactionDto }>(
+        `/api/v1/portfolios/${activePortfolio!.id}/transactions`,
+        reversalPayload,
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['portfolio-transactions', activePortfolio?.id],
+      });
+      if (activePortfolio?.id) {
+        queryClient.invalidateQueries({
+          queryKey: stateQueryKey(activePortfolio.id, temporal.asOf),
+        });
+      }
+      setIsCorrectModalOpen(false);
+      setCorrectingTx(null);
+      setCorrReason('');
+      setCorrFormError(null);
+      showToast('Lançamento compensatório registrado com sucesso no livro-razão!', 'positive');
+    },
+    onError: (err: ApiError) => {
+      setCorrFormError(err.message || 'Falha ao registrar compensação no livro-razão.');
+    },
+  });
+
+  const handleCorrectionSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCorrFormError(null);
+
+    if (!correctingTx || !activePortfolio?.id) return;
+
+    // Build the compensating entry adhering to Section 11/12 (Append-Only Reversal)
+    const reason = corrReason.trim();
+    const reversalNotes = `[COMPENSAÇÃO ref ${correctingTx.id}]${reason ? ` ${reason}` : ''}`;
+
+    let reversalPayload: Record<string, string>;
+
+    if (correctingTx.type === 'BUY') {
+      // Reversing a BUY requires a SELL with exact same asset, quantity, and unitPrice
+      reversalPayload = {
+        accountId: correctingTx.accountId,
+        type: 'SELL',
+        currency: correctingTx.currency,
+        tradeDate: correctingTx.tradeDate,
+        assetId: correctingTx.assetId!,
+        quantity:
+          typeof correctingTx.quantity === 'string'
+            ? correctingTx.quantity
+            : String(correctingTx.quantity),
+        unitPrice: moneyAmountOf(correctingTx.unitPrice),
+        notes: reversalNotes,
+        source: 'MANUAL',
+      };
+    } else if (correctingTx.type === 'SELL') {
+      // Reversing a SELL requires a BUY with exact same asset, quantity, and unitPrice
+      reversalPayload = {
+        accountId: correctingTx.accountId,
+        type: 'BUY',
+        currency: correctingTx.currency,
+        tradeDate: correctingTx.tradeDate,
+        assetId: correctingTx.assetId!,
+        quantity:
+          typeof correctingTx.quantity === 'string'
+            ? correctingTx.quantity
+            : String(correctingTx.quantity),
+        unitPrice: moneyAmountOf(correctingTx.unitPrice),
+        notes: reversalNotes,
+        source: 'MANUAL',
+      };
+    } else {
+      setCorrFormError(`Compensação automática não suportada para o tipo ${correctingTx.type}.`);
+      return;
+    }
+
+    correctTxMutation.mutate({ reversalPayload });
   };
 
   const getBadgeVariant = (
@@ -1101,23 +1210,89 @@ function PortfolioPageContent() {
               </div>
             ))}
 
-          {/* TAB 3: RENTABILIDADE */}
+          {/* TAB 3: RENTABILIDADE (Wired to Performance Engine view) */}
           {activeTab === 'returns' && (
-            <Card style={{ padding: `${spacing.xl}px` }}>
-              <EmptyState
-                title="Módulo de Rentabilidade"
-                description="O cálculo de TWR (Time-Weighted Return), MWR (Money-Weighted Return) e rentabilidade histórica será implementado na Fase de Performance Engine."
-              />
+            <Card style={{ padding: `${spacing.xl}px`, textAlign: 'center' }}>
+              <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+                <h3
+                  style={{
+                    fontSize: '1.125rem',
+                    fontWeight: 700,
+                    color: colors.textPrimary,
+                    margin: '0 0 8px 0',
+                  }}
+                >
+                  Análise Completa de Rentabilidade
+                </h3>
+                <p
+                  style={{
+                    fontSize: '0.875rem',
+                    color: colors.textSecondary,
+                    lineHeight: '1.5',
+                    marginBottom: `${spacing.lg}px`,
+                  }}
+                >
+                  Acesse o painel dedicado com cálculo de TWR, séries temporais, métricas de risco,
+                  análise de cauda e comparação com benchmarks (CDI e Ibovespa).
+                </p>
+                <Link
+                  href={`/portfolio/performance${activePortfolio ? `?portfolioId=${activePortfolio.id}` : ''}`}
+                >
+                  <Button>Acessar Painel de Rentabilidade →</Button>
+                </Link>
+              </div>
             </Card>
           )}
 
-          {/* TAB 4: PROVENTOS */}
+          {/* TAB 4: PROVENTOS (Wired to Income view) */}
           {activeTab === 'dividends' && (
-            <Card style={{ padding: `${spacing.xl}px` }}>
-              <EmptyState
-                title="Agenda de Proventos"
-                description="Acompanhamento detalhado de dividendos, JCP e rendimentos estará disponível na Fase de Proventos."
-              />
+            <Card style={{ padding: `${spacing.xl}px`, textAlign: 'center' }}>
+              <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+                <h3
+                  style={{
+                    fontSize: '1.125rem',
+                    fontWeight: 700,
+                    color: colors.textPrimary,
+                    margin: '0 0 8px 0',
+                  }}
+                >
+                  Gestão e Histórico de Proventos
+                </h3>
+                <p
+                  style={{
+                    fontSize: '0.875rem',
+                    color: colors.textSecondary,
+                    lineHeight: '1.5',
+                    marginBottom: `${spacing.lg}px`,
+                  }}
+                >
+                  Visualize o consolidado de proventos recebidos (Dividendos, JCP, Rendimentos de
+                  FII) por ativo e período, integrados ao livro-razão e ao relatório anual DIRPF.
+                </p>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    gap: `${spacing.md}px`,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <Link
+                    href={`/portfolio/income${activePortfolio ? `?portfolioId=${activePortfolio.id}` : ''}`}
+                  >
+                    <Button>Acessar Painel de Proventos →</Button>
+                  </Link>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setOpType('DIVIDEND');
+                      openOpModal();
+                    }}
+                  >
+                    + Lançar Provento
+                  </Button>
+                </div>
+              </div>
             </Card>
           )}
 
@@ -1125,8 +1300,8 @@ function PortfolioPageContent() {
           {activeTab === 'allocation' && (
             <Card style={{ padding: `${spacing.xl}px` }}>
               <EmptyState
-                title="Alocação e Rebalanceamento"
-                description="Visualização da distribuição patrimonial por classe de ativo, moeda e setor programada para as próximas fases."
+                title="Alocação por Valor de Mercado"
+                description="Os gráficos de alocação patrimonial e rebalanceamento estarão disponíveis após a ativação do módulo de cotações de mercado (Market Data)."
               />
             </Card>
           )}
@@ -1223,9 +1398,27 @@ function PortfolioPageContent() {
                             {accountNameById.get(tx.accountId) ?? 'Conta'}
                           </div>
                         </div>
-                        <Badge variant={tx.type === 'SELL' ? 'warning' : 'primary'}>
-                          {OPERATION_TYPE_LABELS[tx.type] ?? tx.type}
-                        </Badge>
+                        <div
+                          style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px` }}
+                        >
+                          <Badge variant={tx.type === 'SELL' ? 'warning' : 'primary'}>
+                            {OPERATION_TYPE_LABELS[tx.type] ?? tx.type}
+                          </Badge>
+                          {(tx.type === 'BUY' || tx.type === 'SELL') && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => {
+                                setCorrectingTx(tx);
+                                setCorrReason('');
+                                setCorrFormError(null);
+                                setIsCorrectModalOpen(true);
+                              }}
+                            >
+                              Corrigir
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </Card>
                   ))}
@@ -1272,20 +1465,30 @@ function PortfolioPageContent() {
                     label="Tipo de Operação"
                     options={OPERATION_TYPE_OPTIONS}
                     value={opType}
-                    onChange={(e) => setOpType(e.target.value as 'BUY' | 'SELL')}
+                    onChange={(e) => setOpType(e.target.value as ManualOperationType)}
                     disabled={createTxMutation.isPending}
                   />
 
-                  <Select
-                    label="Ativo"
-                    options={assetsCatalog.map((asset) => ({
-                      value: asset.id,
-                      label: `${asset.ticker} — ${asset.name}`,
-                    }))}
-                    value={opAssetId}
-                    onChange={(e) => setOpAssetId(e.target.value)}
-                    disabled={createTxMutation.isPending || assetsCatalog.length === 0}
-                  />
+                  {/* Asset Search & Select */}
+                  <div style={{ marginBottom: `${spacing.sm}px` }}>
+                    <Input
+                      label="Buscar Ativo"
+                      placeholder="Filtrar por código ou nome (ex: PETR4, Vale)"
+                      value={assetSearch}
+                      onChange={(e) => setAssetSearch(e.target.value)}
+                      disabled={createTxMutation.isPending}
+                    />
+                    <Select
+                      label="Ativo Selecionado"
+                      options={filteredAssets.map((asset) => ({
+                        value: asset.id,
+                        label: `${asset.ticker} — ${asset.name}`,
+                      }))}
+                      value={opAssetId}
+                      onChange={(e) => setOpAssetId(e.target.value)}
+                      disabled={createTxMutation.isPending || filteredAssets.length === 0}
+                    />
+                  </div>
 
                   <Select
                     label="Conta"
@@ -1298,25 +1501,39 @@ function PortfolioPageContent() {
                     disabled={createTxMutation.isPending || accountsData.length === 0}
                   />
 
-                  <Input
-                    label="Quantidade"
-                    placeholder="Ex: 10"
-                    value={opQuantity}
-                    onChange={(e) => setOpQuantity(e.target.value)}
-                    disabled={createTxMutation.isPending}
-                    required
-                    inputMode="decimal"
-                  />
+                  {isIncomeType ? (
+                    <Input
+                      label="Valor do Rendimento (Líquido / Creditado)"
+                      placeholder="Ex: 50.00"
+                      value={opAmount}
+                      onChange={(e) => setOpAmount(e.target.value)}
+                      disabled={createTxMutation.isPending}
+                      required
+                      inputMode="decimal"
+                    />
+                  ) : (
+                    <>
+                      <Input
+                        label="Quantidade"
+                        placeholder="Ex: 10"
+                        value={opQuantity}
+                        onChange={(e) => setOpQuantity(e.target.value)}
+                        disabled={createTxMutation.isPending}
+                        required
+                        inputMode="decimal"
+                      />
 
-                  <Input
-                    label="Preço Unitário"
-                    placeholder="Ex: 30.00"
-                    value={opUnitPrice}
-                    onChange={(e) => setOpUnitPrice(e.target.value)}
-                    disabled={createTxMutation.isPending}
-                    required
-                    inputMode="decimal"
-                  />
+                      <Input
+                        label="Preço Unitário"
+                        placeholder="Ex: 30.00"
+                        value={opUnitPrice}
+                        onChange={(e) => setOpUnitPrice(e.target.value)}
+                        disabled={createTxMutation.isPending}
+                        required
+                        inputMode="decimal"
+                      />
+                    </>
+                  )}
 
                   <Input
                     label="Data da Operação"
@@ -1335,18 +1552,20 @@ function PortfolioPageContent() {
                     disabled={createTxMutation.isPending}
                   />
 
-                  <Input
-                    label="Taxas (opcional)"
-                    placeholder="Ex: 4.90"
-                    value={opFees}
-                    onChange={(e) => setOpFees(e.target.value)}
-                    disabled={createTxMutation.isPending}
-                    inputMode="decimal"
-                  />
+                  {!isIncomeType && (
+                    <Input
+                      label="Taxas (opcional)"
+                      placeholder="Ex: 4.90"
+                      value={opFees}
+                      onChange={(e) => setOpFees(e.target.value)}
+                      disabled={createTxMutation.isPending}
+                      inputMode="decimal"
+                    />
+                  )}
 
                   <Input
                     label="Observações (opcional)"
-                    placeholder="Ex: Compra de oportunidade"
+                    placeholder="Ex: Operação manual ou referência externa"
                     value={opNotes}
                     onChange={(e) => setOpNotes(e.target.value)}
                     disabled={createTxMutation.isPending}
@@ -1370,6 +1589,113 @@ function PortfolioPageContent() {
                     </Button>
                     <Button type="submit" isLoading={createTxMutation.isPending}>
                       Salvar Operação
+                    </Button>
+                  </div>
+                </form>
+              </Modal>
+
+              {/* Guided Transaction Correction Modal (C2 / Append-Only) */}
+              <Modal
+                isOpen={isCorrectModalOpen}
+                onClose={() => {
+                  setIsCorrectModalOpen(false);
+                  setCorrectingTx(null);
+                }}
+                title="Corrigir Operação no Livro-Razão"
+              >
+                <form onSubmit={handleCorrectionSubmit}>
+                  {corrFormError && (
+                    <div
+                      role="alert"
+                      style={{
+                        backgroundColor: colors.negativeSubtle,
+                        border: `1px solid ${colors.negative}`,
+                        color: colors.negative,
+                        padding: `${spacing.md}px`,
+                        borderRadius: `${borderRadius.md}px`,
+                        fontSize: '0.875rem',
+                        marginBottom: `${spacing.base}px`,
+                      }}
+                    >
+                      {corrFormError}
+                    </div>
+                  )}
+
+                  <div
+                    style={{
+                      padding: `${spacing.md}px`,
+                      backgroundColor: colors.surfaceElevated,
+                      borderRadius: `${borderRadius.md}px`,
+                      border: `1px solid ${colors.border}`,
+                      fontSize: '0.875rem',
+                      lineHeight: '1.4',
+                      color: colors.textSecondary,
+                      marginBottom: `${spacing.base}px`,
+                    }}
+                  >
+                    <strong style={{ color: colors.textPrimary }}>
+                      Princípio de Imutabilidade:
+                    </strong>
+                    <br />O registro original nunca é alterado ou excluído. O Atlas registrará um{' '}
+                    <strong>lançamento compensatório (reversão)</strong> no livro-razão para anular
+                    o impacto desta operação em custódia e fiscal. Você poderá em seguida registrar
+                    a operação correta.
+                  </div>
+
+                  {correctingTx && (
+                    <div
+                      style={{
+                        padding: `${spacing.base}px`,
+                        backgroundColor: colors.surface,
+                        borderRadius: `${borderRadius.md}px`,
+                        border: `1px solid ${colors.border}`,
+                        marginBottom: `${spacing.base}px`,
+                        fontSize: '0.875rem',
+                      }}
+                    >
+                      <div>
+                        Operação:{' '}
+                        <strong>
+                          {OPERATION_TYPE_LABELS[correctingTx.type] ?? correctingTx.type} •{' '}
+                          {assetLabelById.get(correctingTx.assetId ?? '') ?? 'Ativo'}
+                        </strong>
+                      </div>
+                      <div style={{ color: colors.textSecondary, marginTop: '4px' }}>
+                        Data: {correctingTx.tradeDate} • Quantidade: {correctingTx.quantity} •
+                        Preço: {moneyAmountOf(correctingTx.unitPrice)} {correctingTx.currency}
+                      </div>
+                    </div>
+                  )}
+
+                  <Input
+                    label="Motivo da Correção (opcional)"
+                    placeholder="Ex: Quantidade informada incorretamente"
+                    value={corrReason}
+                    onChange={(e) => setCorrReason(e.target.value)}
+                    disabled={correctTxMutation.isPending}
+                  />
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'flex-end',
+                      gap: `${spacing.sm}px`,
+                      marginTop: `${spacing.xl}px`,
+                    }}
+                  >
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        setIsCorrectModalOpen(false);
+                        setCorrectingTx(null);
+                      }}
+                      disabled={correctTxMutation.isPending}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button type="submit" isLoading={correctTxMutation.isPending}>
+                      Confirmar Reversão Compensatória
                     </Button>
                   </div>
                 </form>

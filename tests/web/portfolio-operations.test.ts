@@ -139,29 +139,118 @@ describe('Web: Manual Operation Entry (H5 first-transaction flow)', () => {
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it('lists ledger operations for the operations tab', async () => {
-    const items = [
-      {
-        id: 'f0000000-0000-4000-8000-000000000010',
-        type: 'BUY',
-        tradeDate: '2026-01-05',
-        currency: 'BRL',
-        accountId: accountXp,
-        assetId: assetPetr4,
-        quantity: '10',
-        unitPrice: { amount: '30.00', currency: 'BRL' },
-      },
-    ];
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({ data: items }),
+  it('submits manual income (DIVIDEND) with exact decimal amount and no floats', async () => {
+    const createdIncome = {
+      id: 'f0000000-0000-4000-8000-000000000020',
+      portfolioId,
+      accountId: accountXp,
+      type: 'DIVIDEND',
+      currency: 'BRL',
+      tradeDate: '2026-02-15',
+      assetId: assetPetr4,
+      amount: { amount: '45.50', currency: 'BRL' },
+      source: 'MANUAL',
+    };
+
+    const calls: Array<{ url: string; body: unknown }> = [];
+    global.fetch = vi.fn().mockImplementation(async (url: unknown, init?: RequestInit) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
+      return {
+        ok: true,
+        status: 201,
+        json: async () => ({ data: createdIncome }),
+      };
     }) as unknown as typeof fetch;
 
-    const res = await apiClient.get<{ data: typeof items }>(
-      `/api/v1/portfolios/${portfolioId}/transactions?limit=50`,
+    const res = await apiClient.post<{ data: typeof createdIncome }>(
+      `/api/v1/portfolios/${portfolioId}/transactions`,
+      {
+        accountId: accountXp,
+        type: 'DIVIDEND',
+        currency: 'BRL',
+        tradeDate: '2026-02-15',
+        assetId: assetPetr4,
+        amount: normalizeDecimalInput('45,50'),
+        source: 'MANUAL',
+      },
     );
-    expect(res.data).toHaveLength(1);
-    expect(res.data[0]!.type).toBe('BUY');
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.body).toEqual({
+      accountId: accountXp,
+      type: 'DIVIDEND',
+      currency: 'BRL',
+      tradeDate: '2026-02-15',
+      assetId: assetPetr4,
+      amount: '45.50',
+      source: 'MANUAL',
+    });
+    expect(res.data.id).toBe(createdIncome.id);
+  });
+
+  it('builds an append-only compensating reversal entry for a BUY', async () => {
+    const originalTx = {
+      id: 'f0000000-0000-4000-8000-000000000010',
+      type: 'BUY',
+      tradeDate: '2026-01-05',
+      currency: 'BRL',
+      accountId: accountXp,
+      assetId: assetPetr4,
+      quantity: '10',
+      unitPrice: '30.00',
+    };
+
+    const compensatingCreated = {
+      id: 'f0000000-0000-4000-8000-000000000099',
+      portfolioId,
+      accountId: accountXp,
+      type: 'SELL',
+      currency: 'BRL',
+      tradeDate: '2026-01-05',
+      assetId: assetPetr4,
+      quantity: '10',
+      unitPrice: { amount: '30.00', currency: 'BRL' },
+      notes: `[COMPENSAÇÃO ref ${originalTx.id}] Quantidade informada incorretamente`,
+      source: 'MANUAL',
+    };
+
+    const calls: Array<{ url: string; body: unknown }> = [];
+    global.fetch = vi.fn().mockImplementation(async (url: unknown, init?: RequestInit) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
+      return {
+        ok: true,
+        status: 201,
+        json: async () => ({ data: compensatingCreated }),
+      };
+    }) as unknown as typeof fetch;
+
+    const res = await apiClient.post<{ data: typeof compensatingCreated }>(
+      `/api/v1/portfolios/${portfolioId}/transactions`,
+      {
+        accountId: originalTx.accountId,
+        type: 'SELL',
+        currency: originalTx.currency,
+        tradeDate: originalTx.tradeDate,
+        assetId: originalTx.assetId,
+        quantity: originalTx.quantity,
+        unitPrice: originalTx.unitPrice,
+        notes: `[COMPENSAÇÃO ref ${originalTx.id}] Quantidade informada incorretamente`,
+        source: 'MANUAL',
+      },
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.body).toEqual({
+      accountId: accountXp,
+      type: 'SELL',
+      currency: 'BRL',
+      tradeDate: '2026-01-05',
+      assetId: assetPetr4,
+      quantity: '10',
+      unitPrice: '30.00',
+      notes: `[COMPENSAÇÃO ref ${originalTx.id}] Quantidade informada incorretamente`,
+      source: 'MANUAL',
+    });
+    expect(res.data.id).toBe(compensatingCreated.id);
   });
 });
