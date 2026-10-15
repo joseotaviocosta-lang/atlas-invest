@@ -21,6 +21,28 @@ export default function TodayPage() {
   });
 
   const firstName = user?.name ? user.name.split(' ')[0] : 'Investidor';
+  const firstPortfolioId = portfolios[0]?.id;
+  const { data: stateData } = useQuery<{
+    data: {
+      totalCost?: { amount: string; currency: string } | null;
+      positions: Array<unknown>;
+      incomeSummaries?: Array<{ totalIncome: { amount: string; currency: string } }>;
+    };
+  }>({
+    queryKey: ['portfolio-state', firstPortfolioId],
+    queryFn: async () => {
+      if (!firstPortfolioId) return { data: { positions: [] } } as never;
+      return apiClient.get(`/api/v1/portfolios/${firstPortfolioId}/state`);
+    },
+    enabled: Boolean(firstPortfolioId),
+    staleTime: 30 * 1000,
+  });
+
+  const totalCostObj = stateData?.data?.totalCost;
+  const totalCostFormatted = totalCostObj
+    ? `${totalCostObj.currency} ${Number(totalCostObj.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : null;
+  const positionsCount = stateData?.data?.positions?.length ?? 0;
   const hasNoPortfolios = !isLoadingPortfolios && portfolios.length === 0;
 
   return (
@@ -74,11 +96,11 @@ export default function TodayPage() {
         </div>
       )}
 
-      {/* Financial Overview StatCards (Strict Honest Placeholders: No Fake Data) */}
+      {/* Financial Overview StatCards (Strict Honest Policy: Real Cost Basis, No Fake Quotations) */}
       <div style={{ marginBottom: `${spacing.xl}px` }}>
         <SectionHeader
           title="Resumo Patrimonial"
-          description="Indicadores consolidados da sua conta (aguardando Portfolio Engine)"
+          description="Indicadores derivados do livro-razão e posições em custódia"
         />
         <div
           style={{
@@ -88,22 +110,31 @@ export default function TodayPage() {
           }}
         >
           <StatCard
-            label="Patrimônio Total"
+            label="Custo Total em Custódia"
+            value={totalCostFormatted ?? '—'}
+            subValue={
+              positionsCount > 0
+                ? `${positionsCount} ${positionsCount === 1 ? 'ativo' : 'ativos'} em custódia`
+                : 'Nenhuma posição ativa'
+            }
+            isPlaceholder={!totalCostFormatted}
+          />
+          <StatCard
+            label="Variação Hoje"
             value="—"
-            subValue="Disponível com Portfolio Engine"
+            subValue="Disponível com cotações de mercado"
             isPlaceholder
           />
-          <StatCard label="Variação Hoje" value="—" subValue="Sem dados de cotação" isPlaceholder />
           <StatCard
             label="Resultado Acumulado"
             value="—"
-            subValue="Aguardando cálculo de rentabilidade"
+            subValue="Disponível na aba Rentabilidade"
             isPlaceholder
           />
           <StatCard
-            label="Proventos no Mês"
+            label="Proventos Acumulados"
             value="—"
-            subValue="Nenhum evento registrado"
+            subValue="Disponível na aba Proventos"
             isPlaceholder
           />
         </div>
