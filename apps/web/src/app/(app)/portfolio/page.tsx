@@ -22,7 +22,7 @@ import {
   PortfolioSwitcher,
   useToast,
 } from '@/components/ui';
-import { colors, spacing, borderRadius } from '@atlas/ui';
+import { colors, spacing, borderRadius, formatCurrency, formatQuantity } from '@atlas/ui';
 import {
   mapToPortfolioOverviewViewModel,
   PortfolioStateDto,
@@ -389,6 +389,14 @@ function PortfolioPageContent() {
     }
     return m;
   }, [accountsData]);
+
+  const assetById = useMemo(() => {
+    const m = new Map<string, { ticker: string; name: string }>();
+    for (const asset of assetsCatalog) {
+      m.set(asset.id, { ticker: asset.ticker, name: asset.name });
+    }
+    return m;
+  }, [assetsCatalog]);
 
   const openOpModal = () => {
     setOpFormError(null);
@@ -969,15 +977,129 @@ function PortfolioPageContent() {
             </div>
           )}
 
-          {/* TAB 2: ATIVOS */}
-          {activeTab === 'assets' && (
-            <Card style={{ padding: `${spacing.xl}px` }}>
-              <EmptyState
-                title="Posições de Ativos em Estruturação"
-                description="A agregação de quantidades, cotações e preço médio ponderado por lote será ativada na Fase de Portfolio Engine 1.0."
-              />
-            </Card>
-          )}
+          {/* TAB 2: ATIVOS — engine-derived open positions (no client math) */}
+          {activeTab === 'assets' &&
+            (isStateLoading && !stateData ? (
+              <Card style={{ padding: `${spacing.base}px` }}>
+                <Skeleton width="100%" height="80px" />
+              </Card>
+            ) : isStateError && !stateData ? (
+              <Card style={{ padding: `${spacing.xl}px` }}>
+                <ErrorState
+                  title="Falha ao carregar posições"
+                  message="Ocorreu um erro ao consultar as posições da carteira."
+                  onRetry={() => refetchState()}
+                />
+              </Card>
+            ) : !stateData || stateData.positions.length === 0 ? (
+              <Card style={{ padding: `${spacing.xl}px` }}>
+                <EmptyState
+                  title="Nenhuma posição aberta"
+                  description="As posições derivadas das suas operações aparecerão aqui assim que a primeira compra for registrada."
+                />
+              </Card>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.md}px` }}>
+                {stateData.positions.map((position) => {
+                  const asset = assetById.get(position.assetId);
+                  const currency = position.currency ?? position.totalCost?.currency ?? 'BRL';
+                  const isIncomplete = position.costBasisStatus === 'INCOMPLETE';
+                  return (
+                    <Card
+                      key={position.assetId}
+                      style={{
+                        padding: `${spacing.base}px`,
+                        backgroundColor: colors.surface,
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: `${borderRadius.lg}px`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          justifyContent: 'space-between',
+                          gap: `${spacing.sm}px`,
+                        }}
+                      >
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div
+                            style={{
+                              fontSize: '1rem',
+                              fontWeight: 700,
+                              color: colors.textPrimary,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={asset ? `${asset.ticker} — ${asset.name}` : undefined}
+                          >
+                            {asset ? `${asset.ticker} — ${asset.name}` : 'Ativo'}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '0.8125rem',
+                              color: colors.textSecondary,
+                              marginTop: '2px',
+                            }}
+                          >
+                            Qtd {formatQuantity(position.quantity)} • Preço médio{' '}
+                            {isIncomplete || !position.averageCost
+                              ? '—'
+                              : formatCurrency(
+                                  position.averageCost.amount,
+                                  position.averageCost.currency,
+                                )}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '0.8125rem',
+                              color: colors.textSecondary,
+                              marginTop: '2px',
+                            }}
+                          >
+                            Custo total{' '}
+                            {isIncomplete || !position.totalCost
+                              ? '—'
+                              : formatCurrency(
+                                  position.totalCost.amount,
+                                  position.totalCost.currency,
+                                )}{' '}
+                            • {currency} • Sem cotação
+                          </div>
+                        </div>
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'flex-end',
+                            gap: '6px',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {isIncomplete && <Badge variant="warning">Custo incompleto</Badge>}
+                          <Link
+                            href={appendAsOf(
+                              `/portfolio/assets/${position.assetId}${activePortfolio ? `?portfolioId=${activePortfolio.id}` : ''}`,
+                              temporal.asOf,
+                            )}
+                            style={{
+                              color: colors.accent,
+                              textDecoration: 'none',
+                              fontWeight: 600,
+                              fontSize: '0.875rem',
+                            }}
+                            aria-label={`Ver detalhes do ativo ${asset?.ticker ?? ''}`}
+                          >
+                            Ver detalhe →
+                          </Link>
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            ))}
 
           {/* TAB 3: RENTABILIDADE */}
           {activeTab === 'returns' && (
