@@ -14,10 +14,17 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
   const modalRef = React.useRef<HTMLDivElement>(null);
   const previousActiveElement = React.useRef<HTMLElement | null>(null);
 
+  // Keep the latest onClose without retriggering the effect: consumers pass
+  // inline callbacks (e.g. `onClose={() => setIsOpen(false)}`) whose identity
+  // changes on every render. If the effect depended on it, every keystroke
+  // would re-run setup/teardown, yanking focus away from the typed input.
+  const onCloseRef = React.useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -65,7 +72,10 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
         previousActiveElement.current.focus();
       }
     };
-  }, [isOpen, onClose]);
+    // Intentionally depends only on isOpen: re-running on every parent render
+    // would steal input focus (cleanup refocuses the previous element and the
+    // opener focuses the first field). onClose is read via onCloseRef.
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -97,6 +107,10 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
           borderRadius: `${themeTokens.borderRadius.lg}px`,
           width: '100%',
           maxWidth: '480px',
+          maxHeight: 'calc(100vh - 2rem)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
           padding: '1.5rem',
           boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4)',
           position: 'relative',
@@ -138,7 +152,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
             &times;
           </button>
         </div>
-        <div>{children}</div>
+        <div style={{ overflowY: 'auto', minHeight: 0 }}>{children}</div>
       </div>
     </div>
   );

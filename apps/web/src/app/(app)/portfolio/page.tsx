@@ -425,7 +425,17 @@ function PortfolioPageContent() {
       showToast('Operação registrada com sucesso!', 'positive');
     },
     onError: (err: ApiError) => {
-      setOpFormError(err.message || 'Falha ao registrar operação. Verifique os dados.');
+      // Network-level failures surface as statusCode 0 with the raw fetch
+      // message ("Failed to fetch"). Translate to an actionable message and
+      // keep the form populated so the user can retry. API validation and
+      // domain messages are shown as returned (no stack traces).
+      if (err.statusCode === 0) {
+        setOpFormError(
+          'Não foi possível alcançar o servidor. Verifique sua conexão e tente novamente.',
+        );
+      } else {
+        setOpFormError(err.message || 'Falha ao registrar operação. Verifique os dados.');
+      }
     },
   });
 
