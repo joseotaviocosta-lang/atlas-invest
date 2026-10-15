@@ -38,9 +38,13 @@ describe('Web: Portfolio Shell & Navigation (Hotfix 03 B3/B4)', () => {
     expect(resolveTabUrl('returns', portfolioId)).toBe('/portfolio/performance?portfolioId=p-123');
     expect(resolveTabUrl('dividends', portfolioId)).toBe('/portfolio/income?portfolioId=p-123');
     expect(resolveTabUrl('overview', portfolioId)).toBe('/portfolio?portfolioId=p-123');
-    expect(resolveTabUrl('operations', portfolioId)).toBe('/portfolio?portfolioId=p-123&tab=operations');
+    expect(resolveTabUrl('operations', portfolioId)).toBe(
+      '/portfolio?portfolioId=p-123&tab=operations',
+    );
     expect(resolveTabUrl('assets', portfolioId)).toBe('/portfolio?portfolioId=p-123&tab=assets');
-    expect(resolveTabUrl('allocation', portfolioId)).toBe('/portfolio?portfolioId=p-123&tab=allocation');
+    expect(resolveTabUrl('allocation', portfolioId)).toBe(
+      '/portfolio?portfolioId=p-123&tab=allocation',
+    );
   });
 
   it('ensures client-side CSV Blob construction embeds UTF-8 BOM', async () => {

@@ -79,22 +79,17 @@ export function PortfolioShell({
     staleTime: 60000,
   });
 
-  const portfoliosList: PortfolioDto[] = propPortfolios ?? (
-    Array.isArray(rawPortfolios)
+  const portfoliosList: PortfolioDto[] =
+    propPortfolios ??
+    (Array.isArray(rawPortfolios)
       ? rawPortfolios
-      : ((rawPortfolios as unknown as { data?: PortfolioDto[] })?.data ?? [])
-  );
+      : ((rawPortfolios as unknown as { data?: PortfolioDto[] })?.data ?? []));
 
   const activePortfolioIdResolved =
-    selectedPortfolioId ??
-    searchParams.get('portfolioId') ??
-    portfoliosList[0]?.id ??
-    null;
+    selectedPortfolioId ?? searchParams.get('portfolioId') ?? portfoliosList[0]?.id ?? null;
 
   const activePortfolio =
-    portfoliosList.find((p) => p.id === activePortfolioIdResolved) ??
-    portfoliosList[0] ??
-    null;
+    portfoliosList.find((p) => p.id === activePortfolioIdResolved) ?? portfoliosList[0] ?? null;
 
   const handleSelectPortfolio = (id: string) => {
     if (onSelectPortfolio) {

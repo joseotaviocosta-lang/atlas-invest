@@ -726,7 +726,6 @@ function PortfolioPageContent() {
       onTabChange={handleTabChange}
       onCreatePortfolio={() => setIsModalOpen(true)}
     >
-
       {/* Loading Skeletons */}
       {isLoading && (
         <div
@@ -1288,7 +1287,6 @@ function PortfolioPageContent() {
                 })}
               </div>
             ))}
-
 
           {/* TAB 5: ALOCAÇÃO */}
           {activeTab === 'allocation' && (
