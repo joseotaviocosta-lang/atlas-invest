@@ -13,13 +13,19 @@
 export const OPERATION_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'BUY', label: 'Compra' },
   { value: 'SELL', label: 'Venda' },
+  { value: 'DIVIDEND', label: 'Dividendo' },
+  { value: 'JCP', label: 'Juros sobre Capital Próprio (JCP)' },
+  { value: 'FII_INCOME', label: 'Rendimento FII' },
 ];
 
-export type ManualOperationType = 'BUY' | 'SELL';
+export type ManualOperationType = 'BUY' | 'SELL' | 'DIVIDEND' | 'JCP' | 'FII_INCOME';
 
 export const OPERATION_TYPE_LABELS: Record<string, string> = {
   BUY: 'Compra',
   SELL: 'Venda',
+  DIVIDEND: 'Dividendo',
+  JCP: 'Juros sobre Capital Próprio',
+  FII_INCOME: 'Rendimento FII',
 };
 
 export const OPERATION_CURRENCY_OPTIONS: Array<{ value: string; label: string }> = [
