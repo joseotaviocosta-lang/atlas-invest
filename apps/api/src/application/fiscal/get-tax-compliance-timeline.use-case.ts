@@ -65,7 +65,12 @@ export class GetTaxComplianceTimelineUseCase {
     // 1. Load Monthly Obligations for the calendar year
     const monthlyRows = await this.obligationRepository.list(input.taxSubjectId, {});
     const yearPrefix = `${calendarYear}-`;
+    // Superseded revisions are append-only audit history (never deleted) but must
+    // not project as active timeline items: a superseded row with null principal
+    // would otherwise surface as a contradictory "Sem Imposto a Pagar" entry next
+    // to the current revision. Matches the Action Center current-item convention.
     const monthlySources: MonthlyComplianceSource[] = monthlyRows
+      .filter((row) => row.status !== 'SUPERSEDED')
       .filter((row) => row.competence.startsWith(yearPrefix))
       .map((row) => {
         let dueDateStr: string | null = null;

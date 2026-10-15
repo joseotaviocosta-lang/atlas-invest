@@ -165,137 +165,156 @@ function FiscalContent() {
 
       {viewModel && (
         <>
-          <SectionHeader
-            title={`Competência ${viewModel.competenceLabel}`}
-            description={viewModel.statusLabel}
-          />
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-              gap: `${spacing.base}px`,
-              marginBottom: `${spacing.xl}px`,
-            }}
-          >
-            <Card style={{ padding: `${spacing.base}px` }}>
-              <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
-                Eventos fiscais
-              </span>
-              <div style={{ fontSize: '1.75rem', fontWeight: 700, color: colors.textPrimary }}>
-                {viewModel.eventCount}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: colors.textMuted, marginTop: '4px' }}>
-                {viewModel.eventsSummary.map((e) => `${e.count} ${e.label}`).join(' · ') || '—'}
-              </div>
-            </Card>
-            <Card style={{ padding: `${spacing.base}px` }}>
-              <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
-                Status da apuração
-              </span>
-              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: viewModel.statusColor }}>
-                {viewModel.status}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: colors.textMuted, marginTop: '4px' }}>
-                {viewModel.ruleSetLabel}
-              </div>
-            </Card>
-            <Card style={{ padding: `${spacing.base}px` }}>
-              <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
-                Pendências de dados
-              </span>
-              <div
-                style={{
-                  fontSize: '1.75rem',
-                  fontWeight: 700,
-                  color: viewModel.dataQuality.hasIssues ? colors.warning : colors.positive,
-                }}
-              >
-                {viewModel.dataQuality.issueLabels.length}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: colors.textMuted, marginTop: '4px' }}>
-                {viewModel.dataQuality.hasIssues
-                  ? 'Dados incompletos impedem conclusão total'
-                  : 'Nenhuma pendência'}
-              </div>
-            </Card>
-          </div>
-
-          <SectionHeader
-            title="Categorias de ativos"
-            description="Fatos fiscais normalizados por categoria e moeda (sem conversão cambial)"
-          />
-          {viewModel.categories.length === 0 ? (
-            <Card style={{ padding: `${spacing.xl}px` }}>
-              <EmptyState
-                title="Nenhum evento fiscal nesta competência"
-                description="Não há transações fiscais registradas para a competência selecionada."
-              />
-            </Card>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.sm}px` }}>
-              {viewModel.categories.map((c) => (
-                <Card
-                  key={`${c.categoryLabel}-${c.currency}`}
-                  style={{ padding: `${spacing.base}px` }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'baseline',
-                    }}
-                  >
-                    <strong style={{ color: colors.textPrimary }}>
-                      {c.categoryLabel} · {c.currency}
-                    </strong>
-                    <span style={{ fontSize: '0.8125rem', color: c.capabilityColor }}>
-                      {c.capabilityLabel}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      fontSize: '0.8125rem',
-                      color: colors.textSecondary,
-                      marginTop: '6px',
-                    }}
-                  >
-                    {c.eventCount} evento(s) · Vendas: {c.salesProceedsFormatted} · Proventos:{' '}
-                    {c.incomeFormatted}
-                  </div>
-                  {c.qualityLabels.length > 0 && (
-                    <div
-                      style={{
-                        fontSize: '0.75rem',
-                        color: colors.warning,
-                        marginTop: '4px',
-                      }}
-                    >
-                      Pendências: {c.qualityLabels.join(' · ')}
-                    </div>
-                  )}
-                </Card>
-              ))}
+          <details style={{ marginBottom: `${spacing.xl}px` }}>
+            <summary
+              style={{
+                cursor: 'pointer',
+                fontSize: '0.9375rem',
+                fontWeight: 600,
+                color: colors.textPrimary,
+              }}
+            >
+              Diagnóstico de fundação (Fase 4A): {viewModel.status} · Competência{' '}
+              {viewModel.competenceLabel}
+            </summary>
+            <div style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginTop: '4px' }}>
+              Fatos fiscais normalizados e pendências de evidência. O resultado fiscal vigente é
+              apurado nas seções Apuração de imposto, Ações e Composição 6015 abaixo.
             </div>
-          )}
+            <SectionHeader
+              title={`Competência ${viewModel.competenceLabel}`}
+              description={viewModel.statusLabel}
+            />
 
-          {viewModel.dataQuality.hasIssues && (
-            <div style={{ marginTop: `${spacing.xl}px` }}>
-              <SectionHeader
-                title="Dados incompletos"
-                description="A apuração não pôde ser concluída integralmente"
-              />
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                gap: `${spacing.base}px`,
+                marginBottom: `${spacing.xl}px`,
+              }}
+            >
               <Card style={{ padding: `${spacing.base}px` }}>
-                <ul style={{ margin: 0, paddingLeft: `${spacing.base}px`, color: colors.warning }}>
-                  {viewModel.dataQuality.issueLabels.map((label) => (
-                    <li key={label} style={{ fontSize: '0.875rem' }}>
-                      {label}
-                    </li>
-                  ))}
-                </ul>
+                <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                  Eventos fiscais
+                </span>
+                <div style={{ fontSize: '1.75rem', fontWeight: 700, color: colors.textPrimary }}>
+                  {viewModel.eventCount}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: colors.textMuted, marginTop: '4px' }}>
+                  {viewModel.eventsSummary.map((e) => `${e.count} ${e.label}`).join(' · ') || '—'}
+                </div>
+              </Card>
+              <Card style={{ padding: `${spacing.base}px` }}>
+                <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                  Status da apuração
+                </span>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: viewModel.statusColor }}>
+                  {viewModel.status}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: colors.textMuted, marginTop: '4px' }}>
+                  {viewModel.ruleSetLabel}
+                </div>
+              </Card>
+              <Card style={{ padding: `${spacing.base}px` }}>
+                <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                  Pendências de dados
+                </span>
+                <div
+                  style={{
+                    fontSize: '1.75rem',
+                    fontWeight: 700,
+                    color: viewModel.dataQuality.hasIssues ? colors.warning : colors.positive,
+                  }}
+                >
+                  {viewModel.dataQuality.issueLabels.length}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: colors.textMuted, marginTop: '4px' }}>
+                  {viewModel.dataQuality.hasIssues
+                    ? 'Dados incompletos impedem conclusão total'
+                    : 'Nenhuma pendência'}
+                </div>
               </Card>
             </div>
-          )}
+
+            <SectionHeader
+              title="Categorias de ativos"
+              description="Fatos fiscais normalizados por categoria e moeda (sem conversão cambial)"
+            />
+            {viewModel.categories.length === 0 ? (
+              <Card style={{ padding: `${spacing.xl}px` }}>
+                <EmptyState
+                  title="Nenhum evento fiscal nesta competência"
+                  description="Não há transações fiscais registradas para a competência selecionada."
+                />
+              </Card>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.sm}px` }}>
+                {viewModel.categories.map((c) => (
+                  <Card
+                    key={`${c.categoryLabel}-${c.currency}`}
+                    style={{ padding: `${spacing.base}px` }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'baseline',
+                      }}
+                    >
+                      <strong style={{ color: colors.textPrimary }}>
+                        {c.categoryLabel} · {c.currency}
+                      </strong>
+                      <span style={{ fontSize: '0.8125rem', color: c.capabilityColor }}>
+                        {c.capabilityLabel}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '0.8125rem',
+                        color: colors.textSecondary,
+                        marginTop: '6px',
+                      }}
+                    >
+                      {c.eventCount} evento(s) · Vendas: {c.salesProceedsFormatted} · Proventos:{' '}
+                      {c.incomeFormatted}
+                    </div>
+                    {c.qualityLabels.length > 0 && (
+                      <div
+                        style={{
+                          fontSize: '0.75rem',
+                          color: colors.warning,
+                          marginTop: '4px',
+                        }}
+                      >
+                        Pendências: {c.qualityLabels.join(' · ')}
+                      </div>
+                    )}
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {viewModel.dataQuality.hasIssues && (
+              <div style={{ marginTop: `${spacing.xl}px` }}>
+                <SectionHeader
+                  title="Dados incompletos"
+                  description="A apuração não pôde ser concluída integralmente"
+                />
+                <Card style={{ padding: `${spacing.base}px` }}>
+                  <ul
+                    style={{ margin: 0, paddingLeft: `${spacing.base}px`, color: colors.warning }}
+                  >
+                    {viewModel.dataQuality.issueLabels.map((label) => (
+                      <li key={label} style={{ fontSize: '0.875rem' }}>
+                        {label}
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              </div>
+            )}
+          </details>
 
           {liability && (
             <div style={{ marginTop: `${spacing.xl}px` }}>
@@ -303,6 +322,18 @@ function FiscalContent() {
                 title="Apuração de imposto (Fase 4B)"
                 description={liability.statusLabel}
               />
+              <div
+                style={{
+                  fontSize: '0.8125rem',
+                  color: colors.textSecondary,
+                  marginBottom: `${spacing.base}px`,
+                  lineHeight: 1.6,
+                }}
+              >
+                Valores por categoria refletem o resultado realizado patrimonial (preço médio). O
+                tratamento tributário por operação, incluindo day trade, está na seção Ações; o
+                total composto para pagamento está em Composição 6015.
+              </div>
               <div
                 style={{
                   display: 'grid',

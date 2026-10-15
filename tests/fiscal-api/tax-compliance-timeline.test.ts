@@ -673,4 +673,65 @@ describe('Phase 4K.1B — Tax Compliance Obligation Timeline & State 34-Scenario
 
     expect(res.body.code).toBe('VALIDATION.INVALID_INPUT');
   });
+
+  it('H8-02: superseded monthly revisions never project as active timeline items', async () => {
+    // Owner case (H8): a stale SUPERSEDED row with null principal projected as
+    // "Competência 2026-10 — Sem Imposto a Pagar" next to the current
+    // PROVISIONAL R$15 obligation. History stays in DB; only current revisions
+    // may surface as active items.
+    const user = uuidFor('user-h8-superseded-timeline');
+    const token = await session(user);
+    await prisma.taxObligationRecord.create({
+      data: {
+        id: uuidFor('ob-h8-old'),
+        taxSubjectId: user,
+        competence: '2026-10',
+        taxBucket: 'FII_SALE',
+        revenueCode: '6015',
+        liabilityFingerprint: 'fp-h8-old-v1',
+        revision: 1,
+        principalAmount: null,
+        currency: 'BRL',
+        dueDate: null,
+        status: 'SUPERSEDED',
+        reasonCode: 'LIABILITY_BLOCKED',
+        darfReadiness: 'BLOCKED',
+        dataQuality: 'BLOCKED',
+        provenance: {},
+      },
+    });
+    await prisma.taxObligationRecord.create({
+      data: {
+        id: uuidFor('ob-h8-current'),
+        taxSubjectId: user,
+        competence: '2026-10',
+        taxBucket: 'FII_SALE',
+        revenueCode: '6015',
+        liabilityFingerprint: 'fp-h8-current-v1',
+        revision: 1,
+        principalAmount: '15',
+        currency: 'BRL',
+        dueDate: null,
+        status: 'PROVISIONAL',
+        reasonCode: 'IN_PROGRESS_COMPETENCE',
+        darfReadiness: 'PARTIAL',
+        dataQuality: 'COMPLETE',
+        provenance: {},
+      },
+    });
+
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/compliance?calendarYear=2026&period=2026-10')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const items = res.body.data.obligations.filter(
+      (o: TaxComplianceObligationSummary) => o.period === '2026-10',
+    );
+    expect(items).toHaveLength(1);
+    expect(items[0].title).toContain('Em Andamento');
+    expect(items.map((o: TaxComplianceObligationSummary) => o.title).join('|')).not.toContain(
+      'Sem Imposto a Pagar',
+    );
+  });
 });

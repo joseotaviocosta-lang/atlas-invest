@@ -50,13 +50,16 @@ export function mapTaxInputReadinessToReadModel(
     rows: [
       {
         key: 'tradeClassification',
-        label: 'Classificação de operações',
+        // Explicit manual input surface (4B.2/4B.3): "unknown" here means no
+        // manual classification was provided, never that the tax engine could
+        // not derive the operation treatment from the ledger.
+        label: 'Classificação manual de operações',
         status: readiness.tradeClassificationStatus,
         available: readiness.capabilities.tradeClassificationComplete,
       },
       {
         key: 'withholding',
-        label: 'Retenções/IRRF',
+        label: 'Retenções/IRRF informadas',
         status: readiness.withholdingStatus,
         available: readiness.capabilities.withholdingComplete,
       },

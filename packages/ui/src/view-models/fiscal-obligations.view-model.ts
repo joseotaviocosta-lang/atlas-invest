@@ -120,8 +120,13 @@ function money(value: RawObligationMoney | null): string {
   return value ? formatCurrency(value.amount, value.currency) : '—';
 }
 
+// FII_SALE is the sole canonical bucket for revenue code 6015
+// ("Ganhos líquidos em operações em bolsa"), which aggregates FII, normal
+// equity and day-trade category taxes. The label stays generic on purpose:
+// per-category truth lives in the 6015 composition breakdown, never in the
+// bucket name. Engine bucket identity is intentionally untouched.
 const BUCKET_LABELS: Record<string, string> = {
-  FII_SALE: 'Fundos imobiliários (alienação)',
+  FII_SALE: 'DARF 6015 — Renda variável',
 };
 
 export function taxObligationBucketLabel(bucket: string | null): string {

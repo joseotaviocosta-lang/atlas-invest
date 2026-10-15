@@ -69,7 +69,7 @@ describe('UI: tax obligation view-model (Phase 4C.2)', () => {
     expect(vm.isDarfReady).toBe(true);
     expect(vm.sourceNote).toContain('Agenda Tributária');
     expect(vm.sourceDocument).toContain('ADE CORAT');
-    expect(vm.bucketLabel).toBe('Fundos imobiliários (alienação)');
+    expect(vm.bucketLabel).toBe('DARF 6015 — Renda variável');
   });
 
   it('renders unavailable values as em dash (never a fake zero)', () => {
@@ -126,7 +126,15 @@ describe('UI: tax obligation view-model (Phase 4C.2)', () => {
 
   it('exposes a factual bucket label fallback', () => {
     expect(taxObligationBucketLabel(null)).toBe('—');
-    expect(taxObligationBucketLabel('FII_SALE')).toBe('Fundos imobiliários (alienação)');
+    expect(taxObligationBucketLabel('FII_SALE')).toBe('DARF 6015 — Renda variável');
     expect(taxObligationBucketLabel('OTHER')).toBe('OTHER');
+  });
+
+  it('labels the composed 6015 bucket generically (per-category truth lives in the composition breakdown)', () => {
+    // The canonical bucket aggregates FII + normal + day-trade; naming a single
+    // category here produced the false "FII-only" reading for day-trade tax.
+    const vm = mapToTaxObligationViewModel(SAMPLE)!;
+    expect(vm.revenueCode).toBe('6015');
+    expect(vm.bucketLabel).not.toContain('Fundos imobiliários');
   });
 });
