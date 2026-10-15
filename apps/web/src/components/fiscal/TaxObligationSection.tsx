@@ -199,6 +199,11 @@ export function TaxObligationSection({ competence }: { competence: string }) {
               <div style={{ fontSize: '1.125rem', fontWeight: 700, color: colors.textPrimary }}>
                 {obligation.dueDateFormatted}
               </div>
+              {obligation.dueDatePendingLabel && (
+                <div style={{ fontSize: '0.75rem', color: colors.textMuted, marginTop: '2px' }}>
+                  {obligation.dueDatePendingLabel}
+                </div>
+              )}
             </div>
             <div>
               <div style={{ fontSize: '0.75rem', color: colors.textSecondary }}>

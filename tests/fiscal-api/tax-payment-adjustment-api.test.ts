@@ -212,4 +212,41 @@ describe('API Integration: overdue tax adjustment (Phase 4D.2)', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(400);
   });
+
+  it('H9: provisional obligation without due date blocks adjustment (OBLIGATION_NOT_PAYABLE)', async () => {
+    // Owner H9 state: PROVISIONAL R$15 competence row with null dueDate.
+    // Adjustment preview must fail closed without inventing multa/juros.
+    const userId = 'bb900000-0000-4000-9000-000000000000';
+    const token = await session(userId);
+    const created = await prisma.taxObligationRecord.create({
+      data: {
+        id: 'b0900000-0000-4000-a000-000000000001',
+        taxSubjectId: userId,
+        competence: '2026-10',
+        taxBucket: 'FII_SALE',
+        revenueCode: '6015',
+        liabilityFingerprint: 'fp-h9-provisional-v1',
+        revision: 1,
+        principalAmount: '15',
+        currency: 'BRL',
+        dueDate: null,
+        status: 'PROVISIONAL',
+        reasonCode: 'IN_PROGRESS_COMPETENCE',
+        darfReadiness: 'PARTIAL',
+        dataQuality: 'COMPLETE',
+        provenance: {},
+      },
+    });
+
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/fiscal/obligations/${created.id}/adjustment?paymentDate=2026-10-15`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.data.status).toBe('BLOCKED');
+    expect(res.body.data.reasonCode).toBe('OBLIGATION_NOT_PAYABLE');
+    expect(res.body.data.updatedAmount).toBeNull();
+    expect(res.body.data.lateFeeAmount).toBeNull();
+    expect(res.body.data.interestAmount).toBeNull();
+  });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   mapToTaxObligationViewModel,
   taxObligationBucketLabel,
+  dueDatePendingLabelFor,
   type RawTaxObligation,
 } from '@atlas/ui';
 
@@ -128,6 +129,33 @@ describe('UI: tax obligation view-model (Phase 4C.2)', () => {
     expect(taxObligationBucketLabel(null)).toBe('—');
     expect(taxObligationBucketLabel('FII_SALE')).toBe('DARF 6015 — Renda variável');
     expect(taxObligationBucketLabel('OTHER')).toBe('OTHER');
+  });
+
+  it('explains a missing due date from the canonical blocked reason (H9)', () => {
+    expect(dueDatePendingLabelFor(null, 'IN_PROGRESS_COMPETENCE', null)).toBe(
+      'Aguardando fechamento da competência',
+    );
+    expect(dueDatePendingLabelFor(null, 'MISSING_OFFICIAL_DEADLINE', null)).toBe(
+      'Aguardando autoridade oficial (Agenda Tributária)',
+    );
+    expect(dueDatePendingLabelFor(null, null, 'IN_PROGRESS_COMPETENCE')).toBe(
+      'Aguardando fechamento da competência',
+    );
+    expect(dueDatePendingLabelFor(null, null, null)).toBeNull();
+    expect(dueDatePendingLabelFor('2026-11-30', 'IN_PROGRESS_COMPETENCE', null)).toBeNull();
+  });
+
+  it('carries the pending due-date explanation on provisional obligations', () => {
+    const vm = mapToTaxObligationViewModel({
+      ...SAMPLE,
+      status: 'PROVISIONAL',
+      reasonCode: 'IN_PROGRESS_COMPETENCE',
+      dueDate: null,
+      darfReadiness: 'PARTIAL',
+      darfReadinessReason: 'IN_PROGRESS_COMPETENCE',
+    })!;
+    expect(vm.dueDateFormatted).toBe('—');
+    expect(vm.dueDatePendingLabel).toBe('Aguardando fechamento da competência');
   });
 
   it('labels the composed 6015 bucket generically (per-category truth lives in the composition breakdown)', () => {

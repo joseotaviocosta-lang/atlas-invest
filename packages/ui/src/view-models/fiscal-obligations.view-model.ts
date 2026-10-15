@@ -78,6 +78,12 @@ export interface TaxObligationViewModel {
   principalFormatted: string;
   currency: string | null;
   dueDateFormatted: string;
+  /**
+   * Explicit explanation when no due date is projected. Null when a due date
+   * exists. Presentation-only: the authoritative reasons come from the server
+   * (darfReadinessReason / reasonCode); nothing is inferred client-side.
+   */
+  dueDatePendingLabel: string | null;
   darfReadiness: string;
   darfReadinessLabel: string;
   darfReadinessColor: string;
@@ -118,6 +124,25 @@ const DARF_NOTICE: Record<string, string> = {
 
 function money(value: RawObligationMoney | null): string {
   return value ? formatCurrency(value.amount, value.currency) : '—';
+}
+
+const DUE_DATE_PENDING_LABELS: Record<string, string> = {
+  IN_PROGRESS_COMPETENCE: 'Aguardando fechamento da competência',
+  MISSING_OFFICIAL_DEADLINE: 'Aguardando autoridade oficial (Agenda Tributária)',
+  AMBIGUOUS_OFFICIAL_DEADLINE: 'Aguardando autoridade oficial (Agenda Tributária)',
+};
+
+export function dueDatePendingLabelFor(
+  dueDate: string | null,
+  darfReadinessReason: string | null,
+  reasonCode: string | null,
+): string | null {
+  if (dueDate) return null;
+  return (
+    DUE_DATE_PENDING_LABELS[darfReadinessReason ?? ''] ??
+    DUE_DATE_PENDING_LABELS[reasonCode ?? ''] ??
+    null
+  );
 }
 
 // FII_SALE is the sole canonical bucket for revenue code 6015
@@ -170,6 +195,11 @@ export function mapToTaxObligationViewModel(
     principalFormatted: money(data.principalAmount),
     currency: data.currency,
     dueDateFormatted: data.dueDate ? formatDate(data.dueDate) : '—',
+    dueDatePendingLabel: dueDatePendingLabelFor(
+      data.dueDate,
+      data.darfReadinessReason,
+      data.reasonCode,
+    ),
     darfReadiness: data.darfReadiness,
     darfReadinessLabel: darf.label,
     darfReadinessColor: darf.color,
