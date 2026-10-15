@@ -99,6 +99,14 @@ export interface TaxPaymentSupportViewModel {
   readonly reconciliationLabel: string;
   readonly reconciliationColor: string;
   readonly isReady: boolean;
+  /**
+   * True when tax was calculated (positive amount) but support is not
+   * applicable yet (e.g. open competence without a projected due date).
+   * Presentation-only derivation from server facts; enables the modal to show
+   * a provisional framing instead of a "no tax due" reading, and to gate
+   * evidence recording and guide exports.
+   */
+  readonly isProvisionalPending: boolean;
   readonly isStale: boolean;
   readonly isMismatch: boolean;
   readonly hasEvidence: boolean;
@@ -178,6 +186,11 @@ export function mapToTaxPaymentSupportViewModel(
   const statusConfig = supportStatusConfigs[raw.supportStatus] ?? supportStatusConfigs.READY;
   const reconConfig =
     reconciliationLabels[raw.reconciliationStatus] ?? reconciliationLabels.NO_EVIDENCE;
+  const hasPositiveAmount =
+    typeof raw.amount === 'string' &&
+    raw.amount !== '0' &&
+    raw.amount !== '0.00' &&
+    !raw.amount.startsWith('-');
 
   return {
     obligationKey: raw.obligationKey,
@@ -198,6 +211,7 @@ export function mapToTaxPaymentSupportViewModel(
     reconciliationLabel: reconConfig.label,
     reconciliationColor: reconConfig.color,
     isReady: raw.supportStatus === 'READY',
+    isProvisionalPending: raw.supportStatus === 'NOT_APPLICABLE' && hasPositiveAmount,
     isStale: raw.supportStatus === 'STALE' || raw.reconciliationStatus === 'STALE_SOURCE',
     isMismatch: raw.reconciliationStatus === 'USER_REPORTED_MISMATCH',
     hasEvidence: raw.latestEvidence !== null,

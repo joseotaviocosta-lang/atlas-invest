@@ -239,6 +239,23 @@ export function TaxPaymentSupportModal({
                 {viewModel.isOverdue && <Badge variant="danger">Vencida</Badge>}
               </div>
 
+              {/* Provisional framing: calculated but not payable yet */}
+              {viewModel.isProvisionalPending && (
+                <div
+                  style={{
+                    padding: `${spacing.sm}px`,
+                    backgroundColor: colors.warningSubtle,
+                    color: colors.warning,
+                    borderRadius: `${borderRadius.md}px`,
+                    fontSize: '0.8125rem',
+                  }}
+                >
+                  <strong>Apuração provisória:</strong> o imposto foi calculado, mas a obrigação
+                  ainda não está pagável (competência em apuração ou vencimento oficial
+                  indisponível). Nenhum DARF oficial é gerado pelo Atlas.
+                </div>
+              )}
+
               {/* Warnings if stale or mismatch */}
               {viewModel.isStale && (
                 <div
@@ -343,15 +360,24 @@ export function TaxPaymentSupportModal({
                 </ol>
               </div>
 
-              {/* Export Buttons */}
-              <div style={{ display: 'flex', gap: `${spacing.sm}px` }}>
-                <Button size="sm" variant="outline" onClick={() => void handleExport('json')}>
-                  Baixar Guia de Apoio (JSON)
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => void handleExport('csv')}>
-                  Baixar Guia de Apoio (CSV)
-                </Button>
-              </div>
+              {/* Export Buttons (only when support is actionable) */}
+              {(viewModel.supportStatus === 'NOT_APPLICABLE' ||
+                viewModel.supportStatus === 'BLOCKED') && (
+                <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                  Guias de apoio disponíveis após a liberação do pagamento.
+                </div>
+              )}
+              {viewModel.supportStatus !== 'NOT_APPLICABLE' &&
+                viewModel.supportStatus !== 'BLOCKED' && (
+                  <div style={{ display: 'flex', gap: `${spacing.sm}px` }}>
+                    <Button size="sm" variant="outline" onClick={() => void handleExport('json')}>
+                      Baixar Guia de Apoio (JSON)
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => void handleExport('csv')}>
+                      Baixar Guia de Apoio (CSV)
+                    </Button>
+                  </div>
+                )}
 
               {/* Record External Payment Evidence Section */}
               <div
@@ -367,159 +393,171 @@ export function TaxPaymentSupportModal({
                 >
                   Registrar Comprovante de Pagamento
                 </h4>
-                <div
-                  style={{
-                    fontSize: '0.75rem',
-                    color: colors.textSecondary,
-                    marginBottom: `${spacing.sm}px`,
-                  }}
-                >
-                  Informe os dados do pagamento realizado no banco para manter sua gestão
-                  organizada. Este registro é declaratório e não é enviado à Receita Federal.
-                </div>
-
-                {formError && (
-                  <div
-                    style={{
-                      color: colors.negative,
-                      fontSize: '0.8125rem',
-                      marginBottom: `${spacing.xs}px`,
-                    }}
-                  >
-                    {formError}
+                {(viewModel.supportStatus === 'NOT_APPLICABLE' ||
+                  viewModel.supportStatus === 'BLOCKED') && (
+                  <div style={{ fontSize: '0.8125rem', color: colors.warning }}>
+                    Registro indisponível enquanto a obrigação não estiver pagável. Nenhum
+                    comprovante foi salvo.
                   </div>
                 )}
-
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: `${spacing.sm}px`,
-                  }}
-                >
-                  <div>
-                    <label style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
-                      Data do Pagamento
-                    </label>
-                    <input
-                      type="date"
-                      value={paymentDate}
-                      onChange={(e) => setPaymentDate(e.target.value)}
+                {viewModel.supportStatus !== 'NOT_APPLICABLE' &&
+                viewModel.supportStatus !== 'BLOCKED' ? (
+                  <>
+                    <div
                       style={{
-                        width: '100%',
-                        padding: '6px',
-                        borderRadius: `${borderRadius.sm}px`,
-                        border: `1px solid ${colors.border}`,
-                        backgroundColor: colors.surface,
-                        color: colors.textPrimary,
+                        fontSize: '0.75rem',
+                        color: colors.textSecondary,
+                        marginBottom: `${spacing.sm}px`,
                       }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
-                      Valor Pago (R$)
-                    </label>
-                    <input
-                      type="text"
-                      value={amountReported}
-                      onChange={(e) => setAmountReported(e.target.value)}
-                      placeholder="Ex: 150.00"
-                      style={{
-                        width: '100%',
-                        padding: '6px',
-                        borderRadius: `${borderRadius.sm}px`,
-                        border: `1px solid ${colors.border}`,
-                        backgroundColor: colors.surface,
-                        color: colors.textPrimary,
-                      }}
-                    />
-                  </div>
-                </div>
+                    >
+                      Informe os dados do pagamento realizado no banco para manter sua gestão
+                      organizada. Este registro é declaratório e não é enviado à Receita Federal.
+                    </div>
 
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: `${spacing.sm}px`,
-                    marginTop: `${spacing.xs}px`,
-                  }}
-                >
-                  <div>
-                    <label style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
-                      Código de Receita
-                    </label>
-                    <input
-                      type="text"
-                      value={revenueCodeReported}
-                      onChange={(e) => setRevenueCodeReported(e.target.value)}
-                      placeholder="6015"
-                      style={{
-                        width: '100%',
-                        padding: '6px',
-                        borderRadius: `${borderRadius.sm}px`,
-                        border: `1px solid ${colors.border}`,
-                        backgroundColor: colors.surface,
-                        color: colors.textPrimary,
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
-                      Autenticação / Protocolo Bancário
-                    </label>
-                    <input
-                      type="text"
-                      value={externalReference}
-                      onChange={(e) => setExternalReference(e.target.value)}
-                      placeholder="Ex: Autenticação internet banking"
-                      style={{
-                        width: '100%',
-                        padding: '6px',
-                        borderRadius: `${borderRadius.sm}px`,
-                        border: `1px solid ${colors.border}`,
-                        backgroundColor: colors.surface,
-                        color: colors.textPrimary,
-                      }}
-                    />
-                  </div>
-                </div>
+                    {formError && (
+                      <div
+                        style={{
+                          color: colors.negative,
+                          fontSize: '0.8125rem',
+                          marginBottom: `${spacing.xs}px`,
+                        }}
+                      >
+                        {formError}
+                      </div>
+                    )}
 
-                <div style={{ marginTop: `${spacing.xs}px` }}>
-                  <label style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
-                    Observação interna (opcional)
-                  </label>
-                  <input
-                    type="text"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="Anotações sobre a conta de débito ou recolhimento"
-                    style={{
-                      width: '100%',
-                      padding: '6px',
-                      borderRadius: `${borderRadius.sm}px`,
-                      border: `1px solid ${colors.border}`,
-                      backgroundColor: colors.surface,
-                      color: colors.textPrimary,
-                    }}
-                  />
-                </div>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: `${spacing.sm}px`,
+                      }}
+                    >
+                      <div>
+                        <label style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+                          Data do Pagamento
+                        </label>
+                        <input
+                          type="date"
+                          value={paymentDate}
+                          onChange={(e) => setPaymentDate(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '6px',
+                            borderRadius: `${borderRadius.sm}px`,
+                            border: `1px solid ${colors.border}`,
+                            backgroundColor: colors.surface,
+                            color: colors.textPrimary,
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+                          Valor Pago (R$)
+                        </label>
+                        <input
+                          type="text"
+                          value={amountReported}
+                          onChange={(e) => setAmountReported(e.target.value)}
+                          placeholder="Ex: 150.00"
+                          style={{
+                            width: '100%',
+                            padding: '6px',
+                            borderRadius: `${borderRadius.sm}px`,
+                            border: `1px solid ${colors.border}`,
+                            backgroundColor: colors.surface,
+                            color: colors.textPrimary,
+                          }}
+                        />
+                      </div>
+                    </div>
 
-                <div
-                  style={{
-                    marginTop: `${spacing.sm}px`,
-                    display: 'flex',
-                    justifyContent: 'flex-end',
-                  }}
-                >
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    disabled={recordEvidenceMutation.isPending}
-                    onClick={() => recordEvidenceMutation.mutate()}
-                  >
-                    {recordEvidenceMutation.isPending ? 'Salvando...' : 'Salvar Comprovante'}
-                  </Button>
-                </div>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: `${spacing.sm}px`,
+                        marginTop: `${spacing.xs}px`,
+                      }}
+                    >
+                      <div>
+                        <label style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+                          Código de Receita
+                        </label>
+                        <input
+                          type="text"
+                          value={revenueCodeReported}
+                          onChange={(e) => setRevenueCodeReported(e.target.value)}
+                          placeholder="6015"
+                          style={{
+                            width: '100%',
+                            padding: '6px',
+                            borderRadius: `${borderRadius.sm}px`,
+                            border: `1px solid ${colors.border}`,
+                            backgroundColor: colors.surface,
+                            color: colors.textPrimary,
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+                          Autenticação / Protocolo Bancário
+                        </label>
+                        <input
+                          type="text"
+                          value={externalReference}
+                          onChange={(e) => setExternalReference(e.target.value)}
+                          placeholder="Ex: Autenticação internet banking"
+                          style={{
+                            width: '100%',
+                            padding: '6px',
+                            borderRadius: `${borderRadius.sm}px`,
+                            border: `1px solid ${colors.border}`,
+                            backgroundColor: colors.surface,
+                            color: colors.textPrimary,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: `${spacing.xs}px` }}>
+                      <label style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+                        Observação interna (opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        placeholder="Anotações sobre a conta de débito ou recolhimento"
+                        style={{
+                          width: '100%',
+                          padding: '6px',
+                          borderRadius: `${borderRadius.sm}px`,
+                          border: `1px solid ${colors.border}`,
+                          backgroundColor: colors.surface,
+                          color: colors.textPrimary,
+                        }}
+                      />
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: `${spacing.sm}px`,
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                      }}
+                    >
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        disabled={recordEvidenceMutation.isPending}
+                        onClick={() => recordEvidenceMutation.mutate()}
+                      >
+                        {recordEvidenceMutation.isPending ? 'Salvando...' : 'Salvar Comprovante'}
+                      </Button>
+                    </div>
+                  </>
+                ) : null}
               </div>
 
               {/* Evidence History List */}

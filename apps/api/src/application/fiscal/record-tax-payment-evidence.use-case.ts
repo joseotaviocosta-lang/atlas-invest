@@ -1,4 +1,10 @@
-import { Inject, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import {
   ITaxSettlementRepository,
   TaxSettlementRow,
@@ -87,6 +93,23 @@ export class RecordTaxPaymentEvidenceUseCase {
     const obligation = timeline.obligations.find((o) => o.obligationKey === input.obligationKey);
     if (!obligation) {
       throw new NotFoundException(`Tax obligation '${input.obligationKey}' was not found.`);
+    }
+
+    // Readiness guard: evidence attests payment of a payable obligation.
+    // Recording against a zero-tax month or an obligation without a projected
+    // due date (e.g. provisional competence) would fabricate payable history.
+    // Mirrors the payment-support derivation (positive amount + due date).
+    const hasPositiveAmount =
+      obligation.amount !== null &&
+      obligation.amount !== '0' &&
+      obligation.amount !== '0.00' &&
+      !obligation.amount.startsWith('-');
+    if (!hasPositiveAmount || !obligation.dueDate) {
+      throw new UnprocessableEntityException({
+        message:
+          'Payment evidence cannot be recorded while the obligation is not payable (competence in progress or official due date unavailable).',
+        code: 'TAX_PAYMENT.OBLIGATION_NOT_PAYABLE',
+      });
     }
 
     // 4. Compute deterministic semantic evidence fingerprint

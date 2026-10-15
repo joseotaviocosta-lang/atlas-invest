@@ -62,8 +62,8 @@ describe('Phase 4K.2 — DARF Payment Support & Settlement Evidence 36-Scenario 
     userId: string;
     competence: string;
     amount: string;
-    dueDate?: string;
-    status?: 'OPEN' | 'COMPLETED' | 'SUPERSEDED' | 'DISMISSED';
+    dueDate?: string | null;
+    status?: 'OPEN' | 'COMPLETED' | 'SUPERSEDED' | 'DISMISSED' | 'PROVISIONAL';
     revenueCode?: string;
     fingerprint?: string;
   }) {
@@ -78,7 +78,7 @@ describe('Phase 4K.2 — DARF Payment Support & Settlement Evidence 36-Scenario 
         revision: 1,
         principalAmount: params.amount,
         currency: 'BRL',
-        dueDate: new Date(`${params.dueDate ?? '2026-04-30'}T00:00:00.000Z`),
+        dueDate: params.dueDate === null ? null : new Date(`${params.dueDate ?? '2026-04-30'}T00:00:00.000Z`),
         status: params.status ?? 'OPEN',
         darfReadiness: 'READY',
         dataQuality: 'COMPLETE',
@@ -810,5 +810,93 @@ describe('Phase 4K.2 — DARF Payment Support & Settlement Evidence 36-Scenario 
     expect(check.body.data.latestEvidence.revision).toBe(2);
     expect(check.body.data.reconciliationStatus).toBe('USER_REPORTED_MATCH');
     expect(check.body.data.supportStatus).toBe('READY');
+  });
+
+  it('H9-01: provisional obligation without due date never fabricates one (no today fallback)', async () => {
+    // Owner H9 state: PROVISIONAL R$15 with null dueDate surfaced "15/10/2026".
+    const user = uuidFor('user-h9-provisional');
+    const token = await session(user);
+    await seedObligation({
+      id: uuidFor('ob-h9-prov'),
+      userId: user,
+      competence: '2026-10',
+      amount: '15',
+      dueDate: null,
+      status: 'PROVISIONAL',
+    });
+
+    const key = `${user}:2026-10:MONTHLY_TAX_PAYMENT:monthly-6015`;
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-support`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.data.supportStatus).toBe('NOT_APPLICABLE');
+    expect(res.body.data.amount).toBe('15');
+    // No fabricated due date: empty, never today or any derived date.
+    expect(res.body.data.dueDate).toBe('');
+    const instructions: string = res.body.data.paymentInstructions.join(' ');
+    expect(instructions).toContain('ainda não está pagável');
+    expect(instructions).not.toContain('zerado ou isento');
+  });
+
+  it('H9-01: evidence recording is rejected for non-payable obligations (server guard)', async () => {
+    const user = uuidFor('user-h9-evidence-guard');
+    const token = await session(user);
+    await seedObligation({
+      id: uuidFor('ob-h9-guard'),
+      userId: user,
+      competence: '2026-10',
+      amount: '15',
+      dueDate: null,
+      status: 'PROVISIONAL',
+    });
+
+    const key = `${user}:2026-10:MONTHLY_TAX_PAYMENT:monthly-6015`;
+    const res = await request(app.getHttpServer())
+      .post(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-evidence`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        paymentDate: '2026-10-15',
+        amountReported: '15',
+        revenueCodeReported: '6015',
+        referencePeriod: '2026-10',
+      })
+      .expect(422);
+
+    expect(res.body.code).toBe('TAX_PAYMENT.OBLIGATION_NOT_PAYABLE');
+
+    // No history mutation occurred.
+    const history = await request(app.getHttpServer())
+      .get(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-evidence`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(history.body.data).toHaveLength(0);
+  });
+
+  it('H9-01: evidence recording still works for payable obligations (no global disable)', async () => {
+    const user = uuidFor('user-h9-evidence-ok');
+    const token = await session(user);
+    await seedObligation({
+      id: uuidFor('ob-h9-ok'),
+      userId: user,
+      competence: '2026-01',
+      amount: '1250.50',
+      status: 'OPEN',
+    });
+
+    const key = `${user}:2026-01:MONTHLY_TAX_PAYMENT:monthly-6015`;
+    const res = await request(app.getHttpServer())
+      .post(`/api/v1/fiscal/compliance/${encodeURIComponent(key)}/payment-evidence`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        paymentDate: '2026-02-10',
+        amountReported: '1250.50',
+        revenueCodeReported: '6015',
+        referencePeriod: '2026-01',
+      })
+      .expect(201);
+
+    expect(res.body.data.verificationStatus).toBe('USER_REPORTED');
   });
 });
