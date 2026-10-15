@@ -49,7 +49,14 @@ export class ListTaxObligationsUseCase {
       ...(params.status ? { status: params.status } : {}),
       ...(params.bucket ? { bucket: params.bucket } : {}),
     });
+    // Operational listing surfaces current revisions only. Superseded rows are
+    // append-only audit history (preserved in storage and readable by ID);
+    // projecting them here produced a stale "Sem Imposto a Pagar" duplicate
+    // next to the current revision. An explicit status=SUPERSEDED filter still
+    // returns historical rows when deliberately requested.
     const now = this.clock.today();
-    return rows.map((row) => mapObligationToReadModel(row, now));
+    return rows
+      .filter((row) => params.status !== undefined || row.status !== 'SUPERSEDED')
+      .map((row) => mapObligationToReadModel(row, now));
   }
 }

@@ -459,4 +459,68 @@ describe('API Integration: tax obligations & direct deadline registry (Phase 4C.
       await overdueApp.close();
     }
   });
+
+  it('H8-03: obligations list surfaces current revisions only (superseded stays auditable by ID)', async () => {
+    const userId = 'aab0b0b0-b0b0-4b0b-8b0b-b0b0b0b0b0b0';
+    const token = await session(userId);
+    await prisma.taxObligationRecord.create({
+      data: {
+        id: 'a0b00000-0000-4000-a000-000000000001',
+        taxSubjectId: userId,
+        competence: '2026-10',
+        taxBucket: 'FII_SALE',
+        revenueCode: '6015',
+        liabilityFingerprint: 'fp-h8-old-v1',
+        revision: 1,
+        principalAmount: null,
+        currency: 'BRL',
+        dueDate: null,
+        status: 'SUPERSEDED',
+        reasonCode: 'LIABILITY_BLOCKED',
+        darfReadiness: 'BLOCKED',
+        dataQuality: 'BLOCKED',
+        provenance: {},
+      },
+    });
+    await prisma.taxObligationRecord.create({
+      data: {
+        id: 'a0b00000-0000-4000-a000-000000000002',
+        taxSubjectId: userId,
+        competence: '2026-10',
+        taxBucket: 'FII_SALE',
+        revenueCode: '6015',
+        liabilityFingerprint: 'fp-h8-current-v1',
+        revision: 1,
+        principalAmount: '15',
+        currency: 'BRL',
+        dueDate: null,
+        status: 'PROVISIONAL',
+        reasonCode: 'IN_PROGRESS_COMPETENCE',
+        darfReadiness: 'PARTIAL',
+        dataQuality: 'COMPLETE',
+        provenance: {},
+      },
+    });
+
+    const list = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/obligations?competence=2026-10')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(list.body.data).toHaveLength(1);
+    expect(list.body.data[0].status).toBe('PROVISIONAL');
+    expect(list.body.data[0].principalAmount).toEqual({ amount: '15', currency: 'BRL' });
+
+    // Explicit historical query still reaches the superseded revision by status.
+    const history = await request(app.getHttpServer())
+      .get('/api/v1/fiscal/obligations?competence=2026-10&status=SUPERSEDED')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(history.body.data).toHaveLength(1);
+
+    // ...and by ID (audit preserved, never deleted).
+    await request(app.getHttpServer())
+      .get('/api/v1/fiscal/obligations/a0b00000-0000-4000-a000-000000000001')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+  });
 });
