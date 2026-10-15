@@ -14,6 +14,7 @@ import {
 import { buildAnnualTaxReadinessAssessment, isValidCalendarYear } from '@atlas/tax-engine';
 import { GetAnnualCapitalMarketSummaryUseCase } from './get-annual-capital-market-summary.use-case';
 import { GetAnnualInvestmentIncomeSummaryUseCase } from './get-annual-investment-income-summary.use-case';
+import { GetAnnualPositionReportUseCase } from './get-annual-position-report.use-case';
 import type { UnifiedLoadScope } from './in-flight-memo';
 import {
   AnnualTaxReadinessReadModel,
@@ -48,6 +49,8 @@ export class GetAnnualTaxReadinessUseCase {
     private readonly capitalMarketSummaryUseCase: GetAnnualCapitalMarketSummaryUseCase,
     @Inject(GetAnnualInvestmentIncomeSummaryUseCase)
     private readonly investmentIncomeSummaryUseCase: GetAnnualInvestmentIncomeSummaryUseCase,
+    @Inject(GetAnnualPositionReportUseCase)
+    private readonly positionReportUseCase: GetAnnualPositionReportUseCase,
   ) {}
 
   async execute(query: GetAnnualTaxReadinessQuery): Promise<AnnualTaxReadinessReadModel> {
@@ -176,16 +179,39 @@ export class GetAnnualTaxReadinessUseCase {
       investmentIncomeSummary.payers.length > 0 &&
       investmentIncomeSummary.totalGrossIncome !== '0';
 
+    // Fetch position reports for all portfolios to evaluate closing positions (31/12)
+    const positionReports = await Promise.all(
+      (portfolios ?? []).map((p) =>
+        this.positionReportUseCase
+          .execute({ taxSubjectId, portfolioId: p.id, calendarYear })
+          .catch(() => null),
+      ),
+    );
+
+    const allPositions = positionReports
+      .filter((pr): pr is NonNullable<typeof pr> => Boolean(pr))
+      .flatMap((pr) => pr.positions);
+
+    const blockedReports = positionReports
+      .filter((pr): pr is NonNullable<typeof pr> => Boolean(pr))
+      .filter((pr) => pr.summary.blockedPositionsCount > 0);
+
+    const annualPositionsInput =
+      allPositions.length > 0 || blockedReports.length > 0
+        ? {
+            positions: allPositions.map((p) => ({
+              assetId: p.assetId,
+              costBasisStatus: p.costBasisStatus,
+              isBlocked: p.completenessStatus === 'BLOCKED' || p.costBasisStatus === 'INCOMPLETE',
+            })),
+            blockingReasons: blockedReports.length > 0 ? ['BLOCKED_POSITIONS_PRESENT'] : [],
+          }
+        : null;
+
     const assessment = buildAnnualTaxReadinessAssessment({
       calendarYear,
       openingPositions: openingPositionsInput,
-      annualPositions:
-        portfolios && portfolios.length > 0
-          ? {
-              positions: [],
-              blockingReasons: [],
-            }
-          : null,
+      annualPositions: annualPositionsInput,
       capitalMarketSummary: capitalMarketSummary
         ? {
             overallStatus: !hasCapitalMarketActivity
