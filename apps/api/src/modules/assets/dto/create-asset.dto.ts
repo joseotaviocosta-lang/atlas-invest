@@ -12,7 +12,7 @@ export class CreateAssetSwaggerDto {
   @ApiProperty({ type: String, example: 'Petróleo Brasileiro S.A.' })
   name!: string;
 
-  @ApiProperty({ type: String, enum: ASSET_TYPES, example: 'EQUITY' })
+  @ApiProperty({ type: String, enum: ASSET_TYPES, example: 'STOCK' })
   type!: (typeof ASSET_TYPES)[number];
 
   @ApiProperty({ type: String, example: 'BRL' })

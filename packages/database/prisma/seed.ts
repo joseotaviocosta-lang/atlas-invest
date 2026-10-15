@@ -104,12 +104,14 @@ async function main() {
   // 5. Assets (B3)
   const petr4 = await prisma.asset.upsert({
     where: { ticker_exchange: { ticker: 'PETR4', exchange: 'BVMF' } },
-    update: { name: 'Petrobras PN' },
+    // Canonical AssetType (STOCK -> BRAZILIAN_EQUITY). A legacy 'EQUITY' label
+    // resolves to UNKNOWN in the tax engine and blocks fiscal classification.
+    update: { name: 'Petrobras PN', type: 'STOCK' },
     create: {
       id: 'e0000000-0000-4000-8000-000000000001',
       ticker: 'PETR4',
       name: 'Petrobras PN',
-      type: 'EQUITY',
+      type: 'STOCK',
       currency: 'BRL',
       exchange: 'BVMF',
     },
@@ -117,12 +119,12 @@ async function main() {
 
   const vale3 = await prisma.asset.upsert({
     where: { ticker_exchange: { ticker: 'VALE3', exchange: 'BVMF' } },
-    update: { name: 'Vale ON' },
+    update: { name: 'Vale ON', type: 'STOCK' },
     create: {
       id: 'e0000000-0000-4000-8000-000000000002',
       ticker: 'VALE3',
       name: 'Vale ON',
-      type: 'EQUITY',
+      type: 'STOCK',
       currency: 'BRL',
       exchange: 'BVMF',
     },
