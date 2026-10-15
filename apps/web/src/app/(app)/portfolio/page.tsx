@@ -40,6 +40,16 @@ import {
   PortfolioValuationSection,
   valuationQueryKey,
 } from '@/components/portfolio';
+import {
+  OPERATION_TYPE_OPTIONS,
+  OPERATION_TYPE_LABELS,
+  OPERATION_CURRENCY_OPTIONS,
+  normalizeDecimalInput,
+  isPositiveDecimalString,
+  isNonNegativeDecimalString,
+  CIVIL_DATE_RE,
+  moneyAmountOf,
+} from '@/lib/operation-entry';
 
 const PORTFOLIO_TYPE_LABELS: Record<PortfolioType, string> = {
   PERSONAL: 'Pessoal',
@@ -63,6 +73,25 @@ const CARTEIRA_TABS = [
   { id: 'allocation', label: 'Alocação' },
   { id: 'operations', label: 'Operações' },
 ];
+
+interface LedgerTransactionDto {
+  id: string;
+  type: string;
+  tradeDate: string;
+  currency: string;
+  accountId: string;
+  assetId?: string;
+  quantity?: string;
+  unitPrice?: string | { amount: string; currency: string };
+  fees?: string | { amount: string; currency: string };
+  notes?: string;
+}
+
+interface CatalogAssetDto {
+  id: string;
+  ticker: string;
+  name: string;
+}
 
 function PortfolioPageContent() {
   const queryClient = useQueryClient();
@@ -299,6 +328,158 @@ function PortfolioPageContent() {
       type,
       baseCurrency,
     });
+  };
+
+  // Manual operation entry (H5): the ledger POST endpoint already exists and is
+  // ownership-scoped by the authenticated principal. The page only wires the
+  // missing UI: tab CTA + entry modal + compact ledger list.
+  const [isOpModalOpen, setIsOpModalOpen] = useState(false);
+  const [opType, setOpType] = useState<'BUY' | 'SELL'>('BUY');
+  const [opAssetId, setOpAssetId] = useState('');
+  const [opAccountId, setOpAccountId] = useState('');
+  const [opQuantity, setOpQuantity] = useState('');
+  const [opUnitPrice, setOpUnitPrice] = useState('');
+  const [opTradeDate, setOpTradeDate] = useState('');
+  const [opFees, setOpFees] = useState('');
+  const [opNotes, setOpNotes] = useState('');
+  const [opCurrency, setOpCurrency] = useState('BRL');
+  const [opFormError, setOpFormError] = useState<string | null>(null);
+
+  const { data: transactionsData = [], isLoading: isTxLoading } = useQuery<
+    LedgerTransactionDto[],
+    ApiError
+  >({
+    queryKey: ['portfolio-transactions', activePortfolio?.id],
+    queryFn: async () => {
+      if (!activePortfolio?.id) return [];
+      const res = await apiClient.get<{ data: LedgerTransactionDto[] }>(
+        `/api/v1/portfolios/${activePortfolio.id}/transactions?limit=50`,
+      );
+      return res.data || [];
+    },
+    enabled: Boolean(activePortfolio?.id),
+    staleTime: 30000,
+  });
+
+  const { data: assetsCatalog = [] } = useQuery<CatalogAssetDto[], ApiError>({
+    queryKey: ['assets-catalog'],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get<{ data: CatalogAssetDto[] }>('/api/v1/assets');
+        return res.data || [];
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 300000,
+  });
+
+  const assetLabelById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const asset of assetsCatalog) {
+      m.set(asset.id, `${asset.ticker} — ${asset.name}`);
+    }
+    return m;
+  }, [assetsCatalog]);
+
+  const accountNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const account of accountsData) {
+      m.set(account.id, account.name);
+    }
+    return m;
+  }, [accountsData]);
+
+  const openOpModal = () => {
+    setOpFormError(null);
+    if (!opTradeDate) setOpTradeDate(today);
+    if (activePortfolio?.baseCurrency) setOpCurrency(activePortfolio.baseCurrency);
+    if (!opAccountId && accountsData[0]) setOpAccountId(accountsData[0].id);
+    if (!opAssetId && assetsCatalog[0]) setOpAssetId(assetsCatalog[0].id);
+    setIsOpModalOpen(true);
+  };
+
+  const createTxMutation = useMutation({
+    mutationFn: async (payload: Record<string, string>) => {
+      const res = await apiClient.post<{ data: LedgerTransactionDto }>(
+        `/api/v1/portfolios/${activePortfolio!.id}/transactions`,
+        payload,
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['portfolio-transactions', activePortfolio?.id],
+      });
+      if (activePortfolio?.id) {
+        queryClient.invalidateQueries({
+          queryKey: stateQueryKey(activePortfolio.id, temporal.asOf),
+        });
+      }
+      setIsOpModalOpen(false);
+      setOpQuantity('');
+      setOpUnitPrice('');
+      setOpFees('');
+      setOpNotes('');
+      setOpFormError(null);
+      showToast('Operação registrada com sucesso!', 'positive');
+    },
+    onError: (err: ApiError) => {
+      setOpFormError(err.message || 'Falha ao registrar operação. Verifique os dados.');
+    },
+  });
+
+  const handleOpSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setOpFormError(null);
+
+    if (!activePortfolio?.id) {
+      setOpFormError('Selecione uma carteira antes de registrar a operação.');
+      return;
+    }
+    if (!opAccountId) {
+      setOpFormError('Selecione a conta da operação.');
+      return;
+    }
+    if (!opAssetId) {
+      setOpFormError('Selecione o ativo da operação.');
+      return;
+    }
+    const quantity = normalizeDecimalInput(opQuantity);
+    if (!isPositiveDecimalString(quantity)) {
+      setOpFormError('Informe uma quantidade válida maior que zero (ex: 10).');
+      return;
+    }
+    const unitPrice = normalizeDecimalInput(opUnitPrice);
+    if (!isNonNegativeDecimalString(unitPrice)) {
+      setOpFormError('Informe um preço unitário válido (ex: 30.00).');
+      return;
+    }
+    if (!CIVIL_DATE_RE.test(opTradeDate)) {
+      setOpFormError('Informe a data da operação (AAAA-MM-DD).');
+      return;
+    }
+    const fees = normalizeDecimalInput(opFees);
+    if (fees !== '' && !isNonNegativeDecimalString(fees)) {
+      setOpFormError('Informe taxas válidas ou deixe em branco (ex: 4.90).');
+      return;
+    }
+
+    const payload: Record<string, string> = {
+      accountId: opAccountId,
+      type: opType,
+      currency: opCurrency,
+      tradeDate: opTradeDate,
+      assetId: opAssetId,
+      quantity,
+      unitPrice,
+      source: 'MANUAL',
+    };
+    if (fees !== '') payload.fees = fees;
+    const notes = opNotes.trim();
+    if (notes !== '') payload.notes = notes;
+
+    createTxMutation.mutate(payload);
   };
 
   const getBadgeVariant = (
@@ -820,12 +1001,248 @@ function PortfolioPageContent() {
 
           {/* TAB 6: OPERAÇÕES */}
           {activeTab === 'operations' && (
-            <Card style={{ padding: `${spacing.xl}px` }}>
-              <EmptyState
-                title="Livro-Razão de Operações"
-                description="O extrato cronológico e imutável de transações conectadas a esta carteira será exibido aqui."
-              />
-            </Card>
+            <div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: `${spacing.md}px`,
+                  flexWrap: 'wrap',
+                  marginBottom: `${spacing.base}px`,
+                }}
+              >
+                <div style={{ fontSize: '0.875rem', color: colors.textSecondary }}>
+                  Livro-razão imutável de operações de{' '}
+                  <strong style={{ color: colors.textPrimary }}>
+                    {activePortfolio?.name ?? '—'}
+                  </strong>
+                </div>
+                <Button onClick={openOpModal} disabled={!activePortfolio}>
+                  + Nova operação
+                </Button>
+              </div>
+
+              {isTxLoading ? (
+                <Card style={{ padding: `${spacing.base}px` }}>
+                  <Skeleton width="100%" height="60px" />
+                </Card>
+              ) : transactionsData.length === 0 ? (
+                <Card style={{ padding: `${spacing.xl}px` }}>
+                  <EmptyState
+                    title="Livro-Razão de Operações"
+                    description="O extrato cronológico e imutável de transações conectadas a esta carteira será exibido aqui."
+                    actionLabel="Adicionar operação"
+                    onAction={openOpModal}
+                  />
+                </Card>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.sm}px` }}>
+                  {transactionsData.map((tx) => (
+                    <Card
+                      key={tx.id}
+                      style={{
+                        padding: `${spacing.base}px`,
+                        backgroundColor: colors.surface,
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: `${borderRadius.lg}px`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: `${spacing.sm}px`,
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontSize: '0.875rem',
+                              fontWeight: 700,
+                              color: colors.textPrimary,
+                            }}
+                          >
+                            {OPERATION_TYPE_LABELS[tx.type] ?? tx.type} •{' '}
+                            {assetLabelById.get(tx.assetId ?? '') ?? 'Ativo'}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '0.8125rem',
+                              color: colors.textSecondary,
+                              marginTop: '2px',
+                            }}
+                          >
+                            {tx.tradeDate}
+                            {tx.quantity ? ` • Qtd ${tx.quantity}` : ''}
+                            {tx.unitPrice !== undefined
+                              ? ` • ${moneyAmountOf(tx.unitPrice)} ${tx.currency}`
+                              : ''}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '0.75rem',
+                              color: colors.textMuted,
+                              marginTop: '2px',
+                            }}
+                          >
+                            {accountNameById.get(tx.accountId) ?? 'Conta'}
+                          </div>
+                        </div>
+                        <Badge variant={tx.type === 'SELL' ? 'warning' : 'primary'}>
+                          {OPERATION_TYPE_LABELS[tx.type] ?? tx.type}
+                        </Badge>
+                      </div>
+                    </Card>
+                  ))}
+                  <Link
+                    href={`/portfolio/history${activePortfolio ? `?portfolioId=${activePortfolio.id}` : ''}`}
+                    style={{
+                      color: colors.accent,
+                      textDecoration: 'none',
+                      fontWeight: 600,
+                      fontSize: '0.875rem',
+                      alignSelf: 'flex-end',
+                    }}
+                  >
+                    Ver histórico completo →
+                  </Link>
+                </div>
+              )}
+
+              {/* Create Operation Modal */}
+              <Modal
+                isOpen={isOpModalOpen}
+                onClose={() => setIsOpModalOpen(false)}
+                title="Adicionar Operação"
+              >
+                <form onSubmit={handleOpSubmit}>
+                  {opFormError && (
+                    <div
+                      role="alert"
+                      style={{
+                        backgroundColor: colors.negativeSubtle,
+                        border: `1px solid ${colors.negative}`,
+                        color: colors.negative,
+                        padding: `${spacing.md}px`,
+                        borderRadius: `${borderRadius.md}px`,
+                        fontSize: '0.875rem',
+                        marginBottom: `${spacing.base}px`,
+                      }}
+                    >
+                      {opFormError}
+                    </div>
+                  )}
+
+                  <Select
+                    label="Tipo de Operação"
+                    options={OPERATION_TYPE_OPTIONS}
+                    value={opType}
+                    onChange={(e) => setOpType(e.target.value as 'BUY' | 'SELL')}
+                    disabled={createTxMutation.isPending}
+                  />
+
+                  <Select
+                    label="Ativo"
+                    options={assetsCatalog.map((asset) => ({
+                      value: asset.id,
+                      label: `${asset.ticker} — ${asset.name}`,
+                    }))}
+                    value={opAssetId}
+                    onChange={(e) => setOpAssetId(e.target.value)}
+                    disabled={createTxMutation.isPending || assetsCatalog.length === 0}
+                  />
+
+                  <Select
+                    label="Conta"
+                    options={accountsData.map((account) => ({
+                      value: account.id,
+                      label: account.name,
+                    }))}
+                    value={opAccountId}
+                    onChange={(e) => setOpAccountId(e.target.value)}
+                    disabled={createTxMutation.isPending || accountsData.length === 0}
+                  />
+
+                  <Input
+                    label="Quantidade"
+                    placeholder="Ex: 10"
+                    value={opQuantity}
+                    onChange={(e) => setOpQuantity(e.target.value)}
+                    disabled={createTxMutation.isPending}
+                    required
+                    inputMode="decimal"
+                  />
+
+                  <Input
+                    label="Preço Unitário"
+                    placeholder="Ex: 30.00"
+                    value={opUnitPrice}
+                    onChange={(e) => setOpUnitPrice(e.target.value)}
+                    disabled={createTxMutation.isPending}
+                    required
+                    inputMode="decimal"
+                  />
+
+                  <Input
+                    label="Data da Operação"
+                    type="date"
+                    value={opTradeDate}
+                    onChange={(e) => setOpTradeDate(e.target.value)}
+                    disabled={createTxMutation.isPending}
+                    required
+                  />
+
+                  <Select
+                    label="Moeda"
+                    options={OPERATION_CURRENCY_OPTIONS}
+                    value={opCurrency}
+                    onChange={(e) => setOpCurrency(e.target.value)}
+                    disabled={createTxMutation.isPending}
+                  />
+
+                  <Input
+                    label="Taxas (opcional)"
+                    placeholder="Ex: 4.90"
+                    value={opFees}
+                    onChange={(e) => setOpFees(e.target.value)}
+                    disabled={createTxMutation.isPending}
+                    inputMode="decimal"
+                  />
+
+                  <Input
+                    label="Observações (opcional)"
+                    placeholder="Ex: Compra de oportunidade"
+                    value={opNotes}
+                    onChange={(e) => setOpNotes(e.target.value)}
+                    disabled={createTxMutation.isPending}
+                  />
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'flex-end',
+                      gap: `${spacing.sm}px`,
+                      marginTop: `${spacing.xl}px`,
+                    }}
+                  >
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setIsOpModalOpen(false)}
+                      disabled={createTxMutation.isPending}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button type="submit" isLoading={createTxMutation.isPending}>
+                      Salvar Operação
+                    </Button>
+                  </div>
+                </form>
+              </Modal>
+            </div>
           )}
         </div>
       )}
