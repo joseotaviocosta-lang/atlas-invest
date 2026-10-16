@@ -348,7 +348,7 @@ export function PortfolioValuationSection({
                           marginLeft: '8px',
                         }}
                       >
-                        ({formatPercentage(unrealizedPct)})
+                        ({formatPercentage(unrealizedPct, { showSign: true })})
                       </span>
                     )}
                   </div>

@@ -246,7 +246,7 @@ export function PositionRow({
                       )
                     : '—'}
                   {valuation.unrealizedGainLossPercent
-                    ? ` (${formatPercentage(valuation.unrealizedGainLossPercent)})`
+                    ? ` (${formatPercentage(valuation.unrealizedGainLossPercent, { showSign: true })})`
                     : ''}
                 </span>
               </div>

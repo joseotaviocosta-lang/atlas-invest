@@ -524,4 +524,52 @@ describe('Web: Portfolio Valuation, Allocation & Manual Quote Update (Phase 5A-I
     expect(vm.positions[0].assetName).toBe('Petrobras PN');
     expect(vm.positions[0].displayIdentifier).not.toBe(assetPetr4);
   });
+
+  describe('Percentage Display Formatting & Human Precision Invariance (Phase 5A-I3-H2)', () => {
+    it('formats exact canonical decimal percentage strings into human-readable pt-BR representations', async () => {
+      const { formatPercentage } = await import('@atlas/ui');
+
+      // Human examples observed during real validation:
+      const petr4UnrealizedRaw = '169.0185929306000136211945787645576517061';
+      const vale3UnrealizedRaw = '87.86580645161290322580645161290322580645';
+      const petr4AllocRaw = '61.94523727378226641156729291471944296333';
+      const vale3AllocRaw = '38.05476272621773358843270708528055703667';
+      const overviewUnrealizedRaw = '131.041234567890123456';
+
+      // Section 15 required test cases:
+      expect(formatPercentage(petr4UnrealizedRaw, { showSign: true })).toBe('+169,02%');
+      expect(formatPercentage(petr4UnrealizedRaw)).toBe('169,02%');
+
+      expect(formatPercentage(vale3UnrealizedRaw, { showSign: true })).toBe('+87,87%');
+      expect(formatPercentage(vale3UnrealizedRaw)).toBe('87,87%');
+
+      expect(formatPercentage(petr4AllocRaw)).toBe('61,95%');
+      expect(formatPercentage(vale3AllocRaw)).toBe('38,05%');
+
+      expect(formatPercentage(overviewUnrealizedRaw, { showSign: true })).toBe('+131,04%');
+
+      expect(formatPercentage('-4.55', { showSign: true })).toBe('-4,55%');
+      expect(formatPercentage('-4.55')).toBe('-4,55%');
+
+      expect(formatPercentage('0', { showSign: true })).toBe('0,00%');
+      expect(formatPercentage('0')).toBe('0,00%');
+      expect(formatPercentage('0.00')).toBe('0,00%');
+      expect(formatPercentage(null)).toBe('—');
+      expect(formatPercentage(undefined)).toBe('—');
+    });
+
+    it('proves that canonical source values remain strictly unchanged and are never mutated by display formatting', async () => {
+      const { formatPercentage } = await import('@atlas/ui');
+
+      const rawCanonicalInput = '169.0185929306000136211945787645576517061';
+      const originalCopy = `${rawCanonicalInput}`;
+
+      const formatted = formatPercentage(rawCanonicalInput, { showSign: true });
+
+      expect(formatted).toBe('+169,02%');
+      // Invariant: source string was not modified
+      expect(rawCanonicalInput).toBe(originalCopy);
+      expect(rawCanonicalInput.length).toBe(41);
+    });
+  });
 });

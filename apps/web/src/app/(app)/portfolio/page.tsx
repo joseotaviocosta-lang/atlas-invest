@@ -19,7 +19,14 @@ import {
   SectionHeader,
   useToast,
 } from '@/components/ui';
-import { colors, spacing, borderRadius, formatCurrency, formatQuantity } from '@atlas/ui';
+import {
+  colors,
+  spacing,
+  borderRadius,
+  formatCurrency,
+  formatQuantity,
+  formatPercentage,
+} from '@atlas/ui';
 import {
   mapToPortfolioOverviewViewModel,
   PortfolioStateDto,
@@ -1438,7 +1445,9 @@ function PortfolioPageContent() {
                                 {unrealized
                                   ? formatCurrency(unrealized.amount, unrealized.currency)
                                   : '—'}
-                                {unrealizedPct ? ` (${unrealizedPct}%)` : ''}
+                                {unrealizedPct
+                                  ? ` (${formatPercentage(unrealizedPct, { showSign: true })})`
+                                  : ''}
                               </span>
                             </div>
                           </div>

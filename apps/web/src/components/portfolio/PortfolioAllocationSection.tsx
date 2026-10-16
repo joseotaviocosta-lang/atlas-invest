@@ -4,7 +4,7 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, ApiError } from '@/api/client';
 import { Card, Skeleton, Badge, EmptyState, ErrorState } from '@/components/ui';
-import { colors, spacing, formatCurrency } from '@atlas/ui';
+import { colors, spacing, formatCurrency, formatPercentage } from '@atlas/ui';
 
 export interface AllocationItem {
   assetId: string;
@@ -244,7 +244,7 @@ export function PortfolioAllocationSection({
                             <strong
                               style={{ color: colors.accent, minWidth: '55px', textAlign: 'right' }}
                             >
-                              {item.allocationPercent}%
+                              {formatPercentage(item.allocationPercent)}
                             </strong>
                           </div>
                         </div>
@@ -342,7 +342,7 @@ export function PortfolioAllocationSection({
                             <strong
                               style={{ color: colors.accent, minWidth: '55px', textAlign: 'right' }}
                             >
-                              {asset.allocationPercent}%
+                              {formatPercentage(asset.allocationPercent)}
                             </strong>
                           </div>
                         </div>
