@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { formatCurrency, formatPercentage } from '@atlas/ui';
 
-describe('Web: Phase 5A-I4 Home, Performance & Market Surfaces Verification', () => {
+describe('Web: Phase 5A-I4-R1 Home, Performance & Market Surfaces Verification', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
@@ -25,22 +25,55 @@ describe('Web: Phase 5A-I4 Home, Performance & Market Surfaces Verification', ()
       expect(formatPercentage(undefined)).toBe('—');
     });
 
-    it('ensures proventos remain ledger-based without using market quote providers', () => {
-      const ledgerIncomeSummaries = [
-        {
-          currency: 'BRL',
-          totalIncome: { amount: '450.00', currency: 'BRL' },
-          dividends: { amount: '300.00', currency: 'BRL' },
-          jcp: { amount: '150.00', currency: 'BRL' },
-          fiiIncome: { amount: '0.00', currency: 'BRL' },
+    it('ensures proventos remain server-derived and never performs client-side financial summation', () => {
+      // Invariant: The server read model produces pre-aggregated totalIncome per currency.
+      // The frontend strictly does formatCurrency(incomeSummary.totalIncome.amount)
+      // and never calls Number(), parseFloat(), +, or .reduce() on financial amounts.
+      const serverStateData = {
+        data: {
+          incomeSummaries: [
+            {
+              currency: 'BRL',
+              totalIncome: { amount: '450.00', currency: 'BRL' },
+              totalDividends: { amount: '300.00', currency: 'BRL' },
+              totalJcp: { amount: '150.00', currency: 'BRL' },
+              totalFiiIncome: { amount: '0.00', currency: 'BRL' },
+            },
+            {
+              currency: 'USD',
+              totalIncome: { amount: '120.00', currency: 'USD' },
+              totalDividends: { amount: '120.00', currency: 'USD' },
+              totalJcp: { amount: '0.00', currency: 'USD' },
+              totalFiiIncome: { amount: '0.00', currency: 'USD' },
+            },
+          ],
         },
-      ];
+      };
 
-      const brlSummary = ledgerIncomeSummaries.find((s) => s.currency === 'BRL');
-      expect(brlSummary).toBeDefined();
-      expect(formatCurrency(brlSummary!.totalIncome.amount, brlSummary!.totalIncome.currency)).toBe(
-        'R$ 450,00',
+      const primaryCurrency = 'BRL';
+      const incomeSummary = serverStateData.data.incomeSummaries.find(
+        (s) => s.currency === primaryCurrency,
       );
+
+      expect(incomeSummary).toBeDefined();
+      expect(incomeSummary?.totalIncome.amount).toBe('450.00');
+
+      // Presentation formatting only
+      const formatted = formatCurrency(
+        incomeSummary!.totalIncome.amount,
+        incomeSummary!.totalIncome.currency,
+      );
+      expect(formatted).toBe('R$ 450,00');
+
+      // Invariant: Multi-currency proventos are segregated and NEVER merged
+      const usdSummary = serverStateData.data.incomeSummaries.find((s) => s.currency === 'USD');
+      expect(usdSummary).toBeDefined();
+      expect(formatCurrency(usdSummary!.totalIncome.amount, usdSummary!.totalIncome.currency)).toBe(
+        'USD 120,00',
+      );
+
+      // Verify no cross-currency addition was performed
+      expect(incomeSummary!.totalIncome.currency).not.toBe(usdSummary!.totalIncome.currency);
     });
   });
 

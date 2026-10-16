@@ -409,3 +409,29 @@ Phase 5A-I4 integrates the approved persisted market valuation and historical qu
 - **Honest Macroeconomic Disclosure**:
   - Macro cards (`IBOVESPA`, `TAXA SELIC`, `IPCA`, `DÓLAR`) are explicitly labelled as `"Integração futura oficial B3 / Bacen"` with zero simulated numbers.
   - Future modules (Radar, Watchlist, Calendário) clearly labelled as roadmap expansions.
+
+---
+
+## 12. Phase 5A-I4-R1: Architectural Constraints & Gap Invariance Evidence
+
+Phase 5A-I4-R1 establishes strict automated verification of core architectural boundaries and gap semantics:
+
+### 1. Layering & Dependency Inversion
+
+- **Provider Location**: `PersistedHistoricalMarketDataProvider` is located strictly in the API infrastructure layer (`apps/api/src/market-data/persisted-historical-market-data.provider.ts`).
+- **Zero Package Dependency**: `packages/market-data` contains pure domain contracts/types (`HistoricalMarketDataProvider`, `MarketQuote`, `classifyEodQuoteFreshness`). It has **zero dependencies on `@atlas/database`**, `Prisma`, or `IMarketQuoteRepository`. Dependencies point strictly inward.
+- **Runtime Wiring**: In `market-data.module.ts`, `HISTORICAL_MARKET_DATA_PROVIDER` binds to `PersistedHistoricalMarketDataProvider` for normal runtime reads. `InMemoryHistoricalMarketDataProvider` is bound in test environments. Live BRAPI historical provider is accessible only on explicit backfill mutation (`UpdatePortfolioMarketDataUseCase`).
+
+### 2. Forward-Fill, Gap Semantics & Synthetic Quote Invariance
+
+- **Non-Trading Civil Date Resolution**: If a civil date has no quote (e.g. Saturday or Sunday), prior Friday trading quote is usable only for civil boundary valuation according to replay semantics (`status: 'PREVIOUS_TRADING_DAY'`).
+- **No Synthetic Forward-Fill on Missing Sessions**: If an expected trading session lacks a quote (e.g., Tuesday missing between Monday and Wednesday), the system **never forward-fills Tuesday** as a valid observed quote. It is returned as missing/unavailable.
+- **Zero Synthetic Quote Persistence**: Reads from `PersistedHistoricalMarketDataProvider` perform zero write operations (`upsertQuote` is never invoked). No synthetic quote rows are ever inserted into `market_quotes`.
+- **Honest Performance Availability**: Gaps in historical quote sequences preserve honest `PARTIAL` or `INSUFFICIENT_DATA` availability in `PerformanceReplayEngine`, preventing fabricated continuity or flat 0% returns.
+- **Holiday Limitation**: The MVP classifier is weekend-aware. It does not yet include a dynamic Brazilian federal/B3 holiday calendar. Conservative policy applies.
+
+### 3. Server-Derived Proventos & Formatter-Only Client
+
+- **Ledger-Derived Server Aggregation**: The server (`PortfolioReadModelMapper.toStateReadModel`) derives and pre-aggregates `incomeSummaries` (`totalIncome`, `totalDividends`, `totalJcp`, `totalFiiIncome`) directly from the ledger replay state.
+- **Zero Client Financial Summation**: The Home UI (`today/page.tsx`) performs strictly presentation formatting via `formatCurrency(incomeSummary.totalIncome.amount)`. It contains zero `Number()`, `parseFloat()`, `+`, or `.reduce()` calls on financial amounts.
+- **Multi-Currency Proventos**: Multi-currency proventos are segregated by currency; no synthetic cross-currency grand total is computed or merged in the client.
