@@ -2,7 +2,11 @@ import { Module, Global } from '@nestjs/common';
 import {
   InMemoryHistoricalMarketDataProvider,
   StooqHistoricalMarketDataProvider,
+  BrapiHistoricalMarketDataProvider,
   HistoricalMarketDataProvider,
+  InMemoryMarketDataProvider,
+  BrapiProviderAdapter,
+  MarketDataProvider,
 } from '@atlas/market-data';
 import {
   InMemoryBenchmarkDataProvider,
@@ -14,10 +18,22 @@ import {
   RateBenchmarkDataProvider,
 } from '@atlas/benchmark-engine';
 import {
+  MARKET_DATA_PROVIDER,
   HISTORICAL_MARKET_DATA_PROVIDER,
   BENCHMARK_DATA_PROVIDER,
   RATE_BENCHMARK_DATA_PROVIDER,
 } from './tokens';
+
+function createMarketDataProvider(): MarketDataProvider {
+  const providerName = (process.env.MARKET_DATA_PROVIDER ?? 'IN_MEMORY').trim().toUpperCase();
+  const token = process.env.MARKET_DATA_API_TOKEN ?? process.env.BRAPI_API_KEY;
+  const timeoutMs = parseInt(process.env.MARKET_DATA_TIMEOUT_MS ?? '10000', 10);
+
+  if (providerName === 'BRAPI') {
+    return new BrapiProviderAdapter({ token, timeoutMs });
+  }
+  return new InMemoryMarketDataProvider();
+}
 
 function createHistoricalProvider(): HistoricalMarketDataProvider {
   const providerName = (
@@ -27,12 +43,16 @@ function createHistoricalProvider(): HistoricalMarketDataProvider {
   )
     .trim()
     .toUpperCase();
+  const token = process.env.MARKET_DATA_API_TOKEN ?? process.env.BRAPI_API_KEY;
   const timeoutMs = parseInt(
     process.env.HISTORICAL_MARKET_DATA_TIMEOUT_MS ?? process.env.MARKET_DATA_TIMEOUT_MS ?? '15000',
     10,
   );
   const maxLookback = parseInt(process.env.HISTORICAL_MARKET_DATA_MAX_LOOKBACK_DAYS ?? '7', 10);
 
+  if (providerName === 'BRAPI') {
+    return new BrapiHistoricalMarketDataProvider({ token, timeoutMs });
+  }
   if (providerName === 'STOOQ') {
     return new StooqHistoricalMarketDataProvider({ timeoutMs, maxLookbackDays: maxLookback });
   }
@@ -74,6 +94,10 @@ function createRateBenchmarkProvider(): RateBenchmarkDataProvider {
 @Module({
   providers: [
     {
+      provide: MARKET_DATA_PROVIDER,
+      useFactory: () => createMarketDataProvider(),
+    },
+    {
       provide: HISTORICAL_MARKET_DATA_PROVIDER,
       useFactory: () => createHistoricalProvider(),
     },
@@ -86,6 +110,11 @@ function createRateBenchmarkProvider(): RateBenchmarkDataProvider {
       useFactory: () => createRateBenchmarkProvider(),
     },
   ],
-  exports: [HISTORICAL_MARKET_DATA_PROVIDER, BENCHMARK_DATA_PROVIDER, RATE_BENCHMARK_DATA_PROVIDER],
+  exports: [
+    MARKET_DATA_PROVIDER,
+    HISTORICAL_MARKET_DATA_PROVIDER,
+    BENCHMARK_DATA_PROVIDER,
+    RATE_BENCHMARK_DATA_PROVIDER,
+  ],
 })
 export class HistoricalMarketDataModule {}

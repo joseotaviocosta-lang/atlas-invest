@@ -30,6 +30,7 @@ import {
   TaxNotificationEventRepository,
   TaxReminderPreferencesRepository,
   TaxPeriodCloseRepository,
+  PrismaMarketQuoteRepository,
 } from '@atlas/database';
 import {
   PRISMA_CLIENT,
@@ -62,6 +63,7 @@ import {
   TAX_NOTIFICATION_EVENT_REPOSITORY,
   TAX_REMINDER_PREFERENCES_REPOSITORY,
   TAX_PERIOD_CLOSE_REPOSITORY,
+  MARKET_QUOTE_REPOSITORY,
 } from './tokens';
 
 type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
@@ -218,6 +220,11 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
       useFactory: (prisma: AtlasPrismaClient) => new TaxPeriodCloseRepository(prisma),
       inject: [PRISMA_CLIENT],
     },
+    {
+      provide: MARKET_QUOTE_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new PrismaMarketQuoteRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
   ],
   exports: [
     PRISMA_CLIENT,
@@ -250,6 +257,7 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     TAX_NOTIFICATION_EVENT_REPOSITORY,
     TAX_REMINDER_PREFERENCES_REPOSITORY,
     TAX_PERIOD_CLOSE_REPOSITORY,
+    MARKET_QUOTE_REPOSITORY,
   ],
 })
 export class DatabaseModule {}
