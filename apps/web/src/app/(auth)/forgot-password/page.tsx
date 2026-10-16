@@ -59,7 +59,7 @@ export default function ForgotPasswordPage() {
           color: themeTokens.colors.textMuted,
         }}
       >
-        Enviaremos um link para você redefinir sua senha
+        Orientações para recuperação de acesso do titular
       </p>
 
       <div
@@ -122,8 +122,10 @@ export default function ForgotPasswordPage() {
               marginBottom: '1.5rem',
             }}
           >
-            Se o e-mail <strong>{email}</strong> estiver cadastrado em nossa base, você receberá as
-            instruções para redefinir sua senha em instantes.
+            Solicitação registrada para <strong>{email}</strong>. Como o serviço automatizado de
+            envio por e-mail (SMTP) está reservado para o pós-MVP, a redefinição de acesso do
+            titular deve ser realizada no servidor através da ferramenta administrativa (
+            <code>pnpm bootstrap:owner</code>).
           </p>
           <Link
             href="/login"

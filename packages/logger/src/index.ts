@@ -42,6 +42,14 @@ const SENSITIVE_KEYS = new Set([
   'credit_card',
   'apikey',
   'api_key',
+  'database_url',
+  'databaseurl',
+  'db_url',
+  'dburl',
+  'connection_string',
+  'connectionstring',
+  'datasource_url',
+  'datasourceurl',
 ]);
 
 export function sanitizeContext(context?: LogContext): LogContext | undefined {
@@ -52,6 +60,11 @@ export function sanitizeContext(context?: LogContext): LogContext | undefined {
   for (const [key, value] of Object.entries(context)) {
     const lowerKey = key.toLowerCase();
     if (SENSITIVE_KEYS.has(lowerKey)) {
+      sanitized[key] = '[REDACTED]';
+    } else if (
+      typeof value === 'string' &&
+      /^(postgres|postgresql|mysql|mongodb):\/\/[^:]+:[^@]+@/i.test(value)
+    ) {
       sanitized[key] = '[REDACTED]';
     } else if (value && typeof value === 'object' && !Array.isArray(value)) {
       sanitized[key] = sanitizeContext(value as LogContext);
