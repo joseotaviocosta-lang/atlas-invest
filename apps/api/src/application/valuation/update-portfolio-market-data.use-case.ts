@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import {
   IPortfolioRepository,
   ITransactionRepository,
@@ -16,6 +16,7 @@ import {
   InMemoryHistoricalMarketDataProvider,
   assetRefFromAsset,
   normalizeTradingDate,
+  daysBetweenLocalDates,
 } from '@atlas/market-data';
 import {
   PORTFOLIO_REPOSITORY,
@@ -94,7 +95,30 @@ export class UpdatePortfolioMarketDataUseCase {
       inMemory.seed({ providerSymbol: 'BBDC4', price: '14.80', currency: 'BRL', status: 'EOD' });
       inMemory.seed({ providerSymbol: 'BBAS3', price: '28.10', currency: 'BRL', status: 'EOD' });
       marketDataProvider = inMemory;
-      historicalProvider = new InMemoryHistoricalMarketDataProvider();
+
+      const inMemoryHist = new InMemoryHistoricalMarketDataProvider();
+      inMemoryHist.seed({
+        ticker: 'PETR4',
+        exchange: 'B3',
+        date: '2026-10-13',
+        close: '38.00',
+        currency: 'BRL',
+      });
+      inMemoryHist.seed({
+        ticker: 'PETR4',
+        exchange: 'B3',
+        date: '2026-10-14',
+        close: '38.25',
+        currency: 'BRL',
+      });
+      inMemoryHist.seed({
+        ticker: 'PETR4',
+        exchange: 'B3',
+        date: '2026-10-15',
+        close: '38.50',
+        currency: 'BRL',
+      });
+      historicalProvider = inMemoryHist;
     } else if (params.providerOverride === 'BRAPI') {
       marketDataProvider = new BrapiProviderAdapter();
       historicalProvider = new BrapiHistoricalMarketDataProvider();
@@ -151,7 +175,26 @@ export class UpdatePortfolioMarketDataUseCase {
     if (params.from && params.to) {
       fromDate = LocalDate.from(params.from);
       toDate = LocalDate.from(params.to);
+      if (fromDate.compare(toDate) > 0) {
+        throw new BadRequestException({
+          message: `Invalid date range: 'from' (${params.from}) cannot be after 'to' (${params.to})`,
+          code: 'VALIDATION.INVALID_DATE_RANGE',
+        });
+      }
+      const days = daysBetweenLocalDates(fromDate, toDate);
+      if (days > 365 * 5) {
+        throw new BadRequestException({
+          message: `Date range exceeds maximum allowed limit of 5 years (requested ${days} days)`,
+          code: 'VALIDATION.RANGE_TOO_LARGE',
+        });
+      }
     } else if (lookback > 0) {
+      if (lookback > 365 * 5) {
+        throw new BadRequestException({
+          message: `Lookback days exceeds maximum allowed limit of 5 years (requested ${lookback} days)`,
+          code: 'VALIDATION.RANGE_TOO_LARGE',
+        });
+      }
       const now = new Date();
       toDate = LocalDate.fromParts(now.getUTCFullYear(), now.getUTCMonth() + 1, now.getUTCDate());
       const past = new Date(Date.now() - lookback * 24 * 60 * 60 * 1000);
