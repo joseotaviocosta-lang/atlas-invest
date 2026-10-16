@@ -103,10 +103,13 @@ export interface AccountValuation {
 export interface CurrencyValuationTotals {
   currency: Currency;
   marketValue: MoneyJSON;
+  costBasis: MoneyJSON;
   knownCost: MoneyJSON;
   unrealizedGainLoss: MoneyJSON | null;
   unrealizedGainLossPercent: string | null;
   valuedPositionsCount: number;
+  unvaluedPositionsCount: number;
+  stalePositionsCount: number;
 }
 
 export interface PortfolioValuation {
@@ -121,10 +124,12 @@ export interface PortfolioValuation {
   summary: {
     totalPositions: number;
     valuedPositions: number;
+    unvaluedPositions: number;
     unavailablePositions: number;
     incompleteCostPositions: number;
     stalePositions: number;
     mismatchPositions: number;
+    valuationCoveragePercent: string;
     currencies: Currency[];
   };
   quoteSummary: {
@@ -411,14 +416,19 @@ function computeTotals(valuations: PositionValuation[]): Record<string, Currency
     }
 
     const valuedCount = inCurrency.filter((v) => v.marketValue !== null).length;
+    const unvaluedCount = inCurrency.length - valuedCount;
+    const staleCount = inCurrency.filter((v) => v.status === 'QUOTE_STALE').length;
 
     result[cur] = Object.freeze({
       currency: cur,
       marketValue: { amount: mv.amount, currency: mv.currency },
+      costBasis: knownCostJson,
       knownCost: knownCostJson,
       unrealizedGainLoss: unreal ? { amount: unreal.amount, currency: unreal.currency } : null,
       unrealizedGainLossPercent: totalPercent,
       valuedPositionsCount: valuedCount,
+      unvaluedPositionsCount: unvaluedCount,
+      stalePositionsCount: staleCount,
     });
   }
 
@@ -516,6 +526,20 @@ export function valuePortfolio(input: PortfolioValuationInput): PortfolioValuati
     (v) => v.status === 'CURRENCY_MISMATCH',
   ).length;
 
+  const unvaluedPositions = totalPositions - valuedPositions;
+  let valuationCoveragePercent = '0';
+  if (totalPositions > 0) {
+    try {
+      const valuedQty = Quantity.from(String(valuedPositions));
+      const totalQty = Quantity.from(String(totalPositions));
+      const ratio = valuedQty.divide(totalQty);
+      const pct = ratio.multiply(Quantity.from('100'));
+      valuationCoveragePercent = Percentage.from(pct.value).value;
+    } catch {
+      valuationCoveragePercent = '0';
+    }
+  }
+
   const currencies = Object.keys(totalsByCurrency) as Currency[];
 
   const quotesAvailable = consolidatedValuations.filter((v) => v.quote !== null).length;
@@ -534,10 +558,12 @@ export function valuePortfolio(input: PortfolioValuationInput): PortfolioValuati
     summary: Object.freeze({
       totalPositions,
       valuedPositions,
+      unvaluedPositions,
       unavailablePositions,
       incompleteCostPositions,
       stalePositions,
       mismatchPositions,
+      valuationCoveragePercent,
       currencies,
     }),
     quoteSummary: Object.freeze({
@@ -546,5 +572,184 @@ export function valuePortfolio(input: PortfolioValuationInput): PortfolioValuati
       quotesUnavailable,
       quotesStale,
     }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Allocation Read Model (Phase 5A-I2)
+// ---------------------------------------------------------------------------
+
+export interface AssetAllocationItem {
+  assetId: string;
+  ticker?: string;
+  assetType?: string;
+  currency: Currency;
+  marketValue: MoneyJSON;
+  allocationPercent: string;
+  quoteFreshness: QuoteFreshness | null;
+}
+
+export interface AssetClassAllocationItem {
+  assetClass: string;
+  currency: Currency;
+  marketValue: MoneyJSON;
+  allocationPercent: string;
+  assetCount: number;
+}
+
+export interface CurrencyAllocationBucket {
+  readonly currency: Currency;
+  readonly totalMarketValue: MoneyJSON;
+  readonly byAsset: readonly AssetAllocationItem[];
+  readonly byAssetClass: readonly AssetClassAllocationItem[];
+  readonly unvaluedAssets: readonly {
+    readonly assetId: string;
+    readonly ticker?: string;
+    readonly assetType?: string;
+    readonly currency: Currency;
+    readonly reason: ValuationStatus;
+  }[];
+}
+
+export interface PortfolioAllocation {
+  readonly portfolioId: string;
+  readonly asOf: string | null;
+  readonly status: 'COMPLETE' | 'PARTIAL' | 'EMPTY';
+  readonly valuationCoveragePercent: string;
+  readonly currencies: Readonly<Record<string, CurrencyAllocationBucket>>;
+}
+
+export function computePortfolioAllocation(valuation: PortfolioValuation): PortfolioAllocation {
+  const currenciesRecord: Record<string, CurrencyAllocationBucket> = {};
+
+  const totalPositions = valuation.summary.totalPositions;
+  const valuedPositions = valuation.summary.valuedPositions;
+
+  let portfolioStatus: 'COMPLETE' | 'PARTIAL' | 'EMPTY' = 'COMPLETE';
+  if (totalPositions === 0) {
+    portfolioStatus = 'EMPTY';
+  } else if (valuedPositions < totalPositions) {
+    portfolioStatus = 'PARTIAL';
+  }
+
+  // Group positions by currency
+  const positionsByCurrency = new Map<Currency, PositionValuation[]>();
+  for (const pos of valuation.positions) {
+    const cur = pos.currency;
+    const existing = positionsByCurrency.get(cur) ?? [];
+    existing.push(pos);
+    positionsByCurrency.set(cur, existing);
+  }
+
+  for (const [cur, posList] of positionsByCurrency.entries()) {
+    const valuedList = posList.filter((p) => p.marketValue !== null);
+    const unvaluedList = posList.filter((p) => p.marketValue === null);
+
+    // Denominator: sum of marketValue for valued positions in this currency
+    let totalMv = Money.zero(cur);
+    for (const vp of valuedList) {
+      if (vp.marketValue) {
+        totalMv = totalMv.add(Money.from(vp.marketValue.amount, cur));
+      }
+    }
+
+    const byAsset: AssetAllocationItem[] = [];
+    for (const vp of valuedList) {
+      let allocPct = '0';
+      if (!totalMv.isZero() && vp.marketValue) {
+        try {
+          const itemQty = Quantity.from(vp.marketValue.amount);
+          const totalQty = Quantity.from(totalMv.amount);
+          const ratio = itemQty.divide(totalQty);
+          const pct = ratio.multiply(Quantity.from('100'));
+          allocPct = Percentage.from(pct.value).value;
+        } catch {
+          allocPct = '0';
+        }
+      }
+
+      byAsset.push(
+        Object.freeze({
+          assetId: vp.assetId,
+          ticker: vp.ticker,
+          assetType: vp.assetType,
+          currency: cur,
+          marketValue: vp.marketValue!,
+          allocationPercent: allocPct,
+          quoteFreshness: vp.quoteFreshness,
+        }),
+      );
+    }
+
+    // Sort by assetId for determinism
+    byAsset.sort((a, b) => String(a.assetId).localeCompare(String(b.assetId)));
+
+    // Group by assetClass
+    const classMap = new Map<string, { total: Money; count: number }>();
+    for (const vp of valuedList) {
+      const cls = vp.assetType ?? 'OTHER';
+      const existing = classMap.get(cls) ?? { total: Money.zero(cur), count: 0 };
+      const itemMv = vp.marketValue ? Money.from(vp.marketValue.amount, cur) : Money.zero(cur);
+      classMap.set(cls, {
+        total: existing.total.add(itemMv),
+        count: existing.count + 1,
+      });
+    }
+
+    const byAssetClass: AssetClassAllocationItem[] = [];
+    for (const [cls, data] of classMap.entries()) {
+      let allocPct = '0';
+      if (!totalMv.isZero()) {
+        try {
+          const itemQty = Quantity.from(data.total.amount);
+          const totalQty = Quantity.from(totalMv.amount);
+          const ratio = itemQty.divide(totalQty);
+          const pct = ratio.multiply(Quantity.from('100'));
+          allocPct = Percentage.from(pct.value).value;
+        } catch {
+          allocPct = '0';
+        }
+      }
+
+      byAssetClass.push(
+        Object.freeze({
+          assetClass: cls,
+          currency: cur,
+          marketValue: { amount: data.total.amount, currency: cur },
+          allocationPercent: allocPct,
+          assetCount: data.count,
+        }),
+      );
+    }
+
+    // Sort by assetClass for determinism
+    byAssetClass.sort((a, b) => a.assetClass.localeCompare(b.assetClass));
+
+    const unvaluedAssets = unvaluedList.map((up) =>
+      Object.freeze({
+        assetId: up.assetId,
+        ticker: up.ticker,
+        assetType: up.assetType,
+        currency: cur,
+        reason: up.status,
+      }),
+    );
+    unvaluedAssets.sort((a, b) => String(a.assetId).localeCompare(String(b.assetId)));
+
+    currenciesRecord[cur] = Object.freeze({
+      currency: cur,
+      totalMarketValue: { amount: totalMv.amount, currency: cur },
+      byAsset: Object.freeze(byAsset),
+      byAssetClass: Object.freeze(byAssetClass),
+      unvaluedAssets: Object.freeze(unvaluedAssets),
+    });
+  }
+
+  return Object.freeze({
+    portfolioId: valuation.portfolioId,
+    asOf: valuation.asOf,
+    status: portfolioStatus,
+    valuationCoveragePercent: valuation.summary.valuationCoveragePercent,
+    currencies: Object.freeze(currenciesRecord),
   });
 }

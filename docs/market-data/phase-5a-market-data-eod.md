@@ -156,10 +156,42 @@ The system classifies End-of-Day (EOD) quote freshness using `classifyEodQuoteFr
 
 ---
 
-## 10. Security & Invariants Checklist
+---
+
+## 10. Portfolio Valuation & Allocation Read Models (Phase 5A-I2)
+
+Phase 5A-I2 exposes deterministic, server-side Portfolio Valuation and Allocation read models:
+
+### 10.1. `GET /api/v1/portfolios/:portfolioId/valuation`
+
+- **Read-Only / DB-Cached:** Performs zero live network requests or external provider calls during GET. Fetches the latest persisted EOD quotes directly from the `market_quotes` repository in a single query.
+- **Freshness Classification:** Uses `classifyEodQuoteFreshness` to evaluate whether cached EOD quotes are `FRESH` or `STALE` relative to the current civil date and hour (`America/Sao_Paulo`).
+- **Exact Arbitrary-Precision Math:** Market values (`quantity × quote.price`), cost basis, unrealized gain/loss (`marketValue - totalCost`), and percentage returns are computed using exact decimal arithmetic with zero IEEE 754 floats.
+- **Explicit Missing & Stale Handling:**
+  - `VALUED`: Quote is available and fresh; cost basis is known.
+  - `QUOTE_STALE`: Quote is older than expected session; market value is computed and flagged.
+  - `QUOTE_UNAVAILABLE`: No quote persisted; market value is `null`, position flagged as unavailable.
+  - `COST_INCOMPLETE`: Cost basis is unknown (e.g. unmatched transfer in); market value is computed, but unrealized gain/loss is `null`.
+  - `CURRENCY_MISMATCH`: Position currency differs from quote currency; cross-currency synthetic aggregation is prohibited, market value is `null`.
+- **Currency Segregation:** Totals are partitioned strictly by currency (`totalsByCurrency[currency]`). No synthetic multi-currency conversion is attempted without an FX layer.
+
+### 10.2. `GET /api/v1/portfolios/:portfolioId/allocation`
+
+- **Segregated Allocation Buckets:** Breakdowns are partitioned by currency bucket (`currencies[currency]`).
+- **Asset Allocation:** Computes each valued asset's market value and exact percentage of the valued currency bucket:
+  $$\text{allocationPercent} = \frac{\text{asset.marketValue}}{\sum \text{valued.marketValue}} \times 100$$
+- **Asset Class Allocation:** Aggregates by asset class (`STOCK`, `REAL_ESTATE_FUND`, `BDR`, `ETF`, etc.), computing group market value, percentage, and asset count.
+- **Unvalued Assets Disclosure:** Positions with missing or mismatched quotes are segregated into `unvaluedAssets` with explicit diagnostic reasons (`QUOTE_UNAVAILABLE`, `CURRENCY_MISMATCH`).
+- **Portfolio Status:** Emits `COMPLETE` (100% valued), `PARTIAL` (< 100% coverage), or `EMPTY` (zero custody positions).
+- **Sector Allocation Status:** Formally **DEFERRED** until canonical sector metadata is modeled on the `Asset` entity.
+
+---
+
+## 11. Security & Invariants Checklist
 
 - [x] **Zero Floats:** All prices, volumes, and currency values use canonical string representations and `Prisma.Decimal` (`NUMERIC(38,18)`). `Number()`, `parseFloat()`, and unary `+` are forbidden for financial rules.
 - [x] **Immutable Ledger Untouched:** Transaction ledger remains the single source of truth; market quotes do not mutate cost basis, quantities, or trade dates.
+- [x] **Zero Live Provider Calls on GET:** Valuation and allocation endpoints query strictly from persisted database quotes.
 - [x] **Anti-Enumeration:** Access to non-owned portfolios returns `404 Not Found` without disclosing existence.
 - [x] **Zero Secret Leakage:** `MARKET_DATA_API_TOKEN` / `BRAPI_API_KEY` are injected via headers or queries and never echoed in receipts, logs, or error responses.
 - [x] **Bounded Backfill Safety:** Ranges exceeding 5 years or inverted dates are safely rejected with 400.

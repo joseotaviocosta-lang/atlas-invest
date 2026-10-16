@@ -40,10 +40,13 @@ export interface PositionValuationReadModel {
 export interface CurrencyValuationTotalsReadModel {
   currency: string;
   marketValue: ValuationMoneyJSON;
+  costBasis: ValuationMoneyJSON;
   knownCost: ValuationMoneyJSON;
   unrealizedGainLoss: ValuationMoneyJSON | null;
   unrealizedGainLossPercent: string | null;
   valuedPositionsCount: number;
+  unvaluedPositionsCount: number;
+  stalePositionsCount: number;
 }
 
 export interface AccountValuationReadModel {
@@ -69,10 +72,12 @@ export interface PortfolioValuationReadModel {
   summary: {
     totalPositions: number;
     valuedPositions: number;
+    unvaluedPositions: number;
     unavailablePositions: number;
     incompleteCostPositions: number;
     stalePositions: number;
     mismatchPositions: number;
+    valuationCoveragePercent: string;
     currencies: string[];
   };
   quoteSummary: {
@@ -81,4 +86,48 @@ export interface PortfolioValuationReadModel {
     quotesUnavailable: number;
     quotesStale: number;
   };
+}
+
+// ---------------------------------------------------------------------------
+// Allocation Read Models
+// ---------------------------------------------------------------------------
+
+export interface AssetAllocationReadModel {
+  assetId: string;
+  ticker: string | null;
+  assetType: string | null;
+  currency: string;
+  marketValue: ValuationMoneyJSON;
+  allocationPercent: string;
+  quoteFreshness: string | null;
+}
+
+export interface AssetClassAllocationReadModel {
+  assetClass: string;
+  currency: string;
+  marketValue: ValuationMoneyJSON;
+  allocationPercent: string;
+  assetCount: number;
+}
+
+export interface CurrencyAllocationBucketReadModel {
+  currency: string;
+  totalMarketValue: ValuationMoneyJSON;
+  byAsset: AssetAllocationReadModel[];
+  byAssetClass: AssetClassAllocationReadModel[];
+  unvaluedAssets: Array<{
+    assetId: string;
+    ticker: string | null;
+    assetType: string | null;
+    currency: string;
+    reason: string;
+  }>;
+}
+
+export interface PortfolioAllocationReadModel {
+  portfolioId: string;
+  asOf: string | null;
+  status: 'COMPLETE' | 'PARTIAL' | 'EMPTY';
+  valuationCoveragePercent: string;
+  currencies: Record<string, CurrencyAllocationBucketReadModel>;
 }

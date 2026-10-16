@@ -9,7 +9,11 @@ import {
   GetPortfolioPositionsUseCase,
   GetPortfolioHistoryUseCase,
 } from './portfolios';
-import { GetPortfolioValuationUseCase, UpdatePortfolioMarketDataUseCase } from './valuation';
+import {
+  GetPortfolioValuationUseCase,
+  GetPortfolioAllocationUseCase,
+  UpdatePortfolioMarketDataUseCase,
+} from './valuation';
 import { GetPortfolioPerformanceUseCase } from './performance';
 import { GetPortfolioPerformanceSeriesUseCase } from './performance/get-portfolio-performance-series.use-case';
 import { GetPortfolioRiskMetricsUseCase } from './performance/get-portfolio-risk-metrics.use-case';
@@ -119,6 +123,7 @@ const USE_CASES = [
   GetPortfolioPositionsUseCase,
   GetPortfolioHistoryUseCase,
   GetPortfolioValuationUseCase,
+  GetPortfolioAllocationUseCase,
   UpdatePortfolioMarketDataUseCase,
   GetPortfolioPerformanceUseCase,
   GetPortfolioPerformanceSeriesUseCase,

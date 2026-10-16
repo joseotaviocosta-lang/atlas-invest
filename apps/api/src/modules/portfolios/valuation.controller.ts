@@ -9,6 +9,7 @@ import {
 } from '@nestjs/swagger';
 import {
   GetPortfolioValuationUseCase,
+  GetPortfolioAllocationUseCase,
   UpdatePortfolioMarketDataUseCase,
 } from '../../application/valuation';
 import { UUIDParamPipe } from '../../common/pipes';
@@ -28,6 +29,8 @@ export class ValuationController {
   constructor(
     @Inject(GetPortfolioValuationUseCase)
     private readonly getPortfolioValuationUseCase: GetPortfolioValuationUseCase,
+    @Inject(GetPortfolioAllocationUseCase)
+    private readonly getPortfolioAllocationUseCase: GetPortfolioAllocationUseCase,
     @Inject(UpdatePortfolioMarketDataUseCase)
     private readonly updatePortfolioMarketDataUseCase: UpdatePortfolioMarketDataUseCase,
   ) {}
@@ -43,6 +46,23 @@ export class ValuationController {
     @CurrentPrincipal() principal: AuthenticatedPrincipal,
   ) {
     const data = await this.getPortfolioValuationUseCase.execute({
+      portfolioId,
+      userId: principal.userId,
+    });
+    return { data };
+  }
+
+  @Get(':portfolioId/allocation')
+  @ApiOperation({ summary: 'Get current portfolio asset and asset-class allocation breakdown' })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({ status: 200, description: 'Current portfolio allocation' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found or unauthorized' })
+  @ApiResponse({ status: 422, description: 'Replay failure' })
+  async getAllocation(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.getPortfolioAllocationUseCase.execute({
       portfolioId,
       userId: principal.userId,
     });

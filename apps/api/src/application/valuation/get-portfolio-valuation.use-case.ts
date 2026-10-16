@@ -4,12 +4,17 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { IPortfolioRepository, ITransactionRepository, IAssetRepository } from '@atlas/database';
+import {
+  IPortfolioRepository,
+  ITransactionRepository,
+  IAssetRepository,
+  IMarketQuoteRepository,
+} from '@atlas/database';
 import { replayPortfolio, PortfolioReplayError } from '@atlas/portfolio-engine';
 import {
+  classifyEodQuoteFreshness,
   MarketDataService,
   InMemoryMarketDataProvider,
-  StooqProviderAdapter,
   InMemoryQuoteCache,
   readMarketDataConfigFromEnv,
 } from '@atlas/market-data';
@@ -23,6 +28,7 @@ import {
   PORTFOLIO_REPOSITORY,
   TRANSACTION_REPOSITORY,
   ASSET_REPOSITORY,
+  MARKET_QUOTE_REPOSITORY,
 } from '../../database/tokens';
 import { PortfolioValuationReadModel } from './read-models';
 
@@ -37,16 +43,23 @@ export class GetPortfolioValuationUseCase {
     private readonly transactionRepository: ITransactionRepository,
     @Inject(ASSET_REPOSITORY)
     private readonly assetRepository: IAssetRepository,
+    @Inject(MARKET_QUOTE_REPOSITORY)
+    private readonly marketQuoteRepository: IMarketQuoteRepository,
   ) {
-    const config = readMarketDataConfigFromEnv(process.env as Record<string, string | undefined>);
-    const cache = new InMemoryQuoteCache();
-    const provider =
-      config.provider === 'STOOQ'
-        ? new StooqProviderAdapter({ timeoutMs: config.timeoutMs })
-        : new InMemoryMarketDataProvider();
-    this.marketDataService = new MarketDataService({ provider, cache, config });
+    const cfg = readMarketDataConfigFromEnv({
+      MARKET_DATA_PROVIDER: 'IN_MEMORY',
+    } as unknown as Record<string, string>);
+    const provider = new InMemoryMarketDataProvider();
+    this.marketDataService = new MarketDataService({
+      provider,
+      cache: new InMemoryQuoteCache(),
+      config: cfg,
+    });
   }
 
+  /**
+   * Backward compatibility / test helper to allow testing legacy overrides if needed.
+   */
   setMarketDataService(service: MarketDataService): void {
     this.marketDataService = service;
   }
@@ -57,6 +70,17 @@ export class GetPortfolioValuationUseCase {
     currency: string;
     status?: string;
   }): void {
+    if (!this.marketDataService) {
+      const cfg = readMarketDataConfigFromEnv({
+        MARKET_DATA_PROVIDER: 'IN_MEMORY',
+      } as unknown as Record<string, string>);
+      const provider = new InMemoryMarketDataProvider();
+      this.marketDataService = new MarketDataService({
+        provider,
+        cache: new InMemoryQuoteCache(),
+        config: cfg,
+      });
+    }
     const svc = this.marketDataService as unknown as { provider: { seed?: (s: unknown) => void } };
     if (svc.provider && typeof svc.provider.seed === 'function') {
       svc.provider.seed(seed);
@@ -64,11 +88,13 @@ export class GetPortfolioValuationUseCase {
   }
 
   clearQuotesForTesting(): void {
-    const svc = this.marketDataService as unknown as {
-      provider: { seeds?: Map<string, unknown>; clear?: () => void };
-    };
-    if (svc.provider && svc.provider.seeds instanceof Map) {
-      svc.provider.seeds.clear();
+    if (this.marketDataService) {
+      const svc = this.marketDataService as unknown as {
+        provider: { seeds?: Map<string, unknown>; clear?: () => void };
+      };
+      if (svc.provider && svc.provider.seeds instanceof Map) {
+        svc.provider.seeds.clear();
+      }
     }
   }
 
@@ -159,45 +185,77 @@ export class GetPortfolioValuationUseCase {
       }
     }
 
-    const refs: Array<{
-      assetId: string;
-      ticker: string;
-      exchange: string;
-      currency: string;
-      assetType: string;
-    }> = [];
-    for (const pos of consolidatedPositions) {
-      const meta = assetMap.get(pos.assetId);
-      if (!meta) continue;
-      refs.push({
-        assetId: pos.assetId as never,
-        ticker: meta.ticker,
-        exchange: meta.exchange,
-        currency: meta.currency,
-        assetType: meta.type as never,
-      });
+    const quotesMap = new Map<string, ValuationQuote>();
+    const assetIds = consolidatedPositions.map((p) => p.assetId);
+
+    // 1. Primary lookup: Persisted EOD quotes from database (Single batch query)
+    const persistedQuotes = await this.marketQuoteRepository.findLatestByAssets(assetIds);
+
+    for (const assetId of assetIds) {
+      const persisted = persistedQuotes.get(assetId);
+      if (persisted) {
+        const freshnessStatus = classifyEodQuoteFreshness({
+          quote: {
+            tradingDate: persisted.tradingDate,
+          },
+        });
+
+        const quoteFreshness = freshnessStatus === 'FRESH' ? 'FRESH' : 'STALE';
+        const quoteStatus = freshnessStatus === 'FRESH' ? 'EOD' : 'STALE';
+
+        quotesMap.set(assetId, {
+          assetId,
+          price: persisted.close,
+          currency: persisted.currency as never,
+          asOf: persisted.tradingDate.toString(),
+          receivedAt: persisted.lastFetchedAt.toISOString(),
+          source: persisted.provider,
+          status: quoteStatus,
+          freshness: quoteFreshness,
+          providerSymbol: persisted.providerSymbol,
+        });
+      }
     }
 
-    const quotesMap = new Map<string, ValuationQuote>();
-    if (refs.length > 0) {
-      try {
-        const batch = await this.marketDataService.getQuotes(refs as never);
-        for (const q of batch.quotes) {
-          quotesMap.set(String(q.assetId), {
-            assetId: String(q.assetId),
-            price: q.price.amount,
-            currency: q.currency as never,
-            asOf: q.asOf,
-            receivedAt: q.receivedAt,
-            marketTime: q.marketTime,
-            source: q.source,
-            status: q.status as never,
-            freshness: q.freshness as never,
-            providerSymbol: q.providerSymbol,
-          });
+    // 2. Fallback / Test service lookup (only if injected or seeded for testing)
+    if (this.marketDataService) {
+      const unquotedAssetIds = assetIds.filter((id) => !quotesMap.has(id));
+      if (unquotedAssetIds.length > 0) {
+        const refs = unquotedAssetIds
+          .map((id) => {
+            const meta = assetMap.get(id);
+            if (!meta) return null;
+            return {
+              assetId: id as never,
+              ticker: meta.ticker,
+              exchange: meta.exchange,
+              currency: meta.currency,
+              assetType: meta.type as never,
+            };
+          })
+          .filter(Boolean);
+
+        if (refs.length > 0) {
+          try {
+            const batch = await this.marketDataService.getQuotes(refs as never);
+            for (const q of batch.quotes) {
+              quotesMap.set(String(q.assetId), {
+                assetId: String(q.assetId),
+                price: q.price.amount,
+                currency: q.currency as never,
+                asOf: q.asOf,
+                receivedAt: q.receivedAt,
+                marketTime: q.marketTime,
+                source: q.source,
+                status: q.status as never,
+                freshness: q.freshness as never,
+                providerSymbol: q.providerSymbol,
+              });
+            }
+          } catch {
+            // ignore fallback failure
+          }
         }
-      } catch {
-        // total failure → all unavailable
       }
     }
 
