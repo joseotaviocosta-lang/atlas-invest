@@ -117,10 +117,52 @@ Append-only audit trail capturing provider revisions to historical or EOD prices
 
 ---
 
-## 6. Security & Invariants Checklist
+## 6. Freshness Classification & Weekend Policy
+
+The system classifies End-of-Day (EOD) quote freshness using `classifyEodQuoteFreshness`:
+
+- **FRESH:** The quote corresponds to the expected active trading session:
+  - Same calendar day.
+  - Friday quote viewed on Saturday or Sunday (markets are closed).
+  - Friday quote viewed on Monday prior to the market close threshold (18:00 BRT).
+  - Weekday quote from day $D$ viewed on day $D+1$ prior to 18:00 BRT.
+- **STALE:** The quote is older than expected (e.g. Friday quote viewed on Monday after 18:00 BRT, or older weekdays).
+- **MISSING:** No market quote has been ingested for the asset.
+- **ERROR:** A provider request was attempted and returned an error or timed out.
+- **Holiday Calendar Limitation:** The MVP freshness classifier is weekend-aware. It does not yet include a dynamic Brazilian federal/B3 holiday calendar. Conservative policy applies.
+
+---
+
+## 7. Bounded Historical Backfill & Boundary Safety
+
+- **Held Asset Boundary:** Quotes are only backfilled for assets with positive custody actively discovered by portfolio replay.
+- **Bounded Ranges:** Rejects unbounded historical queries (`from > to` returns `400 VALIDATION.INVALID_DATE_RANGE`; ranges exceeding 5 years or 1,825 days return `400 VALIDATION.RANGE_TOO_LARGE`).
+- **Idempotency:** Re-running backfill on previously fetched identical dates updates `fetchCount` with zero duplicate rows and status `COMPLETED`.
+
+---
+
+## 8. Revision Atomicity & Decimal Equality
+
+- **Atomicity:** Revisions are written within an explicit database transaction (`$transaction`). If any error occurs while logging a revision, the entire operation is rolled back.
+- **Decimal Equality:** Comparison uses arbitrary precision via `Money` / `Decimal`. Values like `57.36` and `57.360` evaluate as numerically equal, preventing phantom revision rows from IEEE 754 precision noise.
+
+---
+
+## 9. Fiscal & Tax Engine Isolation
+
+- **Zero Dependency:** `@atlas/tax-engine` has zero dependency on `@atlas/market-data`, `@atlas/valuation-engine`, or quote tables.
+- **Tax Source of Truth:** Monthly tax, day-trade exemptions, and DARF calculations rely strictly on transaction executions and historical cost basis.
+- **Bens e Direitos Invariance:** Annual IRPF declaration (Bens e Direitos) acquisition costs remain 100% invariant to market quotes.
+
+---
+
+## 10. Security & Invariants Checklist
 
 - [x] **Zero Floats:** All prices, volumes, and currency values use canonical string representations and `Prisma.Decimal` (`NUMERIC(38,18)`). `Number()`, `parseFloat()`, and unary `+` are forbidden for financial rules.
 - [x] **Immutable Ledger Untouched:** Transaction ledger remains the single source of truth; market quotes do not mutate cost basis, quantities, or trade dates.
 - [x] **Anti-Enumeration:** Access to non-owned portfolios returns `404 Not Found` without disclosing existence.
 - [x] **Zero Secret Leakage:** `MARKET_DATA_API_TOKEN` / `BRAPI_API_KEY` are injected via headers or queries and never echoed in receipts, logs, or error responses.
+- [x] **Bounded Backfill Safety:** Ranges exceeding 5 years or inverted dates are safely rejected with 400.
+- [x] **Revision Atomicity & Audit Trail:** Provider price revisions generate atomic records in `market_quote_revisions` without phantom noise.
+- [x] **Fiscal Isolation:** Tax Engine remains strictly isolated from market quotation data.
 - [x] **Development Database Preserved:** Port 5434 dev database untouched (20 transactions, 4 portfolios, 5 accounts, 5 users).
