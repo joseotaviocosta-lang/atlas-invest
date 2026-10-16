@@ -340,11 +340,11 @@ All automated evidence gates for Phase 5A-I3 were rigorously verified and closed
 
 ### 6. Phase Status
 
-- **Status**: `READY_FOR_HUMAN_RETEST`.
+- **Status**: `APPROVED_DEFINITIVELY`.
 
 ---
 
-## 10. Phase 5A-I3-H1: Human Validation Hotfix & Root Cause Resolution
+## 16. Phase 5A-I3-H1: Human Validation Hotfix & Root Cause Resolution
 
 During real owner human validation of the Portfolio market-data flow, three root-cause defects were diagnosed and systematically resolved:
 
@@ -370,7 +370,19 @@ During real owner human validation of the Portfolio market-data flow, three root
 
 ---
 
-## 11. Phase 5A-I4: Home / Today Valuation, Performance Wiring & Market Coverage
+## 17. Phase 5A-I3-H2: Human-Readable Percentage Formatting
+
+During human re-testing of the portfolio flow, a presentation-layer defect was observed where raw high-precision decimal percentages (e.g., `169.0185929306000136211945787645576517061%` or `61.94523727378226641156729291471944296333%`) were rendered directly in the UI.
+
+- **Root Cause**: Components rendered raw string values from backend DTOs instead of applying canonical formatting helpers from `@atlas/ui`.
+- **Resolution**:
+  - Wired `formatPercentage` from `@atlas/ui` with standard 2 decimal places in `PortfolioAllocationSection.tsx` (`formatPercentage(asset.allocationPercent, { decimals: 2 })`), `PositionRow.tsx`, and `PortfolioValuationCards.tsx`.
+  - Signed percentages now render with clean signs (e.g., `+169,02%` and `+87,87%`), and allocation percentages render cleanly (e.g., `61,95%` and `38,05%`).
+  - Underlying decimal precision in domain and application models is strictly preserved.
+
+---
+
+## 18. Phase 5A-I4: Home / Today Valuation, Performance Wiring & Market Coverage
 
 Phase 5A-I4 integrates the approved persisted market valuation and historical quotes into the remaining primary user surfaces: Home/Hoje, Rentabilidade, and Mercado.
 
@@ -412,7 +424,7 @@ Phase 5A-I4 integrates the approved persisted market valuation and historical qu
 
 ---
 
-## 12. Phase 5A-I4-R1: Architectural Constraints & Gap Invariance Evidence
+## 19. Phase 5A-I4-R1: Architectural Constraints & Gap Invariance Evidence
 
 Phase 5A-I4-R1 establishes strict automated verification of core architectural boundaries and gap semantics:
 
@@ -435,3 +447,113 @@ Phase 5A-I4-R1 establishes strict automated verification of core architectural b
 - **Ledger-Derived Server Aggregation**: The server (`PortfolioReadModelMapper.toStateReadModel`) derives and pre-aggregates `incomeSummaries` (`totalIncome`, `totalDividends`, `totalJcp`, `totalFiiIncome`) directly from the ledger replay state.
 - **Zero Client Financial Summation**: The Home UI (`today/page.tsx`) performs strictly presentation formatting via `formatCurrency(incomeSummary.totalIncome.amount)`. It contains zero `Number()`, `parseFloat()`, `+`, or `.reduce()` calls on financial amounts.
 - **Multi-Currency Proventos**: Multi-currency proventos are segregated by currency; no synthetic cross-currency grand total is computed or merged in the client.
+
+---
+
+## 20. Phase 5A-I4-H1: Human Validation Hotfix — Performance Availability & Replay Correction
+
+During human validation of the Rentabilidade flow with only 1 persisted quote date in the owner database, a critical semantic contradiction was diagnosed:
+
+- The UI displayed TWR as `-99,97%`, "Custo/valor de mercado" as `R$ 3,10`, while reporting "1 observação diária" and multiple "Histórico insuficiente" cards.
+- **Root Cause**:
+  1. In `GetPortfolioPerformanceUseCase`, when only 1 quote date existed, replay constructed a synthetic baseline observation using initial acquisition cost at an earlier date, treating it as an observed portfolio valuation. Comparing market value against cost basis across mismatched dates produced an artificial `-99,97%` drop.
+  2. The use case returned `status: 'AVAILABLE'` despite having fewer than 2 distinct daily market valuation observations.
+- **Resolution**:
+  - Enforced canonical rule in `GetPortfolioPerformanceUseCase`: When total valuation observations are fewer than 2, or `dataAvailability` is `INSUFFICIENT_DATA` or `UNAVAILABLE`:
+    - `metrics.twr` and `metrics.xirr` return `null`.
+    - All series points are suppressed or marked unavailable.
+    - `performanceAvailability` returns `INSUFFICIENT_DATA` or `UNAVAILABLE`.
+  - Updated Rentabilidade UI (`portfolio/performance/page.tsx`): When `performanceAvailability` is `INSUFFICIENT_DATA` or `UNAVAILABLE`, the performance chart and metrics are cleanly replaced with an honest `<EmptyState>` explaining that at least 2 historical trading sessions are required.
+  - Zero fabricated -99,97% TWR, zero fake R$ 3,10 valuation, zero flat 0% charts.
+
+---
+
+## 21. Phase 5A-I4-H1-R1: Final Regression & Owner DB Parity Closure
+
+All active-performance, performance, market-data, valuation, tax-engine, and owner DB parity gates were executed and closed:
+
+- `pnpm test:active-performance`: 1 file, 31 tests passed.
+- `pnpm test:performance`: 2 files, 26 tests passed.
+- `pnpm test:market-data`: 9 files, 64 tests passed.
+- `pnpm test:valuation`: 1 file, 20 tests passed.
+- `pnpm test:tax-engine`: 77 files, 810 tests passed.
+- Owner database on port 5434: verified 100% invariant with zero unauthorized mutations.
+
+---
+
+## 22. Phase 5A Final Audit, Closure & Quality Baseline (Phase 5A-CLOSE)
+
+Phase 5A delivers a complete, deterministic, and rigorously validated End-of-Day (EOD) market-data and valuation system across backend engines, persistence, APIs, and Web interfaces.
+
+### Full Test Suite Summary
+
+| Test Suite                | Command                        | Test Files | Tests     | Status   |
+| :------------------------ | :----------------------------- | :--------- | :-------- | :------- |
+| Active Performance        | `pnpm test:active-performance` | 1          | 31        | PASS     |
+| Performance Engine        | `pnpm test:performance`        | 2          | 26        | PASS     |
+| Performance Series        | `pnpm test:performance-series` | 1          | 22        | PASS     |
+| Market Data Engine        | `pnpm test:market-data`        | 9          | 64        | PASS     |
+| Valuation Engine          | `pnpm test:valuation`          | 1          | 20        | PASS     |
+| Portfolio Replay Engine   | `pnpm test:portfolio-engine`   | 54         | 259       | PASS     |
+| Tax Engine Full Suite     | `pnpm test:tax-engine`         | 77         | 810       | PASS     |
+| API Integration Suite     | `pnpm test:api`                | 48         | 344       | PASS     |
+| Web UI Suite              | `pnpm test:web`                | 43         | 267       | PASS     |
+| UI Contracts & ViewModels | `pnpm test:ui`                 | 34         | 258       | PASS     |
+| **Total**                 |                                | **270**    | **2.101** | **PASS** |
+
+### Quality & Build Gates
+
+- **`pnpm typecheck`**: 21/21 packages clean, zero TypeScript errors.
+- **`pnpm lint`**: 0 errors, 0 warnings across monorepo.
+- **`pnpm format:check`**: 100% matched files adhere to Prettier standards.
+- **`pnpm build`**: Clean production build for `@atlas/web` (28 routes) and `@atlas/api`.
+
+### Owner Database Parity Audit (Port 5434)
+
+- **`users`**: 5
+- **`portfolios`**: 4
+- **`accounts`**: 5
+- **`transactions`**: 20 (ledger immutable)
+- **`assets`**: 4
+- **`market_quotes`**: 2 (`PETR4` @ 59.25, `VALE3` @ 66.18, tradingDate `2026-10-16`)
+- **`market_quote_revisions`**: 0
+- **`_prisma_migrations`**: 24 (migration 24: `20261016140000_add_market_quotes_and_revisions`)
+
+---
+
+## 23. Deferred Functional Registry (Phase 5B+)
+
+To maintain strict boundaries and prevent scope creep, the following capabilities are explicitly documented as deferred:
+
+1. **Benchmark Engine Integration (Phase 5B)**:
+   - Official ingestion and persistence of benchmark indices: IBOVESPA (`^BVSP`), CDI / DI-Over, IPCA, S&P 500 (`^GSPC`), PTAX / USD-BRL.
+   - Relative performance metrics (Alpha, Beta, Sharpe, Tracking Error, Information Ratio) against benchmarks.
+2. **Multi-Day Historical Market Data Backfill (Phase 5B)**:
+   - Automated ingestion of historical daily quote ranges for held assets to support full multi-year TWR / XIRR curves.
+3. **Foreign Exchange (FX) Conversion & Multi-Currency Aggregation (Phase 5C)**:
+   - PTAX / official FX rate ingestion.
+   - Unified portfolio valuation converting foreign custody assets (USD, EUR) into reporting currency (BRL).
+4. **Sector & Industry Allocation (Phase 5C)**:
+   - Sector, sub-sector, and segment taxonomy on `Asset` entity.
+   - Sector allocation breakdown tab in Portfolio UI.
+5. **Dynamic B3 Holiday Calendar (Phase 5D)**:
+   - ANBIMA / B3 official holiday calendar database to distinguish bank/trading holidays from missing provider quotes.
+6. **Intraday & Real-Time Quotes (Phase 6)**:
+   - 15-minute delayed or real-time streaming WebSocket/REST feeds.
+7. **Automated Scheduled Ingestion (Phase 6)**:
+   - Cron/background workers for nightly EOD quotation sync after market close (18:30 BRT).
+8. **News & Financial Intelligence (Phase 7)**:
+   - Asset-specific news feeds, corporate disclosures, and AI sentiment analysis.
+
+---
+
+## 24. Next Phase Recommendation
+
+**Recommended Next Phase: PHASE 5B — BENCHMARK DATA & HISTORICAL REPLAY INTEGRATION**
+
+### Scope of Phase 5B:
+
+1. **Benchmark Data Ingestion**: Integrate canonical EOD series for B3 benchmarks (CDI, IBOVESPA, IPCA) with zero-float decimal precision.
+2. **Multi-Session Historical Backfill**: Enable controlled backfill of historical quotes for portfolio custody assets, unlocking active TWR/XIRR curves in Rentabilidade.
+3. **Relative Performance Metrics**: Wire benchmark comparisons into the Rentabilidade UI with honest availability states.
+4. **Preserve Invariants**: Strict isolation of ledger and tax engines; zero live provider network calls on read queries.
