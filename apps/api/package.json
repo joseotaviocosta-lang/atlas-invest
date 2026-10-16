@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "ts-node -r tsconfig-paths/register src/main.ts",
-    "start": "node dist/main.js",
+    "start": "node -r ts-node/register/transpile-only -r tsconfig-paths/register dist/main.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

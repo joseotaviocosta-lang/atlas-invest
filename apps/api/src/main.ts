@@ -98,6 +98,7 @@ export function configureApp(app: INestApplication): void {
 }
 
 async function bootstrap() {
+  validateProductionSecrets();
   const app = await NestFactory.create(AppModule);
   configureApp(app);
 

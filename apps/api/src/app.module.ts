@@ -12,7 +12,11 @@ import { TransactionsModule } from './modules/transactions/transactions.module';
 import { PerformanceModule } from './modules/performance/performance.module';
 import { FiscalModule } from './modules/fiscal/fiscal.module';
 import { AiModule } from './modules/ai/ai.module';
-import { RequestIdMiddleware, UnifiedAnnualNoStoreMiddleware } from './common/middleware';
+import {
+  RequestIdMiddleware,
+  UnifiedAnnualNoStoreMiddleware,
+  HttpLoggingMiddleware,
+} from './common/middleware';
 
 @Module({
   imports: [
@@ -47,7 +51,7 @@ import { RequestIdMiddleware, UnifiedAnnualNoStoreMiddleware } from './common/mi
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(RequestIdMiddleware).forRoutes('*');
+    consumer.apply(RequestIdMiddleware, HttpLoggingMiddleware).forRoutes('*');
     // Phase 4J.1/4J.2: the unified annual route and the unified review-package
     // routes must carry `private, no-store` on EVERY response (including
     // 400/401/404/422/500 that bypass the successful handler), so the directive

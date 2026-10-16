@@ -68,7 +68,7 @@ Este documento define o roteiro obrigatório e sequencial para disponibilizaçã
   - `Referrer-Policy: strict-origin-when-cross-origin`
   - `Permissions-Policy: camera=(), microphone=(), geolocation=()`
 - [ ] **Cookies Seguros:**
-  - `atlas.refresh-token`: `HttpOnly`, `SameSite=Lax`, `Secure`, `Path=/`.
+  - `atlas_refresh`: `HttpOnly`, `SameSite=Lax`, `Secure`, `Path=/`.
   - `atlas_logged_in`: `SameSite=Lax`, `Secure`, `Path=/`.
 - [ ] **Tentativa de Registro Público Bloqueada:**
   - Tentar enviar `POST /api/v1/auth/register` sem credenciais autorizadas.
