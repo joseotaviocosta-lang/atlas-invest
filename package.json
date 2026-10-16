@@ -130,6 +130,7 @@
     "market:historical-smoke": "tsx --tsconfig tsconfig.smoke.json scripts/historical-smoke.ts",
     "benchmark:smoke": "tsx --tsconfig tsconfig.smoke.json scripts/benchmark-smoke.ts",
     "benchmark:rate-smoke": "tsx --tsconfig tsconfig.smoke.json scripts/benchmark-rate-smoke.ts",
+    "bootstrap:owner": "tsx --tsconfig tsconfig.smoke.json scripts/bootstrap-owner.ts",
     "db:generate": "pnpm --filter @atlas/database generate",
     "db:migrate": "pnpm --filter @atlas/database migrate",
     "db:seed": "pnpm --filter @atlas/database seed",

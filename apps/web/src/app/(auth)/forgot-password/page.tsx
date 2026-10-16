@@ -54,13 +54,30 @@ export default function ForgotPasswordPage() {
       </h2>
       <p
         style={{
-          margin: '0 0 1.5rem 0',
+          margin: '0 0 1rem 0',
           fontSize: '0.875rem',
           color: themeTokens.colors.textMuted,
         }}
       >
         Enviaremos um link para você redefinir sua senha
       </p>
+
+      <div
+        style={{
+          backgroundColor: 'rgba(59, 130, 246, 0.08)',
+          border: '1px solid rgba(59, 130, 246, 0.25)',
+          color: themeTokens.colors.text,
+          padding: '0.75rem 1rem',
+          borderRadius: `${themeTokens.borderRadius.md}px`,
+          fontSize: '0.8125rem',
+          lineHeight: 1.45,
+          marginBottom: '1.25rem',
+        }}
+      >
+        <strong>Aviso Operacional:</strong> O envio automático por e-mail (SMTP) está planejado para
+        a fase pós-MVP. Durante o uso remoto pelo titular, a recuperação e redefinição de acesso
+        podem ser efetuadas via CLI administrativa no servidor.
+      </div>
 
       {error && (
         <div
