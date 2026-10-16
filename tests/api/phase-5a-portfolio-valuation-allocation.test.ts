@@ -1128,4 +1128,273 @@ describe('API Integration: Phase 5A-I2 Portfolio Valuation & Allocation Read Mod
       .expect(404);
     expect(allocRes.body.code).toBe('PORTFOLIO.NOT_FOUND');
   });
+
+  // -------------------------------------------------------------------------
+  // Test 41: Section 4 — Stale quote position remains VALUED (not unvalued)
+  // -------------------------------------------------------------------------
+  it('Test 41: Section 4 — Stale quote position remains VALUED with marketValue and unrealized KNOWN', async () => {
+    const userId = 'dddddddd-1111-4111-8111-dddddddddddd';
+    const { token, portfolioId, accountId } = await setupPortfolio(userId);
+
+    const petr4 = await createAsset({
+      ticker: 'PETR4',
+      type: 'STOCK',
+      currency: 'BRL',
+      exchange: 'B3',
+    });
+
+    // BUY 100 PETR4 @ 30
+    await request(app.getHttpServer())
+      .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        accountId,
+        assetId: petr4.id,
+        type: 'BUY',
+        quantity: '100',
+        unitPrice: '30.00',
+        totalAmount: '3000.00',
+        currency: 'BRL',
+        tradeDate: '2025-01-01',
+        provider: 'B3',
+        externalId: 'tx-41-buy',
+      })
+      .expect(201);
+
+    // Persist stale quote: close = 37 (old date)
+    await insertPersistedQuote({
+      assetId: petr4.id,
+      tradingDate: '2025-01-05',
+      currency: 'BRL',
+      close: '37.00',
+      providerSymbol: 'PETR4',
+    });
+
+    // Owner requests valuation -> 200
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/portfolios/${portfolioId}/valuation`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const val = res.body.data;
+    const pos = val.positions[0];
+    expect(pos.quantity).toBe('100');
+    expect(pos.totalCost.amount).toBe('3000');
+    expect(pos.marketValue.amount).toBe('3700');
+    expect(pos.unrealizedGainLoss.amount).toBe('700');
+    expect(pos.quoteFreshness).toBe('STALE');
+    expect(pos.status).toBe('QUOTE_STALE');
+
+    expect(val.summary.totalPositions).toBe(1);
+    expect(val.summary.valuedPositions).toBe(1);
+    expect(val.summary.unvaluedPositions).toBe(0);
+    expect(val.summary.stalePositions).toBe(1);
+    expect(val.summary.unavailablePositions).toBe(0);
+    expect(val.completeness).toBe('PARTIAL_STALE');
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 42: Section 5 — Stale allocation participates in denominator (60% / 40%)
+  // -------------------------------------------------------------------------
+  it('Test 42: Section 5 — Stale quote participates in allocation denominator and is excluded from unvaluedAssets', async () => {
+    const userId = 'dddddddd-2222-4111-8111-dddddddddddd';
+    const { token, portfolioId, accountId } = await setupPortfolio(userId);
+
+    const petr4 = await createAsset({
+      ticker: 'PETR4',
+      type: 'STOCK',
+      currency: 'BRL',
+      exchange: 'B3',
+    });
+    const vale3 = await createAsset({
+      ticker: 'VALE3',
+      type: 'STOCK',
+      currency: 'BRL',
+      exchange: 'B3',
+    });
+
+    // Buy PETR4 (100 @ 60 = 6000 mv)
+    await request(app.getHttpServer())
+      .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        accountId,
+        assetId: petr4.id,
+        type: 'BUY',
+        quantity: '100',
+        unitPrice: '50.00',
+        totalAmount: '5000.00',
+        currency: 'BRL',
+        tradeDate: '2025-01-01',
+        provider: 'B3',
+        externalId: 'tx-42-petr4',
+      })
+      .expect(201);
+
+    // Buy VALE3 (100 @ 40 = 4000 mv)
+    await request(app.getHttpServer())
+      .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        accountId,
+        assetId: vale3.id,
+        type: 'BUY',
+        quantity: '100',
+        unitPrice: '35.00',
+        totalAmount: '3500.00',
+        currency: 'BRL',
+        tradeDate: '2025-01-01',
+        provider: 'B3',
+        externalId: 'tx-42-vale3',
+      })
+      .expect(201);
+
+    const today = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+
+    // PETR4 stale quote @ 60.00
+    await insertPersistedQuote({
+      assetId: petr4.id,
+      tradingDate: '2025-01-05',
+      currency: 'BRL',
+      close: '60.00',
+      providerSymbol: 'PETR4',
+    });
+
+    // VALE3 fresh quote @ 40.00
+    await insertPersistedQuote({
+      assetId: vale3.id,
+      tradingDate: today,
+      currency: 'BRL',
+      close: '40.00',
+      providerSymbol: 'VALE3',
+    });
+
+    // Owner requests allocation -> 200
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/portfolios/${portfolioId}/allocation`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const alloc = res.body.data;
+    const brl = alloc.currencies.BRL;
+    expect(brl.totalMarketValue.amount).toBe('10000');
+
+    const petr4Alloc = brl.byAsset.find((a: { ticker: string }) => a.ticker === 'PETR4');
+    const vale3Alloc = brl.byAsset.find((a: { ticker: string }) => a.ticker === 'VALE3');
+
+    expect(petr4Alloc.marketValue.amount).toBe('6000');
+    expect(petr4Alloc.allocationPercent).toBe('60');
+    expect(petr4Alloc.quoteFreshness).toBe('STALE');
+
+    expect(vale3Alloc.marketValue.amount).toBe('4000');
+    expect(vale3Alloc.allocationPercent).toBe('40');
+    expect(vale3Alloc.quoteFreshness).toBe('FRESH');
+
+    // unvaluedAssets must NOT include PETR4 merely because it's stale
+    expect(brl.unvaluedAssets).toHaveLength(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 43: Section 6 — Stale + Missing differentiation
+  // -------------------------------------------------------------------------
+  it('Test 43: Section 6 — Stale vs Missing differentiation (PETR4 stale, VALE3 missing)', async () => {
+    const userId = 'dddddddd-3333-4111-8111-dddddddddddd';
+    const { token, portfolioId, accountId } = await setupPortfolio(userId);
+
+    const petr4 = await createAsset({
+      ticker: 'PETR4',
+      type: 'STOCK',
+      currency: 'BRL',
+      exchange: 'B3',
+    });
+    const vale3 = await createAsset({
+      ticker: 'VALE3',
+      type: 'STOCK',
+      currency: 'BRL',
+      exchange: 'B3',
+    });
+
+    // Buy PETR4 & VALE3
+    await request(app.getHttpServer())
+      .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        accountId,
+        assetId: petr4.id,
+        type: 'BUY',
+        quantity: '100',
+        unitPrice: '50.00',
+        totalAmount: '5000.00',
+        currency: 'BRL',
+        tradeDate: '2025-01-01',
+        provider: 'B3',
+        externalId: 'tx-43-petr4',
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/portfolios/${portfolioId}/transactions`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        accountId,
+        assetId: vale3.id,
+        type: 'BUY',
+        quantity: '50',
+        unitPrice: '60.00',
+        totalAmount: '3000.00',
+        currency: 'BRL',
+        tradeDate: '2025-01-01',
+        provider: 'B3',
+        externalId: 'tx-43-vale3',
+      })
+      .expect(201);
+
+    // Only PETR4 has stale quote; VALE3 has NO quote
+    await insertPersistedQuote({
+      assetId: petr4.id,
+      tradingDate: '2025-01-05',
+      currency: 'BRL',
+      close: '55.00',
+      providerSymbol: 'PETR4',
+    });
+
+    // Check Valuation
+    const valRes = await request(app.getHttpServer())
+      .get(`/api/v1/portfolios/${portfolioId}/valuation`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const val = valRes.body.data;
+    expect(val.summary.totalPositions).toBe(2);
+    expect(val.summary.valuedPositions).toBe(1); // PETR4
+    expect(val.summary.unvaluedPositions).toBe(1); // VALE3
+    expect(val.summary.stalePositions).toBe(1); // PETR4
+    expect(val.summary.unavailablePositions).toBe(1); // VALE3
+
+    // Check Allocation
+    const allocRes = await request(app.getHttpServer())
+      .get(`/api/v1/portfolios/${portfolioId}/allocation`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const alloc = allocRes.body.data;
+    expect(alloc.status).toBe('PARTIAL');
+    const brl = alloc.currencies.BRL;
+
+    // Denominator has PETR4 only
+    expect(brl.totalMarketValue.amount).toBe('5500');
+    expect(brl.byAsset).toHaveLength(1);
+    expect(brl.byAsset[0].ticker).toBe('PETR4');
+    expect(brl.byAsset[0].allocationPercent).toBe('100');
+
+    // unvaluedAssets has VALE3 only
+    expect(brl.unvaluedAssets).toHaveLength(1);
+    expect(brl.unvaluedAssets[0].ticker).toBe('VALE3');
+    expect(brl.unvaluedAssets[0].reason).toBe('QUOTE_UNAVAILABLE');
+  });
 });
