@@ -94,7 +94,8 @@ export function PortfolioValuationSection({
 }) {
   const { data, isLoading, isError, error, refetch } = useQuery<PortfolioValuationResponse>({
     queryKey: portfolioId ? valuationQueryKey(portfolioId) : ['portfolio-valuation', 'none'],
-    queryFn: () => apiClient.get<PortfolioValuationResponse>(`/api/v1/portfolios/${portfolioId}/valuation`),
+    queryFn: () =>
+      apiClient.get<PortfolioValuationResponse>(`/api/v1/portfolios/${portfolioId}/valuation`),
     enabled: !!portfolioId && !isHistorical,
     staleTime: 30_000,
   });
@@ -145,11 +146,19 @@ export function PortfolioValuationSection({
     return null;
   }
 
-  const isPartial = valuation.completeness !== 'COMPLETE' && valuation.summary.unvaluedPositions > 0;
+  const isPartial =
+    valuation.completeness !== 'COMPLETE' && valuation.summary.unvaluedPositions > 0;
   const isStale = valuation.summary.stalePositions > 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.base}px`, marginBottom: `${spacing.xl}px` }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: `${spacing.base}px`,
+        marginBottom: `${spacing.xl}px`,
+      }}
+    >
       {/* 1. Partial Valuation Warning Disclosure (§8) */}
       {isPartial && (
         <Card
@@ -167,7 +176,8 @@ export function PortfolioValuationSection({
                 Valuation Parcial ({valuation.summary.valuationCoveragePercent}% Cobertura)
               </strong>
               <p style={{ margin: '4px 0 0 0', fontSize: '0.875rem', color: colors.textPrimary }}>
-                Parte da carteira ainda não possui cotação disponível. Os totais de mercado consideram apenas os ativos com preço conhecido.
+                Parte da carteira ainda não possui cotação disponível. Os totais de mercado
+                consideram apenas os ativos com preço conhecido.
               </p>
             </div>
           </div>
@@ -191,7 +201,9 @@ export function PortfolioValuationSection({
                 Cotações Desatualizadas Detectadas
               </strong>
               <p style={{ margin: '4px 0 0 0', fontSize: '0.875rem', color: colors.textPrimary }}>
-                {valuation.summary.stalePositions} {valuation.summary.stalePositions === 1 ? 'posição utiliza' : 'posições utilizam'} cotação de pregões anteriores ao mais recente.
+                {valuation.summary.stalePositions}{' '}
+                {valuation.summary.stalePositions === 1 ? 'posição utiliza' : 'posições utilizam'}{' '}
+                cotação de pregões anteriores ao mais recente.
               </p>
             </div>
           </div>
@@ -204,7 +216,11 @@ export function PortfolioValuationSection({
         const unrealizedPct = bucket.unrealizedGainLossPercent;
         const isNegative = unrealized?.amount.startsWith('-');
         const isPositive = unrealized && !isNegative && unrealized.amount !== '0';
-        const unrealizedColor = isPositive ? colors.positive : isNegative ? colors.negative : colors.textPrimary;
+        const unrealizedColor = isPositive
+          ? colors.positive
+          : isNegative
+            ? colors.negative
+            : colors.textPrimary;
 
         return (
           <div key={bucket.currency} data-testid={`valuation-bucket-${bucket.currency}`}>
@@ -233,7 +249,9 @@ export function PortfolioValuationSection({
                   gap: '6px',
                 }}
               >
-                <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: colors.textSecondary }}>
+                <span
+                  style={{ fontSize: '0.8125rem', fontWeight: 500, color: colors.textSecondary }}
+                >
                   Custo em custódia
                 </span>
                 <span
@@ -263,8 +281,12 @@ export function PortfolioValuationSection({
                   gap: '6px',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: colors.textSecondary }}>
+                <div
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <span
+                    style={{ fontSize: '0.8125rem', fontWeight: 500, color: colors.textSecondary }}
+                  >
                     Valor de mercado
                   </span>
                   {valuation.completeness !== 'COMPLETE' && (
@@ -299,7 +321,9 @@ export function PortfolioValuationSection({
                   gap: '6px',
                 }}
               >
-                <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: colors.textSecondary }}>
+                <span
+                  style={{ fontSize: '0.8125rem', fontWeight: 500, color: colors.textSecondary }}
+                >
                   Resultado não realizado
                 </span>
                 {unrealized ? (
@@ -350,11 +374,19 @@ export function PortfolioValuationSection({
                   gap: '6px',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: colors.textSecondary }}>
+                <div
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <span
+                    style={{ fontSize: '0.8125rem', fontWeight: 500, color: colors.textSecondary }}
+                  >
                     Cobertura de cotação
                   </span>
-                  <Badge variant={valuation.summary.valuationCoveragePercent === '100' ? 'positive' : 'warning'}>
+                  <Badge
+                    variant={
+                      valuation.summary.valuationCoveragePercent === '100' ? 'positive' : 'warning'
+                    }
+                  >
                     {valuation.summary.valuationCoveragePercent}%
                   </Badge>
                 </div>
@@ -366,7 +398,8 @@ export function PortfolioValuationSection({
                     letterSpacing: '-0.3px',
                   }}
                 >
-                  {bucket.valuedPositionsCount} de {bucket.valuedPositionsCount + bucket.unvaluedPositionsCount}
+                  {bucket.valuedPositionsCount} de{' '}
+                  {bucket.valuedPositionsCount + bucket.unvaluedPositionsCount}
                 </span>
                 <span style={{ fontSize: '0.75rem', color: colors.textMuted }}>
                   {bucket.unvaluedPositionsCount > 0

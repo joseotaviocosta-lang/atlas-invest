@@ -187,7 +187,8 @@ export function PortfolioAllocationSection({
               <div style={{ borderBottom: `1px solid ${colors.border}`, paddingBottom: '8px' }}>
                 <h3 style={{ margin: 0, fontSize: '1.125rem', color: colors.textPrimary }}>
                   Alocação em {bucket.currency} (Total:{' '}
-                  {formatCurrency(bucket.totalMarketValue.amount, bucket.totalMarketValue.currency)})
+                  {formatCurrency(bucket.totalMarketValue.amount, bucket.totalMarketValue.currency)}
+                  )
                 </h3>
               </div>
             )}
@@ -240,7 +241,9 @@ export function PortfolioAllocationSection({
                             <span style={{ color: colors.textSecondary }}>
                               {formatCurrency(item.marketValue.amount, item.marketValue.currency)}
                             </span>
-                            <strong style={{ color: colors.accent, minWidth: '55px', textAlign: 'right' }}>
+                            <strong
+                              style={{ color: colors.accent, minWidth: '55px', textAlign: 'right' }}
+                            >
                               {item.allocationPercent}%
                             </strong>
                           </div>
@@ -306,7 +309,10 @@ export function PortfolioAllocationSection({
                   {bucket.byAsset.map((asset) => {
                     const pctNum = parseFloat(asset.allocationPercent) || 0;
                     return (
-                      <div key={asset.assetId} data-testid={`alloc-asset-${asset.ticker || asset.assetId}`}>
+                      <div
+                        key={asset.assetId}
+                        data-testid={`alloc-asset-${asset.ticker || asset.assetId}`}
+                      >
                         <div
                           style={{
                             display: 'flex',
@@ -333,7 +339,9 @@ export function PortfolioAllocationSection({
                             <span style={{ color: colors.textSecondary }}>
                               {formatCurrency(asset.marketValue.amount, asset.marketValue.currency)}
                             </span>
-                            <strong style={{ color: colors.accent, minWidth: '55px', textAlign: 'right' }}>
+                            <strong
+                              style={{ color: colors.accent, minWidth: '55px', textAlign: 'right' }}
+                            >
                               {asset.allocationPercent}%
                             </strong>
                           </div>
@@ -390,7 +398,8 @@ export function PortfolioAllocationSection({
                   Ativos sem cotação nesta moeda ({bucket.unvaluedAssets.length})
                 </h4>
                 <p style={{ margin: '0 0 12px 0', fontSize: '0.8125rem', color: colors.textMuted }}>
-                  Estes ativos estão sob custódia, mas não participam do cálculo percentual por falta de preço de mercado.
+                  Estes ativos estão sob custódia, mas não participam do cálculo percentual por
+                  falta de preço de mercado.
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {bucket.unvaluedAssets.map((u) => (

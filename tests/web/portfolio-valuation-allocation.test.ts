@@ -275,4 +275,157 @@ describe('Web: Portfolio Valuation, Allocation & Manual Quote Update (Phase 5A-I
     expect(res.data.updatedCount).toBe(1);
     expect(res.data.missingTickers).toEqual(['VALE3']);
   });
+
+  it('proves zero live provider network calls occur on reading valuation and allocation endpoints', async () => {
+    const providerNetworkSpy = vi.fn();
+
+    const mockFetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes('brapi.dev') || url.includes('yahoo') || url.includes('stooq')) {
+        providerNetworkSpy(url);
+        throw new Error('ILLEGAL_PROVIDER_CALL_ON_READ');
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ data: { portfolioId, positions: [], totalsByCurrency: {} } }),
+      };
+    });
+    global.fetch = mockFetch as unknown as typeof fetch;
+
+    await apiClient.get(`/api/v1/portfolios/${portfolioId}/valuation`);
+    await apiClient.get(`/api/v1/portfolios/${portfolioId}/allocation`);
+
+    expect(providerNetworkSpy).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserves cached market valuation on page load even if market provider subsequently fails', async () => {
+    const cachedValuation = {
+      data: {
+        portfolioId,
+        asOf: '2026-10-15',
+        completeness: 'COMPLETE',
+        positions: [
+          {
+            assetId: assetPetr4,
+            marketValue: { amount: '3750.00', currency: 'BRL' },
+            unrealizedGainLoss: { amount: '550.00', currency: 'BRL' },
+            unrealizedGainLossPercent: '17.1875',
+            status: 'VALUED',
+            quoteFreshness: 'STALE',
+            quote: {
+              price: '37.50',
+              currency: 'BRL',
+              asOf: '2026-10-15',
+              freshness: 'STALE',
+              status: 'AVAILABLE',
+            },
+          },
+        ],
+        totalsByCurrency: {
+          BRL: {
+            currency: 'BRL',
+            marketValue: { amount: '3750.00', currency: 'BRL' },
+            costBasis: { amount: '3200.00', currency: 'BRL' },
+            knownCost: { amount: '3200.00', currency: 'BRL' },
+            unrealizedGainLoss: { amount: '550.00', currency: 'BRL' },
+            unrealizedGainLossPercent: '17.1875',
+            valuedPositionsCount: 1,
+            unvaluedPositionsCount: 0,
+            stalePositionsCount: 1,
+          },
+        },
+        summary: {
+          totalPositions: 1,
+          valuedPositions: 1,
+          unvaluedPositions: 0,
+          stalePositions: 1,
+          valuationCoveragePercent: '100',
+          currencies: ['BRL'],
+        },
+      },
+    };
+
+    const mockFetch = vi
+      .fn()
+      .mockImplementation(async (url: string, opts?: { method?: string }) => {
+        if (opts?.method === 'POST' && url.includes('/market-data/update')) {
+          return {
+            ok: false,
+            status: 503,
+            json: async () => ({ statusCode: 503, message: 'Provider unavailable' }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => cachedValuation,
+        };
+      });
+    global.fetch = mockFetch as unknown as typeof fetch;
+
+    const res = await apiClient.get<typeof cachedValuation>(
+      `/api/v1/portfolios/${portfolioId}/valuation`,
+    );
+    expect(res.data.totalsByCurrency.BRL.marketValue.amount).toBe('3750.00');
+
+    await expect(
+      apiClient.post(`/api/v1/portfolios/${portfolioId}/market-data/update`, {}),
+    ).rejects.toThrow();
+
+    const reloadRes = await apiClient.get<typeof cachedValuation>(
+      `/api/v1/portfolios/${portfolioId}/valuation`,
+    );
+    expect(reloadRes.data.totalsByCurrency.BRL.marketValue.amount).toBe('3750.00');
+    expect(reloadRes.data.positions[0].quote?.price).toBe('37.50');
+  });
+
+  it('correctly handles partial update receipt when an asset requires authentication (e.g. HGLG11) while PETR4/VALE3 succeed', async () => {
+    const mockReceipt = {
+      data: {
+        portfolioId,
+        asOf: '2026-10-16',
+        requestedCount: 3,
+        updatedCount: 2,
+        failedCount: 0,
+        staleCount: 0,
+        missingTickers: ['HGLG11'],
+        revisionsCreated: 2,
+      },
+    };
+
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => mockReceipt,
+    });
+    global.fetch = mockFetch as unknown as typeof fetch;
+
+    const res = await apiClient.post<{ data: typeof mockReceipt.data }>(
+      `/api/v1/portfolios/${portfolioId}/market-data/update`,
+      {},
+    );
+
+    expect(res.data.updatedCount).toBe(2);
+    expect(res.data.missingTickers).toEqual(['HGLG11']);
+    const feedbackMessage = `Cotações atualizadas: ${res.data.updatedCount} com sucesso (${res.data.missingTickers.length} indisponíveis).`;
+    expect(feedbackMessage).toContain('2 com sucesso');
+    expect(feedbackMessage).toContain('1 indisponíveis');
+  });
+
+  it('maintains strict invariants for missing quote != R$ 0,00 and stale quote remaining valued', () => {
+    const missingBadge = PositionValuationBadge({ status: 'QUOTE_UNAVAILABLE', freshness: null });
+    expect(missingBadge?.props.children).toBe('Sem cotação');
+    expect(missingBadge?.props.children).not.toBe('R$ 0,00');
+
+    const staleBadge = PositionValuationBadge({ status: 'QUOTE_STALE', freshness: 'STALE' });
+    expect(staleBadge?.props.children).toBe('Desatualizada');
+    expect(staleBadge?.props.children).not.toBe('Sem cotação');
+
+    const incompleteBadge = PositionValuationBadge({
+      status: 'COST_INCOMPLETE',
+      freshness: 'FRESH',
+    });
+    expect(incompleteBadge?.props.children).toBe('Custo incompleto');
+  });
 });

@@ -293,3 +293,51 @@ The owner can execute the following steps to perform visual validation in the lo
 6. **Verify Historical Snapshot Safety:**
    - Select a past date in the date selector (`asOf`).
    - Confirm that the "Atualizar cotações" button and valuation cards are cleanly hidden in historical mode, keeping historical replay semantics pure.
+
+---
+
+## 15. Automated Verification & Regression Closure (Phase 5A-I3-R1)
+
+All automated evidence gates for Phase 5A-I3 were rigorously verified and closed prior to human validation:
+
+### 1. Monorepo Quality Gates
+
+- **Format (`pnpm format:check`)**: PASS (100% matched files use Prettier style).
+- **Typecheck (`pnpm typecheck`)**: PASS (21/21 packages clean, strict mode enabled).
+- **Lint (`pnpm lint`)**: PASS (0 errors, 0 warnings across monorepo).
+- **Build (`pnpm build`)**: PASS (Production build of `@atlas/web` with 28 routes + `@atlas/api` via `tsc -p tsconfig.build.json`).
+
+### 2. Fiscal Isolation & Canonical Tax Engine Regression
+
+- **Full Tax Engine Suite (`pnpm test:tax-engine`)**: PASS (**77 files, 810 tests, 0 failures, 72.59s**).
+- **Bens e Direitos & Fiscal Isolation (`phase-5a-fiscal-isolation.test.ts`)**: PASS (8 tests confirming market data addition does not alter acquisition costs, DARF calculations, or loss carryover).
+- **Core Production Rules (`equity-production-tax.test.ts`)**: PASS (16 tests).
+- **Monthly Net Tax Core (`equity-monthly-tax-core.test.ts`)**: PASS (14 tests).
+- **Day Trade Tax (`equity-day-trade.test.ts`)**: PASS (8 tests).
+- **Minimum DARF & Aggregations (`minimum-darf.test.ts`)**: PASS (24 tests).
+
+### 3. Core Engine & API Regression
+
+- **Portfolio Engine (`pnpm test:portfolio-engine`)**: PASS (54 files, 259 tests, 17.52s).
+- **API Test Suite (`pnpm test:api`)**: PASS (47 files, 340 tests, 236.99s).
+- **Market Data Engine (`pnpm test:market-data`)**: PASS (9 files, 64 tests, 6.29s).
+- **Valuation Engine (`pnpm test:valuation`)**: PASS (1 file, 20 tests).
+- **Performance Engine (`pnpm test:performance`)**: PASS (1 file, 20 tests).
+
+### 4. Web UI Valuation & Allocation Automated Suite
+
+- **Web Test Suite (`pnpm test:web`)**: PASS (**42 files, 260 tests, 14.62s**).
+- **Zero Live Provider Calls on Read**: Automated tests confirm GET `/api/v1/portfolios/:id/valuation` and GET `/api/v1/portfolios/:id/allocation` perform zero external provider network requests.
+- **Provider Resilience**: Automated test verifies cached valuation data is safely reloaded and presented even when the market data provider returns 503 Service Unavailable.
+- **No-Token Partial Update**: Automated test verifies that if certain assets require authentication (e.g. HGLG11) while others succeed (e.g. PETR4, VALE3), the UI gracefully renders partial valuation, badges, and warning disclosures without crash.
+- **Invariant Guarantees**: Confirmed missing quotes render "Sem cotação" (never synthetic R$ 0,00) and stale quotes remain valued with "Desatualizada" (never "Sem cotação").
+
+### 5. Owner Development Database Audit (Port 5434)
+
+- **Pre-Test Baseline**: Users: 5, Portfolios: 4, Accounts: 5, Transactions: 20, MarketQuotes: 0, MarketQuoteRevisions: 0.
+- **Post-Test Audit**: Users: 5, Portfolios: 4, Accounts: 5, Transactions: 20, MarketQuotes: 0, MarketQuoteRevisions: 0.
+- **Parity**: Exactly 0 database mutations occurred on the owner development instance during test executions.
+
+### 6. Phase Status
+
+- **Status**: `READY_FOR_HUMAN_VALIDATION`.
