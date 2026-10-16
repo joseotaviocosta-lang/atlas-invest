@@ -16,7 +16,14 @@ export const MARKET_DATA_VERSION = '0.1.0';
 // Market data sources
 // ---------------------------------------------------------------------------
 
-export const MARKET_DATA_SOURCES = ['STOOQ', 'IN_MEMORY', 'MANUAL'] as const;
+export const MARKET_DATA_SOURCES = [
+  'BRAPI',
+  'YAHOO',
+  'STOOQ',
+  'IN_MEMORY',
+  'MANUAL',
+  'B3_DIRECT',
+] as const;
 export type MarketDataSource = (typeof MARKET_DATA_SOURCES)[number];
 
 export function assertValidMarketDataSource(value: string): MarketDataSource {
@@ -51,6 +58,7 @@ export const MARKET_DATA_ERROR_CODES = [
   'MARKET_DATA.INVALID_RESPONSE',
   'MARKET_DATA.TIMEOUT',
   'MARKET_DATA.AUTHENTICATION_FAILED',
+  'MARKET_DATA.AUTHENTICATION_REQUIRED',
   'MARKET_DATA.UNSUPPORTED_ASSET',
   'MARKET_DATA.INVALID_PRICE',
   'MARKET_DATA.INVALID_TIMESTAMP',
@@ -482,7 +490,7 @@ export function resolveMarketDataSymbol(
     );
   }
   if ((B3_EXCHANGES as readonly string[]).includes(exchange)) {
-    const suffix = provider === 'STOOQ' ? '.SA' : '';
+    const suffix = provider === 'STOOQ' || provider === 'YAHOO' ? '.SA' : '';
     return { provider, providerSymbol: `${ticker}${suffix}`, assetId: ref.assetId };
   }
   if ((US_EXCHANGES as readonly string[]).includes(exchange)) {
@@ -1590,5 +1598,429 @@ export class InMemoryHistoricalPriceCache {
     this.cache.clear();
     this.hits = 0;
     this.misses = 0;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Canonical Trading Date & Zero-Float Decimal Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalizes any timestamp or date into canonical civil LocalDate (YYYY-MM-DD)
+ * evaluated strictly under America/Sao_Paulo (UTC-3).
+ *
+ * Prevents UTC timestamps near or after midnight (e.g. 21:30 BRT = 00:30 UTC next day)
+ * from rolling over into the next trading day.
+ */
+export function normalizeTradingDate(input: string | number | Date): LocalDate {
+  if (typeof input === 'string') {
+    const trimmed = input.trim();
+    // Direct YYYY-MM-DD format
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      return LocalDate.from(trimmed);
+    }
+  }
+
+  let ms: number;
+  if (typeof input === 'number') {
+    // If seconds timestamp (10 digits Unix), convert to ms
+    ms = input < 1e11 ? input * 1000 : input;
+  } else if (input instanceof Date) {
+    ms = input.getTime();
+  } else {
+    ms = Date.parse(input);
+  }
+
+  if (!Number.isFinite(ms)) {
+    throw new MarketDataError(
+      `Invalid timestamp for trading date: '${String(input)}'`,
+      'MARKET_DATA.INVALID_TIMESTAMP',
+    );
+  }
+
+  // Format using Intl.DateTimeFormat in America/Sao_Paulo
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = formatter.format(new Date(ms)); // en-CA gives YYYY-MM-DD
+  return LocalDate.from(parts);
+}
+
+/**
+ * Normalizes raw numbers or numeric strings from providers to exact decimal strings
+ * without IEEE 754 precision distortion.
+ */
+export function toCanonicalDecimalString(value: number | string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '' || trimmed === 'null' || trimmed === 'undefined') return null;
+    if (!DECIMAL_STRING_REGEX.test(trimmed)) {
+      throw new MarketDataError(
+        `Invalid decimal price string: '${value}'`,
+        'MARKET_DATA.INVALID_PRICE',
+      );
+    }
+    return trimmed;
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      throw new MarketDataError(
+        `Invalid non-finite number: '${value}'`,
+        'MARKET_DATA.INVALID_PRICE',
+      );
+    }
+    // Strip floating point noise to 6 decimal places, removing redundant trailing zeros
+    const fixed = value.toFixed(6);
+    const trimmed = fixed.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
+    return trimmed;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Brapi Provider Adapters (Phase 5A Canonical Primary)
+// ---------------------------------------------------------------------------
+
+export interface BrapiAdapterOptions {
+  token?: string;
+  baseUrl?: string;
+  timeoutMs?: number;
+  fetchFn?: typeof fetch;
+}
+
+export class BrapiProviderAdapter implements MarketDataProvider {
+  readonly provider: MarketDataSource = 'BRAPI';
+  private readonly token?: string;
+  private readonly baseUrl: string;
+  private readonly timeoutMs: number;
+  private readonly fetchFn: typeof fetch;
+
+  constructor(options: BrapiAdapterOptions = {}) {
+    this.token = options.token ?? process.env.MARKET_DATA_API_TOKEN ?? process.env.BRAPI_API_KEY;
+    this.baseUrl = (
+      options.baseUrl ??
+      process.env.BRAPI_BASE_URL ??
+      'https://brapi.dev/api'
+    ).replace(/\/+$/, '');
+    this.timeoutMs = options.timeoutMs ?? MARKET_DATA_DEFAULT_TIMEOUT_MS;
+    this.fetchFn = options.fetchFn ?? globalThis.fetch;
+  }
+
+  async getQuote(ref: MarketDataAssetRef): Promise<MarketQuote> {
+    const batch = await this.getQuotes([ref]);
+    const quote = batch.quotes[0];
+    if (quote) {
+      return quote;
+    }
+    const err = batch.unavailable[0];
+    if (err) {
+      throw new MarketDataError(
+        `Failed to fetch quote for asset '${ref.ticker}': ${err.code}`,
+        err.code,
+        { retryable: err.retryable, assetId: ref.assetId },
+      );
+    }
+    throw new MarketDataError(
+      `Quote not found for asset '${ref.ticker}'`,
+      'MARKET_DATA.SYMBOL_NOT_FOUND',
+      { retryable: false, assetId: ref.assetId },
+    );
+  }
+
+  async getQuotes(refs: readonly MarketDataAssetRef[]): Promise<BatchQuoteResult> {
+    if (refs.length === 0) return createEmptyBatchResult();
+    const result: BatchQuoteResult = createEmptyBatchResult();
+
+    for (const ref of refs) {
+      try {
+        const symbolObj = resolveMarketDataSymbol(ref, 'BRAPI');
+        const symbol = symbolObj.providerSymbol;
+
+        const url = new URL(`${this.baseUrl}/quote/${encodeURIComponent(symbol)}`);
+        if (this.token) {
+          url.searchParams.set('token', this.token);
+        }
+
+        const headers: Record<string, string> = {
+          'User-Agent': 'Atlas-Invest/0.1.0',
+          Accept: 'application/json',
+        };
+        if (this.token) {
+          headers['Authorization'] = `Bearer ${this.token}`;
+        }
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
+        let res: Response;
+        try {
+          res = await this.fetchFn(url.toString(), {
+            method: 'GET',
+            headers,
+            signal: controller.signal,
+          });
+        } catch (fetchErr: unknown) {
+          clearTimeout(timeout);
+          const isTimeout = fetchErr instanceof Error && fetchErr.name === 'AbortError';
+          result.unavailable.push({
+            assetId: ref.assetId,
+            code: isTimeout ? 'MARKET_DATA.TIMEOUT' : 'MARKET_DATA.PROVIDER_UNAVAILABLE',
+            retryable: true,
+          });
+          continue;
+        }
+        clearTimeout(timeout);
+
+        if (res.status === 401 || res.status === 403) {
+          const body = (await res.json().catch(() => ({}))) as { message?: string; code?: string };
+          const isMissingToken = body.code === 'MISSING_TOKEN' || !this.token;
+          result.unavailable.push({
+            assetId: ref.assetId,
+            code: isMissingToken
+              ? 'MARKET_DATA.AUTHENTICATION_REQUIRED'
+              : 'MARKET_DATA.AUTHENTICATION_FAILED',
+            retryable: false,
+          });
+          continue;
+        }
+
+        if (res.status === 404) {
+          result.unavailable.push({
+            assetId: ref.assetId,
+            code: 'MARKET_DATA.SYMBOL_NOT_FOUND',
+            retryable: false,
+          });
+          continue;
+        }
+
+        if (res.status === 429) {
+          result.unavailable.push({
+            assetId: ref.assetId,
+            code: 'MARKET_DATA.RATE_LIMITED',
+            retryable: true,
+          });
+          continue;
+        }
+
+        if (!res.ok) {
+          result.unavailable.push({
+            assetId: ref.assetId,
+            code: 'MARKET_DATA.PROVIDER_UNAVAILABLE',
+            retryable: res.status >= 500,
+          });
+          continue;
+        }
+
+        const data = (await res.json()) as {
+          error?: boolean;
+          results?: Array<{
+            symbol?: string;
+            currency?: string;
+            regularMarketPrice?: number;
+            regularMarketOpen?: number;
+            regularMarketDayHigh?: number;
+            regularMarketDayLow?: number;
+            regularMarketVolume?: number;
+            regularMarketTime?: string;
+          }>;
+        };
+
+        if (data.error || !data.results || data.results.length === 0) {
+          result.unavailable.push({
+            assetId: ref.assetId,
+            code: 'MARKET_DATA.INVALID_RESPONSE',
+            retryable: false,
+          });
+          continue;
+        }
+
+        const quoteItem = data.results[0];
+        if (!quoteItem) {
+          result.unavailable.push({
+            assetId: ref.assetId,
+            code: 'MARKET_DATA.INVALID_RESPONSE',
+            retryable: false,
+          });
+          continue;
+        }
+
+        const priceStr = toCanonicalDecimalString(quoteItem.regularMarketPrice);
+        if (!priceStr || priceStr === '0' || priceStr.startsWith('-')) {
+          result.unavailable.push({
+            assetId: ref.assetId,
+            code: 'MARKET_DATA.INVALID_PRICE',
+            retryable: false,
+          });
+          continue;
+        }
+
+        const currency = quoteItem.currency ?? ref.currency ?? 'BRL';
+        const marketTime = quoteItem.regularMarketTime;
+        const nowIso = new Date().toISOString();
+        const asOf = marketTime ? new Date(marketTime).toISOString() : nowIso;
+
+        const quote = createMarketQuote({
+          assetId: ref.assetId,
+          price: priceStr,
+          currency,
+          asOf,
+          receivedAt: nowIso,
+          marketTime: marketTime ? new Date(marketTime).toISOString() : undefined,
+          source: 'BRAPI',
+          status: 'EOD',
+          providerSymbol: symbol,
+        });
+
+        result.quotes.push(quote);
+      } catch (err: unknown) {
+        const code = err instanceof MarketDataError ? err.code : 'MARKET_DATA.INVALID_RESPONSE';
+        result.unavailable.push({
+          assetId: ref.assetId,
+          code,
+          retryable: false,
+        });
+      }
+    }
+
+    return result;
+  }
+}
+
+export class BrapiHistoricalMarketDataProvider implements HistoricalMarketDataProvider {
+  readonly provider: MarketDataSource = 'BRAPI';
+  private readonly token?: string;
+  private readonly baseUrl: string;
+  private readonly timeoutMs: number;
+  private readonly fetchFn: typeof fetch;
+
+  constructor(options: BrapiAdapterOptions = {}) {
+    this.token = options.token ?? process.env.MARKET_DATA_API_TOKEN ?? process.env.BRAPI_API_KEY;
+    this.baseUrl = (
+      options.baseUrl ??
+      process.env.BRAPI_BASE_URL ??
+      'https://brapi.dev/api'
+    ).replace(/\/+$/, '');
+    this.timeoutMs = options.timeoutMs ?? MARKET_DATA_DEFAULT_TIMEOUT_MS;
+    this.fetchFn = options.fetchFn ?? globalThis.fetch;
+  }
+
+  async getDailyPrice(
+    assetRef: MarketDataAssetRef,
+    date: LocalDate,
+  ): Promise<HistoricalMarketPrice> {
+    const prices = await this.getDailyPrices(assetRef, date, date);
+    const found = prices.find((p) => p.date.equals(date));
+    if (found) return found;
+
+    return {
+      assetId: assetRef.assetId,
+      date,
+      close: Money.from('0.01', assetRef.currency),
+      currency: assetRef.currency,
+      source: 'BRAPI',
+      status: 'UNAVAILABLE',
+    };
+  }
+
+  async getDailyPrices(
+    assetRef: MarketDataAssetRef,
+    from: LocalDate,
+    to: LocalDate,
+  ): Promise<HistoricalMarketPrice[]> {
+    const symbolObj = resolveMarketDataSymbol(assetRef, 'BRAPI');
+    const symbol = symbolObj.providerSymbol;
+
+    // Calculate approximate range needed (e.g. 5d, 1mo, 3mo, 1y, 2y, 5y, max)
+    const days = daysBetweenLocalDates(from, to) + 1;
+    let range = '5d';
+    if (days <= 5) range = '5d';
+    else if (days <= 30) range = '1mo';
+    else if (days <= 90) range = '3mo';
+    else if (days <= 180) range = '6mo';
+    else if (days <= 365) range = '1y';
+    else if (days <= 730) range = '2y';
+    else if (days <= 1825) range = '5y';
+    else range = 'max';
+
+    const url = new URL(`${this.baseUrl}/quote/${encodeURIComponent(symbol)}`);
+    url.searchParams.set('range', range);
+    url.searchParams.set('interval', '1d');
+    if (this.token) {
+      url.searchParams.set('token', this.token);
+    }
+
+    const headers: Record<string, string> = {
+      'User-Agent': 'Atlas-Invest/0.1.0',
+      Accept: 'application/json',
+    };
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    let res: Response;
+    try {
+      res = await this.fetchFn(url.toString(), {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+    } catch {
+      clearTimeout(timeout);
+      return [];
+    }
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      return [];
+    }
+
+    const data = (await res.json()) as {
+      results?: Array<{
+        currency?: string;
+        historicalDataPrice?: Array<{
+          date?: number;
+          open?: number;
+          high?: number;
+          low?: number;
+          close?: number;
+          adjustedClose?: number;
+          volume?: number;
+        }>;
+      }>;
+    };
+
+    if (!data.results || data.results.length === 0) return [];
+    const item = data.results[0];
+    if (!item) return [];
+    const currency = (item.currency ?? assetRef.currency ?? 'BRL') as Currency;
+    const history = item.historicalDataPrice ?? [];
+
+    const prices: HistoricalMarketPrice[] = [];
+    for (const row of history) {
+      if (!row.date || row.close === undefined || row.close === null) continue;
+      const tradeDate = normalizeTradingDate(row.date);
+      if (tradeDate.compare(from) >= 0 && tradeDate.compare(to) <= 0) {
+        const closeStr = toCanonicalDecimalString(row.close);
+        if (!closeStr || closeStr === '0' || closeStr.startsWith('-')) continue;
+
+        prices.push({
+          assetId: assetRef.assetId,
+          date: tradeDate,
+          close: Money.from(closeStr, currency),
+          currency,
+          source: 'BRAPI',
+          status: 'EXACT',
+        });
+      }
+    }
+
+    return prices;
   }
 }
