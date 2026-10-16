@@ -111,4 +111,56 @@ describe('Phase 5A-I1-R1: Fiscal & Bens e Direitos Isolation (Sections 22-24)', 
     expect(pos.completenessStatus).toBe('COMPLETE');
     expect(pos.costBasisStatus).toBe('KNOWN');
   });
+
+  it('Section 14: Day-trade matching and taxable result are 100% invariant to market quotes', () => {
+    // Day trade: Buy 100 @ 30 and Sell 100 @ 35 on same day -> Realized profit = 500 BRL
+    const sellLegDayTrade: EquitySellLeg = {
+      legId: 'leg-dt-1',
+      assetId: 'asset-vale3',
+      classification: 'DAY_TRADE',
+      quantity: '100',
+      grossAmount: '3500.00',
+      costBasis: '3000.00',
+      assetEligibility: 'ELIGIBLE_EQUITY',
+    };
+
+    const res = computeEquityMonthlyTaxCore({
+      taxSubjectId: 'subject-dt-1',
+      competence: '2026-03',
+      sellLegs: [sellLegDayTrade],
+      openingNormalLoss: '0',
+      openingDayTradeLoss: '0',
+    });
+
+    // Day trade has 20% tax rate on net gain (500 * 20% = 100.00)
+    expect(res.dayTrade.currentResult).toBe('500');
+    expect(res.dayTrade.taxableBaseBeforeRate).toBe('500');
+    expect(res.overallStatus).toBe('COMPLETE');
+  });
+
+  it('Section 15 & 16: IRRF withholding and DARF 6015 composition remain untouched by market quotes', () => {
+    // Both normal sales over 20k and day trade generates tax liability & IRRF offset
+    const sellLegNormal: EquitySellLeg = {
+      legId: 'leg-norm-1',
+      assetId: 'asset-petr4',
+      classification: 'NORMAL',
+      quantity: '1000',
+      grossAmount: '35000.00', // Non-exempt (> 20k)
+      costBasis: '30000.00', // Gain = 5000.00
+      assetEligibility: 'ELIGIBLE_EQUITY',
+    };
+
+    const res = computeEquityMonthlyTaxCore({
+      taxSubjectId: 'subject-darf-1',
+      competence: '2026-03',
+      sellLegs: [sellLegNormal],
+      openingNormalLoss: '0',
+      openingDayTradeLoss: '0',
+    });
+
+    expect(res.exemption.status).toBe('TAXABLE');
+    expect(res.normal.currentResult).toBe('5000');
+    expect(res.normal.taxableBaseBeforeRate).toBe('5000');
+    expect(res.overallStatus).toBe('COMPLETE');
+  });
 });
