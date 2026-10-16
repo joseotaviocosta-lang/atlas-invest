@@ -153,6 +153,7 @@ model Asset {
   marketIntelligenceLinks MarketIntelligenceAssetLink[]
   fiiTaxEligibilityFacts  FiiTaxEligibilityFactRecord[]
   annualOpeningPositions  AnnualOpeningPositionInputRecord[]
+  marketQuotes            MarketQuoteRecord[]
 
   @@unique([ticker, exchange])
   @@index([ticker])
@@ -876,4 +877,64 @@ model TaxCompliancePeriodCloseRecord {
   @@unique([taxSubjectId, scope, period, revision], name: "tax_period_close_revision_identity", map: "tax_period_close_rev_uniq")
   @@index([taxSubjectId, scope, period], map: "tax_period_close_lookup_idx")
   @@map("tax_compliance_period_close_records")
+}
+
+/// Phase 5A — Canonical End-of-Day (EOD) Market Quotes.
+/// Persistent daily market pricing for custody valuation and performance.
+/// Identity is strictly (asset_id, trading_date, provider). Zero floats.
+model MarketQuoteRecord {
+  id             String    @id @default(uuid()) @db.Uuid
+  assetId        String    @map("asset_id") @db.Uuid
+  tradingDate    DateTime  @map("trading_date") @db.Date
+  currency       String    @db.VarChar(3)
+  open           Decimal?  @db.Decimal(38, 18)
+  high           Decimal?  @db.Decimal(38, 18)
+  low            Decimal?  @db.Decimal(38, 18)
+  close          Decimal   @db.Decimal(38, 18)
+  adjustedClose  Decimal?  @map("adjusted_close") @db.Decimal(38, 18)
+  volume         Decimal?  @db.Decimal(38, 18)
+  provider       String    @db.VarChar(32)
+  providerSymbol String    @map("provider_symbol") @db.VarChar(64)
+  firstFetchedAt DateTime  @default(now()) @map("first_fetched_at") @db.Timestamptz(6)
+  lastFetchedAt  DateTime  @default(now()) @map("last_fetched_at") @db.Timestamptz(6)
+  fetchCount     Int       @default(1) @map("fetch_count")
+  revisedAt      DateTime? @map("revised_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  asset     Asset                       @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  revisions MarketQuoteRevisionRecord[]
+
+  @@unique([assetId, tradingDate, provider], map: "market_quotes_asset_date_provider_uniq")
+  @@index([assetId, tradingDate], map: "market_quotes_asset_date_idx")
+  @@index([tradingDate], map: "market_quotes_date_idx")
+  @@index([provider], map: "market_quotes_provider_idx")
+  @@map("market_quotes")
+}
+
+/// Phase 5A — Market Quote Revision Audit Trail.
+/// Immutable audit log capturing any upstream republishing or corrections.
+model MarketQuoteRevisionRecord {
+  id                String   @id @default(uuid()) @db.Uuid
+  marketQuoteId     String   @map("market_quote_id") @db.Uuid
+  changedAt         DateTime @default(now()) @map("changed_at") @db.Timestamptz(6)
+  priorOpen         Decimal? @map("prior_open") @db.Decimal(38, 18)
+  priorHigh         Decimal? @map("prior_high") @db.Decimal(38, 18)
+  priorLow          Decimal? @map("prior_low") @db.Decimal(38, 18)
+  priorClose        Decimal  @map("prior_close") @db.Decimal(38, 18)
+  priorAdjustedClose Decimal? @map("prior_adjusted_close") @db.Decimal(38, 18)
+  priorVolume       Decimal? @map("prior_volume") @db.Decimal(38, 18)
+  newOpen           Decimal? @map("new_open") @db.Decimal(38, 18)
+  newHigh           Decimal? @map("new_high") @db.Decimal(38, 18)
+  newLow            Decimal? @map("new_low") @db.Decimal(38, 18)
+  newClose          Decimal  @map("new_close") @db.Decimal(38, 18)
+  newAdjustedClose  Decimal? @map("new_adjusted_close") @db.Decimal(38, 18)
+  newVolume         Decimal? @map("new_volume") @db.Decimal(38, 18)
+  reason            String?  @db.VarChar(255)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  marketQuote MarketQuoteRecord @relation(fields: [marketQuoteId], references: [id], onDelete: Cascade)
+
+  @@index([marketQuoteId], map: "market_quote_revisions_quote_idx")
+  @@map("market_quote_revisions")
 }

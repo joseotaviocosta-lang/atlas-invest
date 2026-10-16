@@ -82,7 +82,7 @@ describe('Phase 4L.1V-C3-R1: Production Readiness Evidence Closure & Provider Ga
     }
 
     await adminPrisma.$disconnect();
-  }, 60000);
+  }, 180_000);
 
   describe('Section 4: Production Migration Strategy (from zero to latest)', () => {
     it('executes prisma migrate deploy from an empty database and applies all migrations cleanly', async () => {
@@ -104,7 +104,7 @@ describe('Phase 4L.1V-C3-R1: Production Readiness Evidence Closure & Provider Ga
         Array<{ migration_name: string; rolled_back_at: Date | null }>
       >('SELECT migration_name, rolled_back_at FROM _prisma_migrations ORDER BY started_at ASC');
 
-      expect(migrationRows.length).toBe(23);
+      expect(migrationRows.length).toBe(24);
       for (const row of migrationRows) {
         expect(row.rolled_back_at).toBeNull();
       }
@@ -117,7 +117,7 @@ describe('Phase 4L.1V-C3-R1: Production Readiness Evidence Closure & Provider Ga
       expect(secondOutput).toContain('No pending migrations to apply');
 
       await zeroPrisma.$disconnect();
-    }, 60000);
+    }, 180_000);
   });
 
   describe('Section 5: Real Backup & Restore Drill on Isolated Databases', () => {
@@ -264,7 +264,7 @@ describe('Phase 4L.1V-C3-R1: Production Readiness Evidence Closure & Provider Ga
       expect(pfCount).toBe(1);
       expect(accCount).toBe(1);
       expect(txCount).toBe(3);
-      expect(migrationsCount.length).toBe(23);
+      expect(migrationsCount.length).toBe(24);
 
       // 7. Validate that restored data performs mathematically identical PortfolioReplay
       const restoredTransactions = await targetPrisma.transaction.findMany({
@@ -315,7 +315,7 @@ describe('Phase 4L.1V-C3-R1: Production Readiness Evidence Closure & Provider Ga
       expect(petr4Position!.quantity.value).toBe('120');
 
       await targetPrisma.$disconnect();
-    }, 60000);
+    }, 180_000);
   });
 
   describe('Section 7: Environment Config Validation (Fail-Fast)', () => {

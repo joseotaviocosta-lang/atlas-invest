@@ -1445,3 +1445,90 @@ export interface ITaxPeriodCloseRepository {
     input: TaxPeriodReopenInput,
   ): Promise<{ outcome: TaxPeriodCloseWriteOutcome; record: TaxPeriodCloseRow }>;
 }
+
+// ---------------------------------------------------------------------------
+// Market Quote Repository (Phase 5A)
+// ---------------------------------------------------------------------------
+
+export interface MarketQuoteRecordRow {
+  id: string;
+  assetId: string;
+  tradingDate: LocalDate;
+  currency: string;
+  open: string | null;
+  high: string | null;
+  low: string | null;
+  close: string;
+  adjustedClose: string | null;
+  volume: string | null;
+  provider: string;
+  providerSymbol: string;
+  firstFetchedAt: Date;
+  lastFetchedAt: Date;
+  fetchCount: number;
+  revisedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface MarketQuoteRevisionRecordRow {
+  id: string;
+  marketQuoteId: string;
+  changedAt: Date;
+  priorOpen: string | null;
+  priorHigh: string | null;
+  priorLow: string | null;
+  priorClose: string;
+  priorAdjustedClose: string | null;
+  priorVolume: string | null;
+  newOpen: string | null;
+  newHigh: string | null;
+  newLow: string | null;
+  newClose: string;
+  newAdjustedClose: string | null;
+  newVolume: string | null;
+  reason: string | null;
+  createdAt: Date;
+}
+
+export interface MarketQuoteUpsertInput {
+  assetId: string;
+  tradingDate: LocalDate;
+  currency: string;
+  open?: string | null;
+  high?: string | null;
+  low?: string | null;
+  close: string;
+  adjustedClose?: string | null;
+  volume?: string | null;
+  provider: string;
+  providerSymbol: string;
+  reason?: string | null;
+}
+
+export type MarketQuoteUpsertOutcome = 'INSERTED' | 'UNCHANGED' | 'REVISED';
+
+export interface IMarketQuoteRepository {
+  findLatest(assetId: string, provider?: string): Promise<MarketQuoteRecordRow | null>;
+  findLatestByAssets(
+    assetIds: readonly string[],
+    provider?: string,
+  ): Promise<Map<string, MarketQuoteRecordRow>>;
+  findByAssetDate(
+    assetId: string,
+    tradingDate: LocalDate,
+    provider?: string,
+  ): Promise<MarketQuoteRecordRow | null>;
+  findRange(
+    assetId: string,
+    from: LocalDate,
+    to: LocalDate,
+    provider?: string,
+  ): Promise<MarketQuoteRecordRow[]>;
+  upsertQuote(input: MarketQuoteUpsertInput): Promise<{
+    outcome: MarketQuoteUpsertOutcome;
+    quote: MarketQuoteRecordRow;
+    revision?: MarketQuoteRevisionRecordRow;
+  }>;
+  listRevisions(marketQuoteId: string): Promise<MarketQuoteRevisionRecordRow[]>;
+}

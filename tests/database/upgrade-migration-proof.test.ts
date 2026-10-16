@@ -44,7 +44,7 @@ describe('Phase 4J.2A — Database Upgrade Path & Migration Reproducibility Proo
       .map((entry) => entry.name)
       .sort();
 
-    expect(allMigrationDirs.length).toBe(23);
+    expect(allMigrationDirs.length).toBe(24);
 
     // Create _prisma_migrations table
     await upgradePrisma.$executeRawUnsafe(`
@@ -195,7 +195,7 @@ describe('Phase 4J.2A — Database Upgrade Path & Migration Reproducibility Proo
     const applied = await upgradePrisma.$queryRawUnsafe<Array<{ count: bigint }>>(
       `SELECT count(*) as count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL`,
     );
-    expect(Number(applied[0]!.count)).toBe(23);
+    expect(Number(applied[0]!.count)).toBe(24);
 
     // Verify data preservation
     const user = await upgradePrisma.user.findUnique({ where: { id: testUserId } });
