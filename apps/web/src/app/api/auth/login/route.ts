@@ -40,6 +40,15 @@ export async function POST(req: NextRequest) {
     const resData = await apiRes.json();
 
     if (!apiRes.ok) {
+      if (apiRes.status >= 500) {
+        return NextResponse.json(
+          {
+            code: 'COMMON.INTERNAL_ERROR',
+            message: 'Não foi possível concluir a autenticação. Tente novamente mais tarde.',
+          },
+          { status: apiRes.status },
+        );
+      }
       return NextResponse.json(resData, { status: apiRes.status });
     }
 
@@ -65,10 +74,11 @@ export async function POST(req: NextRequest) {
 
     return response;
   } catch (error) {
+    console.error('[Web BFF /api/auth/login] Internal error:', error);
     return NextResponse.json(
       {
         code: 'COMMON.INTERNAL_ERROR',
-        message: (error as Error).message || 'Failed to authenticate',
+        message: 'Não foi possível concluir a autenticação. Tente novamente mais tarde.',
       },
       { status: 500 },
     );

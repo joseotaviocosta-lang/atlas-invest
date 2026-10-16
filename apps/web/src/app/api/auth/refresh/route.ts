@@ -55,7 +55,16 @@ export async function POST(req: NextRequest) {
 
     if (!apiRes.ok) {
       // Rotation failed or token revoked: purge session cookies immediately
-      const response = NextResponse.json(resData, { status: apiRes.status });
+      const response =
+        apiRes.status >= 500
+          ? NextResponse.json(
+              {
+                code: 'COMMON.INTERNAL_ERROR',
+                message: 'Não foi possível renovar a sessão. Tente novamente.',
+              },
+              { status: apiRes.status },
+            )
+          : NextResponse.json(resData, { status: apiRes.status });
       response.cookies.set(REFRESH_COOKIE_NAME, '', getClearedCookieOptions());
       response.cookies.set(LOGGED_IN_COOKIE_NAME, '', getClearedCookieOptions());
       return response;
@@ -85,10 +94,11 @@ export async function POST(req: NextRequest) {
 
     return response;
   } catch (error) {
+    console.error('[Web BFF /api/auth/refresh] Internal error:', error);
     const response = NextResponse.json(
       {
         code: 'COMMON.INTERNAL_ERROR',
-        message: (error as Error).message || 'Failed to refresh session',
+        message: 'Não foi possível renovar a sessão. Tente novamente.',
       },
       { status: 500 },
     );

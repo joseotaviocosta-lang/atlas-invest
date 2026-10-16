@@ -44,6 +44,8 @@ function LoginForm() {
       if (!res.ok) {
         if (data.code === 'AUTH.INVALID_CREDENTIALS') {
           setError('E-mail ou senha incorretos.');
+        } else if (res.status >= 500) {
+          setError('O serviço está temporariamente indisponível. Tente novamente em instantes.');
         } else {
           setError(data.message || 'Falha ao realizar login. Tente novamente.');
         }

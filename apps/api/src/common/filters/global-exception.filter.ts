@@ -91,11 +91,19 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       message = exception.message;
     }
 
+    // Security Invariant: In 5xx responses, NEVER leak database, Prisma, or runtime internals to the client
+    if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      message = 'Não foi possível concluir a operação. Tente novamente.';
+      details = undefined;
+    }
+
     const errorName = HTTP_STATUS_NAMES[statusCode] ?? 'Error';
 
-    // Safe logging: log metadata only, avoiding sensitive payload dumps
+    // Safe logging: log full technical details with requestId on the server, avoiding sensitive payload dumps
+    const logDetail =
+      exception instanceof Error ? exception.stack || exception.message : String(exception);
     console.error(
-      `[${new Date().toISOString()}] [${requestId}] ${request.method} ${request.url} -> ${statusCode} (${errorCode}): ${message}`,
+      `[${new Date().toISOString()}] [${requestId}] ${request.method} ${request.url} -> ${statusCode} (${errorCode}): ${logDetail}`,
     );
 
     response.status(statusCode).json({

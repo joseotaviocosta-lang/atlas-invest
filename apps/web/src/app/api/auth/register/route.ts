@@ -45,6 +45,15 @@ export async function POST(req: NextRequest) {
     const regData = await regRes.json();
 
     if (!regRes.ok) {
+      if (regRes.status >= 500) {
+        return NextResponse.json(
+          {
+            code: 'COMMON.INTERNAL_ERROR',
+            message: 'Não foi possível concluir o cadastro. Tente novamente mais tarde.',
+          },
+          { status: regRes.status },
+        );
+      }
       return NextResponse.json(regData, { status: regRes.status });
     }
 
@@ -86,10 +95,11 @@ export async function POST(req: NextRequest) {
 
     return response;
   } catch (error) {
+    console.error('[Web BFF /api/auth/register] Internal error:', error);
     return NextResponse.json(
       {
         code: 'COMMON.INTERNAL_ERROR',
-        message: (error as Error).message || 'Failed to register',
+        message: 'Não foi possível concluir o cadastro. Tente novamente mais tarde.',
       },
       { status: 500 },
     );

@@ -32,12 +32,22 @@ export async function POST(req: NextRequest) {
     });
 
     const resData = await apiRes.json();
+    if (!apiRes.ok && apiRes.status >= 500) {
+      return NextResponse.json(
+        {
+          code: 'COMMON.INTERNAL_ERROR',
+          message: 'Não foi possível solicitar a redefinição de senha. Tente novamente mais tarde.',
+        },
+        { status: apiRes.status },
+      );
+    }
     return NextResponse.json(resData, { status: apiRes.status });
   } catch (error) {
+    console.error('[Web BFF /api/auth/forgot-password] Internal error:', error);
     return NextResponse.json(
       {
         code: 'COMMON.INTERNAL_ERROR',
-        message: (error as Error).message || 'Failed to request password reset',
+        message: 'Não foi possível solicitar a redefinição de senha. Tente novamente mais tarde.',
       },
       { status: 500 },
     );

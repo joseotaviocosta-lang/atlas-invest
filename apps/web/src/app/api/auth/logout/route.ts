@@ -46,10 +46,11 @@ export async function POST(req: NextRequest) {
 
     return response;
   } catch (error) {
+    console.error('[Web BFF /api/auth/logout] Internal error:', error);
     const response = NextResponse.json(
       {
         code: 'COMMON.INTERNAL_ERROR',
-        message: (error as Error).message || 'Failed to logout',
+        message: 'Não foi possível concluir o encerramento da sessão.',
       },
       { status: 500 },
     );
