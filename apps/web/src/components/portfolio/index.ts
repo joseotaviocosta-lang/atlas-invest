@@ -12,4 +12,5 @@ export * from './PortfolioHistoryTimeline';
 export * from './PortfolioDateSelector';
 export * from './PortfolioHistoricalBanner';
 export * from './PortfolioValuation';
+export * from './PortfolioAllocationSection';
 export * from './PortfolioShell';

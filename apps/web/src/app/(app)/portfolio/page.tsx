@@ -35,8 +35,11 @@ import {
   PortfolioDateSelector,
   PortfolioHistoricalBanner,
   PortfolioValuationSection,
+  PortfolioAllocationSection,
   PortfolioShell,
   valuationQueryKey,
+  allocationQueryKey,
+  PositionValuationBadge,
 } from '@/components/portfolio';
 import {
   OPERATION_TYPE_OPTIONS,
@@ -256,7 +259,13 @@ function PortfolioPageContent() {
           unrealizedGainLossPercent: string | null;
           status: string;
           quoteFreshness: string | null;
-          quote: unknown | null;
+          quote: {
+            price: string;
+            currency: string;
+            asOf?: string;
+            freshness: string;
+            status: string;
+          } | null;
         }>;
       };
     },
@@ -276,7 +285,13 @@ function PortfolioPageContent() {
             unrealizedGainLossPercent: string | null;
             status: string;
             quoteFreshness: string | null;
-            quote: unknown | null;
+            quote: {
+              price: string;
+              currency: string;
+              asOf?: string;
+              freshness: string;
+              status: string;
+            } | null;
           }>;
         };
       }>(`/api/v1/portfolios/${activePortfolio.id}/valuation`);
@@ -294,7 +309,13 @@ function PortfolioPageContent() {
         unrealizedGainLossPercent: string | null;
         status: string;
         quoteFreshness: string | null;
-        quote: { price: string; currency: string; freshness: string; status: string } | null;
+        quote: {
+          price: string;
+          currency: string;
+          asOf?: string;
+          freshness: string;
+          status: string;
+        } | null;
       }
     >();
     for (const p of (valuationData?.data?.positions as
@@ -305,7 +326,13 @@ function PortfolioPageContent() {
           unrealizedGainLossPercent: string | null;
           status: string;
           quoteFreshness: string | null;
-          quote: { price: string; currency: string; freshness: string; status: string } | null;
+          quote: {
+            price: string;
+            currency: string;
+            asOf?: string;
+            freshness: string;
+            status: string;
+          } | null;
         }>
       | undefined) ?? []) {
       m.set(p.assetId, p as never);
@@ -355,6 +382,58 @@ function PortfolioPageContent() {
     },
     onError: (err: ApiError) => {
       setFormError(err.message || 'Falha ao criar carteira. Verifique os dados.');
+    },
+  });
+
+  // Manual Market Data Update Mutation (§14–§19)
+  const updateMarketDataMutation = useMutation({
+    mutationFn: async () => {
+      if (!activePortfolio?.id) throw new Error('Nenhuma carteira selecionada.');
+      const res = await apiClient.post<{
+        data: {
+          portfolioId: string;
+          asOf: string;
+          requestedCount: number;
+          updatedCount: number;
+          failedCount: number;
+          staleCount: number;
+          missingTickers: string[];
+          revisionsCreated: number;
+        };
+      }>(`/api/v1/portfolios/${activePortfolio.id}/market-data/update`, {});
+      return res.data;
+    },
+    onSuccess: (data) => {
+      if (activePortfolio?.id) {
+        queryClient.invalidateQueries({ queryKey: valuationQueryKey(activePortfolio.id) });
+        queryClient.invalidateQueries({ queryKey: allocationQueryKey(activePortfolio.id) });
+        queryClient.invalidateQueries({
+          queryKey: stateQueryKey(activePortfolio.id, temporal.asOf),
+        });
+      }
+      const missingCount = data.missingTickers?.length ?? 0;
+      if (data.updatedCount === 0 && data.requestedCount > 0) {
+        showToast(
+          `Nenhuma cotação foi atualizada (${data.requestedCount} solicitadas, ${missingCount} indisponíveis).`,
+          'warning',
+        );
+      } else if (missingCount > 0) {
+        showToast(
+          `Cotações atualizadas: ${data.updatedCount} com sucesso (${missingCount} indisponíveis).`,
+          'positive',
+        );
+      } else {
+        showToast(
+          `Cotações atualizadas com sucesso: ${data.updatedCount} ${data.updatedCount === 1 ? 'ativo' : 'ativos'}.`,
+          'positive',
+        );
+      }
+    },
+    onError: (err: ApiError) => {
+      showToast(
+        err.message || 'Falha ao atualizar cotações de mercado. Tente novamente mais tarde.',
+        'negative',
+      );
     },
   });
 
@@ -933,6 +1012,19 @@ function PortfolioPageContent() {
                                 Ver performance
                               </Button>
                             </Link>
+                            {!isHistorical && (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => updateMarketDataMutation.mutate()}
+                                disabled={updateMarketDataMutation.isPending}
+                                aria-label="Atualizar cotações de mercado"
+                              >
+                                {updateMarketDataMutation.isPending
+                                  ? 'Atualizando...'
+                                  : 'Atualizar cotações'}
+                              </Button>
+                            )}
                           </div>
                         </div>
 
@@ -1191,6 +1283,20 @@ function PortfolioPageContent() {
                   const asset = assetById.get(position.assetId);
                   const currency = position.currency ?? position.totalCost?.currency ?? 'BRL';
                   const isIncomplete = position.costBasisStatus === 'INCOMPLETE';
+                  const posValuation = !isHistorical ? valuationMap.get(position.assetId) : null;
+                  const quotePrice = posValuation?.quote?.price;
+                  const quoteDate = posValuation?.quote?.asOf;
+                  const marketValue = posValuation?.marketValue;
+                  const unrealized = posValuation?.unrealizedGainLoss;
+                  const unrealizedPct = posValuation?.unrealizedGainLossPercent;
+                  const isNegative = unrealized?.amount.startsWith('-');
+                  const isPositive = unrealized && !isNegative && unrealized.amount !== '0';
+                  const unrealizedColor = isPositive
+                    ? colors.positive
+                    : isNegative
+                      ? colors.negative
+                      : colors.textPrimary;
+
                   return (
                     <Card
                       key={position.assetId}
@@ -1206,10 +1312,11 @@ function PortfolioPageContent() {
                           display: 'flex',
                           alignItems: 'flex-start',
                           justifyContent: 'space-between',
-                          gap: `${spacing.sm}px`,
+                          gap: `${spacing.base}px`,
+                          flexWrap: 'wrap',
                         }}
                       >
-                        <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ minWidth: 200, flex: 1 }}>
                           <div
                             style={{
                               fontSize: '1rem',
@@ -1252,9 +1359,105 @@ function PortfolioPageContent() {
                                   position.totalCost.amount,
                                   position.totalCost.currency,
                                 )}{' '}
-                            • {currency} • Sem cotação
+                            • {currency}
                           </div>
                         </div>
+
+                        {/* Valuation block (§10–§13) */}
+                        {!isHistorical && posValuation && (
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: `${spacing.xl}px`,
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            {/* Cotação */}
+                            <div style={{ textAlign: 'right', minWidth: '100px' }}>
+                              <span
+                                style={{
+                                  fontSize: '0.75rem',
+                                  color: colors.textMuted,
+                                  display: 'block',
+                                }}
+                              >
+                                Cotação
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: '0.9375rem',
+                                  fontWeight: 600,
+                                  color: quotePrice ? colors.textPrimary : colors.textMuted,
+                                }}
+                              >
+                                {quotePrice ? formatCurrency(quotePrice, currency) : '—'}
+                              </span>
+                              {quoteDate && (
+                                <span
+                                  style={{
+                                    fontSize: '0.6875rem',
+                                    color: colors.textMuted,
+                                    display: 'block',
+                                  }}
+                                >
+                                  {quoteDate}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Valor de Mercado */}
+                            <div style={{ textAlign: 'right', minWidth: '110px' }}>
+                              <span
+                                style={{
+                                  fontSize: '0.75rem',
+                                  color: colors.textMuted,
+                                  display: 'block',
+                                }}
+                              >
+                                Valor de mercado
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: '0.9375rem',
+                                  fontWeight: 600,
+                                  color: marketValue ? colors.textPrimary : colors.textMuted,
+                                }}
+                              >
+                                {marketValue
+                                  ? formatCurrency(marketValue.amount, marketValue.currency)
+                                  : '—'}
+                              </span>
+                            </div>
+
+                            {/* Resultado Não Realizado */}
+                            <div style={{ textAlign: 'right', minWidth: '120px' }}>
+                              <span
+                                style={{
+                                  fontSize: '0.75rem',
+                                  color: colors.textMuted,
+                                  display: 'block',
+                                }}
+                              >
+                                Resultado não real.
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: '0.9375rem',
+                                  fontWeight: 600,
+                                  color: unrealizedColor,
+                                }}
+                              >
+                                {unrealized
+                                  ? formatCurrency(unrealized.amount, unrealized.currency)
+                                  : '—'}
+                                {unrealizedPct ? ` (${unrealizedPct}%)` : ''}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Badges & Actions */}
                         <div
                           style={{
                             display: 'flex',
@@ -1264,7 +1467,22 @@ function PortfolioPageContent() {
                             flexShrink: 0,
                           }}
                         >
-                          {isIncomplete && <Badge variant="warning">Custo incompleto</Badge>}
+                          <div
+                            style={{
+                              display: 'flex',
+                              gap: '4px',
+                              flexWrap: 'wrap',
+                              justifyContent: 'flex-end',
+                            }}
+                          >
+                            {isIncomplete && <Badge variant="warning">Custo incompleto</Badge>}
+                            {!isHistorical && posValuation && (
+                              <PositionValuationBadge
+                                status={posValuation.status}
+                                freshness={posValuation.quoteFreshness}
+                              />
+                            )}
+                          </div>
                           <Link
                             href={appendAsOf(
                               `/portfolio/assets/${position.assetId}${activePortfolio ? `?portfolioId=${activePortfolio.id}` : ''}`,
@@ -1275,6 +1493,7 @@ function PortfolioPageContent() {
                               textDecoration: 'none',
                               fontWeight: 600,
                               fontSize: '0.875rem',
+                              marginTop: '4px',
                             }}
                             aria-label={`Ver detalhes do ativo ${asset?.ticker ?? ''}`}
                           >
@@ -1290,12 +1509,10 @@ function PortfolioPageContent() {
 
           {/* TAB 5: ALOCAÇÃO */}
           {activeTab === 'allocation' && (
-            <Card style={{ padding: `${spacing.xl}px` }}>
-              <EmptyState
-                title="Alocação por Valor de Mercado"
-                description="Os gráficos de alocação patrimonial e rebalanceamento estarão disponíveis após a ativação do módulo de cotações de mercado (Market Data)."
-              />
-            </Card>
+            <PortfolioAllocationSection
+              portfolioId={activePortfolio?.id ?? null}
+              isHistorical={isHistorical}
+            />
           )}
 
           {/* TAB 6: OPERAÇÕES */}

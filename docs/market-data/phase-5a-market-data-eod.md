@@ -198,3 +198,98 @@ Phase 5A-I2 exposes deterministic, server-side Portfolio Valuation and Allocatio
 - [x] **Revision Atomicity & Audit Trail:** Provider price revisions generate atomic records in `market_quote_revisions` without phantom noise.
 - [x] **Fiscal Isolation:** Tax Engine remains strictly isolated from market quotation data.
 - [x] **Development Database Preserved:** Port 5434 dev database untouched (20 transactions, 4 portfolios, 5 accounts, 5 users).
+
+---
+
+## 12. Portfolio UI Valuation, Allocation & Manual Update (Phase 5A-I3)
+
+Phase 5A-I3 wires the server-side valuation and allocation read models into the Web frontend (`apps/web`):
+
+### 12.1. Overview Tab Enhancements
+
+- **Four Standard Cards per Currency Bucket:**
+  1. _Custo em custódia_: Total historical cost invested in positions (`knownCost`).
+  2. _Valor de mercado_: Total market valuation of priced positions (`marketValue`).
+  3. _Resultado não realizado_: Absolute and percentage unrealized gain/loss (`unrealizedGainLoss` and `unrealizedGainLossPercent`). Displays exact color indicators (green for positive, red for negative, neutral for zero/missing).
+  4. _Cobertura de cotação_: Visual coverage badge (e.g., `100%` or `50%`) and ratio of valued positions vs total custody positions.
+- **Explicit Diagnostic Disclosures:**
+  - _Partial Valuation Banner_: Displayed when coverage is less than 100%, disclosing that market values reflect only priced assets.
+  - _Stale Quotes Banner_: Displayed when one or more positions rely on quotations older than the expected session.
+- **Action Header:**
+  - Includes the "Atualizar cotações" button hooked up to `useMutation` calling `POST /api/v1/portfolios/:id/market-data/update`.
+  - Automatically invalidates `valuationQueryKey`, `allocationQueryKey`, and `stateQueryKey`.
+  - Shows feedback toast with updated/missing count summary.
+  - Disabled and hidden in historical snapshot mode (`isHistorical`).
+
+### 12.2. Assets Tab Integration
+
+- Each asset card in custody displays:
+  - Cotação atual (`quote.price`) and reference date (`quote.asOf`).
+  - Valor de mercado (`marketValue.amount`).
+  - Resultado não realizado (`unrealizedGainLoss.amount` and `%`).
+  - Canonical status badges:
+    - `Atualizada` (Fresh quote)
+    - `Desatualizada` (Stale quote)
+    - `Sem cotação` (Quote unavailable)
+    - `Custo incompleto` (Cost basis missing)
+    - `Moeda incompatível` (Currency mismatch)
+
+### 12.3. Allocation Tab Integration
+
+- Replaces placeholder with full `<PortfolioAllocationSection />`:
+  - **Alocação por Ativo**: Visual distribution bars with ticker, asset type, market value, and exact percentage.
+  - **Alocação por Classe de Ativo**: Aggregated groups (Ações, FIIs, ETFs, BDRs) with market value, percentage, and asset count.
+  - **Partial Valuation Notice**: Explains percentages are calculated over valued positions.
+  - **Ativos sem Cotação**: Segregated section detailing unvalued assets with diagnostic reason.
+  - **Multi-Currency Segregation**: Distinct buckets for BRL, USD, EUR without synthetic cross-currency summing.
+
+---
+
+## 13. Owner Development Database Migration (Migration 24)
+
+On 2026-10-16, Migration `20261016140000_add_market_quotes_and_revisions` was applied cleanly to the local owner PostgreSQL instance (`atlas_postgres_dev5434` / `atlas_dev`):
+
+- **Baseline Before Migration:**
+  - Migrations applied: 23
+  - Users: 5
+  - Portfolios: 4
+  - Accounts: 5
+  - Transactions: 20
+  - `market_quotes` table: Not present
+- **Baseline After Migration:**
+  - Migrations applied: 24 (`20261016140000_add_market_quotes_and_revisions` added)
+  - Users: 5 (preserved)
+  - Portfolios: 4 (preserved)
+  - Accounts: 5 (preserved)
+  - Transactions: 20 (100% immutable and preserved)
+  - `market_quotes` count: 0 (clean initial state)
+  - `market_quote_revisions` count: 0 (clean initial state)
+
+---
+
+## 14. Controlled Human Validation Checklist
+
+The owner can execute the following steps to perform visual validation in the local browser:
+
+1. **Start Development Servers:**
+   ```bash
+   pnpm dev
+   ```
+2. **Access Web Application:**
+   - Open `http://localhost:3000` in browser.
+   - Log in with owner credentials (`investidor@atlas.dev` or configured owner account).
+3. **Verify Initial State (Unvalued Baseline):**
+   - Navigate to `/portfolio`.
+   - On the **Visão Geral** tab, observe that custody positions show "Custo em custódia", while "Valor de mercado" reflects the initial unquoted status or partial badge.
+   - Verify that no synthetic R$ 0 or arbitrary balances are invented.
+4. **Trigger Manual Quote Update:**
+   - Click the **"Atualizar cotações"** button in the top action area.
+   - If `MARKET_DATA_API_TOKEN` is configured with a valid BRAPI token, observe the loading state and subsequent success toast (e.g. `Cotações atualizadas com sucesso: X ativos`).
+   - If no token is configured, observe that missing tickers or warning feedback are safely presented without app crash.
+5. **Verify Populated Valuation:**
+   - Inspect the **Visão Geral** cards: confirm "Custo em custódia", "Valor de mercado", "Resultado não realizado", and "Cobertura de cotação".
+   - Switch to the **Ativos** tab: verify that each position displays current quote price, date, market value, unrealized P/L, and status badge (`Atualizada` or `Desatualizada`).
+   - Switch to the **Alocação** tab: inspect allocation bars by asset and by asset class. Verify disclosure note and unvalued assets section if applicable.
+6. **Verify Historical Snapshot Safety:**
+   - Select a past date in the date selector (`asOf`).
+   - Confirm that the "Atualizar cotações" button and valuation cards are cleanly hidden in historical mode, keeping historical replay semantics pure.

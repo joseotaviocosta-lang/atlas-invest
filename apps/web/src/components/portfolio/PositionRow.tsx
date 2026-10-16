@@ -12,7 +12,13 @@ export interface PositionValuationDisplay {
   unrealizedGainLossPercent: string | null;
   status: string;
   quoteFreshness: string | null;
-  quote: { price: string; currency: string; freshness: string; status: string } | null;
+  quote: {
+    price: string;
+    currency: string;
+    asOf?: string;
+    freshness: string;
+    status: string;
+  } | null;
 }
 
 export interface PositionRowProps {
@@ -134,7 +140,47 @@ export function PositionRow({
 
           {!isHistorical && valuation && (
             <>
-              <div style={{ textAlign: 'right', minWidth: '130px' }}>
+              {/* Cotação e Data */}
+              <div style={{ textAlign: 'right', minWidth: '110px' }}>
+                <span style={{ fontSize: '0.75rem', color: colors.textMuted, display: 'block' }}>
+                  Cotação
+                </span>
+                <span
+                  style={{
+                    fontSize: '1rem',
+                    fontWeight: 600,
+                    color: valuation.quote ? colors.textPrimary : colors.textMuted,
+                  }}
+                >
+                  {valuation.quote
+                    ? formatCurrency(valuation.quote.price, valuation.quote.currency)
+                    : '—'}
+                </span>
+                <div style={{ marginTop: '2px' }}>
+                  {valuation.status === 'QUOTE_UNAVAILABLE' && (
+                    <Badge variant="neutral">Sem cotação</Badge>
+                  )}
+                  {valuation.status === 'CURRENCY_MISMATCH' && (
+                    <Badge variant="danger">Moeda incompatível</Badge>
+                  )}
+                  {valuation.quoteFreshness === 'STALE' && (
+                    <Badge variant="warning">Desatualizada</Badge>
+                  )}
+                  {valuation.quoteFreshness === 'FRESH' && (
+                    <Badge variant="positive">Atualizada</Badge>
+                  )}
+                </div>
+                {valuation.quote?.asOf && (
+                  <span
+                    style={{ fontSize: '0.6875rem', color: colors.textMuted, display: 'block' }}
+                  >
+                    {valuation.quote.asOf}
+                  </span>
+                )}
+              </div>
+
+              {/* Valor de Mercado */}
+              <div style={{ textAlign: 'right', minWidth: '120px' }}>
                 <span style={{ fontSize: '0.75rem', color: colors.textMuted, display: 'block' }}>
                   Valor de mercado
                 </span>
@@ -149,16 +195,9 @@ export function PositionRow({
                     ? formatCurrency(valuation.marketValue.amount, valuation.marketValue.currency)
                     : '—'}
                 </span>
-                {valuation.quoteFreshness === 'STALE' && (
-                  <Badge variant="warning">Cotação desatualizada</Badge>
-                )}
-                {valuation.status === 'QUOTE_UNAVAILABLE' && (
-                  <Badge variant="neutral">Cotação indisponível</Badge>
-                )}
-                {valuation.status === 'CURRENCY_MISMATCH' && (
-                  <Badge variant="danger">Moeda divergente</Badge>
-                )}
               </div>
+
+              {/* Resultado Não Realizado */}
               <div style={{ textAlign: 'right', minWidth: '130px' }}>
                 <span style={{ fontSize: '0.75rem', color: colors.textMuted, display: 'block' }}>
                   Resultado não realizado
