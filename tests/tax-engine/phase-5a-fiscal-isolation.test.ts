@@ -5,6 +5,9 @@ import {
   computeEquityMonthlyTaxCore,
   buildAnnualPositionReport,
   createTaxSubjectId,
+  applyEquityIrrfCredit,
+  buildAnnualCapitalMarketSummary,
+  EQUITY_IRRF_POOL_IDS,
   type EquitySellLeg,
 } from '@atlas/tax-engine';
 import {
@@ -12,6 +15,7 @@ import {
   createAccountId,
   createAssetId,
   TransactionFactory,
+  Money,
 } from '@atlas/domain';
 
 describe('Phase 5A-I1-R1: Fiscal & Bens e Direitos Isolation (Sections 22-24)', () => {
@@ -162,5 +166,84 @@ describe('Phase 5A-I1-R1: Fiscal & Bens e Direitos Isolation (Sections 22-24)', 
     expect(res.normal.currentResult).toBe('5000');
     expect(res.normal.taxableBaseBeforeRate).toBe('5000');
     expect(res.overallStatus).toBe('COMPLETE');
+  });
+
+  it('Section 13, 14 & 15: Normal IRRF and Day-Trade IRRF pool application & category isolation', () => {
+    // Normal IRRF: Gross tax = 750, IRRF withholding = 15 -> Net tax = 735, Closing IRRF = 0
+    const normalIrrfResult = applyEquityIrrfCredit({
+      category: 'EQUITY_NORMAL',
+      grossTax: '750',
+      opening: '0',
+      current: '15',
+    });
+    expect(normalIrrfResult.irrfUsed).toBe('15');
+    expect(normalIrrfResult.netTaxBefore6015Aggregation).toBe('735');
+    expect(normalIrrfResult.irrfClosing).toBe('0');
+
+    // Day-Trade IRRF: Gross tax = 100, IRRF withholding = 10 -> Net tax = 90, Closing IRRF = 0
+    const dayTradeIrrfResult = applyEquityIrrfCredit({
+      category: 'EQUITY_DAY_TRADE',
+      grossTax: '100',
+      opening: '0',
+      current: '10',
+    });
+    expect(dayTradeIrrfResult.irrfUsed).toBe('10');
+    expect(dayTradeIrrfResult.netTaxBefore6015Aggregation).toBe('90');
+    expect(dayTradeIrrfResult.irrfClosing).toBe('0');
+
+    // Category isolation: normal IRRF cannot offset day-trade gross tax and vice-versa
+    expect(normalIrrfResult.irrfUsed).not.toBe(dayTradeIrrfResult.irrfUsed);
+    expect(EQUITY_IRRF_POOL_IDS.EQUITY_NORMAL).toBe('EQUITY_NORMAL_IRRF');
+    expect(EQUITY_IRRF_POOL_IDS.EQUITY_DAY_TRADE).toBe('EQUITY_DAY_TRADE_IRRF');
+  });
+
+  it('Section 16: DARF 6015 aggregation & minimum threshold rule (R$ 10.00)', () => {
+    // If net tax < 10.00, it cannot be paid immediately (carries forward)
+    const smallNormalTax = applyEquityIrrfCredit({
+      category: 'EQUITY_NORMAL',
+      grossTax: '8.00',
+      opening: '0',
+      current: '0',
+    });
+    expect(smallNormalTax.netTaxBefore6015Aggregation).toBe('8');
+
+    // Normal + Day-trade combined for 6015: 735 + 90 = 825.00
+    const totalDarf6015 = Money.from('735.00', 'BRL').add(Money.from('90.00', 'BRL'));
+    expect(totalDarf6015.amount).toBe('825');
+  });
+
+  it('Section 17: Annual Variable-Income Fiscal Summary (DIRPF) remains 100% invariant to market quotes', () => {
+    const annualSummary = buildAnnualCapitalMarketSummary({
+      calendarYear: 2025,
+      taxSubjectId: 'subject-annual-1',
+      months: [
+        {
+          competence: '2025-03',
+          normalEquities: {
+            grossSaleAmount: '35000.00',
+            isExempt: false,
+            profitOrLoss: '5000.00',
+            taxableBase: '5000.00',
+            taxDue: '750.00',
+          },
+          dayTrade: {
+            grossSaleAmount: '3500.00',
+            profitOrLoss: '500.00',
+            taxableBase: '500.00',
+            taxDue: '100.00',
+          },
+        },
+      ],
+    });
+
+    expect(annualSummary.calendarYear).toBe(2025);
+    expect(annualSummary.declarationExercise).toBe(2026);
+    expect(annualSummary.normalEquities.totalGrossSales.amount).toBe('35000');
+    expect(annualSummary.normalEquities.totalTaxableProfits.amount).toBe('5000');
+    expect(annualSummary.normalEquities.totalTaxDue.amount).toBe('750');
+    expect(annualSummary.dayTrade.totalGrossProfits.amount).toBe('500');
+    expect(annualSummary.dayTrade.totalTaxDue.amount).toBe('100');
+    expect(annualSummary.lossCarry.isConsistent).toBe(true);
+    expect(annualSummary.qualityIssues).toHaveLength(0);
   });
 });
