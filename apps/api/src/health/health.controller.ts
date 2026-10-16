@@ -9,6 +9,7 @@ export interface HealthCheckResponse {
   status: string;
   service: string;
   version: string;
+  commitSha?: string;
   timestamp: string;
 }
 
@@ -35,7 +36,8 @@ export class HealthController {
     return {
       status: 'ok',
       service: 'atlas-api',
-      version: '0.1.0',
+      version: process.env.APP_VERSION || '0.1.0',
+      commitSha: process.env.GIT_COMMIT_SHA || process.env.COMMIT_SHA || 'unknown',
       timestamp: new Date().toISOString(),
     };
   }
@@ -52,11 +54,12 @@ export class HealthController {
         timestamp: new Date().toISOString(),
       };
     } catch (err: unknown) {
+      console.error('[HealthController] Database readiness probe failed:', err);
       res.status(HttpStatus.SERVICE_UNAVAILABLE);
       return {
         status: 'error',
         database: 'disconnected',
-        error: err instanceof Error ? err.message : 'Database ping failed',
+        error: 'Database ping failed',
         timestamp: new Date().toISOString(),
       };
     }
