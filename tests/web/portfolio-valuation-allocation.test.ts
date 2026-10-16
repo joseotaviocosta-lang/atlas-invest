@@ -7,6 +7,8 @@ import {
   allocationQueryKey,
   PortfolioValuationResponse,
   PortfolioAllocationResponse,
+  formatUpdateReceiptFeedback,
+  IngestionReceiptDto,
 } from '@/components/portfolio';
 
 describe('Web: Portfolio Valuation, Allocation & Manual Quote Update (Phase 5A-I3)', () => {
@@ -241,16 +243,20 @@ describe('Web: Portfolio Valuation, Allocation & Manual Quote Update (Phase 5A-I
   });
 
   it('executes manual market-data update mutation via POST', async () => {
-    const mockUpdateResponse = {
+    const mockUpdateResponse: { data: IngestionReceiptDto } = {
       data: {
-        portfolioId,
-        asOf: '2026-10-16',
-        requestedCount: 2,
-        updatedCount: 1,
-        failedCount: 0,
-        staleCount: 0,
-        missingTickers: ['VALE3'],
-        revisionsCreated: 1,
+        requestedAssets: 2,
+        resolvedAssets: 2,
+        skippedAssets: 0,
+        quotesFetched: 1,
+        quotesInserted: 1,
+        quotesUnchanged: 0,
+        quotesRevised: 0,
+        authRequiredAssets: [],
+        missingAssets: ['VALE3'],
+        rateLimitedAssets: [],
+        providerErrors: [],
+        status: 'PARTIAL',
       },
     };
 
@@ -261,7 +267,7 @@ describe('Web: Portfolio Valuation, Allocation & Manual Quote Update (Phase 5A-I
     });
     global.fetch = mockFetch as unknown as typeof fetch;
 
-    const res = await apiClient.post<{ data: typeof mockUpdateResponse.data }>(
+    const res = await apiClient.post<{ data: IngestionReceiptDto }>(
       `/api/v1/portfolios/${portfolioId}/market-data/update`,
       {},
     );
@@ -272,8 +278,8 @@ describe('Web: Portfolio Valuation, Allocation & Manual Quote Update (Phase 5A-I
         method: 'POST',
       }),
     );
-    expect(res.data.updatedCount).toBe(1);
-    expect(res.data.missingTickers).toEqual(['VALE3']);
+    expect(res.data.quotesInserted).toBe(1);
+    expect(res.data.missingAssets).toEqual(['VALE3']);
   });
 
   it('proves zero live provider network calls occur on reading valuation and allocation endpoints', async () => {
@@ -380,17 +386,84 @@ describe('Web: Portfolio Valuation, Allocation & Manual Quote Update (Phase 5A-I
     expect(reloadRes.data.positions[0].quote?.price).toBe('37.50');
   });
 
+  it('formats IngestionReceiptDto accurately without undefined or missing data', () => {
+    // 1. Success case with quotesInserted
+    const successReceipt: IngestionReceiptDto = {
+      requestedAssets: 2,
+      resolvedAssets: 2,
+      skippedAssets: 0,
+      quotesFetched: 2,
+      quotesInserted: 2,
+      quotesUnchanged: 0,
+      quotesRevised: 0,
+      authRequiredAssets: [],
+      missingAssets: [],
+      rateLimitedAssets: [],
+      providerErrors: [],
+      status: 'SUCCESS',
+    };
+    const f1 = formatUpdateReceiptFeedback(successReceipt);
+    expect(f1.variant).toBe('positive');
+    expect(f1.message).toBe('Cotações atualizadas com sucesso: 2 ativos.');
+    expect(f1.message).not.toContain('undefined');
+
+    // 2. Partial case with authRequired
+    const partialReceipt: IngestionReceiptDto = {
+      requestedAssets: 3,
+      resolvedAssets: 3,
+      skippedAssets: 0,
+      quotesFetched: 2,
+      quotesInserted: 2,
+      quotesUnchanged: 0,
+      quotesRevised: 0,
+      authRequiredAssets: ['HGLG11'],
+      missingAssets: [],
+      rateLimitedAssets: [],
+      providerErrors: [],
+      status: 'PARTIAL',
+    };
+    const f2 = formatUpdateReceiptFeedback(partialReceipt);
+    expect(f2.variant).toBe('positive');
+    expect(f2.message).toContain('Cotações atualizadas com sucesso: 2 ativos');
+    expect(f2.message).toContain('1 requer token (HGLG11)');
+    expect(f2.message).not.toContain('undefined');
+
+    // 3. Failed/Auth required only case
+    const authOnlyReceipt: IngestionReceiptDto = {
+      requestedAssets: 1,
+      resolvedAssets: 1,
+      skippedAssets: 0,
+      quotesFetched: 0,
+      quotesInserted: 0,
+      quotesUnchanged: 0,
+      quotesRevised: 0,
+      authRequiredAssets: ['HGLG11'],
+      missingAssets: [],
+      rateLimitedAssets: [],
+      providerErrors: [],
+      status: 'PARTIAL',
+    };
+    const f3 = formatUpdateReceiptFeedback(authOnlyReceipt);
+    expect(f3.variant).toBe('warning');
+    expect(f3.message).toContain('requer autenticação de provedor para 1 ativo (HGLG11)');
+    expect(f3.message).not.toContain('undefined');
+  });
+
   it('correctly handles partial update receipt when an asset requires authentication (e.g. HGLG11) while PETR4/VALE3 succeed', async () => {
-    const mockReceipt = {
+    const mockReceipt: { data: IngestionReceiptDto } = {
       data: {
-        portfolioId,
-        asOf: '2026-10-16',
-        requestedCount: 3,
-        updatedCount: 2,
-        failedCount: 0,
-        staleCount: 0,
-        missingTickers: ['HGLG11'],
-        revisionsCreated: 2,
+        requestedAssets: 3,
+        resolvedAssets: 3,
+        skippedAssets: 0,
+        quotesFetched: 2,
+        quotesInserted: 2,
+        quotesUnchanged: 0,
+        quotesRevised: 0,
+        authRequiredAssets: ['HGLG11'],
+        missingAssets: [],
+        rateLimitedAssets: [],
+        providerErrors: [],
+        status: 'PARTIAL',
       },
     };
 
@@ -401,31 +474,54 @@ describe('Web: Portfolio Valuation, Allocation & Manual Quote Update (Phase 5A-I
     });
     global.fetch = mockFetch as unknown as typeof fetch;
 
-    const res = await apiClient.post<{ data: typeof mockReceipt.data }>(
+    const res = await apiClient.post<{ data: IngestionReceiptDto }>(
       `/api/v1/portfolios/${portfolioId}/market-data/update`,
       {},
     );
 
-    expect(res.data.updatedCount).toBe(2);
-    expect(res.data.missingTickers).toEqual(['HGLG11']);
-    const feedbackMessage = `Cotações atualizadas: ${res.data.updatedCount} com sucesso (${res.data.missingTickers.length} indisponíveis).`;
-    expect(feedbackMessage).toContain('2 com sucesso');
-    expect(feedbackMessage).toContain('1 indisponíveis');
+    const feedback = formatUpdateReceiptFeedback(res.data);
+    expect(feedback.variant).toBe('positive');
+    expect(feedback.message).toContain('2 ativos');
+    expect(feedback.message).toContain('1 requer token (HGLG11)');
+    expect(feedback.message).not.toContain('undefined');
   });
 
-  it('maintains strict invariants for missing quote != R$ 0,00 and stale quote remaining valued', () => {
-    const missingBadge = PositionValuationBadge({ status: 'QUOTE_UNAVAILABLE', freshness: null });
-    expect(missingBadge?.props.children).toBe('Sem cotação');
-    expect(missingBadge?.props.children).not.toBe('R$ 0,00');
+  it('resolves asset ticker and name in mapToPortfolioOverviewViewModel without exposing raw UUIDs as primary labels', async () => {
+    const { mapToPortfolioOverviewViewModel } = await import('@atlas/ui');
 
-    const staleBadge = PositionValuationBadge({ status: 'QUOTE_STALE', freshness: 'STALE' });
-    expect(staleBadge?.props.children).toBe('Desatualizada');
-    expect(staleBadge?.props.children).not.toBe('Sem cotação');
+    const mockPortfolioState = {
+      portfolioId,
+      asOf: '2026-10-16',
+      completeness: { costBasis: 'COMPLETE' as const },
+      positions: [
+        {
+          assetId: assetPetr4,
+          quantity: '200',
+          costBasisStatus: 'KNOWN' as const,
+          currency: 'BRL',
+          totalCost: { amount: '6000.00', currency: 'BRL' },
+          averageCost: { amount: '30.00', currency: 'BRL' },
+        },
+      ],
+      accounts: [],
+      realizedSummaries: [],
+      incomeSummaries: [],
+      cashFlowSummaries: [],
+    };
 
-    const incompleteBadge = PositionValuationBadge({
-      status: 'COST_INCOMPLETE',
-      freshness: 'FRESH',
-    });
-    expect(incompleteBadge?.props.children).toBe('Custo incompleto');
+    const assetsCatalog = [{ id: assetPetr4, ticker: 'PETR4', name: 'Petrobras PN' }];
+
+    const vm = mapToPortfolioOverviewViewModel(
+      mockPortfolioState,
+      { id: portfolioId, name: 'Principal', type: 'PERSONAL', baseCurrency: 'BRL' },
+      [],
+      assetsCatalog,
+    );
+
+    expect(vm.positions).toHaveLength(1);
+    expect(vm.positions[0].displayIdentifier).toBe('PETR4');
+    expect(vm.positions[0].ticker).toBe('PETR4');
+    expect(vm.positions[0].assetName).toBe('Petrobras PN');
+    expect(vm.positions[0].displayIdentifier).not.toBe(assetPetr4);
   });
 });

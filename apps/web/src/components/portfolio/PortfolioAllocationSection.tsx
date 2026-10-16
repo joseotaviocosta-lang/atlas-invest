@@ -352,7 +352,7 @@ export function PortfolioAllocationSection({
                           aria-valuenow={pctNum}
                           aria-valuemin={0}
                           aria-valuemax={100}
-                          aria-label={`Percentual de ${asset.ticker || asset.assetId}`}
+                          aria-label={`Percentual de ${asset.ticker || 'Ativo sem identificação'}`}
                           style={{
                             height: '8px',
                             width: '100%',
@@ -415,7 +415,7 @@ export function PortfolioAllocationSection({
                       }}
                     >
                       <strong style={{ color: colors.textPrimary, fontFamily: 'monospace' }}>
-                        {u.ticker || u.assetId}
+                        {u.ticker || 'Ativo sem identificação'}
                       </strong>
                       <Badge variant="neutral">
                         {UNVALUED_REASON_LABELS[u.reason] || u.reason}

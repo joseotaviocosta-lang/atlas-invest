@@ -128,13 +128,34 @@ export class GetPortfolioValuationUseCase {
       throw err;
     }
 
+    const assetIds = Array.from(replayResult.state.assets.keys()).map(String);
+    const assets = await this.assetRepository.findByIds(assetIds);
+    const assetMap = new Map<
+      string,
+      { ticker: string; exchange: string; currency: string; type: string }
+    >(
+      assets.map((a) => [
+        a.id,
+        {
+          ticker: a.ticker,
+          exchange: a.exchange,
+          currency: a.currency,
+          type: a.type,
+        },
+      ]),
+    );
+
     const consolidatedPositions: PositionValuationInput[] = [];
     const accountPositions = new Map<string, PositionValuationInput[]>();
 
     for (const assetState of replayResult.state.assets.values()) {
+      const assetIdStr = String(assetState.assetId);
+      const meta = assetMap.get(assetIdStr);
       consolidatedPositions.push({
-        assetId: String(assetState.assetId),
+        assetId: assetIdStr,
         accountId: null,
+        ticker: meta?.ticker,
+        assetType: meta?.type,
         quantity: assetState.quantity.value,
         currency: assetState.currency as never,
         totalCost: assetState.totalCost ? assetState.totalCost.amount : null,
@@ -146,9 +167,13 @@ export class GetPortfolioValuationUseCase {
     for (const acc of replayResult.state.accounts.values()) {
       const list: PositionValuationInput[] = [];
       for (const assetState of acc.assets.values()) {
+        const assetIdStr = String(assetState.assetId);
+        const meta = assetMap.get(assetIdStr);
         list.push({
-          assetId: String(assetState.assetId),
+          assetId: assetIdStr,
           accountId: String(acc.accountId),
+          ticker: meta?.ticker,
+          assetType: meta?.type,
           quantity: assetState.quantity.value,
           currency: assetState.currency as never,
           totalCost: assetState.totalCost ? assetState.totalCost.amount : null,
@@ -169,24 +194,7 @@ export class GetPortfolioValuationUseCase {
       return this.toReadModel(emptyValuation);
     }
 
-    const assetMap = new Map<
-      string,
-      { ticker: string; exchange: string; currency: string; type: string }
-    >();
-    for (const pos of consolidatedPositions) {
-      const asset = await this.assetRepository.findById(pos.assetId);
-      if (asset) {
-        assetMap.set(pos.assetId, {
-          ticker: asset.ticker,
-          exchange: asset.exchange,
-          currency: asset.currency,
-          type: asset.type,
-        });
-      }
-    }
-
     const quotesMap = new Map<string, ValuationQuote>();
-    const assetIds = consolidatedPositions.map((p) => p.assetId);
 
     // 1. Primary lookup: Persisted EOD quotes from database (Single batch query)
     const persistedQuotes = await this.marketQuoteRepository.findLatestByAssets(assetIds);

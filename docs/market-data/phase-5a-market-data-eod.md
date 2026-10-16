@@ -340,4 +340,30 @@ All automated evidence gates for Phase 5A-I3 were rigorously verified and closed
 
 ### 6. Phase Status
 
-- **Status**: `READY_FOR_HUMAN_VALIDATION`.
+- **Status**: `READY_FOR_HUMAN_RETEST`.
+
+---
+
+## 10. Phase 5A-I3-H1: Human Validation Hotfix & Root Cause Resolution
+
+During real owner human validation of the Portfolio market-data flow, three root-cause defects were diagnosed and systematically resolved:
+
+### 1. Ingestion Receipt DTO Mismatch & Undefined Toast Feedback
+
+- **Root Cause**: The Web frontend mutation expected an older `{ updatedCount, requestedCount, missingTickers, revisionsCreated }` response shape, whereas the backend API returns the canonical `IngestionReceiptDto` (`{ requestedAssets, resolvedAssets, quotesInserted, quotesRevised, authRequiredAssets, missingAssets, status, ... }`). This resulted in `data.updatedCount` evaluating to `undefined` and producing the toast `"Cotações atualizadas com sucesso: undefined ativos."`.
+- **Resolution**: Defined `IngestionReceiptDto` and pure formatting helper `formatUpdateReceiptFeedback(receipt)` in `@/components/portfolio` (and imported in `PortfolioPageContent`). The toast now dynamically computes updated count as `quotesInserted + quotesRevised` and produces exact feedback (e.g., `"Cotações atualizadas com sucesso: 2 ativos. Atenção: 1 requer token (HGLG11)."`) with zero `undefined` or `NaN` occurrences.
+
+### 2. Market Data Provider Environment Default
+
+- **Root Cause**: `createMarketDataProvider` in `market-data.module.ts` defaulted to `'IN_MEMORY'` when `MARKET_DATA_PROVIDER` was not explicitly set. In development, the in-memory store lacked pre-seeded quotes, returning `SYMBOL_NOT_FOUND` without dispatching requests to BRAPI.
+- **Resolution**: Updated `market-data.module.ts` to default to `'IN_MEMORY'` strictly in test environments (`process.env.NODE_ENV === 'test'`), and default to `'BRAPI'` in development and production environments. Explicitly configured `MARKET_DATA_PROVIDER="BRAPI"` in `.env` and `.env.example`. Anonymous public quotes for B3 stocks (`PETR4`, `VALE3`) are fetched and persisted without requiring a token.
+
+### 3. Asset Identity Resolution & Primary Human Label
+
+- **Root Cause**: `packages/ui/src/view-models/portfolio-overview.view-model.ts` mapped `displayIdentifier: pos.assetId`. Since `pos.assetId` contains database UUIDs (`e0000000-0000-4000-8000-000000000001`), the UI displayed raw UUIDs instead of canonical human tickers (`PETR4`, `VALE3`).
+- **Resolution**:
+  - Enhanced `GetPortfolioValuationUseCase` and `GetPortfolioAllocationUseCase` to batch-resolve asset metadata (`ticker`, `type`) from `assetRepository.findByIds` and decorate consolidated/account position outputs.
+  - Extended `PositionDto` and `PortfolioOverviewPositionItem` in `@atlas/ui` with optional `ticker` and `assetName`.
+  - Updated `mapToPortfolioOverviewViewModel` to accept an optional `assetsCatalog` parameter and resolve `displayIdentifier: resolvedTicker || pos.assetId`.
+  - Updated `PositionRow.tsx` to render `primaryLabel` with precedence: `valuation?.ticker || position.ticker || (!isUuid(displayIdentifier) ? displayIdentifier : null) || 'Ativo sem identificação'`. Raw UUIDs are strictly prevented from appearing as the primary label. Secondary label displays `position.assetName || valuation?.assetType`.
+  - Updated `PortfolioAllocationSection.tsx` to display human fallback labels instead of raw UUIDs for unvalued assets and progress bars.

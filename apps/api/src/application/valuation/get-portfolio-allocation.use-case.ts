@@ -70,12 +70,33 @@ export class GetPortfolioAllocationUseCase {
       throw err;
     }
 
+    const assetIds = Array.from(replayResult.state.assets.keys()).map(String);
+    const assets = await this.assetRepository.findByIds(assetIds);
+    const assetMap = new Map<
+      string,
+      { ticker: string; exchange: string; currency: string; type: string }
+    >(
+      assets.map((a) => [
+        a.id,
+        {
+          ticker: a.ticker,
+          exchange: a.exchange,
+          currency: a.currency,
+          type: a.type,
+        },
+      ]),
+    );
+
     const consolidatedPositions: PositionValuationInput[] = [];
 
     for (const assetState of replayResult.state.assets.values()) {
+      const assetIdStr = String(assetState.assetId);
+      const meta = assetMap.get(assetIdStr);
       consolidatedPositions.push({
-        assetId: String(assetState.assetId),
+        assetId: assetIdStr,
         accountId: null,
+        ticker: meta?.ticker,
+        assetType: meta?.type,
         quantity: assetState.quantity.value,
         currency: assetState.currency as never,
         totalCost: assetState.totalCost ? assetState.totalCost.amount : null,
@@ -95,24 +116,7 @@ export class GetPortfolioAllocationUseCase {
       return emptyAllocation as unknown as PortfolioAllocationReadModel;
     }
 
-    const assetMap = new Map<
-      string,
-      { ticker: string; exchange: string; currency: string; type: string }
-    >();
-    for (const pos of consolidatedPositions) {
-      const asset = await this.assetRepository.findById(pos.assetId);
-      if (asset) {
-        assetMap.set(pos.assetId, {
-          ticker: asset.ticker,
-          exchange: asset.exchange,
-          currency: asset.currency,
-          type: asset.type,
-        });
-      }
-    }
-
     const quotesMap = new Map<string, ValuationQuote>();
-    const assetIds = consolidatedPositions.map((p) => p.assetId);
 
     // Primary lookup: Persisted EOD quotes from database (Single batch query)
     const persistedQuotes = await this.marketQuoteRepository.findLatestByAssets(assetIds);

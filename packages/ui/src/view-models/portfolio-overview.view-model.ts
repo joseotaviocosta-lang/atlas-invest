@@ -7,6 +7,8 @@ export interface MoneyDto {
 
 export interface PositionDto {
   readonly assetId: string;
+  readonly ticker?: string | null;
+  readonly assetName?: string | null;
   readonly quantity: string;
   readonly costBasisStatus: 'KNOWN' | 'INCOMPLETE';
   readonly currency?: string;
@@ -90,6 +92,14 @@ export interface AccountMeta {
   readonly name: string;
 }
 
+export interface AssetMeta {
+  readonly id: string;
+  readonly ticker: string;
+  readonly name?: string | null;
+  readonly type?: string | null;
+  readonly currency?: string | null;
+}
+
 export interface PositionAccountBreakdownItem {
   readonly accountId: string;
   readonly accountName: string;
@@ -104,6 +114,8 @@ export interface PositionAccountBreakdownItem {
 export interface PortfolioOverviewPositionItem {
   readonly assetId: string;
   readonly displayIdentifier: string;
+  readonly ticker?: string | null;
+  readonly assetName?: string | null;
   readonly quantity: string;
   readonly rawQuantity: string;
   readonly currency: string;
@@ -182,6 +194,7 @@ export function mapToPortfolioOverviewViewModel(
   state: PortfolioStateDto,
   portfolioMeta?: PortfolioMeta | null,
   accountsMeta?: Record<string, AccountMeta> | readonly AccountMeta[] | null,
+  assetsMeta?: Record<string, AssetMeta> | readonly AssetMeta[] | null,
 ): PortfolioOverviewViewModel {
   const portfolioId = state.portfolioId;
   const metaName = portfolioMeta?.name || 'Minha Carteira';
@@ -198,6 +211,20 @@ export function mapToPortfolioOverviewViewModel(
     } else {
       for (const [id, acc] of Object.entries(accountsMeta)) {
         accountNameMap.set(id, acc.name);
+      }
+    }
+  }
+
+  // Build asset metadata resolver
+  const assetMetaMap = new Map<string, AssetMeta>();
+  if (assetsMeta) {
+    if (Array.isArray(assetsMeta)) {
+      for (const asset of assetsMeta) {
+        assetMetaMap.set(asset.id, asset);
+      }
+    } else {
+      for (const [id, asset] of Object.entries(assetsMeta)) {
+        assetMetaMap.set(id, asset);
       }
     }
   }
@@ -247,9 +274,16 @@ export function mapToPortfolioOverviewViewModel(
       }
     }
 
+    const assetMeta = assetMetaMap.get(pos.assetId);
+    const resolvedTicker = assetMeta?.ticker || pos.ticker || null;
+    const resolvedName = assetMeta?.name || pos.assetName || null;
+    const displayIdentifier = resolvedTicker || pos.assetId;
+
     return {
       assetId: pos.assetId,
-      displayIdentifier: pos.assetId,
+      displayIdentifier,
+      ticker: resolvedTicker,
+      assetName: resolvedName,
       quantity: formatQuantity(pos.quantity),
       rawQuantity: pos.quantity,
       currency,

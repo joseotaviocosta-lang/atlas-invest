@@ -40,6 +40,8 @@ import {
   valuationQueryKey,
   allocationQueryKey,
   PositionValuationBadge,
+  IngestionReceiptDto,
+  formatUpdateReceiptFeedback,
 } from '@/components/portfolio';
 import {
   OPERATION_TYPE_OPTIONS,
@@ -254,6 +256,8 @@ function PortfolioPageContent() {
       data: {
         positions: Array<{
           assetId: string;
+          ticker?: string | null;
+          assetType?: string | null;
           marketValue: { amount: string; currency: string } | null;
           unrealizedGainLoss: { amount: string; currency: string } | null;
           unrealizedGainLossPercent: string | null;
@@ -280,6 +284,8 @@ function PortfolioPageContent() {
         data: {
           positions: Array<{
             assetId: string;
+            ticker?: string | null;
+            assetType?: string | null;
             marketValue: { amount: string; currency: string } | null;
             unrealizedGainLoss: { amount: string; currency: string } | null;
             unrealizedGainLossPercent: string | null;
@@ -304,6 +310,8 @@ function PortfolioPageContent() {
     const m = new Map<
       string,
       {
+        ticker?: string | null;
+        assetType?: string | null;
         marketValue: { amount: string; currency: string } | null;
         unrealizedGainLoss: { amount: string; currency: string } | null;
         unrealizedGainLossPercent: string | null;
@@ -321,6 +329,8 @@ function PortfolioPageContent() {
     for (const p of (valuationData?.data?.positions as
       | Array<{
           assetId: string;
+          ticker?: string | null;
+          assetType?: string | null;
           marketValue: { amount: string; currency: string } | null;
           unrealizedGainLoss: { amount: string; currency: string } | null;
           unrealizedGainLossPercent: string | null;
@@ -358,10 +368,24 @@ function PortfolioPageContent() {
     staleTime: 60000,
   });
 
+  // Fetch Assets Catalog for ticker & name resolution
+  const { data: assetsCatalog = [] } = useQuery<CatalogAssetDto[], ApiError>({
+    queryKey: ['assets-catalog'],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get<{ data: CatalogAssetDto[] }>('/api/v1/assets');
+        return res.data || [];
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 300000,
+  });
+
   // Pure presentation view model
   const overviewViewModel =
     stateData && activePortfolio
-      ? mapToPortfolioOverviewViewModel(stateData, activePortfolio, accountsData)
+      ? mapToPortfolioOverviewViewModel(stateData, activePortfolio, accountsData, assetsCatalog)
       : null;
 
   // Create Portfolio Mutation
@@ -390,20 +414,11 @@ function PortfolioPageContent() {
     mutationFn: async () => {
       if (!activePortfolio?.id) throw new Error('Nenhuma carteira selecionada.');
       const res = await apiClient.post<{
-        data: {
-          portfolioId: string;
-          asOf: string;
-          requestedCount: number;
-          updatedCount: number;
-          failedCount: number;
-          staleCount: number;
-          missingTickers: string[];
-          revisionsCreated: number;
-        };
+        data: IngestionReceiptDto;
       }>(`/api/v1/portfolios/${activePortfolio.id}/market-data/update`, {});
       return res.data;
     },
-    onSuccess: (data) => {
+    onSuccess: (receipt) => {
       if (activePortfolio?.id) {
         queryClient.invalidateQueries({ queryKey: valuationQueryKey(activePortfolio.id) });
         queryClient.invalidateQueries({ queryKey: allocationQueryKey(activePortfolio.id) });
@@ -411,23 +426,8 @@ function PortfolioPageContent() {
           queryKey: stateQueryKey(activePortfolio.id, temporal.asOf),
         });
       }
-      const missingCount = data.missingTickers?.length ?? 0;
-      if (data.updatedCount === 0 && data.requestedCount > 0) {
-        showToast(
-          `Nenhuma cotação foi atualizada (${data.requestedCount} solicitadas, ${missingCount} indisponíveis).`,
-          'warning',
-        );
-      } else if (missingCount > 0) {
-        showToast(
-          `Cotações atualizadas: ${data.updatedCount} com sucesso (${missingCount} indisponíveis).`,
-          'positive',
-        );
-      } else {
-        showToast(
-          `Cotações atualizadas com sucesso: ${data.updatedCount} ${data.updatedCount === 1 ? 'ativo' : 'ativos'}.`,
-          'positive',
-        );
-      }
+      const feedback = formatUpdateReceiptFeedback(receipt);
+      showToast(feedback.message, feedback.variant);
     },
     onError: (err: ApiError) => {
       showToast(
@@ -496,19 +496,6 @@ function PortfolioPageContent() {
     },
     enabled: Boolean(activePortfolio?.id),
     staleTime: 30000,
-  });
-
-  const { data: assetsCatalog = [] } = useQuery<CatalogAssetDto[], ApiError>({
-    queryKey: ['assets-catalog'],
-    queryFn: async () => {
-      try {
-        const res = await apiClient.get<{ data: CatalogAssetDto[] }>('/api/v1/assets');
-        return res.data || [];
-      } catch {
-        return [];
-      }
-    },
-    staleTime: 300000,
   });
 
   const assetLabelById = useMemo(() => {

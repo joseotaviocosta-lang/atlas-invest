@@ -7,6 +7,8 @@ import { PortfolioOverviewPositionItem, appendAsOf } from '@atlas/ui';
 import { Badge } from '@/components/ui/Badge';
 
 export interface PositionValuationDisplay {
+  ticker?: string | null;
+  assetType?: string | null;
   marketValue: { amount: string; currency: string } | null;
   unrealizedGainLoss: { amount: string; currency: string } | null;
   unrealizedGainLossPercent: string | null;
@@ -30,6 +32,8 @@ export interface PositionRowProps {
   isHistorical?: boolean;
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function PositionRow({
   position,
   portfolioId,
@@ -43,6 +47,14 @@ export function PositionRow({
     `/portfolio/assets/${position.assetId}${portfolioId ? `?portfolioId=${portfolioId}` : ''}`,
     asOf ?? null,
   );
+
+  const primaryLabel =
+    valuation?.ticker ||
+    position.ticker ||
+    (!UUID_REGEX.test(position.displayIdentifier) ? position.displayIdentifier : null) ||
+    'Ativo sem identificação';
+
+  const secondaryLabel = position.assetName || valuation?.assetType || null;
 
   return (
     <div
@@ -86,12 +98,26 @@ export function PositionRow({
                   fontFamily: 'monospace',
                   textDecoration: 'none',
                 }}
-                aria-label={`Ver detalhes de ${position.displayIdentifier}`}
+                aria-label={`Ver detalhes de ${primaryLabel}`}
               >
-                {position.displayIdentifier}
+                {primaryLabel}
               </Link>
               {isIncomplete && <Badge variant="warning">Dados incompletos</Badge>}
             </div>
+            {secondaryLabel && (
+              <div
+                style={{
+                  fontSize: '0.75rem',
+                  color: colors.textSecondary,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: '220px',
+                }}
+              >
+                {secondaryLabel}
+              </div>
+            )}
             <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
               {position.quantity} {position.quantity === '1' ? 'unidade' : 'unidades'} •{' '}
               {position.accountCount} {position.accountCount === 1 ? 'conta' : 'contas'}

@@ -1,18 +1,13 @@
-﻿import { formatCurrency, formatPercentage, formatQuantity } from '../formatters';
+import { formatCurrency, formatPercentage, formatQuantity } from '../formatters';
 import {
   PortfolioStateDto,
   PortfolioMeta,
   AccountMeta,
+  AssetMeta,
   MoneyDto,
 } from './portfolio-overview.view-model';
 
-export interface AssetMeta {
-  readonly id: string;
-  readonly ticker: string;
-  readonly name?: string | null;
-  readonly type?: string | null;
-  readonly currency?: string | null;
-}
+export type { AssetMeta };
 
 export interface PortfolioHistoryItemDto {
   readonly id: string;

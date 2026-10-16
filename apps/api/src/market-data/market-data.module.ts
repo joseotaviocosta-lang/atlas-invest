@@ -25,7 +25,8 @@ import {
 } from './tokens';
 
 function createMarketDataProvider(): MarketDataProvider {
-  const providerName = (process.env.MARKET_DATA_PROVIDER ?? 'IN_MEMORY').trim().toUpperCase();
+  const defaultProvider = process.env.NODE_ENV === 'test' ? 'IN_MEMORY' : 'BRAPI';
+  const providerName = (process.env.MARKET_DATA_PROVIDER ?? defaultProvider).trim().toUpperCase();
   const token = process.env.MARKET_DATA_API_TOKEN ?? process.env.BRAPI_API_KEY;
   const timeoutMs = parseInt(process.env.MARKET_DATA_TIMEOUT_MS ?? '10000', 10);
 
@@ -36,10 +37,11 @@ function createMarketDataProvider(): MarketDataProvider {
 }
 
 function createHistoricalProvider(): HistoricalMarketDataProvider {
+  const defaultHistorical = process.env.NODE_ENV === 'test' ? 'IN_MEMORY' : 'BRAPI';
   const providerName = (
     process.env.HISTORICAL_MARKET_DATA_PROVIDER ??
     process.env.MARKET_DATA_PROVIDER ??
-    'IN_MEMORY'
+    defaultHistorical
   )
     .trim()
     .toUpperCase();

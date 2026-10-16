@@ -439,3 +439,73 @@ export function PositionValuationBadge({
   }
   return null;
 }
+
+export interface IngestionReceiptDto {
+  requestedAssets: number;
+  resolvedAssets: number;
+  skippedAssets: number;
+  quotesFetched: number;
+  quotesInserted: number;
+  quotesUnchanged: number;
+  quotesRevised: number;
+  authRequiredAssets: string[];
+  missingAssets: string[];
+  rateLimitedAssets: string[];
+  providerErrors: string[];
+  status: 'SUCCESS' | 'PARTIAL' | 'FAILED';
+}
+
+export function formatUpdateReceiptFeedback(receipt: IngestionReceiptDto): {
+  message: string;
+  variant: 'positive' | 'warning' | 'negative';
+} {
+  const updatedCount = (receipt.quotesInserted ?? 0) + (receipt.quotesRevised ?? 0);
+  const authCount = receipt.authRequiredAssets?.length ?? 0;
+  const missingCount =
+    (receipt.missingAssets?.length ?? 0) + (receipt.rateLimitedAssets?.length ?? 0);
+  const totalNotUpdated = authCount + missingCount + (receipt.skippedAssets ?? 0);
+
+  if (receipt.status === 'FAILED' || (updatedCount === 0 && totalNotUpdated > 0)) {
+    if (authCount > 0 && updatedCount === 0) {
+      return {
+        message: `Atualização requer autenticação de provedor para ${authCount} ${authCount === 1 ? 'ativo' : 'ativos'} (${receipt.authRequiredAssets.join(', ')}). Configure BRAPI_API_KEY.`,
+        variant: 'warning',
+      };
+    }
+    return {
+      message: `Nenhuma cotação atualizada (${receipt.requestedAssets ?? 0} solicitadas, ${totalNotUpdated} indisponíveis).`,
+      variant: 'warning',
+    };
+  }
+
+  const parts: string[] = [];
+  parts.push(
+    `Cotações atualizadas com sucesso: ${updatedCount} ${updatedCount === 1 ? 'ativo' : 'ativos'}`,
+  );
+
+  if (receipt.quotesRevised > 0) {
+    parts.push(
+      `(${receipt.quotesRevised} ${receipt.quotesRevised === 1 ? 'revisão' : 'revisões'})`,
+    );
+  }
+
+  const diagnostics: string[] = [];
+  if (authCount > 0) {
+    diagnostics.push(`${authCount} requer token (${receipt.authRequiredAssets.join(', ')})`);
+  }
+  if (missingCount > 0) {
+    diagnostics.push(`${missingCount} não localizados`);
+  }
+
+  if (diagnostics.length > 0) {
+    return {
+      message: `${parts.join(' ')}. Atenção: ${diagnostics.join(', ')}.`,
+      variant: 'positive',
+    };
+  }
+
+  return {
+    message: `${parts.join(' ')}.`,
+    variant: 'positive',
+  };
+}
