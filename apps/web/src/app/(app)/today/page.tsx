@@ -4,9 +4,29 @@ import React from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/auth.store';
-import { PageHeader, SectionHeader, StatCard, EmptyState, Card, Button } from '@/components/ui';
-import { colors, spacing, borderRadius } from '@atlas/ui';
+import {
+  PageHeader,
+  SectionHeader,
+  StatCard,
+  EmptyState,
+  Card,
+  Button,
+  Badge,
+} from '@/components/ui';
+import { colors, spacing, borderRadius, formatCurrency, formatPercentage } from '@atlas/ui';
 import { apiClient } from '@/api/client';
+import {
+  PortfolioValuationResponse,
+  valuationQueryKey,
+} from '@/components/portfolio/PortfolioValuation';
+
+interface IncomeSummaryItem {
+  currency: string;
+  totalIncome: { amount: string; currency: string };
+  dividends: { amount: string; currency: string };
+  jcp: { amount: string; currency: string };
+  fiiIncome: { amount: string; currency: string };
+}
 
 export default function TodayPage() {
   const user = useAuthStore((state) => state.user);
@@ -14,19 +34,24 @@ export default function TodayPage() {
   const { data: portfolios = [], isLoading: isLoadingPortfolios } = useQuery({
     queryKey: ['portfolios'],
     queryFn: async () => {
-      const res = await apiClient.get<{ data: Array<{ id: string }> }>('/api/v1/portfolios');
+      const res = await apiClient.get<{ data: Array<{ id: string; name: string }> }>(
+        '/api/v1/portfolios',
+      );
       return res.data || [];
     },
     staleTime: 60 * 1000,
   });
 
   const firstName = user?.name ? user.name.split(' ')[0] : 'Investidor';
-  const firstPortfolioId = portfolios[0]?.id;
+  const firstPortfolio = portfolios[0];
+  const firstPortfolioId = firstPortfolio?.id;
+
+  // 1. Ledger state query (Source of truth for cost basis & proventos)
   const { data: stateData } = useQuery<{
     data: {
       totalCost?: { amount: string; currency: string } | null;
       positions: Array<unknown>;
-      incomeSummaries?: Array<{ totalIncome: { amount: string; currency: string } }>;
+      incomeSummaries?: IncomeSummaryItem[];
     };
   }>({
     queryKey: ['portfolio-state', firstPortfolioId],
@@ -38,12 +63,78 @@ export default function TodayPage() {
     staleTime: 30 * 1000,
   });
 
-  const totalCostObj = stateData?.data?.totalCost;
-  const totalCostFormatted = totalCostObj
-    ? `${totalCostObj.currency} ${Number(totalCostObj.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    : null;
-  const positionsCount = stateData?.data?.positions?.length ?? 0;
+  // 2. Persisted market valuation query (Zero live provider calls on GET)
+  const { data: valuationData, isLoading: isLoadingValuation } =
+    useQuery<PortfolioValuationResponse>({
+      queryKey: firstPortfolioId
+        ? valuationQueryKey(firstPortfolioId)
+        : ['portfolio-valuation', 'none'],
+      queryFn: async () => {
+        if (!firstPortfolioId) throw new Error('No portfolio');
+        return apiClient.get(`/api/v1/portfolios/${firstPortfolioId}/valuation`);
+      },
+      enabled: Boolean(firstPortfolioId),
+      staleTime: 30 * 1000,
+    });
+
   const hasNoPortfolios = !isLoadingPortfolios && portfolios.length === 0;
+  const valuation = valuationData?.data;
+  const currencies =
+    valuation?.summary?.currencies ??
+    (valuation?.totalsByCurrency ? Object.keys(valuation.totalsByCurrency) : []);
+  const primaryCurrency = currencies[0] ?? 'BRL';
+  const totals = valuation?.totalsByCurrency?.[primaryCurrency];
+
+  // Derive Cost Basis (Ledger source of truth via valuation totals or state)
+  const costBasisFormatted = totals?.costBasis
+    ? formatCurrency(totals.costBasis.amount, totals.costBasis.currency)
+    : stateData?.data?.totalCost
+      ? formatCurrency(stateData.data.totalCost.amount, stateData.data.totalCost.currency)
+      : null;
+
+  // Derive Market Value
+  const marketValueFormatted = totals?.marketValue
+    ? formatCurrency(totals.marketValue.amount, totals.marketValue.currency)
+    : null;
+
+  // Derive Unrealized Result & Percent
+  const unrealizedAmount = totals?.unrealizedGainLoss
+    ? formatCurrency(totals.unrealizedGainLoss.amount, totals.unrealizedGainLoss.currency)
+    : null;
+  const unrealizedPercent = totals?.unrealizedGainLossPercent
+    ? formatPercentage(totals.unrealizedGainLossPercent, { showSign: true })
+    : null;
+
+  // Derive Proventos (strictly ledger-derived from stateData.incomeSummaries)
+  const incomeSummary = stateData?.data?.incomeSummaries?.find(
+    (s) => s.currency === primaryCurrency,
+  );
+  const proventosFormatted = incomeSummary?.totalIncome
+    ? formatCurrency(incomeSummary.totalIncome.amount, incomeSummary.totalIncome.currency)
+    : null;
+
+  // Quote coverage diagnostics
+  const totalPositions =
+    valuation?.summary?.totalPositions ?? stateData?.data?.positions?.length ?? 0;
+  const valuedPositions = valuation?.summary?.valuedPositions ?? 0;
+  const stalePositions = valuation?.summary?.stalePositions ?? 0;
+  const unvaluedPositions = valuation?.summary?.unvaluedPositions ?? 0;
+  const coveragePercent =
+    valuation?.summary?.valuationCoveragePercent ??
+    (totalPositions > 0 && valuedPositions === totalPositions ? '100' : '0');
+
+  let coverageStatusText = 'Nenhuma posição ativa';
+  if (totalPositions > 0) {
+    if (unvaluedPositions === 0 && stalePositions === 0) {
+      coverageStatusText = `${valuedPositions} de ${totalPositions} com cotação atualizada (${coveragePercent}%)`;
+    } else if (unvaluedPositions > 0 && valuedPositions > 0) {
+      coverageStatusText = `${valuedPositions} de ${totalPositions} com cotação (${unvaluedPositions} sem cotação)`;
+    } else if (stalePositions > 0) {
+      coverageStatusText = `${stalePositions} cotação desatualizada (${valuedPositions}/${totalPositions})`;
+    } else {
+      coverageStatusText = `Sem cotação disponível (${totalPositions} ${totalPositions === 1 ? 'ativo' : 'ativos'})`;
+    }
+  }
 
   return (
     <div>
@@ -96,12 +187,37 @@ export default function TodayPage() {
         </div>
       )}
 
-      {/* Financial Overview StatCards (Strict Honest Policy: Real Cost Basis, No Fake Quotations) */}
+      {/* Financial Overview StatCards (Real Persisted Market Valuation Overlay) */}
       <div style={{ marginBottom: `${spacing.xl}px` }}>
-        <SectionHeader
-          title="Resumo Patrimonial"
-          description="Indicadores derivados do livro-razão e posições em custódia"
-        />
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '8px',
+            marginBottom: `${spacing.sm}px`,
+          }}
+        >
+          <SectionHeader
+            title="Resumo Patrimonial"
+            description={
+              firstPortfolio
+                ? `Carteira: ${firstPortfolio.name}`
+                : 'Indicadores derivados do livro-razão e mercado'
+            }
+          />
+          {totalPositions > 0 && (
+            <Badge
+              variant={
+                unvaluedPositions > 0 ? 'warning' : stalePositions > 0 ? 'neutral' : 'positive'
+              }
+            >
+              {coverageStatusText}
+            </Badge>
+          )}
+        </div>
+
         <div
           style={{
             display: 'grid',
@@ -111,33 +227,70 @@ export default function TodayPage() {
         >
           <StatCard
             label="Custo Total em Custódia"
-            value={totalCostFormatted ?? '—'}
+            value={costBasisFormatted ?? '—'}
             subValue={
-              positionsCount > 0
-                ? `${positionsCount} ${positionsCount === 1 ? 'ativo' : 'ativos'} em custódia`
+              totalPositions > 0
+                ? `${totalPositions} ${totalPositions === 1 ? 'ativo' : 'ativos'} em custódia`
                 : 'Nenhuma posição ativa'
             }
-            isPlaceholder={!totalCostFormatted}
+            isPlaceholder={!costBasisFormatted}
+          />
+          <StatCard
+            label="Valor de Mercado"
+            value={marketValueFormatted ?? '—'}
+            subValue={
+              isLoadingValuation
+                ? 'Carregando cotações...'
+                : totals?.marketValue
+                  ? `Baseado em cotações EOD persistidas`
+                  : 'Atualize as cotações para calcular'
+            }
+            isPlaceholder={!marketValueFormatted}
+          />
+          <StatCard
+            label="Resultado Não Realizado"
+            value={unrealizedAmount ?? '—'}
+            subValue={
+              unrealizedPercent
+                ? `Variação patrimonial: ${unrealizedPercent}`
+                : totals?.unrealizedGainLoss
+                  ? 'Calculado sobre custo conhecido'
+                  : 'Disponível com cotações'
+            }
+            isPlaceholder={!unrealizedAmount}
           />
           <StatCard
             label="Variação Hoje"
             value="—"
-            subValue="Disponível com cotações de mercado"
-            isPlaceholder
-          />
-          <StatCard
-            label="Resultado Acumulado"
-            value="—"
-            subValue="Disponível na aba Rentabilidade"
+            subValue="Dados insuficientes para variação diária"
             isPlaceholder
           />
           <StatCard
             label="Proventos Acumulados"
-            value="—"
-            subValue="Disponível na aba Proventos"
-            isPlaceholder
+            value={proventosFormatted ?? '—'}
+            subValue={
+              incomeSummary?.totalIncome
+                ? `Total creditado no livro-razão (${primaryCurrency})`
+                : 'Disponível na aba Proventos'
+            }
+            isPlaceholder={!proventosFormatted}
           />
         </div>
+
+        {/* Multi-currency segregation disclosure if multiple currencies exist */}
+        {currencies.length > 1 && (
+          <div
+            style={{
+              marginTop: `${spacing.md}px`,
+              fontSize: '0.8125rem',
+              color: colors.textSecondary,
+            }}
+          >
+            Observação: Sua carteira possui ativos em múltiplas moedas ({currencies.join(', ')}).
+            Exibindo balanço em {primaryCurrency}. Consulte a aba Carteira para detalhes segregados
+            por moeda.
+          </div>
+        )}
       </div>
 
       {/* Personalized Content Sections */}

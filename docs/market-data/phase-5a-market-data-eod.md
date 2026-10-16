@@ -367,3 +367,45 @@ During real owner human validation of the Portfolio market-data flow, three root
   - Updated `mapToPortfolioOverviewViewModel` to accept an optional `assetsCatalog` parameter and resolve `displayIdentifier: resolvedTicker || pos.assetId`.
   - Updated `PositionRow.tsx` to render `primaryLabel` with precedence: `valuation?.ticker || position.ticker || (!isUuid(displayIdentifier) ? displayIdentifier : null) || 'Ativo sem identificação'`. Raw UUIDs are strictly prevented from appearing as the primary label. Secondary label displays `position.assetName || valuation?.assetType`.
   - Updated `PortfolioAllocationSection.tsx` to display human fallback labels instead of raw UUIDs for unvalued assets and progress bars.
+
+---
+
+## 11. Phase 5A-I4: Home / Today Valuation, Performance Wiring & Market Coverage
+
+Phase 5A-I4 integrates the approved persisted market valuation and historical quotes into the remaining primary user surfaces: Home/Hoje, Rentabilidade, and Mercado.
+
+### 1. Home / Hoje (`apps/web/src/app/(app)/today/page.tsx`)
+
+- **Persisted Valuation Overlay**: Subscribes to `GET /api/v1/portfolios/:portfolioId/valuation` alongside ledger state (`GET /state`).
+- **Real Metrics Presented**:
+  - `Custo Total em Custódia`: Derived from ledger/valuation total cost basis (`formatCurrency`).
+  - `Valor de Mercado`: Real market value calculated from persisted EOD quotes (`formatCurrency`).
+  - `Resultado Não Realizado`: Signed currency amount (`formatCurrency`) + signed percentage (`formatPercentage(percent, { showSign: true })`), e.g., `R$ 10.849,90 (+131,04%)`.
+  - `Proventos Acumulados`: Strictly derived from ledger economic events (`stateData.incomeSummaries`) without querying market quote providers.
+  - `Variação Hoje`: Honest disclosure — displays `—` with `subValue="Dados insuficientes para variação diária"`. Never fabricates `0,00%` or synthetic changes.
+  - `Cobertura de Cotação`: Real badge showing quote coverage status (e.g. `2 de 2 com cotação atualizada (100%)`).
+- **Multi-currency Segregation**: Segregates assets by currency; displays primary currency (e.g., BRL) with explicit disclosure when foreign assets exist.
+- **Zero Live Provider Calls**: Opening `/today` makes zero calls to external market data providers.
+
+### 2. Rentabilidade & Performance Architecture (`apps/api/src/market-data/persisted-historical-market-data.provider.ts`)
+
+- **PersistedHistoricalMarketDataProvider**:
+  - Implements `HistoricalMarketDataProvider` backed exclusively by `market_quotes` via `IMarketQuoteRepository`.
+  - Zero network I/O on read operations.
+  - Exact date lookups with previous trading day resolution within a 7-day lookback window.
+  - Missing quotes return `UNAVAILABLE` without contacting external providers.
+- **PerformanceReplayEngine Integration**:
+  - Existing canonical `PerformanceReplayEngine` is preserved and reused.
+  - When historical quotes are insufficient (e.g., only 1 quote date in database): Engine returns `dataAvailability: 'INSUFFICIENT_DATA'` / `status: 'UNAVAILABLE'`.
+  - UI displays honest state: `"Ainda não há histórico de cotações suficiente para calcular a rentabilidade."` without fabricating flat 0% charts.
+  - When sufficient historical data is persisted: Computes real TWR, XIRR, and series without live network calls.
+
+### 3. Mercado (`apps/web/src/app/(app)/market/page.tsx`)
+
+- **Minimal Custody Market Coverage**:
+  - Converted from placeholder shell into an active "Cotações da sua Carteira" surface.
+  - Displays held assets with Ticker, Latest Price (`formatCurrency`), Quote Date (`asOf`), Provider (`BRAPI`), and Status Badge (`Atualizada`, `Desatualizada`, `Sem cotação`).
+  - Reuses canonical "Atualizar cotações" button with `formatUpdateReceiptFeedback`.
+- **Honest Macroeconomic Disclosure**:
+  - Macro cards (`IBOVESPA`, `TAXA SELIC`, `IPCA`, `DÓLAR`) are explicitly labelled as `"Integração futura oficial B3 / Bacen"` with zero simulated numbers.
+  - Future modules (Radar, Watchlist, Calendário) clearly labelled as roadmap expansions.

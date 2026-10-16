@@ -23,6 +23,9 @@ import {
   BENCHMARK_DATA_PROVIDER,
   RATE_BENCHMARK_DATA_PROVIDER,
 } from './tokens';
+import { MARKET_QUOTE_REPOSITORY } from '../database/tokens';
+import { IMarketQuoteRepository } from '@atlas/database';
+import { PersistedHistoricalMarketDataProvider } from './persisted-historical-market-data.provider';
 
 function createMarketDataProvider(): MarketDataProvider {
   const defaultProvider = process.env.NODE_ENV === 'test' ? 'IN_MEMORY' : 'BRAPI';
@@ -36,12 +39,13 @@ function createMarketDataProvider(): MarketDataProvider {
   return new InMemoryMarketDataProvider();
 }
 
-function createHistoricalProvider(): HistoricalMarketDataProvider {
-  const defaultHistorical = process.env.NODE_ENV === 'test' ? 'IN_MEMORY' : 'BRAPI';
+function createHistoricalProvider(
+  quoteRepo?: IMarketQuoteRepository,
+): HistoricalMarketDataProvider {
   const providerName = (
     process.env.HISTORICAL_MARKET_DATA_PROVIDER ??
     process.env.MARKET_DATA_PROVIDER ??
-    defaultHistorical
+    (process.env.NODE_ENV === 'test' ? 'IN_MEMORY' : 'PERSISTED')
   )
     .trim()
     .toUpperCase();
@@ -52,6 +56,9 @@ function createHistoricalProvider(): HistoricalMarketDataProvider {
   );
   const maxLookback = parseInt(process.env.HISTORICAL_MARKET_DATA_MAX_LOOKBACK_DAYS ?? '7', 10);
 
+  if (providerName === 'PERSISTED' && quoteRepo) {
+    return new PersistedHistoricalMarketDataProvider(quoteRepo);
+  }
   if (providerName === 'BRAPI') {
     return new BrapiHistoricalMarketDataProvider({ token, timeoutMs });
   }
@@ -101,7 +108,8 @@ function createRateBenchmarkProvider(): RateBenchmarkDataProvider {
     },
     {
       provide: HISTORICAL_MARKET_DATA_PROVIDER,
-      useFactory: () => createHistoricalProvider(),
+      useFactory: (quoteRepo: IMarketQuoteRepository) => createHistoricalProvider(quoteRepo),
+      inject: [MARKET_QUOTE_REPOSITORY],
     },
     {
       provide: BENCHMARK_DATA_PROVIDER,
