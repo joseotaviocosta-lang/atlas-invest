@@ -412,6 +412,122 @@ export function getQuoteFreshness(
 }
 
 // ---------------------------------------------------------------------------
+// EOD Quote Freshness Classifier (Phase 5A)
+// ---------------------------------------------------------------------------
+
+export type EodFreshnessStatus = 'FRESH' | 'STALE' | 'MISSING' | 'ERROR';
+
+export interface ClassifyEodQuoteFreshnessInput {
+  quote?: {
+    tradingDate: LocalDate | string;
+    asOf?: string;
+  } | null;
+  hasProviderError?: boolean;
+  viewDate?: LocalDate | string;
+  viewHour?: number; // 0-23 in America/Sao_Paulo (default: 12)
+  marketCloseThresholdHour?: number; // default: 18 (18:00 BRT)
+}
+
+/**
+ * Classifies the operational freshness of an End-of-Day (EOD) market quote.
+ *
+ * Rules:
+ * 1. If provider attempted and failed -> 'ERROR'
+ * 2. If no quote exists -> 'MISSING'
+ * 3. If quote exists:
+ *    - Same calendar day -> 'FRESH'
+ *    - Weekend handling: A Friday quote viewed on Saturday or Sunday is 'FRESH'
+ *      because the exchange is closed over the weekend.
+ *    - Monday handling: A Friday quote viewed on Monday before the market close
+ *      threshold (default 18:00 BRT) is 'FRESH'. After 18:00 BRT on Monday,
+ *      it becomes 'STALE'.
+ *    - Next weekday handling: A quote from day D viewed on day D+1 before
+ *      the market close threshold is 'FRESH'. After market close threshold (or D+2+),
+ *      it becomes 'STALE'.
+ *    - Any older quote beyond the expected market session -> 'STALE'.
+ *
+ * Note on Holiday Calendar:
+ * This MVP classifier is weekend-aware. It does not yet include a dynamic
+ * Brazilian federal/B3 holiday calendar. Conservative policy applies.
+ */
+export function classifyEodQuoteFreshness(
+  input: ClassifyEodQuoteFreshnessInput,
+): EodFreshnessStatus {
+  if (input.hasProviderError) {
+    return 'ERROR';
+  }
+  if (!input.quote) {
+    return 'MISSING';
+  }
+
+  const quoteDate =
+    input.quote.tradingDate instanceof LocalDate
+      ? input.quote.tradingDate
+      : LocalDate.from(String(input.quote.tradingDate));
+
+  let viewDate: LocalDate;
+  let viewHour = input.viewHour ?? 12;
+
+  if (input.viewDate) {
+    viewDate =
+      input.viewDate instanceof LocalDate ? input.viewDate : LocalDate.from(String(input.viewDate));
+  } else {
+    // Current civil date and hour in America/Sao_Paulo
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(now);
+    const y = parts.find((p) => p.type === 'year')!.value;
+    const m = parts.find((p) => p.type === 'month')!.value;
+    const d = parts.find((p) => p.type === 'day')!.value;
+    const h = parts.find((p) => p.type === 'hour')?.value ?? '12';
+    viewDate = LocalDate.from(`${y}-${m}-${d}`);
+    viewHour = input.viewHour ?? parseInt(h, 10);
+  }
+
+  const thresholdHour = input.marketCloseThresholdHour ?? 18;
+
+  // Exact same day -> FRESH
+  if (viewDate.equals(quoteDate)) {
+    return 'FRESH';
+  }
+
+  // Future quote or viewDate before quoteDate -> STALE
+  if (viewDate.isBefore(quoteDate)) {
+    return 'STALE';
+  }
+
+  const daysDiff = daysBetweenLocalDates(quoteDate, viewDate);
+  const quoteJs = new Date(Date.UTC(quoteDate.year, quoteDate.month - 1, quoteDate.day));
+  const viewJs = new Date(Date.UTC(viewDate.year, viewDate.month - 1, viewDate.day));
+  const quoteDayOfWeek = quoteJs.getUTCDay(); // 0 = Sun, 5 = Fri, 6 = Sat
+  const viewDayOfWeek = viewJs.getUTCDay();
+
+  // Friday quote viewed on weekend (Saturday = 6, Sunday = 0)
+  if (quoteDayOfWeek === 5 && daysDiff <= 2 && (viewDayOfWeek === 6 || viewDayOfWeek === 0)) {
+    return 'FRESH';
+  }
+
+  // Friday quote viewed on Monday (daysDiff = 3, viewDayOfWeek = 1)
+  if (quoteDayOfWeek === 5 && daysDiff === 3 && viewDayOfWeek === 1) {
+    return viewHour < thresholdHour ? 'FRESH' : 'STALE';
+  }
+
+  // Weekday quote viewed on next calendar day (daysDiff = 1)
+  if (daysDiff === 1) {
+    return viewHour < thresholdHour ? 'FRESH' : 'STALE';
+  }
+
+  return 'STALE';
+}
+
+// ---------------------------------------------------------------------------
 // Asset -> provider symbol resolution
 // ---------------------------------------------------------------------------
 
@@ -1559,12 +1675,12 @@ function parseHistoricalStooqCsv(csv: string): Array<{ date: string; close: stri
   return rows;
 }
 
-function addDays(date: LocalDate, days: number): LocalDate {
+export function addDays(date: LocalDate, days: number): LocalDate {
   const d = new Date(Date.UTC(date.year, date.month - 1, date.day + days));
   return LocalDate.fromParts(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
 }
 
-function daysBetweenLocalDates(a: LocalDate, b: LocalDate): number {
+export function daysBetweenLocalDates(a: LocalDate, b: LocalDate): number {
   const da = Date.UTC(a.year, a.month - 1, a.day);
   const db = Date.UTC(b.year, b.month - 1, b.day);
   return Math.round((db - da) / (1000 * 60 * 60 * 24));
