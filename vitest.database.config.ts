@@ -15,6 +15,7 @@ export default defineConfig({
     alias: {
       '@atlas/domain': path.resolve(__dirname, 'packages/domain/src/index.ts'),
       '@atlas/database': path.resolve(__dirname, 'packages/database/src/index.ts'),
+      '@atlas/market-data': path.resolve(__dirname, 'packages/market-data/src/index.ts'),
       '@prisma/client': path.resolve(__dirname, 'packages/database/node_modules/@prisma/client'),
     },
   },
