@@ -144,19 +144,23 @@ export function mapToPortfolioPerformanceViewModel(
     };
   });
 
-  const isAvailable = data.dataAvailability === 'AVAILABLE' || data.status === 'COMPLETE';
-  const isPartial = data.dataAvailability === 'PARTIAL' || data.status === 'PARTIAL';
   const isUnavailable =
     data.dataAvailability === 'UNAVAILABLE' || data.status === 'INSUFFICIENT_DATA';
+  const isPartial =
+    !isUnavailable && (data.dataAvailability === 'PARTIAL' || data.status === 'PARTIAL');
+  const isAvailable =
+    !isUnavailable &&
+    !isPartial &&
+    (data.dataAvailability === 'AVAILABLE' || data.status === 'COMPLETE');
 
   let statusLabel = 'Dados completos';
   let statusColor: string = colors.positive;
-  if (isPartial) {
-    statusLabel = 'Dados parciais';
-    statusColor = colors.warning;
-  } else if (isUnavailable) {
+  if (isUnavailable) {
     statusLabel = 'Dados indisponíveis';
     statusColor = colors.textMuted;
+  } else if (isPartial) {
+    statusLabel = 'Dados parciais';
+    statusColor = colors.warning;
   }
 
   const periodDisplay = `${formatLocalDateDisplay(data.period.startDate)} → ${formatLocalDateDisplay(data.period.endDate)}`;

@@ -170,6 +170,7 @@ export class HistoricalValuationBuilder {
       };
       try {
         const histPrice = await this.historicalProvider.getDailyPrice(ref, params.date);
+        if (histPrice.status === 'UNAVAILABLE') continue;
         // Reuse valuation-engine logic (quantity × price, currency mismatch, partial)
         const valuation = valuePosition(
           {

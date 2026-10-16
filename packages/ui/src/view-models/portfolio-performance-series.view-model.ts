@@ -120,11 +120,12 @@ export function mapToPortfolioPerformanceSeriesViewModel(
     });
     const valuedPoints = points.filter((p) => !p.isGap);
     const hasGaps = valuedPoints.length !== points.length;
-    const isPartial = c.dataAvailability === 'PARTIAL' || c.status === 'PARTIAL';
     const isUnavailable =
       c.dataAvailability === 'UNAVAILABLE' ||
       c.status === 'INSUFFICIENT_DATA' ||
-      valuedPoints.length === 0;
+      valuedPoints.length < 2;
+    const isPartial =
+      !isUnavailable && (c.dataAvailability === 'PARTIAL' || c.status === 'PARTIAL');
     return {
       currency: c.currency,
       granularity: c.granularity,

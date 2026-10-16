@@ -447,8 +447,6 @@ export function calculatePortfolioPerformance(input: {
   ]);
 
   const resultCurrencies: Record<string, PerformanceByCurrency> = {};
-  let overallStatus: PerformanceStatus = 'COMPLETE';
-  let overallAvailability: PerformanceDataAvailability = 'AVAILABLE';
   let hasAnyAvailable = false;
   let hasAnyUnavailable = false;
 
@@ -466,8 +464,6 @@ export function calculatePortfolioPerformance(input: {
         dataAvailability: 'UNAVAILABLE',
       });
       hasAnyUnavailable = true;
-      if (overallStatus === 'COMPLETE') overallStatus = 'PARTIAL';
-      overallAvailability = 'UNAVAILABLE';
       continue;
     }
 
@@ -515,14 +511,23 @@ export function calculatePortfolioPerformance(input: {
       status,
       dataAvailability: availability,
     });
-
-    if (status !== 'COMPLETE' && overallStatus === 'COMPLETE') overallStatus = 'PARTIAL';
   }
 
-  if (hasAnyAvailable && hasAnyUnavailable) {
-    overallAvailability = 'PARTIAL';
-  } else if (!hasAnyAvailable) {
+  let overallStatus: PerformanceStatus = 'COMPLETE';
+  let overallAvailability: PerformanceDataAvailability = 'AVAILABLE';
+
+  if (!hasAnyAvailable) {
+    overallStatus = 'INSUFFICIENT_DATA';
     overallAvailability = 'UNAVAILABLE';
+  } else if (
+    hasAnyUnavailable ||
+    Object.values(resultCurrencies).some((c) => c.status === 'PARTIAL')
+  ) {
+    overallStatus = 'PARTIAL';
+    overallAvailability = hasAnyUnavailable ? 'PARTIAL' : 'AVAILABLE';
+  } else {
+    overallStatus = 'COMPLETE';
+    overallAvailability = 'AVAILABLE';
   }
 
   return Object.freeze({
@@ -739,6 +744,32 @@ export function calculatePerformanceSeries(input: {
   }
   if (inPeriodDisplay.length === 0) {
     return empty('INSUFFICIENT_DATA', 'UNAVAILABLE');
+  }
+
+  const currencyObsInPeriod = input.observations.filter(
+    (o) =>
+      o.currency === currency &&
+      o.date.compare(period.startDate) >= 0 &&
+      o.date.compare(period.endDate) <= 0,
+  );
+  if (currencyObsInPeriod.length < 2) {
+    return Object.freeze({
+      currency,
+      startDate: period.startDate,
+      endDate: period.endDate,
+      granularity: input.granularity,
+      points: Object.freeze(
+        inPeriodDisplay.map((d) =>
+          Object.freeze({
+            date: d,
+            cumulativeReturn: null,
+            status: 'UNAVAILABLE' as const,
+          }),
+        ),
+      ),
+      status: 'INSUFFICIENT_DATA',
+      dataAvailability: 'UNAVAILABLE',
+    });
   }
 
   const points: PerformanceSeriesPoint[] = [];

@@ -56,31 +56,39 @@ export class ScenarioSnapshotBuilder {
         };
         try {
           const histPrice = await this.historicalProvider.getDailyPrice(ref, asOf);
-          const valuation = valuePosition(
-            {
-              assetId: String(pos.assetId),
-              accountId: null,
-              quantity: pos.quantity.value,
-              currency,
-              totalCost: pos.totalCost ? pos.totalCost.amount : null,
-              averageCost: pos.averageCost ? pos.averageCost.amount : null,
-              costBasisStatus: pos.costBasisStatus,
-            },
-            {
-              assetId: String(pos.assetId),
-              price: histPrice.close.amount,
-              currency: histPrice.currency as Currency,
-              asOf: histPrice.date.toString(),
-              receivedAt: new Date().toISOString(),
-              source: histPrice.source as never,
-              status: 'LIVE' as never,
-              freshness: 'FRESH' as never,
-              providerSymbol: `${asset.ticker}.${asset.exchange}`,
-            },
-          );
-          if (valuation.marketValue && valuation.marketValue.currency === currency) {
-            marketPrice = Money.from(histPrice.close.amount, histPrice.currency);
-            marketValue = Money.from(valuation.marketValue.amount, valuation.marketValue.currency);
+          if (histPrice.status === 'UNAVAILABLE') {
+            marketPrice = null;
+            marketValue = null;
+          } else {
+            const valuation = valuePosition(
+              {
+                assetId: String(pos.assetId),
+                accountId: null,
+                quantity: pos.quantity.value,
+                currency,
+                totalCost: pos.totalCost ? pos.totalCost.amount : null,
+                averageCost: pos.averageCost ? pos.averageCost.amount : null,
+                costBasisStatus: pos.costBasisStatus,
+              },
+              {
+                assetId: String(pos.assetId),
+                price: histPrice.close.amount,
+                currency: histPrice.currency as Currency,
+                asOf: histPrice.date.toString(),
+                receivedAt: new Date().toISOString(),
+                source: histPrice.source as never,
+                status: 'LIVE' as never,
+                freshness: 'FRESH' as never,
+                providerSymbol: `${asset.ticker}.${asset.exchange}`,
+              },
+            );
+            if (valuation.marketValue && valuation.marketValue.currency === currency) {
+              marketPrice = Money.from(histPrice.close.amount, histPrice.currency);
+              marketValue = Money.from(
+                valuation.marketValue.amount,
+                valuation.marketValue.currency,
+              );
+            }
           }
         } catch {
           marketPrice = null;
