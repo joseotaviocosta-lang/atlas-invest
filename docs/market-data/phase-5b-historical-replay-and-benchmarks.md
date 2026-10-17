@@ -110,3 +110,20 @@ Verified in `tests/performance/phase-5b-r1-1-historical-replay-edge-cases.test.t
 3. **Income No-Double-Counting Guarantee**: Corporate income (`DIVIDEND`, `JCP`, `FII_INCOME`) is recorded as internal income in cash/account balances. Because raw unadjusted quotes reflect the ex-dividend price drop and internal income is not an external deposit, total return is calculated with zero double-counting and zero client-side calculation.
 4. **Zero-Live-Read Invariant**: All normal performance and benchmark reads resolve strictly through persisted repositories (`IMarketQuoteRepository`, `IBenchmarkObservationRepository`). External provider adapters (BRAPI, Yahoo, Stooq, BCB) record exactly 0 calls.
 5. **Provider Outage Tolerance**: In the event of full external provider outage or network loss, all portfolio performance and benchmark comparison endpoints resolve completely from the database without errors or fallback requests.
+
+---
+
+## 8. Canonical Append-Only Rectification Replay Proof (Phase 5B-R1.2)
+
+Verified in `tests/performance/phase-5b-r1-2-canonical-rectification-replay.test.ts` and `tests/api/rectify-transaction.test.ts`:
+
+1. **Canonical Correction Mechanics**: Rather than arbitrary BUY/SELL pairs, corrections utilize `RectifyPortfolioTransactionUseCase`, generating explicit linked compensation (`[COMPENSAÇÃO ref <id>]`, `provider: 'ATLAS_RECTIFY'`, `externalId: reversal:...`) and replacement records (`[CORREÇÃO ref <id>]`, `externalId: replacement:...`).
+2. **Ledger Immutability**: Original transactions remain completely immutable (deeply frozen, never updated, never deleted).
+3. **Historical Portfolio Replay**:
+   - Prior to original trade date (`asOf < tradeDate`), custody is 0.
+   - On or after transaction date (`asOf >= tradeDate`), replay evaluates the 3-tuple `(original, compensation, replacement)` deterministically, deriving the exact replaced custody (e.g. 120 shares @ R$ 40.00, total cost R$ 4,800.00).
+4. **Zero-Holding Clean Drop (ADR-039)**: Under `CANCEL` mode or asset corrections, neutralized holdings hit quantity 0 and are cleanly omitted from `state.assets`.
+5. **Performance Universe Segmentation**:
+   - Periods spanning the error date include touched assets for backfill coverage.
+   - Subsequent periods strictly exclude cancelled assets that have 0 custody and 0 new transactions.
+6. **Performance Valuation & Historical Data Selection**: Valuation (`valuePosition`) evaluates positions strictly against replaced quantities and quotes, ensuring no duplicate holdings or lingering ghost positions.

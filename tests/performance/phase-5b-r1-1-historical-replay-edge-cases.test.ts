@@ -57,6 +57,10 @@ describe('Phase 5B-R1.1: Historical Replay Edge Cases', () => {
         unitPrice: Money.from('50.00', BRL),
         totalAmount: Money.from('5000.00', BRL),
         currency: BRL,
+        source: 'MANUAL',
+        provider: 'ATLAS_RECTIFY',
+        externalId: 'reversal:b0000000-0000-4000-8000-000000000001',
+        notes: '[COMPENSAÇÃO ref b0000000-0000-4000-8000-000000000001] Estorno cancelatório',
         createdAt: new Date('2026-01-15T14:00:00Z'),
         updatedAt: new Date('2026-01-15T14:00:00Z'),
       });

@@ -277,6 +277,25 @@ describe('API Integration: Atomic & Idempotent Transaction Rectification (Hotfix
       expect(stateAfter.body.data.positions.length).toBe(1);
       expect(stateAfter.body.data.positions[0].quantity).toBe('17');
       expect(stateAfter.body.data.positions[0].assetId).toBe(assetId);
+
+      // Step E: Verify historical state replay across timeline (before vs after tradeDate)
+      const statePrior = await request(app.getHttpServer())
+        .get(`/api/v1/portfolios/${portfolioId}/state?asOf=2026-10-14`)
+        .set('Authorization', `Bearer ${authToken}`);
+      expect(statePrior.status).toBe(200);
+      expect(statePrior.body.data.positions.length).toBe(0);
+
+      // Step F: Verify ledger append-only audit in DB
+      // Exactly 4 transactions in DB: BUY 20, original SELL 5, compensating BUY 5, replacement SELL 3
+      const dbTxs = await prisma.transaction.findMany({
+        where: { portfolioId },
+        orderBy: [{ tradeDate: 'asc' }, { createdAt: 'asc' }],
+      });
+      expect(dbTxs.length).toBe(4);
+      const originalInDb = dbTxs.find((t) => t.id === originalSellId);
+      expect(originalInDb).toBeDefined();
+      expect(originalInDb!.quantity.toString()).toBe('5');
+      expect(originalInDb!.type).toBe('SELL');
     });
   });
 
