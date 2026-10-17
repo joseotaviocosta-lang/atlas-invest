@@ -16,15 +16,17 @@ export function MobileIntelligenceSummarySection({
   isLoading,
   isError,
   onRetry,
+  selectedBenchmark,
 }: {
   data: MobileIntelligenceSummaryQueryData;
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
+  selectedBenchmark?: string;
 }) {
   const viewModel = useMemo(
-    () => (data?.data ? mapToPortfolioIntelligenceViewModel(data.data) : null),
-    [data],
+    () => (data?.data ? mapToPortfolioIntelligenceViewModel(data.data, selectedBenchmark) : null),
+    [data, selectedBenchmark],
   );
 
   return (

@@ -93,7 +93,7 @@ export default function MobilePerformanceScreen() {
     };
   }>({
     queryKey: portfolioId
-      ? [...performanceQueryKey(portfolioId, period.startDate, period.endDate), selectedBenchmark]
+      ? performanceQueryKey(portfolioId, period.startDate, period.endDate, selectedBenchmark)
       : ['portfolio-performance', 'none'],
     queryFn: () =>
       apiClient.get<{
@@ -449,6 +449,7 @@ export default function MobilePerformanceScreen() {
               isLoading={isIntelligenceLoading}
               isError={isIntelligenceError}
               onRetry={() => refetchIntelligence()}
+              selectedBenchmark={selectedBenchmark}
             />
             {viewModel.isPartial && (
               <Card style={{ backgroundColor: '#FFF7ED', borderColor: '#FDBA74', padding: 12 }}>

@@ -125,10 +125,12 @@ function PerformancePageContent() {
     ApiError
   >({
     queryKey: activePortfolioIdResolved
-      ? [
-          ...performanceQueryKey(activePortfolioIdResolved, period.startDate, period.endDate),
+      ? performanceQueryKey(
+          activePortfolioIdResolved,
+          period.startDate,
+          period.endDate,
           selectedBenchmark,
-        ]
+        )
       : ['portfolio-performance', 'none'],
     queryFn: () =>
       apiClient.get<{
@@ -301,6 +303,7 @@ function PerformancePageContent() {
     staleTime: 30000,
   });
 
+  const effectiveRelativeBenchmark = selectedBenchmark === 'CDI' ? 'CDI' : 'IBOV';
   const {
     data: relativeRiskData,
     isLoading: isRelativeRiskLoading,
@@ -313,14 +316,17 @@ function PerformancePageContent() {
             activePortfolioIdResolved,
             period.startDate,
             period.endDate,
-            'IBOV',
+            effectiveRelativeBenchmark,
           ),
         ]
       : ['portfolio-relative-risk', 'none'],
-    queryFn: () =>
-      apiClient.get<{ data: RawRelativeRiskData }>(
-        `/api/v1/portfolios/${activePortfolioIdResolved}/performance/relative-risk?startDate=${period.startDate}&endDate=${period.endDate}&benchmark=IBOV`,
-      ),
+    queryFn: () => {
+      // Defaults to benchmark=IBOV when no specific benchmark is selected
+      const benchmarkQueryParam = effectiveRelativeBenchmark || 'IBOV';
+      return apiClient.get<{ data: RawRelativeRiskData }>(
+        `/api/v1/portfolios/${activePortfolioIdResolved}/performance/relative-risk?startDate=${period.startDate}&endDate=${period.endDate}&benchmark=${benchmarkQueryParam}`,
+      );
+    },
     enabled: !!activePortfolioIdResolved,
     staleTime: 30000,
   });
@@ -332,11 +338,14 @@ function PerformancePageContent() {
     refetch: refetchActivePerformance,
   } = useQuery<{ data: RawActivePerformanceData }, ApiError>({
     queryKey: activePortfolioIdResolved
-      ? [...activePerformanceQueryKey(activePortfolioIdResolved, period.startDate, period.endDate)]
+      ? [
+          ...activePerformanceQueryKey(activePortfolioIdResolved, period.startDate, period.endDate),
+          effectiveRelativeBenchmark,
+        ]
       : ['portfolio-active-performance', 'none'],
     queryFn: () =>
       apiClient.get<{ data: RawActivePerformanceData }>(
-        `/api/v1/portfolios/${activePortfolioIdResolved}/performance/active?startDate=${period.startDate}&endDate=${period.endDate}`,
+        `/api/v1/portfolios/${activePortfolioIdResolved}/performance/active?startDate=${period.startDate}&endDate=${period.endDate}&benchmark=${effectiveRelativeBenchmark}`,
       ),
     enabled: !!activePortfolioIdResolved,
     staleTime: 30000,
@@ -775,6 +784,7 @@ function PerformancePageContent() {
             isLoading={isIntelligenceLoading}
             isError={isIntelligenceError}
             onRetry={() => refetchIntelligence()}
+            selectedBenchmark={selectedBenchmark}
           />
 
           {viewModel.isPartial && (

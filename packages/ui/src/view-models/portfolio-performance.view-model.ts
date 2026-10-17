@@ -302,6 +302,7 @@ export function performanceQueryKey(
   portfolioId: string,
   startDate: string,
   endDate: string,
+  benchmark?: string,
 ): readonly string[] {
-  return ['portfolio-performance', portfolioId, startDate, endDate] as const;
+  return ['portfolio-performance', portfolioId, startDate, endDate, benchmark || 'none'] as const;
 }

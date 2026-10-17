@@ -223,12 +223,26 @@ function observationText(observation: RawIntelligenceObservation): string {
 
 export function mapToPortfolioIntelligenceViewModel(
   data: RawIntelligenceSummary | null,
+  selectedBenchmark?: string,
 ): PortfolioIntelligenceSummaryViewModel | null {
   if (!data) return null;
+
+  const targetBenchmark =
+    selectedBenchmark && selectedBenchmark !== '' ? selectedBenchmark.toUpperCase() : null;
 
   const currencies: IntelligenceCurrencySummaryVM[] = Object.values(data.currencies).map((c) => {
     const isPartial = c.status === 'PARTIAL';
     const isUnavailable = c.status === 'UNAVAILABLE';
+    const allBenchmarks = c.benchmarks.map((b) => ({
+      id: b.id,
+      label: BENCHMARK_LABELS[b.id] ?? b.id,
+      returnFormatted: formatPercentage(b.return),
+      differenceFormatted: formatPercentage(b.differencePercentagePoints),
+      isAvailable: b.return !== null,
+    }));
+    const filteredBenchmarks = targetBenchmark
+      ? allBenchmarks.filter((b) => b.id.toUpperCase() === targetBenchmark)
+      : allBenchmarks;
     return {
       currency: c.currency,
       status: c.status,
@@ -244,13 +258,7 @@ export function mapToPortfolioIntelligenceViewModel(
         twrFormatted: formatPercentage(c.performance.twr),
         xirrFormatted: formatPercentage(c.performance.xirr),
       },
-      benchmarks: c.benchmarks.map((b) => ({
-        id: b.id,
-        label: BENCHMARK_LABELS[b.id] ?? b.id,
-        returnFormatted: formatPercentage(b.return),
-        differenceFormatted: formatPercentage(b.differencePercentagePoints),
-        isAvailable: b.return !== null,
-      })),
+      benchmarks: filteredBenchmarks,
       risk: {
         volatilityFormatted:
           c.risk.status !== 'AVAILABLE' &&
@@ -294,7 +302,13 @@ export function mapToPortfolioIntelligenceViewModel(
     };
   });
 
-  const observations: IntelligenceObservationVM[] = data.observations.map((o) => ({
+  const rawObservations = data.observations.filter((o) => {
+    if (targetBenchmark === 'CDI' && o.code === 'PERFORMANCE_VS_IBOV') return false;
+    if (targetBenchmark === 'IBOV' && o.code === 'PERFORMANCE_VS_CDI') return false;
+    return true;
+  });
+
+  const observations: IntelligenceObservationVM[] = rawObservations.map((o) => ({
     code: o.code,
     scope: o.scope,
     source: o.source,
