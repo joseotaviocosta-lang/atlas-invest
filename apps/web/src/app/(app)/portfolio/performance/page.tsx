@@ -451,18 +451,121 @@ function PerformancePageContent() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
+  interface BenchmarkIngestionReceiptDto {
+    benchmarkId: string;
+    provider: string;
+    from: string;
+    to: string;
+    observationsFetched: number;
+    observationsInserted: number;
+    observationsUnchanged: number;
+    observationsRevised: number;
+    providerErrors: string[];
+    status: 'COMPLETED' | 'COMPLETED_WITH_WARNINGS' | 'FAILED';
+  }
+
+  interface CombinedBackfillResult {
+    portfolioReceipt: IngestionReceiptDto;
+    benchmarkReceipt?: BenchmarkIngestionReceiptDto;
+    benchmarkError?: string;
+  }
+
+  const formatCombinedReceiptFeedback = (
+    result: CombinedBackfillResult,
+    benchmarkId?: string,
+  ): { message: string; variant: 'positive' | 'warning' | 'negative' } => {
+    const portfolioFeedback = formatUpdateReceiptFeedback(result.portfolioReceipt);
+
+    if (!benchmarkId) {
+      return portfolioFeedback;
+    }
+
+    if (result.benchmarkError) {
+      return {
+        message: `${portfolioFeedback.message} Falha ao atualizar ${benchmarkId}: ${result.benchmarkError}`,
+        variant: 'warning',
+      };
+    }
+
+    if (!result.benchmarkReceipt) {
+      return portfolioFeedback;
+    }
+
+    const b = result.benchmarkReceipt;
+    const bInserted = b.observationsInserted ?? 0;
+    const bUnchanged = b.observationsUnchanged ?? 0;
+    const bRevised = b.observationsRevised ?? 0;
+    const bTotal = bInserted + bRevised;
+
+    let bMessage = '';
+    if (bTotal > 0) {
+      bMessage = `${benchmarkId}: ${bTotal} ${bTotal === 1 ? 'observação atualizada' : 'observações atualizadas'}.`;
+    } else if (bUnchanged > 0) {
+      bMessage = `${benchmarkId} já atualizado (${bUnchanged} ${bUnchanged === 1 ? 'observação mantida' : 'observações mantidas'}).`;
+    } else {
+      bMessage = `${benchmarkId}: nenhuma observação encontrada no período.`;
+    }
+
+    const combinedMessage = `${portfolioFeedback.message} ${bMessage}`;
+    const variant =
+      portfolioFeedback.variant === 'negative'
+        ? 'negative'
+        : b.status === 'COMPLETED_WITH_WARNINGS'
+          ? 'warning'
+          : portfolioFeedback.variant;
+
+    return {
+      message: combinedMessage,
+      variant,
+    };
+  };
+
   const backfillMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<CombinedBackfillResult> => {
       if (!activePortfolioIdResolved) throw new Error('Nenhuma carteira selecionada.');
-      const res = await apiClient.post<{
+
+      const portfolioPromise = apiClient.post<{
         data: IngestionReceiptDto;
       }>(`/api/v1/portfolios/${activePortfolioIdResolved}/market-data/backfill`, {
         from: period.startDate,
         to: period.endDate,
       });
-      return res.data;
+
+      let benchmarkPromise: Promise<{ data: BenchmarkIngestionReceiptDto }> | null = null;
+      if (selectedBenchmark === 'IBOV' || selectedBenchmark === 'CDI') {
+        benchmarkPromise = apiClient.post<{
+          data: BenchmarkIngestionReceiptDto;
+        }>(`/api/v1/benchmarks/${selectedBenchmark}/update`, {
+          from: period.startDate,
+          to: period.endDate,
+        });
+      }
+
+      if (!benchmarkPromise) {
+        const portfolioRes = await portfolioPromise;
+        return { portfolioReceipt: portfolioRes.data };
+      }
+
+      const [portfolioRes, benchmarkRes] = await Promise.all([
+        portfolioPromise,
+        benchmarkPromise.catch((err: ApiError | Error) => {
+          return { error: err.message || 'Erro na obtenção do benchmark' };
+        }),
+      ]);
+
+      if ('error' in benchmarkRes) {
+        return {
+          portfolioReceipt: portfolioRes.data,
+          benchmarkError: benchmarkRes.error,
+        };
+      }
+
+      return {
+        portfolioReceipt: portfolioRes.data,
+        benchmarkReceipt: benchmarkRes.data,
+      };
     },
-    onSuccess: (receipt) => {
+    onSuccess: (result) => {
       if (activePortfolioIdResolved) {
         queryClient.invalidateQueries({
           queryKey: ['portfolio-performance', activePortfolioIdResolved],
@@ -474,13 +577,24 @@ function PerformancePageContent() {
           queryKey: ['portfolio-risk-metrics', activePortfolioIdResolved],
         });
         queryClient.invalidateQueries({
+          queryKey: ['portfolio-relative-risk', activePortfolioIdResolved],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ['portfolio-active-performance', activePortfolioIdResolved],
+        });
+        queryClient.invalidateQueries({
           queryKey: ['portfolio-intelligence-summary', activePortfolioIdResolved],
         });
       }
-      const feedback = formatUpdateReceiptFeedback(receipt);
+      const feedback = formatCombinedReceiptFeedback(
+        result,
+        selectedBenchmark === 'IBOV' || selectedBenchmark === 'CDI' ? selectedBenchmark : undefined,
+      );
       showToast(feedback.message, feedback.variant);
       refetch();
       refetchSeries();
+      refetchRelativeRisk();
+      refetchActivePerformance();
     },
     onError: (err: ApiError) => {
       showToast(err.message || 'Falha ao atualizar histórico de mercado.', 'negative');
