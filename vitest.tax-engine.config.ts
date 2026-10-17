@@ -7,6 +7,15 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/tax-engine/**/*.test.ts'],
     testTimeout: 180000,
+    teardownTimeout: 120000,
+    poolOptions: {
+      threads: {
+        isolate: false,
+      },
+      forks: {
+        isolate: false,
+      },
+    },
   },
   resolve: {
     alias: {

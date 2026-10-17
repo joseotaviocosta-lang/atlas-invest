@@ -938,3 +938,47 @@ model MarketQuoteRevisionRecord {
   @@index([marketQuoteId], map: "market_quote_revisions_quote_idx")
   @@map("market_quote_revisions")
 }
+
+/// Phase 5B — Canonical Benchmark Observation.
+/// Preserves explicit semantics, frequency, and unit (Index Points vs Daily Percent vs Monthly Percent).
+model BenchmarkObservationRecord {
+  id               String   @id @default(uuid()) @db.Uuid
+  benchmarkId      String   @map("benchmark_id") @db.VarChar(32)
+  referenceDate    DateTime @map("reference_date") @db.Date
+  value            Decimal  @map("value") @db.Decimal(38, 18)
+  unit             String   @map("unit") @db.VarChar(32)
+  frequency        String   @map("frequency") @db.VarChar(32)
+  source           String   @map("source") @db.VarChar(64)
+  providerSeriesId String?  @map("provider_series_id") @db.VarChar(64)
+  firstFetchedAt   DateTime @default(now()) @map("first_fetched_at") @db.Timestamptz(6)
+  lastFetchedAt    DateTime @default(now()) @map("last_fetched_at") @db.Timestamptz(6)
+  fetchCount       Int      @default(1) @map("fetch_count")
+  revisedAt        DateTime? @map("revised_at") @db.Timestamptz(6)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  revisions BenchmarkObservationRevisionRecord[]
+
+  @@unique([benchmarkId, referenceDate, source], map: "benchmark_observations_benchmark_date_source_uniq")
+  @@index([benchmarkId, referenceDate], map: "benchmark_observations_benchmark_date_idx")
+  @@index([referenceDate], map: "benchmark_observations_date_idx")
+  @@index([source], map: "benchmark_observations_source_idx")
+  @@map("benchmark_observations")
+}
+
+/// Phase 5B — Benchmark Observation Revision Audit Trail.
+/// Immutable audit log capturing any upstream republishing or corrections from official sources.
+model BenchmarkObservationRevisionRecord {
+  id                     String   @id @default(uuid()) @db.Uuid
+  benchmarkObservationId String   @map("benchmark_observation_id") @db.Uuid
+  changedAt              DateTime @default(now()) @map("changed_at") @db.Timestamptz(6)
+  priorValue             Decimal  @map("prior_value") @db.Decimal(38, 18)
+  newValue               Decimal  @map("new_value") @db.Decimal(38, 18)
+  reason                 String?  @db.VarChar(255)
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  observation BenchmarkObservationRecord @relation(fields: [benchmarkObservationId], references: [id], onDelete: Cascade)
+
+  @@index([benchmarkObservationId], map: "benchmark_observation_revisions_obs_idx")
+  @@map("benchmark_observation_revisions")
+}

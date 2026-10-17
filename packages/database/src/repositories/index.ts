@@ -30,3 +30,4 @@ export * from './tax-reminder-action.repository';
 export * from './tax-notification-event.repository';
 export * from './tax-reminder-preferences.repository';
 export * from './market-quote.repository';
+export * from './benchmark-observation.repository';

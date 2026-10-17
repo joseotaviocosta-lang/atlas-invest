@@ -6,7 +6,7 @@ import {
   IMarketQuoteRepository,
 } from '@atlas/database';
 import { LocalDate } from '@atlas/domain';
-import { replayPortfolio } from '@atlas/portfolio-engine';
+import { replayPortfolio, derivePerformanceAssetUniverse } from '@atlas/portfolio-engine';
 import {
   MarketDataProvider,
   HistoricalMarketDataProvider,
@@ -145,27 +145,6 @@ export class UpdatePortfolioMarketDataUseCase {
       status: 'COMPLETED',
     };
 
-    // 2. Discover held assets via canonical portfolio replay
-    const transactions = await this.transactionRepository.findByPortfolioId(params.portfolioId);
-    const replayResult = replayPortfolio({
-      portfolioId: params.portfolioId,
-      transactions,
-    });
-
-    const activeAssetIds = Array.from(replayResult.state.assets.keys());
-    receipt.requestedAssets = activeAssetIds.length;
-
-    if (activeAssetIds.length === 0) {
-      receipt.finishedAt = new Date().toISOString();
-      return receipt;
-    }
-
-    // 3. Resolve symbols from asset catalog
-    const assets = await this.assetRepository.findByIds(activeAssetIds as unknown as string[]);
-    const assetMap = new Map<string, (typeof assets)[number]>(
-      assets.map((a) => [a.id as string, a]),
-    );
-
     const lookback = params.lookbackDays ?? 0;
     const isHistorical = lookback > 0 || Boolean(params.from && params.to);
 
@@ -205,8 +184,40 @@ export class UpdatePortfolioMarketDataUseCase {
       );
     }
 
-    // 4. Ingest quotes for each held asset
-    for (const assetId of activeAssetIds) {
+    // 2. Discover target asset universe
+    const transactions = await this.transactionRepository.findByPortfolioId(params.portfolioId);
+    let targetAssetIds: string[];
+    if (isHistorical && fromDate && toDate) {
+      const universe = derivePerformanceAssetUniverse({
+        portfolioId: params.portfolioId,
+        transactions,
+        from: fromDate,
+        to: toDate,
+      });
+      targetAssetIds = universe.map((id) => String(id));
+    } else {
+      const replayResult = replayPortfolio({
+        portfolioId: params.portfolioId,
+        transactions,
+      });
+      targetAssetIds = Array.from(replayResult.state.assets.keys()).map((id) => String(id));
+    }
+
+    receipt.requestedAssets = targetAssetIds.length;
+
+    if (targetAssetIds.length === 0) {
+      receipt.finishedAt = new Date().toISOString();
+      return receipt;
+    }
+
+    // 3. Resolve symbols from asset catalog
+    const assets = await this.assetRepository.findByIds(targetAssetIds);
+    const assetMap = new Map<string, (typeof assets)[number]>(
+      assets.map((a) => [a.id as string, a]),
+    );
+
+    // 4. Ingest quotes for each target asset
+    for (const assetId of targetAssetIds) {
       const asset = assetMap.get(assetId as unknown as string);
       if (!asset) {
         receipt.skippedAssets++;

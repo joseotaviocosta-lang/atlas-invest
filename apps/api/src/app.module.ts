@@ -12,6 +12,7 @@ import { TransactionsModule } from './modules/transactions/transactions.module';
 import { PerformanceModule } from './modules/performance/performance.module';
 import { FiscalModule } from './modules/fiscal/fiscal.module';
 import { AiModule } from './modules/ai/ai.module';
+import { BenchmarkModule } from './modules/benchmarks/benchmark.module';
 import {
   RequestIdMiddleware,
   UnifiedAnnualNoStoreMiddleware,
@@ -37,6 +38,7 @@ import {
     PerformanceModule,
     FiscalModule,
     AiModule,
+    BenchmarkModule,
   ],
   providers: [
     {

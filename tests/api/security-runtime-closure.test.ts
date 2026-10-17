@@ -277,7 +277,7 @@ describe('Phase 4L.1V-C3-R2: Final Security Runtime & Production-Smoke Closure',
       const migrations = await prisma.$queryRawUnsafe<Array<unknown>>(
         'SELECT 1 FROM _prisma_migrations',
       );
-      expect(migrations.length).toBe(24);
+      expect(migrations.length).toBe(25);
 
       // 2. bootstrap owner: create test owner
       const ownerEmail = `smoke-owner-${Date.now()}@atlas.local`;

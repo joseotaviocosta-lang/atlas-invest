@@ -93,4 +93,30 @@ export class ValuationController {
     });
     return { data };
   }
+
+  @Post(':portfolioId/market-data/backfill')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Controlled multi-session historical market data backfill for performance asset universe',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiBody({ required: false, type: UpdateMarketDataDto })
+  @ApiResponse({ status: 200, description: 'Historical ingestion receipt' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found or unauthorized' })
+  async backfillMarketData(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Body() body: UpdateMarketDataDto,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.updatePortfolioMarketDataUseCase.execute({
+      portfolioId,
+      userId: principal.userId,
+      lookbackDays: body?.lookbackDays ? Number(body.lookbackDays) : undefined,
+      from: body?.from,
+      to: body?.to,
+      providerOverride: body?.providerOverride,
+    });
+    return { data };
+  }
 }

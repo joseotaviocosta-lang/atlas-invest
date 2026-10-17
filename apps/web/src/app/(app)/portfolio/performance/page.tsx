@@ -2,11 +2,15 @@
 
 import React, { useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, ApiError } from '@/api/client';
-import { Card, Badge, Skeleton, EmptyState, ErrorState, Button } from '@/components/ui';
+import { Card, Badge, Skeleton, EmptyState, ErrorState, Button, useToast } from '@/components/ui';
 import { colors } from '@atlas/ui';
-import { PortfolioShell } from '@/components/portfolio';
+import {
+  PortfolioShell,
+  IngestionReceiptDto,
+  formatUpdateReceiptFeedback,
+} from '@/components/portfolio';
 import {
   mapToPortfolioPerformanceViewModel,
   mapToPortfolioPerformanceSeriesViewModel,
@@ -444,6 +448,45 @@ function PerformancePageContent() {
     router.replace(`/portfolio/performance?${params.toString()}`);
   };
 
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+
+  const backfillMutation = useMutation({
+    mutationFn: async () => {
+      if (!activePortfolioIdResolved) throw new Error('Nenhuma carteira selecionada.');
+      const res = await apiClient.post<{
+        data: IngestionReceiptDto;
+      }>(`/api/v1/portfolios/${activePortfolioIdResolved}/market-data/backfill`, {
+        from: period.startDate,
+        to: period.endDate,
+      });
+      return res.data;
+    },
+    onSuccess: (receipt) => {
+      if (activePortfolioIdResolved) {
+        queryClient.invalidateQueries({
+          queryKey: ['portfolio-performance', activePortfolioIdResolved],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ['portfolio-performance-series', activePortfolioIdResolved],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ['portfolio-risk-metrics', activePortfolioIdResolved],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ['portfolio-intelligence-summary', activePortfolioIdResolved],
+        });
+      }
+      const feedback = formatUpdateReceiptFeedback(receipt);
+      showToast(feedback.message, feedback.variant);
+      refetch();
+      refetchSeries();
+    },
+    onError: (err: ApiError) => {
+      showToast(err.message || 'Falha ao atualizar histórico de mercado.', 'negative');
+    },
+  });
+
   return (
     <PortfolioShell
       activeTab="returns"
@@ -548,6 +591,17 @@ function PerformancePageContent() {
           >
             CDI
           </button>
+
+          <div style={{ marginLeft: 'auto' }}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => backfillMutation.mutate()}
+              disabled={backfillMutation.isPending || !activePortfolioIdResolved}
+            >
+              {backfillMutation.isPending ? 'Atualizando histórico...' : 'Atualizar histórico'}
+            </Button>
+          </div>
         </div>
       </Card>
 
@@ -588,10 +642,17 @@ function PerformancePageContent() {
           <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>
             Performance indisponível para este período.
           </h3>
-          <p style={{ fontSize: 13, color: colors.textSecondary }}>
-            Não há preços históricos suficientes para calcular o retorno. Tente um período menor ou
-            aguarde mais dados.
+          <p style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 16 }}>
+            Não há preços históricos suficientes persistidos para calcular o retorno. Execute a
+            atualização de histórico para sincronizar as cotações do período.
           </p>
+          <Button
+            variant="primary"
+            onClick={() => backfillMutation.mutate()}
+            disabled={backfillMutation.isPending || !activePortfolioIdResolved}
+          >
+            {backfillMutation.isPending ? 'Sincronizando cotações...' : 'Atualizar histórico agora'}
+          </Button>
         </Card>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

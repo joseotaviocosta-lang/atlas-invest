@@ -23,9 +23,10 @@ import {
   BENCHMARK_DATA_PROVIDER,
   RATE_BENCHMARK_DATA_PROVIDER,
 } from './tokens';
-import { MARKET_QUOTE_REPOSITORY } from '../database/tokens';
-import { IMarketQuoteRepository } from '@atlas/database';
+import { BENCHMARK_OBSERVATION_REPOSITORY, MARKET_QUOTE_REPOSITORY } from '../database/tokens';
+import { IBenchmarkObservationRepository, IMarketQuoteRepository } from '@atlas/database';
 import { PersistedHistoricalMarketDataProvider } from './persisted-historical-market-data.provider';
+import { PersistedBenchmarkDataProvider } from './persisted-benchmark-data.provider';
 
 function createMarketDataProvider(): MarketDataProvider {
   const defaultProvider = process.env.NODE_ENV === 'test' ? 'IN_MEMORY' : 'BRAPI';
@@ -68,10 +69,19 @@ function createHistoricalProvider(
   return new InMemoryHistoricalMarketDataProvider({ maxLookbackDays: maxLookback });
 }
 
-function createBenchmarkProvider(): BenchmarkDataProvider {
-  const providerName = (process.env.BENCHMARK_DATA_PROVIDER ?? 'IN_MEMORY').trim().toUpperCase();
+function createBenchmarkProvider(
+  benchmarkRepo?: IBenchmarkObservationRepository,
+): BenchmarkDataProvider {
+  const defaultProvider = process.env.NODE_ENV === 'test' ? 'IN_MEMORY' : 'PERSISTED';
+  const providerName = (process.env.BENCHMARK_DATA_PROVIDER ?? defaultProvider)
+    .trim()
+    .toUpperCase();
   const timeoutMs = parseInt(process.env.BENCHMARK_DATA_TIMEOUT_MS ?? '15000', 10);
   const maxLookback = parseInt(process.env.BENCHMARK_DATA_MAX_LOOKBACK_DAYS ?? '7', 10);
+
+  if (providerName === 'PERSISTED' && benchmarkRepo) {
+    return new PersistedBenchmarkDataProvider(benchmarkRepo, { maxLookbackDays: maxLookback });
+  }
   if (providerName === 'STOOQ') {
     return new StooqBenchmarkDataProvider({ timeoutMs, maxLookbackDays: maxLookback });
   }
@@ -81,11 +91,14 @@ function createBenchmarkProvider(): BenchmarkDataProvider {
   return new InMemoryBenchmarkDataProvider({ maxLookbackDays: maxLookback });
 }
 
-function createRateBenchmarkProvider(): RateBenchmarkDataProvider {
+function createRateBenchmarkProvider(
+  benchmarkRepo?: IBenchmarkObservationRepository,
+): RateBenchmarkDataProvider {
+  const defaultProvider = process.env.NODE_ENV === 'test' ? 'IN_MEMORY' : 'PERSISTED';
   const providerName = (
     process.env.RATE_BENCHMARK_DATA_PROVIDER ??
     process.env.BENCHMARK_DATA_PROVIDER ??
-    'IN_MEMORY'
+    defaultProvider
   )
     .trim()
     .toUpperCase();
@@ -93,6 +106,9 @@ function createRateBenchmarkProvider(): RateBenchmarkDataProvider {
     process.env.RATE_BENCHMARK_DATA_TIMEOUT_MS ?? process.env.BENCHMARK_DATA_TIMEOUT_MS ?? '15000',
     10,
   );
+  if (providerName === 'PERSISTED' && benchmarkRepo) {
+    return new PersistedBenchmarkDataProvider(benchmarkRepo);
+  }
   if (providerName === 'BCB') {
     return new BcbRateBenchmarkDataProvider({ timeoutMs });
   }
@@ -113,11 +129,15 @@ function createRateBenchmarkProvider(): RateBenchmarkDataProvider {
     },
     {
       provide: BENCHMARK_DATA_PROVIDER,
-      useFactory: () => createBenchmarkProvider(),
+      useFactory: (benchmarkRepo: IBenchmarkObservationRepository) =>
+        createBenchmarkProvider(benchmarkRepo),
+      inject: [BENCHMARK_OBSERVATION_REPOSITORY],
     },
     {
       provide: RATE_BENCHMARK_DATA_PROVIDER,
-      useFactory: () => createRateBenchmarkProvider(),
+      useFactory: (benchmarkRepo: IBenchmarkObservationRepository) =>
+        createRateBenchmarkProvider(benchmarkRepo),
+      inject: [BENCHMARK_OBSERVATION_REPOSITORY],
     },
   ],
   exports: [

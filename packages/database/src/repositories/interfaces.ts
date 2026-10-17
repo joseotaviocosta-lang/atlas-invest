@@ -1532,3 +1532,78 @@ export interface IMarketQuoteRepository {
   }>;
   listRevisions(marketQuoteId: string): Promise<MarketQuoteRevisionRecordRow[]>;
 }
+
+// ============================================================================
+// Phase 5B: Benchmark Observations & Revisions Repository
+// ============================================================================
+
+export interface BenchmarkObservationRecordRow {
+  id: string;
+  benchmarkId: string;
+  referenceDate: LocalDate;
+  value: string;
+  unit: string;
+  frequency: string;
+  source: string;
+  providerSeriesId: string | null;
+  firstFetchedAt: Date;
+  lastFetchedAt: Date;
+  fetchCount: number;
+  revisedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface BenchmarkObservationRevisionRecordRow {
+  id: string;
+  benchmarkObservationId: string;
+  changedAt: Date;
+  priorValue: string;
+  newValue: string;
+  reason: string | null;
+  createdAt: Date;
+}
+
+export interface BenchmarkObservationUpsertInput {
+  benchmarkId: string;
+  referenceDate: LocalDate;
+  value: string;
+  unit: string;
+  frequency: string;
+  source: string;
+  providerSeriesId?: string | null;
+  reason?: string | null;
+}
+
+export type BenchmarkObservationUpsertOutcome = 'INSERTED' | 'UNCHANGED' | 'REVISED';
+
+export interface IBenchmarkObservationRepository {
+  findObservation(
+    benchmarkId: string,
+    referenceDate: LocalDate,
+    source?: string,
+  ): Promise<BenchmarkObservationRecordRow | null>;
+
+  findObservations(
+    benchmarkId: string,
+    from: LocalDate,
+    to: LocalDate,
+    source?: string,
+  ): Promise<BenchmarkObservationRecordRow[]>;
+
+  findLatest(benchmarkId: string, source?: string): Promise<BenchmarkObservationRecordRow | null>;
+
+  upsertObservation(input: BenchmarkObservationUpsertInput): Promise<{
+    outcome: BenchmarkObservationUpsertOutcome;
+    observation: BenchmarkObservationRecordRow;
+    revision?: BenchmarkObservationRevisionRecordRow;
+  }>;
+
+  getCoverage(benchmarkId: string): Promise<{
+    totalObservations: number;
+    firstObservationDate: LocalDate | null;
+    lastObservationDate: LocalDate | null;
+  }>;
+
+  listRevisions(benchmarkObservationId: string): Promise<BenchmarkObservationRevisionRecordRow[]>;
+}

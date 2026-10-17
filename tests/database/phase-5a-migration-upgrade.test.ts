@@ -39,7 +39,7 @@ describe('Database Migration Upgrade: Phase 5A Isolated Drills (Sections 3 & 4)'
       .map((entry) => entry.name)
       .sort();
 
-    expect(allMigrationDirs.length).toBe(24);
+    expect(allMigrationDirs.length).toBe(25);
 
     // Create _prisma_migrations table in upgrade probe DB
     await upgradePrisma.$executeRawUnsafe(`
@@ -168,17 +168,17 @@ describe('Database Migration Upgrade: Phase 5A Isolated Drills (Sections 3 & 4)'
       encoding: 'utf-8',
     });
 
-    expect(deployOutput).toContain('24 migrations found in prisma/migrations');
+    expect(deployOutput).toContain('25 migrations found in prisma/migrations');
     expect(deployOutput).toContain(
       'Applying migration `20261016140000_add_market_quotes_and_revisions`',
     );
     expect(deployOutput).toContain('All migrations have been successfully applied');
 
-    // 3. Post-upgrade state check: exactly 24 migrations
+    // 3. Post-upgrade state check: exactly 25 migrations
     const appliedPost = await upgradePrisma.$queryRawUnsafe<Array<{ count: bigint }>>(
       `SELECT count(*) as count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL`,
     );
-    expect(Number(appliedPost[0]!.count)).toBe(24);
+    expect(Number(appliedPost[0]!.count)).toBe(25);
 
     // 4. Parity check: 100% preservation of users, portfolios, accounts, assets, transactions
     const user = await upgradePrisma.user.findUnique({ where: { id: testUserId } });
@@ -239,17 +239,17 @@ describe('Database Migration Upgrade: Phase 5A Isolated Drills (Sections 3 & 4)'
       encoding: 'utf-8',
     });
 
-    expect(zeroDeployOutput).toContain('24 migrations found in prisma/migrations');
+    expect(zeroDeployOutput).toContain('25 migrations found in prisma/migrations');
     expect(zeroDeployOutput).toContain('Applying migration');
     expect(zeroDeployOutput).toContain('All migrations have been successfully applied');
 
-    // 3. Verify exactly 24 migrations applied with 0 rollbacks
+    // 3. Verify exactly 25 migrations applied with 0 rollbacks
     const zeroPrisma = new PrismaClient({ datasources: { db: { url: zeroDbUrl } } });
     const zeroRows = await zeroPrisma.$queryRawUnsafe<
       Array<{ migration_name: string; rolled_back_at: Date | null }>
     >('SELECT migration_name, rolled_back_at FROM _prisma_migrations ORDER BY started_at ASC');
 
-    expect(zeroRows.length).toBe(24);
+    expect(zeroRows.length).toBe(25);
     for (const r of zeroRows) {
       expect(r.rolled_back_at).toBeNull();
     }
