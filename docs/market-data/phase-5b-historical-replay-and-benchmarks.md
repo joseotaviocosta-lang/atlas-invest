@@ -98,3 +98,15 @@ Verified in `tests/tax-engine/phase-5b-benchmark-fiscal-isolation.test.ts`:
 1. **Zero Domain Leakage**: `@atlas/tax-engine` has 0 dependencies on `@atlas/benchmark-engine` or benchmark repository tables.
 2. **Monthly Fiscal Invariance**: Historical quote updates and benchmark observations have 0 effect on monthly capital gains, taxable net, or DARF computations.
 3. **Bens e Direitos Cost Basis Isolation**: Historical quote persistence never alters the tax acquisition cost basis or year-end balance reporting in DIRPF.
+
+---
+
+## 7. Replay Edge Cases & Read-Isolation Guarantees (Phase 5B-R1.1)
+
+Verified in `tests/performance/phase-5b-r1-1-historical-replay-edge-cases.test.ts` and `tests/benchmark/phase-5b-r1-1-read-isolation.test.ts`:
+
+1. **Rectification Replay Guarantee**: Rectifications follow the canonical append-only compensation flow. Compensating records negate erroneous positions without mutating or deleting original transaction rows. Replay reflects zero position under ADR-039, and `derivePerformanceAssetUniverse` accurately tracks effective asset exposure during the active period while excluding it after rectification.
+2. **Corporate-Action No-Double-Adjustment Guarantee**: SPLIT and BONUS corporate actions adjust holding quantities and average costs according to ledger mechanics. Historical quotes remain raw (`UNADJUSTED_CLOSE`), preventing double-adjustment distortions and ensuring exact valuation and true unrealized gain/loss calculations.
+3. **Income No-Double-Counting Guarantee**: Corporate income (`DIVIDEND`, `JCP`, `FII_INCOME`) is recorded as internal income in cash/account balances. Because raw unadjusted quotes reflect the ex-dividend price drop and internal income is not an external deposit, total return is calculated with zero double-counting and zero client-side calculation.
+4. **Zero-Live-Read Invariant**: All normal performance and benchmark reads resolve strictly through persisted repositories (`IMarketQuoteRepository`, `IBenchmarkObservationRepository`). External provider adapters (BRAPI, Yahoo, Stooq, BCB) record exactly 0 calls.
+5. **Provider Outage Tolerance**: In the event of full external provider outage or network loss, all portfolio performance and benchmark comparison endpoints resolve completely from the database without errors or fallback requests.

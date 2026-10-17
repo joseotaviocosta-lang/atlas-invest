@@ -16,6 +16,11 @@ export default defineConfig({
         __dirname,
         'packages/performance-engine/src/index.ts',
       ),
+      '@atlas/portfolio-engine': path.resolve(__dirname, 'packages/portfolio-engine/src/index.ts'),
+      '@atlas/valuation-engine': path.resolve(__dirname, 'packages/valuation-engine/src/index.ts'),
+      '@atlas/database': path.resolve(__dirname, 'packages/database/src/index.ts'),
+      '@atlas/market-data': path.resolve(__dirname, 'packages/market-data/src/index.ts'),
+      '@atlas/benchmark-engine': path.resolve(__dirname, 'packages/benchmark-engine/src/index.ts'),
     },
   },
 });

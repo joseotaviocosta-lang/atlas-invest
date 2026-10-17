@@ -30,9 +30,15 @@ export function derivePerformanceAssetUniverse(input: PerformanceAssetUniverseIn
 
   const universe = new Set<string>();
 
+  const pid =
+    input.portfolioId ??
+    (input.transactions.length > 0 && input.transactions[0]?.portfolioId
+      ? String(input.transactions[0].portfolioId)
+      : '00000000-0000-4000-8000-000000000000');
+
   // 1. Replay as of `from`
   const startState = replayPortfolio({
-    portfolioId: input.portfolioId ?? 'universe-replay',
+    portfolioId: pid,
     transactions: input.transactions as Transaction[],
     asOfDate: input.from,
   }).state;
@@ -43,7 +49,7 @@ export function derivePerformanceAssetUniverse(input: PerformanceAssetUniverseIn
 
   // 2. Replay as of `to`
   const endState = replayPortfolio({
-    portfolioId: input.portfolioId ?? 'universe-replay',
+    portfolioId: pid,
     transactions: input.transactions as Transaction[],
     asOfDate: input.to,
   }).state;
