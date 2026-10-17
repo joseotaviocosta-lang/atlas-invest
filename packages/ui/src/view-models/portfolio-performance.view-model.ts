@@ -210,7 +210,12 @@ function getDaysInMonthCivil(year: number, month: number): number {
   }
 }
 
-function subtractMonthsCivil(year: number, month: number, day: number, monthsToSubtract: number): string {
+function subtractMonthsCivil(
+  year: number,
+  month: number,
+  day: number,
+  monthsToSubtract: number,
+): string {
   let targetMonth = month - monthsToSubtract;
   let targetYear = year;
 
@@ -226,7 +231,12 @@ function subtractMonthsCivil(year: number, month: number, day: number, monthsToS
   return `${targetYear}-${pad(targetMonth)}-${pad(targetDay)}`;
 }
 
-function subtractYearsCivil(year: number, month: number, day: number, yearsToSubtract: number): string {
+function subtractYearsCivil(
+  year: number,
+  month: number,
+  day: number,
+  yearsToSubtract: number,
+): string {
   const targetYear = year - yearsToSubtract;
   const maxDay = getDaysInMonthCivil(targetYear, month);
   const targetDay = Math.min(day, maxDay);

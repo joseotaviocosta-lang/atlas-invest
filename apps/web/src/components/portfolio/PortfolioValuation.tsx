@@ -452,7 +452,8 @@ export interface IngestionReceiptDto {
   missingAssets: string[];
   rateLimitedAssets: string[];
   providerErrors: string[];
-  status: 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'COMPLETED' | 'COMPLETED_WITH_WARNINGS' | 'EMPTY_UNIVERSE';
+  status:
+    'SUCCESS' | 'PARTIAL' | 'FAILED' | 'COMPLETED' | 'COMPLETED_WITH_WARNINGS' | 'EMPTY_UNIVERSE';
 }
 
 export function formatUpdateReceiptFeedback(receipt: IngestionReceiptDto): {
@@ -476,7 +477,10 @@ export function formatUpdateReceiptFeedback(receipt: IngestionReceiptDto): {
     };
   }
 
-  if (receipt.status === 'FAILED' || (updatedCount === 0 && unchangedCount === 0 && totalNotUpdated > 0)) {
+  if (
+    receipt.status === 'FAILED' ||
+    (updatedCount === 0 && unchangedCount === 0 && totalNotUpdated > 0)
+  ) {
     if (authCount > 0 && updatedCount === 0) {
       return {
         message: `Atualização requer autenticação de provedor para ${authCount} ${authCount === 1 ? 'ativo' : 'ativos'} (${receipt.authRequiredAssets.join(', ')}). Configure BRAPI_API_KEY.`,
@@ -498,7 +502,12 @@ export function formatUpdateReceiptFeedback(receipt: IngestionReceiptDto): {
 
   const parts: string[] = [];
   const successfulAssetCount = Math.max(0, resolvedCount - authCount - missingCount);
-  const assetCountToDisplay = successfulAssetCount > 0 ? successfulAssetCount : (resolvedCount > 0 ? resolvedCount : updatedCount);
+  const assetCountToDisplay =
+    successfulAssetCount > 0
+      ? successfulAssetCount
+      : resolvedCount > 0
+        ? resolvedCount
+        : updatedCount;
   const assetNoun = assetCountToDisplay === 1 ? 'ativo' : 'ativos';
 
   if (updatedCount > assetCountToDisplay) {
@@ -509,9 +518,7 @@ export function formatUpdateReceiptFeedback(receipt: IngestionReceiptDto): {
     );
   } else {
     // Single quote per asset case (latest EOD quote update)
-    parts.push(
-      `Cotações atualizadas com sucesso: ${assetCountToDisplay} ${assetNoun}`,
-    );
+    parts.push(`Cotações atualizadas com sucesso: ${assetCountToDisplay} ${assetNoun}`);
   }
 
   if (revisedCount > 0) {
