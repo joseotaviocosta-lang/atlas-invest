@@ -359,11 +359,8 @@ export class GetPortfolioPerformanceUseCase {
 
         if (def.type === 'PRICE_INDEX') {
           try {
-            const startObs = await this.benchmarkProvider.getObservation(
-              benchmarkId,
-              effectiveStart,
-            );
-            const endObs = await this.benchmarkProvider.getObservation(benchmarkId, effectiveEnd);
+            const startObs = await this.benchmarkProvider.getObservation(benchmarkId, periodStart);
+            const endObs = await this.benchmarkProvider.getObservation(benchmarkId, periodEnd);
             const benchRet = calculateBenchmarkReturn({
               benchmarkId,
               startLevel: startObs.value,
@@ -399,14 +396,14 @@ export class GetPortfolioPerformanceUseCase {
           try {
             const observations = await this.rateBenchmarkProvider.getRateObservations(
               benchmarkId,
-              effectiveStart,
-              effectiveEnd,
+              periodStart,
+              periodEnd,
             );
             const rateReturn = calculateRateBenchmarkReturn({
               benchmarkId,
               observations,
-              startDate: effectiveStart,
-              endDate: effectiveEnd,
+              startDate: periodStart,
+              endDate: periodEnd,
             });
             if (rateReturn.status === 'UNAVAILABLE' || rateReturn.returnPercentage === null) {
               throw new Error('No rate observations for period');

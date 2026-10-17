@@ -4,6 +4,8 @@ import {
   BenchmarkId,
   BENCHMARK_DEFINITIONS,
   assertValidBenchmarkId,
+  BenchmarkDataProvider,
+  BenchmarkObservation,
   StooqBenchmarkDataProvider,
   YahooBenchmarkDataProvider,
   BcbRateBenchmarkDataProvider,
@@ -125,23 +127,90 @@ export class UpdateBenchmarkDataUseCase {
         receipt.status = 'FAILED';
       }
     } else {
-      // IBOV / Price Index ingestion (Default STOOQ / Yahoo fallback)
+      // IBOV / Price Index ingestion (Canonical Yahoo default, Stooq fallback)
       try {
-        let indexProvider =
-          providerOverride === 'IN_MEMORY'
-            ? new InMemoryBenchmarkDataProvider()
-            : providerOverride === 'YAHOO'
-              ? new YahooBenchmarkDataProvider()
-              : new StooqBenchmarkDataProvider();
+        let indexProvider: BenchmarkDataProvider;
+        if (providerOverride === 'IN_MEMORY') {
+          indexProvider = new InMemoryBenchmarkDataProvider();
+        } else if (providerOverride === 'STOOQ') {
+          indexProvider = new StooqBenchmarkDataProvider();
+        } else if (providerOverride === 'YAHOO') {
+          indexProvider = new YahooBenchmarkDataProvider();
+        } else if (
+          process.env.NODE_ENV === 'test' &&
+          process.env.BENCHMARK_DATA_PROVIDER === 'IN_MEMORY' &&
+          !process.env.BENCHMARK_INGESTION_PROVIDER
+        ) {
+          indexProvider = new InMemoryBenchmarkDataProvider();
+        } else {
+          // Default canonical ingestion provider for IBOV is Yahoo
+          indexProvider = new YahooBenchmarkDataProvider();
+        }
 
         receipt.provider = indexProvider.provider;
-        let observations = await indexProvider.getObservations(benchmarkId, fromDate, toDate);
-
-        // Fallback to Yahoo if Stooq yields 0 in non-test and no explicit provider override
-        if (observations.length === 0 && !providerOverride) {
-          indexProvider = new YahooBenchmarkDataProvider();
-          receipt.provider = indexProvider.provider;
+        let observations: BenchmarkObservation[] = [];
+        try {
           observations = await indexProvider.getObservations(benchmarkId, fromDate, toDate);
+        } catch (fetchErr: unknown) {
+          const errMsg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+          receipt.providerErrors.push(
+            `Primary provider (${indexProvider.provider}) failed: ${errMsg}`,
+          );
+          // If primary failed and no explicit override was forced, try fallback
+          if (!providerOverride && indexProvider.provider !== 'IN_MEMORY') {
+            const fallbackProvider =
+              indexProvider.provider === 'YAHOO'
+                ? new StooqBenchmarkDataProvider()
+                : new YahooBenchmarkDataProvider();
+            try {
+              const fallbackObs = await fallbackProvider.getObservations(
+                benchmarkId,
+                fromDate,
+                toDate,
+              );
+              if (fallbackObs.length > 0) {
+                indexProvider = fallbackProvider;
+                receipt.provider = fallbackProvider.provider;
+                observations = fallbackObs;
+              }
+            } catch (fallbackErr: unknown) {
+              const fallbackMsg =
+                fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+              receipt.providerErrors.push(
+                `Fallback provider (${fallbackProvider.provider}) failed: ${fallbackMsg}`,
+              );
+            }
+          }
+        }
+
+        // If primary returned 0 observations without throwing, try fallback
+        if (
+          observations.length === 0 &&
+          !providerOverride &&
+          indexProvider.provider !== 'IN_MEMORY'
+        ) {
+          const fallbackProvider =
+            indexProvider.provider === 'YAHOO'
+              ? new StooqBenchmarkDataProvider()
+              : new YahooBenchmarkDataProvider();
+          try {
+            const fallbackObs = await fallbackProvider.getObservations(
+              benchmarkId,
+              fromDate,
+              toDate,
+            );
+            if (fallbackObs.length > 0) {
+              indexProvider = fallbackProvider;
+              receipt.provider = fallbackProvider.provider;
+              observations = fallbackObs;
+            }
+          } catch (fallbackErr: unknown) {
+            const fallbackMsg =
+              fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+            receipt.providerErrors.push(
+              `Fallback provider (${fallbackProvider.provider}) failed: ${fallbackMsg}`,
+            );
+          }
         }
 
         receipt.observationsFetched = observations.length;
@@ -166,8 +235,12 @@ export class UpdateBenchmarkDataUseCase {
       }
     }
 
-    if (receipt.providerErrors.length > 0 && receipt.observationsInserted > 0) {
-      receipt.status = 'COMPLETED_WITH_WARNINGS';
+    if (receipt.providerErrors.length > 0) {
+      if (receipt.observationsInserted > 0 || receipt.observationsUnchanged > 0) {
+        receipt.status = 'COMPLETED_WITH_WARNINGS';
+      } else {
+        receipt.status = 'FAILED';
+      }
     }
 
     receipt.finishedAt = new Date().toISOString();
