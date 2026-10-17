@@ -73,12 +73,19 @@ Project Atlas adheres to the principle that **benchmarks are heterogeneous**. A 
 
 ## 4. Provider Selection & Ingestion Architecture
 
-| Benchmark | Primary Provider                      | Fallback Provider           | Test Provider | Endpoint / Source                                |
-| :-------- | :------------------------------------ | :-------------------------- | :------------ | :----------------------------------------------- |
-| **IBOV**  | **BRAPI** (`^BVSP`) / **Stooq**       | **Yahoo Finance** (`^BVSP`) | **IN_MEMORY** | EOD closing point series                         |
-| **CDI**   | **BACEN SGS** (Series 12)             | None (Authoritative)        | **IN_MEMORY** | `api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados` |
-| **IPCA**  | **BACEN SGS** (Series 433) / **IBGE** | None                        | **IN_MEMORY** | Monthly inflation series                         |
-| **SELIC** | **BACEN SGS** (Series 432 / 11)       | None                        | **IN_MEMORY** | Macro context                                    |
+| Benchmark | Primary Provider (Local/Dev)          | Fallback Provider    | Test Provider | Endpoint / Source                                |
+| :-------- | :------------------------------------ | :------------------- | :------------ | :----------------------------------------------- |
+| **IBOV**  | **Yahoo Finance** (`^BVSP`)           | **Stooq** (`^bvp`)   | **IN_MEMORY** | EOD closing point series                         |
+| **CDI**   | **BACEN SGS** (Series 12)             | None (Authoritative) | **IN_MEMORY** | `api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados` |
+| **IPCA**  | **BACEN SGS** (Series 433) / **IBGE** | None                 | **IN_MEMORY** | Monthly inflation series                         |
+| **SELIC** | **BACEN SGS** (Series 432 / 11)       | None                 | **IN_MEMORY** | Macro context                                    |
+
+> **Licensing & Commercial SaaS Policy**:
+>
+> - **Canonical Identity**: The benchmark is strictly identified by `IBOV`. Provider symbols (`^BVSP`, `^bvp`) are private adapter implementation details.
+> - **Local / Development MVP**: Yahoo Finance is used as the primary best-effort EOD ingestion provider due to Stooq anti-bot/403 restrictions on server requests. Stooq is retained as secondary fallback.
+> - **Commercial Production SaaS**: Yahoo Finance is **NOT** a licensed commercial redistribution source. Direct B3 redistribution agreement remains a mandatory licensing blocker before commercial production deployment.
+> - **Provenance & Read-Isolation**: Provider provenance is recorded in `benchmark_observations.source`. All client reads resolve strictly from persisted tables (zero network calls).
 
 ---
 

@@ -76,6 +76,8 @@ Implements both `BenchmarkDataProvider` (for price index benchmarks like IBOV) a
 ### 4.2 Ingestion & Coverage Use Cases
 
 - `UpdateBenchmarkDataUseCase`: Ingests benchmark data from authorized providers and persists to `benchmark_observations`.
+  - **IBOV Strategy**: Primary local/development provider is `YahooBenchmarkDataProvider` (`^BVSP` in BRL), with automatic try/catch fallback to `StooqBenchmarkDataProvider` (`^bvp`). Yahoo is strictly a best-effort dev/local source; formal commercial redistribution requires a direct B3 licensing agreement (future commercial blocker).
+  - **CDI Strategy**: Primary authoritative provider is `BcbRateBenchmarkDataProvider` (BACEN SGS Series 12, public domain open data).
 - `GetBenchmarkCoverageUseCase`: Computes date bounds, total observation counts, and missing trading sessions.
 
 ---
