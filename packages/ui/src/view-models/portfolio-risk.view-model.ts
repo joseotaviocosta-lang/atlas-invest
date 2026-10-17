@@ -115,14 +115,54 @@ export function mapToPortfolioRiskViewModel(
         status: c.volatility.status,
       },
       drawdown: {
-        maximumFormatted: formatRiskValue(c.drawdown.maximumPercentage),
-        peakDisplay: c.drawdown.peakDate ? formatLocalDateDisplay(c.drawdown.peakDate) : null,
-        troughDisplay: c.drawdown.troughDate ? formatLocalDateDisplay(c.drawdown.troughDate) : null,
-        recoveryDisplay: c.drawdown.recoveryDate
-          ? formatLocalDateDisplay(c.drawdown.recoveryDate)
-          : null,
-        isRecovered: c.drawdown.recoveryDate !== null,
-        currentFormatted: formatRiskValue(c.drawdown.currentPercentage),
+        maximumFormatted:
+          c.drawdown.status !== 'AVAILABLE' &&
+          (c.drawdown.maximumPercentage === '0' ||
+            c.drawdown.maximumPercentage === '0.00' ||
+            !c.drawdown.maximumPercentage)
+            ? '—'
+            : formatRiskValue(c.drawdown.maximumPercentage),
+        peakDisplay:
+          c.drawdown.status !== 'AVAILABLE' &&
+          (c.drawdown.maximumPercentage === '0' ||
+            c.drawdown.maximumPercentage === '0.00' ||
+            !c.drawdown.maximumPercentage)
+            ? null
+            : c.drawdown.peakDate
+              ? formatLocalDateDisplay(c.drawdown.peakDate)
+              : null,
+        troughDisplay:
+          c.drawdown.status !== 'AVAILABLE' &&
+          (c.drawdown.maximumPercentage === '0' ||
+            c.drawdown.maximumPercentage === '0.00' ||
+            !c.drawdown.maximumPercentage)
+            ? null
+            : c.drawdown.troughDate
+              ? formatLocalDateDisplay(c.drawdown.troughDate)
+              : null,
+        recoveryDisplay:
+          c.drawdown.status !== 'AVAILABLE' &&
+          (c.drawdown.maximumPercentage === '0' ||
+            c.drawdown.maximumPercentage === '0.00' ||
+            !c.drawdown.maximumPercentage)
+            ? null
+            : c.drawdown.recoveryDate
+              ? formatLocalDateDisplay(c.drawdown.recoveryDate)
+              : null,
+        isRecovered:
+          c.drawdown.status !== 'AVAILABLE' &&
+          (c.drawdown.maximumPercentage === '0' ||
+            c.drawdown.maximumPercentage === '0.00' ||
+            !c.drawdown.maximumPercentage)
+            ? false
+            : c.drawdown.recoveryDate !== null,
+        currentFormatted:
+          c.drawdown.status !== 'AVAILABLE' &&
+          (c.drawdown.currentPercentage === '0' ||
+            c.drawdown.currentPercentage === '0.00' ||
+            !c.drawdown.currentPercentage)
+            ? '—'
+            : formatRiskValue(c.drawdown.currentPercentage),
         status: c.drawdown.status,
       },
       isPartial,

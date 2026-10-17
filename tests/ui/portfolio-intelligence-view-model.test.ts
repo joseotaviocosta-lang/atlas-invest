@@ -163,6 +163,50 @@ describe('Portfolio Intelligence View Model', () => {
     ]);
   });
 
+  it('suppresses misleading 0.00% risk values when status is PARTIAL', () => {
+    const vm = mapToPortfolioIntelligenceViewModel(
+      raw({
+        currencies: {
+          BRL: {
+            ...raw({}).currencies.BRL,
+            risk: {
+              realizedVolatilityAnnualized: '0',
+              maximumDrawdown: '0',
+              currentDrawdown: '0',
+              status: 'PARTIAL',
+            },
+          },
+        },
+      }),
+    );
+    const brl = vm!.currencies[0]!;
+    expect(brl.risk.maximumDrawdownFormatted).toBe('—');
+    expect(brl.risk.currentDrawdownFormatted).toBe('—');
+    expect(brl.risk.volatilityFormatted).toBe('—');
+  });
+
+  it('preserves genuine 0.00% risk values when status is AVAILABLE', () => {
+    const vm = mapToPortfolioIntelligenceViewModel(
+      raw({
+        currencies: {
+          BRL: {
+            ...raw({}).currencies.BRL,
+            risk: {
+              realizedVolatilityAnnualized: '0',
+              maximumDrawdown: '0',
+              currentDrawdown: '0',
+              status: 'AVAILABLE',
+            },
+          },
+        },
+      }),
+    );
+    const brl = vm!.currencies[0]!;
+    expect(brl.risk.maximumDrawdownFormatted).toBe('0,00%');
+    expect(brl.risk.currentDrawdownFormatted).toBe('0,00%');
+    expect(brl.risk.volatilityFormatted).toBe('0,00%');
+  });
+
   it('never performs financial math or scoring', async () => {
     const fs = await import('fs');
     const code = fs.readFileSync(

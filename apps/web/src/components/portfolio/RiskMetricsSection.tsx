@@ -152,11 +152,12 @@ export function PortfolioRiskSection({
                 <div style={{ fontSize: 12, color: colors.textSecondary, display: 'grid', gap: 2 }}>
                   {cur.drawdown.peakDisplay && <span>Pico: {cur.drawdown.peakDisplay}</span>}
                   {cur.drawdown.troughDisplay && <span>Fundo: {cur.drawdown.troughDisplay}</span>}
-                  {cur.drawdown.isRecovered && cur.drawdown.recoveryDisplay ? (
-                    <span>Recuperação: {cur.drawdown.recoveryDisplay}</span>
-                  ) : (
-                    <span>Não recuperado no período</span>
-                  )}
+                  {cur.drawdown.maximumFormatted !== '—' &&
+                    (cur.drawdown.isRecovered && cur.drawdown.recoveryDisplay ? (
+                      <span>Recuperação: {cur.drawdown.recoveryDisplay}</span>
+                    ) : (
+                      <span>Não recuperado no período</span>
+                    ))}
                 </div>
               </div>
             ),

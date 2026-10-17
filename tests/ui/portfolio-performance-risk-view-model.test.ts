@@ -137,6 +137,52 @@ describe('Risk View Model', () => {
     ]);
   });
 
+  it('suppresses misleading 0.00% drawdown and dates when status is PARTIAL', () => {
+    const vm = mapToPortfolioRiskViewModel(
+      raw({
+        status: 'PARTIAL',
+        availability: 'PARTIAL',
+        dd: {
+          max: '0',
+          peak: '2026-01-01',
+          trough: '2026-01-01',
+          rec: null,
+          cur: '0',
+          status: 'PARTIAL',
+        },
+      }),
+    );
+    expect(vm!.isPartial).toBe(true);
+    const brl = vm!.currencies[0]!;
+    expect(brl.drawdown.maximumFormatted).toBe('—');
+    expect(brl.drawdown.currentFormatted).toBe('—');
+    expect(brl.drawdown.peakDisplay).toBeNull();
+    expect(brl.drawdown.troughDisplay).toBeNull();
+    expect(brl.drawdown.recoveryDisplay).toBeNull();
+  });
+
+  it('preserves genuine 0.00% drawdown when status is AVAILABLE', () => {
+    const vm = mapToPortfolioRiskViewModel(
+      raw({
+        status: 'AVAILABLE',
+        availability: 'AVAILABLE',
+        dd: {
+          max: '0',
+          peak: '2026-01-01',
+          trough: '2026-01-01',
+          rec: null,
+          cur: '0',
+          status: 'AVAILABLE',
+        },
+      }),
+    );
+    expect(vm!.isPartial).toBe(false);
+    const brl = vm!.currencies[0]!;
+    expect(brl.drawdown.maximumFormatted).toBe('0,00%');
+    expect(brl.drawdown.currentFormatted).toBe('0,00%');
+    expect(brl.drawdown.peakDisplay).toBe('01/01/2026');
+  });
+
   it('never performs risk math', async () => {
     const fs = await import('fs');
     const code = fs.readFileSync(

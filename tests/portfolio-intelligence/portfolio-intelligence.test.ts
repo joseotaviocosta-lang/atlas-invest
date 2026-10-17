@@ -196,6 +196,26 @@ describe('Portfolio Intelligence aggregator (ADR-166/168/169)', () => {
     expect(summary.observations.some((o) => o.code === 'MAX_DRAWDOWN')).toBe(true);
   });
 
+  it('maximum drawdown observation is suppressed when risk status is PARTIAL or UNAVAILABLE', () => {
+    const summary = buildPortfolioIntelligenceSummary(
+      input([
+        currencyInput({
+          risk: {
+            realizedVolatilityAnnualized: '18',
+            maximumDrawdown: '0',
+            currentDrawdown: '0',
+            status: 'PARTIAL',
+          },
+          dataQuality: {
+            ...currencyInput().dataQuality,
+            riskAvailability: { status: 'PARTIAL', reason: null },
+          },
+        }),
+      ]),
+    );
+    expect(summary.observations.some((o) => o.code === 'MAX_DRAWDOWN')).toBe(false);
+  });
+
   it('tail observation is created only when available; no fake observation', () => {
     const available = buildPortfolioIntelligenceSummary(input([currencyInput()]));
     expect(available.observations.some((o) => o.code === 'TAIL_RISK_95')).toBe(true);

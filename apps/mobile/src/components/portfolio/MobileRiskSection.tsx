@@ -117,15 +117,16 @@ export function MobileRiskSection({
                         Fundo: {cur.drawdown.troughDisplay}
                       </Text>
                     )}
-                    {cur.drawdown.isRecovered && cur.drawdown.recoveryDisplay ? (
-                      <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-                        Recuperação: {cur.drawdown.recoveryDisplay}
-                      </Text>
-                    ) : (
-                      <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-                        Não recuperado no período
-                      </Text>
-                    )}
+                    {cur.drawdown.maximumFormatted !== '—' &&
+                      (cur.drawdown.isRecovered && cur.drawdown.recoveryDisplay ? (
+                        <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                          Recuperação: {cur.drawdown.recoveryDisplay}
+                        </Text>
+                      ) : (
+                        <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                          Não recuperado no período
+                        </Text>
+                      ))}
                   </View>
                 </View>
               ),

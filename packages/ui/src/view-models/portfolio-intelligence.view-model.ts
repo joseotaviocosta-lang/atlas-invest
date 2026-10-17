@@ -252,9 +252,27 @@ export function mapToPortfolioIntelligenceViewModel(
         isAvailable: b.return !== null,
       })),
       risk: {
-        volatilityFormatted: formatPercentage(c.risk.realizedVolatilityAnnualized),
-        maximumDrawdownFormatted: formatPercentage(c.risk.maximumDrawdown),
-        currentDrawdownFormatted: formatPercentage(c.risk.currentDrawdown),
+        volatilityFormatted:
+          c.risk.status !== 'AVAILABLE' &&
+          (c.risk.realizedVolatilityAnnualized === '0' ||
+            c.risk.realizedVolatilityAnnualized === '0.00' ||
+            !c.risk.realizedVolatilityAnnualized)
+            ? '—'
+            : formatPercentage(c.risk.realizedVolatilityAnnualized),
+        maximumDrawdownFormatted:
+          c.risk.status !== 'AVAILABLE' &&
+          (c.risk.maximumDrawdown === '0' ||
+            c.risk.maximumDrawdown === '0.00' ||
+            !c.risk.maximumDrawdown)
+            ? '—'
+            : formatPercentage(c.risk.maximumDrawdown),
+        currentDrawdownFormatted:
+          c.risk.status !== 'AVAILABLE' &&
+          (c.risk.currentDrawdown === '0' ||
+            c.risk.currentDrawdown === '0.00' ||
+            !c.risk.currentDrawdown)
+            ? '—'
+            : formatPercentage(c.risk.currentDrawdown),
       },
       tailRisk: {
         var95Formatted: formatPercentage(c.tailRisk.var95),

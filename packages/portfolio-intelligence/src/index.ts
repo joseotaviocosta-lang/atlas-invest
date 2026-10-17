@@ -279,7 +279,9 @@ function deriveCurrencyObservations(currency: CurrencyIntelligenceInput): Portfo
     );
   }
 
-  if (currency.risk.maximumDrawdown !== null) {
+  // MAX_DRAWDOWN emitted only when risk data is completely AVAILABLE (ADR-168/Phase 5B-H2).
+  // A 0.00% or partial drawdown on incomplete data is an unproven artifact, not a factual claim.
+  if (currency.risk.maximumDrawdown !== null && currency.risk.status === 'AVAILABLE') {
     observations.push(
       makeObservation('MAX_DRAWDOWN', scope, 'RISK', {
         maximumDrawdown: currency.risk.maximumDrawdown,
