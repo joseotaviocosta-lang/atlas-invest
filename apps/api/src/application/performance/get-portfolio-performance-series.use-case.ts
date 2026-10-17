@@ -359,7 +359,7 @@ export class GetPortfolioPerformanceSeriesUseCase {
 
     return {
       portfolioId: params.portfolioId,
-      period: { startDate: effectiveStart.toString(), endDate: effectiveEnd.toString() },
+      period: { startDate: periodStart.toString(), endDate: periodEnd.toString() },
       requestedGranularity,
       currencies: currenciesRecord,
       status,

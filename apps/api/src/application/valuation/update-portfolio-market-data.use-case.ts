@@ -25,6 +25,7 @@ import {
   MARKET_QUOTE_REPOSITORY,
 } from '../../database/tokens';
 import { MARKET_DATA_PROVIDER, HISTORICAL_MARKET_DATA_PROVIDER } from '../../market-data/tokens';
+import { PersistedHistoricalMarketDataProvider } from '../../market-data/persisted-historical-market-data.provider';
 
 export interface IngestionReceipt {
   portfolioId: string;
@@ -42,7 +43,7 @@ export interface IngestionReceipt {
   providerErrors: string[];
   startedAt: string;
   finishedAt: string;
-  status: 'COMPLETED' | 'COMPLETED_WITH_WARNINGS' | 'FAILED';
+  status: 'COMPLETED' | 'COMPLETED_WITH_WARNINGS' | 'EMPTY_UNIVERSE' | 'FAILED';
 }
 
 export interface UpdatePortfolioMarketDataParams {
@@ -122,6 +123,16 @@ export class UpdatePortfolioMarketDataUseCase {
     } else if (params.providerOverride === 'BRAPI') {
       marketDataProvider = new BrapiProviderAdapter();
       historicalProvider = new BrapiHistoricalMarketDataProvider();
+    } else if (historicalProvider instanceof PersistedHistoricalMarketDataProvider) {
+      // Ingestion use-case must fetch from upstream provider, never query its own destination table
+      const token = process.env.MARKET_DATA_API_TOKEN ?? process.env.BRAPI_API_KEY;
+      const timeoutMs = parseInt(
+        process.env.HISTORICAL_MARKET_DATA_TIMEOUT_MS ??
+          process.env.MARKET_DATA_TIMEOUT_MS ??
+          '15000',
+        10,
+      );
+      historicalProvider = new BrapiHistoricalMarketDataProvider({ token, timeoutMs });
     }
 
     const providerName = marketDataProvider.provider;
@@ -206,6 +217,7 @@ export class UpdatePortfolioMarketDataUseCase {
     receipt.requestedAssets = targetAssetIds.length;
 
     if (targetAssetIds.length === 0) {
+      receipt.status = isHistorical ? 'EMPTY_UNIVERSE' : 'COMPLETED';
       receipt.finishedAt = new Date().toISOString();
       return receipt;
     }

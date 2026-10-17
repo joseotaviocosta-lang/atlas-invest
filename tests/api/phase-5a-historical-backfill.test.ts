@@ -188,4 +188,30 @@ describe('Phase 5A-I1-R1: Historical Backfill & Boundary Safety', () => {
 
     expect(res.body.code).toBe('VALIDATION.RANGE_TOO_LARGE');
   });
+
+  it('Section 7: Returns EMPTY_UNIVERSE status when portfolio has no positions or activity in period', async () => {
+    const userId = randomUUID();
+    await ensureUser(userId);
+    const { token } = await createAuthenticatedUserSession(userId);
+
+    const portfolioRes = await request(app.getHttpServer())
+      .post('/api/v1/portfolios')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Empty Portfolio', baseCurrency: 'BRL', type: 'PERSONAL' })
+      .expect(201);
+    const emptyPortfolioId = portfolioRes.body.data.id;
+
+    const res = await request(app.getHttpServer())
+      .post(`/api/v1/portfolios/${emptyPortfolioId}/market-data/update`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        from: '2026-09-17',
+        to: '2026-10-17',
+        providerOverride: 'IN_MEMORY',
+      })
+      .expect(200);
+
+    expect(res.body.data.requestedAssets).toBe(0);
+    expect(res.body.data.status).toBe('EMPTY_UNIVERSE');
+  });
 });

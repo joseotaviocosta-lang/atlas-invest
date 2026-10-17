@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'fs';
-import { mapToPortfolioPerformanceViewModel } from '@atlas/ui';
+import { mapToPortfolioPerformanceViewModel, getPeriodDates } from '@atlas/ui';
 
 describe('Performance View Model', () => {
   it('maps AVAILABLE correctly', () => {
@@ -189,5 +189,54 @@ describe('Performance View Model', () => {
     expect(code).not.toMatch(/calculateTWR/);
     expect(code).not.toMatch(/calculateXIRR/);
     expect(code).not.toMatch(/Math\.pow/);
+  });
+
+  describe('getPeriodDates Civil Date Math & Presets', () => {
+    const today = '2026-10-17';
+
+    it('resolves 1M from 2026-10-17 to exactly 2026-09-17', () => {
+      const res = getPeriodDates('1M', today);
+      expect(res).toEqual({ startDate: '2026-09-17', endDate: '2026-10-17' });
+    });
+
+    it('resolves 3M from 2026-10-17 to exactly 2026-07-17', () => {
+      const res = getPeriodDates('3M', today);
+      expect(res).toEqual({ startDate: '2026-07-17', endDate: '2026-10-17' });
+    });
+
+    it('resolves 6M from 2026-10-17 to exactly 2026-04-17', () => {
+      const res = getPeriodDates('6M', today);
+      expect(res).toEqual({ startDate: '2026-04-17', endDate: '2026-10-17' });
+    });
+
+    it('resolves YTD from 2026-10-17 to exactly 2026-01-01', () => {
+      const res = getPeriodDates('YTD', today);
+      expect(res).toEqual({ startDate: '2026-01-01', endDate: '2026-10-17' });
+    });
+
+    it('resolves 1Y from 2026-10-17 to exactly 2025-10-17', () => {
+      const res = getPeriodDates('1Y', today);
+      expect(res).toEqual({ startDate: '2025-10-17', endDate: '2026-10-17' });
+    });
+
+    it('clamps month-end correctly without JS Date overflow: 2026-03-31 - 1M -> 2026-02-28', () => {
+      const res = getPeriodDates('1M', '2026-03-31');
+      expect(res).toEqual({ startDate: '2026-02-28', endDate: '2026-03-31' });
+    });
+
+    it('clamps leap year month-end correctly: 2024-03-31 - 1M -> 2024-02-29', () => {
+      const res = getPeriodDates('1M', '2024-03-31');
+      expect(res).toEqual({ startDate: '2024-02-29', endDate: '2024-03-31' });
+    });
+
+    it('clamps 2026-05-31 - 1M -> 2026-04-30', () => {
+      const res = getPeriodDates('1M', '2026-05-31');
+      expect(res).toEqual({ startDate: '2026-04-30', endDate: '2026-05-31' });
+    });
+
+    it('clamps 2026-08-31 - 6M -> 2026-02-28', () => {
+      const res = getPeriodDates('6M', '2026-08-31');
+      expect(res).toEqual({ startDate: '2026-02-28', endDate: '2026-08-31' });
+    });
   });
 });

@@ -452,20 +452,31 @@ export interface IngestionReceiptDto {
   missingAssets: string[];
   rateLimitedAssets: string[];
   providerErrors: string[];
-  status: 'SUCCESS' | 'PARTIAL' | 'FAILED';
+  status: 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'COMPLETED' | 'COMPLETED_WITH_WARNINGS' | 'EMPTY_UNIVERSE';
 }
 
 export function formatUpdateReceiptFeedback(receipt: IngestionReceiptDto): {
   message: string;
   variant: 'positive' | 'warning' | 'negative';
 } {
-  const updatedCount = (receipt.quotesInserted ?? 0) + (receipt.quotesRevised ?? 0);
+  const insertedCount = receipt.quotesInserted ?? 0;
+  const revisedCount = receipt.quotesRevised ?? 0;
+  const unchangedCount = receipt.quotesUnchanged ?? 0;
+  const updatedCount = insertedCount + revisedCount;
+  const resolvedCount = receipt.resolvedAssets ?? 0;
   const authCount = receipt.authRequiredAssets?.length ?? 0;
   const missingCount =
     (receipt.missingAssets?.length ?? 0) + (receipt.rateLimitedAssets?.length ?? 0);
   const totalNotUpdated = authCount + missingCount + (receipt.skippedAssets ?? 0);
 
-  if (receipt.status === 'FAILED' || (updatedCount === 0 && totalNotUpdated > 0)) {
+  if (receipt.status === 'EMPTY_UNIVERSE' || (receipt.requestedAssets ?? 0) === 0) {
+    return {
+      message: 'Nenhum ativo com posição ou movimentação no período selecionado.',
+      variant: 'warning',
+    };
+  }
+
+  if (receipt.status === 'FAILED' || (updatedCount === 0 && unchangedCount === 0 && totalNotUpdated > 0)) {
     if (authCount > 0 && updatedCount === 0) {
       return {
         message: `Atualização requer autenticação de provedor para ${authCount} ${authCount === 1 ? 'ativo' : 'ativos'} (${receipt.authRequiredAssets.join(', ')}). Configure BRAPI_API_KEY.`,
@@ -478,15 +489,33 @@ export function formatUpdateReceiptFeedback(receipt: IngestionReceiptDto): {
     };
   }
 
-  const parts: string[] = [];
-  parts.push(
-    `Cotações atualizadas com sucesso: ${updatedCount} ${updatedCount === 1 ? 'ativo' : 'ativos'}`,
-  );
+  if (updatedCount === 0 && unchangedCount > 0) {
+    return {
+      message: `Cotações já atualizadas: ${unchangedCount} ${unchangedCount === 1 ? 'cotação mantida' : 'cotações mantidas'} para ${resolvedCount} ${resolvedCount === 1 ? 'ativo' : 'ativos'}.`,
+      variant: 'positive',
+    };
+  }
 
-  if (receipt.quotesRevised > 0) {
+  const parts: string[] = [];
+  const successfulAssetCount = Math.max(0, resolvedCount - authCount - missingCount);
+  const assetCountToDisplay = successfulAssetCount > 0 ? successfulAssetCount : (resolvedCount > 0 ? resolvedCount : updatedCount);
+  const assetNoun = assetCountToDisplay === 1 ? 'ativo' : 'ativos';
+
+  if (updatedCount > assetCountToDisplay) {
+    // Multi-quote backfill case (e.g. historical range with multiple days)
+    const quoteNoun = updatedCount === 1 ? 'cotação inserida' : 'cotações inseridas';
     parts.push(
-      `(${receipt.quotesRevised} ${receipt.quotesRevised === 1 ? 'revisão' : 'revisões'})`,
+      `Cotações atualizadas com sucesso: ${updatedCount} ${quoteNoun} para ${assetCountToDisplay} ${assetNoun}`,
     );
+  } else {
+    // Single quote per asset case (latest EOD quote update)
+    parts.push(
+      `Cotações atualizadas com sucesso: ${assetCountToDisplay} ${assetNoun}`,
+    );
+  }
+
+  if (revisedCount > 0) {
+    parts.push(`(${revisedCount} ${revisedCount === 1 ? 'revisão' : 'revisões'})`);
   }
 
   const diagnostics: string[] = [];

@@ -5,10 +5,10 @@ import { getPeriodDates } from '@atlas/ui';
 describe('Performance Inception Semantics', () => {
   const today = '2026-09-20';
 
-  it('A) portfolio 3 months old, 1Y → start = inception', () => {
+  it('A) portfolio 3 months old, 1Y → requested period remains today -1y (not clamped, per Policy A)', () => {
     const inception = '2026-06-15';
     const period = getPeriodDates('1Y', today, undefined, undefined, inception);
-    expect(period?.startDate).toBe(inception);
+    expect(period?.startDate).toBe('2025-09-20');
     expect(period?.endDate).toBe(today);
   });
 
@@ -48,10 +48,10 @@ describe('Performance Inception Semantics', () => {
     expect(code).not.toContain('2020-01-01');
   });
 
-  it('1Y clamps to inception', () => {
+  it('1Y does NOT clamp to inception (requested period invariant)', () => {
     const inception = '2026-08-01';
     const period = getPeriodDates('1Y', '2026-09-20', undefined, undefined, inception);
-    expect(period?.startDate).toBe(inception);
+    expect(period?.startDate).toBe('2025-09-20');
   });
 
   it('YTD not clamped if after inception', () => {

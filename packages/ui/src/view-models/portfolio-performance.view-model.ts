@@ -184,6 +184,57 @@ export function mapToPortfolioPerformanceViewModel(
   };
 }
 
+function isLeapYear(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+}
+
+function getDaysInMonthCivil(year: number, month: number): number {
+  switch (month) {
+    case 1:
+    case 3:
+    case 5:
+    case 7:
+    case 8:
+    case 10:
+    case 12:
+      return 31;
+    case 4:
+    case 6:
+    case 9:
+    case 11:
+      return 30;
+    case 2:
+      return isLeapYear(year) ? 29 : 28;
+    default:
+      return 0;
+  }
+}
+
+function subtractMonthsCivil(year: number, month: number, day: number, monthsToSubtract: number): string {
+  let targetMonth = month - monthsToSubtract;
+  let targetYear = year;
+
+  while (targetMonth < 1) {
+    targetMonth += 12;
+    targetYear -= 1;
+  }
+
+  const maxDay = getDaysInMonthCivil(targetYear, targetMonth);
+  const targetDay = Math.min(day, maxDay);
+
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${targetYear}-${pad(targetMonth)}-${pad(targetDay)}`;
+}
+
+function subtractYearsCivil(year: number, month: number, day: number, yearsToSubtract: number): string {
+  const targetYear = year - yearsToSubtract;
+  const maxDay = getDaysInMonthCivil(targetYear, month);
+  const targetDay = Math.min(day, maxDay);
+
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${targetYear}-${pad(month)}-${pad(targetDay)}`;
+}
+
 export function getPeriodDates(
   preset: PerformancePeriodPreset,
   todayStr: string,
@@ -205,42 +256,34 @@ export function getPeriodDates(
     return { startDate: inceptionDate, endDate: todayStr };
   }
 
-  const today = new Date(`${todayStr}T00:00:00Z`);
-  let start: Date;
+  if (!isValidLocalDateString(todayStr)) return null;
+  const [yStr, mStr, dStr] = todayStr.split('-');
+  const year = parseInt(yStr!, 10);
+  const month = parseInt(mStr!, 10);
+  const day = parseInt(dStr!, 10);
+
+  let startStr: string;
 
   switch (preset) {
     case '1M':
-      start = new Date(
-        Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, today.getUTCDate()),
-      );
+      startStr = subtractMonthsCivil(year, month, day, 1);
       break;
     case '3M':
-      start = new Date(
-        Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 3, today.getUTCDate()),
-      );
+      startStr = subtractMonthsCivil(year, month, day, 3);
       break;
     case '6M':
-      start = new Date(
-        Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 6, today.getUTCDate()),
-      );
+      startStr = subtractMonthsCivil(year, month, day, 6);
       break;
     case 'YTD':
-      start = new Date(Date.UTC(today.getUTCFullYear(), 0, 1));
+      startStr = `${year}-01-01`;
       break;
     case '1Y':
-      start = new Date(
-        Date.UTC(today.getUTCFullYear() - 1, today.getUTCMonth(), today.getUTCDate()),
-      );
+      startStr = subtractYearsCivil(year, month, day, 1);
       break;
     default:
       return null;
   }
 
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  let startStr = `${start.getUTCFullYear()}-${pad(start.getUTCMonth() + 1)}-${pad(start.getUTCDate())}`;
-  if (inceptionDate && isValidLocalDateString(inceptionDate) && startStr < inceptionDate) {
-    startStr = inceptionDate;
-  }
   if (startStr > todayStr) return null;
   return { startDate: startStr, endDate: todayStr };
 }
