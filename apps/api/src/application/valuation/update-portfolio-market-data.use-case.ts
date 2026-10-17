@@ -24,8 +24,10 @@ import {
   ASSET_REPOSITORY,
   MARKET_QUOTE_REPOSITORY,
 } from '../../database/tokens';
-import { MARKET_DATA_PROVIDER, HISTORICAL_MARKET_DATA_PROVIDER } from '../../market-data/tokens';
-import { PersistedHistoricalMarketDataProvider } from '../../market-data/persisted-historical-market-data.provider';
+import {
+  MARKET_DATA_PROVIDER,
+  HISTORICAL_MARKET_DATA_INGESTION_PROVIDER,
+} from '../../market-data/tokens';
 
 export interface IngestionReceipt {
   portfolioId: string;
@@ -68,8 +70,8 @@ export class UpdatePortfolioMarketDataUseCase {
     private readonly marketQuoteRepository: IMarketQuoteRepository,
     @Inject(MARKET_DATA_PROVIDER)
     private readonly defaultMarketDataProvider: MarketDataProvider,
-    @Inject(HISTORICAL_MARKET_DATA_PROVIDER)
-    private readonly defaultHistoricalProvider: HistoricalMarketDataProvider,
+    @Inject(HISTORICAL_MARKET_DATA_INGESTION_PROVIDER)
+    private readonly defaultHistoricalIngestionProvider: HistoricalMarketDataProvider,
   ) {}
 
   async execute(params: UpdatePortfolioMarketDataParams): Promise<IngestionReceipt> {
@@ -86,7 +88,7 @@ export class UpdatePortfolioMarketDataUseCase {
 
     // Determine providers (support test / dev override)
     let marketDataProvider = this.defaultMarketDataProvider;
-    let historicalProvider = this.defaultHistoricalProvider;
+    let historicalProvider = this.defaultHistoricalIngestionProvider;
 
     if (params.providerOverride === 'IN_MEMORY') {
       const inMemory = new InMemoryMarketDataProvider();
@@ -123,16 +125,6 @@ export class UpdatePortfolioMarketDataUseCase {
     } else if (params.providerOverride === 'BRAPI') {
       marketDataProvider = new BrapiProviderAdapter();
       historicalProvider = new BrapiHistoricalMarketDataProvider();
-    } else if (historicalProvider instanceof PersistedHistoricalMarketDataProvider) {
-      // Ingestion use-case must fetch from upstream provider, never query its own destination table
-      const token = process.env.MARKET_DATA_API_TOKEN ?? process.env.BRAPI_API_KEY;
-      const timeoutMs = parseInt(
-        process.env.HISTORICAL_MARKET_DATA_TIMEOUT_MS ??
-          process.env.MARKET_DATA_TIMEOUT_MS ??
-          '15000',
-        10,
-      );
-      historicalProvider = new BrapiHistoricalMarketDataProvider({ token, timeoutMs });
     }
 
     const providerName = marketDataProvider.provider;

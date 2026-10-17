@@ -20,6 +20,7 @@ import {
 import {
   MARKET_DATA_PROVIDER,
   HISTORICAL_MARKET_DATA_PROVIDER,
+  HISTORICAL_MARKET_DATA_INGESTION_PROVIDER,
   BENCHMARK_DATA_PROVIDER,
   RATE_BENCHMARK_DATA_PROVIDER,
 } from './tokens';
@@ -60,6 +61,31 @@ function createHistoricalProvider(
   if (providerName === 'PERSISTED' && quoteRepo) {
     return new PersistedHistoricalMarketDataProvider(quoteRepo);
   }
+  if (providerName === 'BRAPI') {
+    return new BrapiHistoricalMarketDataProvider({ token, timeoutMs });
+  }
+  if (providerName === 'STOOQ') {
+    return new StooqHistoricalMarketDataProvider({ timeoutMs, maxLookbackDays: maxLookback });
+  }
+  return new InMemoryHistoricalMarketDataProvider({ maxLookbackDays: maxLookback });
+}
+
+function createHistoricalIngestionProvider(): HistoricalMarketDataProvider {
+  const defaultProvider = process.env.NODE_ENV === 'test' ? 'IN_MEMORY' : 'BRAPI';
+  const providerName = (
+    process.env.HISTORICAL_MARKET_DATA_INGESTION_PROVIDER ??
+    process.env.MARKET_DATA_PROVIDER ??
+    defaultProvider
+  )
+    .trim()
+    .toUpperCase();
+  const token = process.env.MARKET_DATA_API_TOKEN ?? process.env.BRAPI_API_KEY;
+  const timeoutMs = parseInt(
+    process.env.HISTORICAL_MARKET_DATA_TIMEOUT_MS ?? process.env.MARKET_DATA_TIMEOUT_MS ?? '15000',
+    10,
+  );
+  const maxLookback = parseInt(process.env.HISTORICAL_MARKET_DATA_MAX_LOOKBACK_DAYS ?? '7', 10);
+
   if (providerName === 'BRAPI') {
     return new BrapiHistoricalMarketDataProvider({ token, timeoutMs });
   }
@@ -128,6 +154,10 @@ function createRateBenchmarkProvider(
       inject: [MARKET_QUOTE_REPOSITORY],
     },
     {
+      provide: HISTORICAL_MARKET_DATA_INGESTION_PROVIDER,
+      useFactory: () => createHistoricalIngestionProvider(),
+    },
+    {
       provide: BENCHMARK_DATA_PROVIDER,
       useFactory: (benchmarkRepo: IBenchmarkObservationRepository) =>
         createBenchmarkProvider(benchmarkRepo),
@@ -143,6 +173,7 @@ function createRateBenchmarkProvider(
   exports: [
     MARKET_DATA_PROVIDER,
     HISTORICAL_MARKET_DATA_PROVIDER,
+    HISTORICAL_MARKET_DATA_INGESTION_PROVIDER,
     BENCHMARK_DATA_PROVIDER,
     RATE_BENCHMARK_DATA_PROVIDER,
   ],
