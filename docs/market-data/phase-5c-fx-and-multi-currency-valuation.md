@@ -107,3 +107,38 @@ CREATE INDEX "fx_observation_revisions_obs_idx" ON "fx_observation_revisions"("f
 - Historical cross-currency TWR requires full daily historical FX series across every past cash flow date.
 - Backfilling current spot FX rates to past portfolio dates is strictly forbidden.
 - Spot valuation multi-currency translation is fully enabled, while historical TWR remains safely segregated by native currency.
+
+---
+
+## 5. Phase 5C-R1.2 Evidence & Validation Matrix Reconciliation
+
+### 5.1 BRL-Only Backward Compatibility
+
+- For portfolios holding solely BRL assets, all 8 standard surfaces (`valuation`, `allocation`, `performance`, `performance-series`, `intelligence`, `home`, `market`, `tax`) require exactly 0 FX lookups and 0 upstream network calls.
+- Economic outputs are 100% identical to pre-5C baseline.
+
+### 5.2 Zero-Live-Read Matrix
+
+- All read surfaces (`valuation`, `allocation`, `home`, `market`, `performance`, `series`, `intelligence`, `fx coverage`) execute 0 upstream calls (`fetch` = 0).
+- Reads query exclusively from persisted PostgreSQL repositories via `PersistedFxDataProvider` or Prisma repositories.
+
+### 5.3 Cache Key & Invalidation Contract
+
+- `valuation`: `['portfolio-valuation', portfolioId]`
+- `allocation`: `['portfolio-allocation', portfolioId]`
+- `home`: `['portfolio-state', portfolioId]`, `['portfolio-valuation', portfolioId]`
+- `market`: `['portfolio-valuation', portfolioId]`
+- **FX Update Invalidation**: A successful `POST /api/v1/fx/:base/:quote/update` invalidates `['portfolio-valuation', portfolioId]` and `['portfolio-allocation', portfolioId]`.
+- Performance and intelligence engines currently operate in native currencies by design and do not consume FX.
+
+### 5.4 Fixed-Host Provider & SSRF Safety
+
+- Upstream BCB provider URL is fixed to `https://api.bcb.gov.br/dados/serie/bcdata.sgs.{seriesId}/dados`.
+- Host, scheme, and port are hardcoded in infrastructure code.
+- Inputs are restricted to approved currency mappings and strictly validated civil calendar dates (`YYYY-MM-DD`).
+
+### 5.5 Mobile Multi-Currency Parity
+
+- Mobile application renders `MobileValuationSection` with dedicated multi-currency consolidated summary (`valuation-multi-currency-summary`).
+- Displays `Câmbio PTAX` badge when complete, and `Câmbio Parcial` badge when missing foreign rates.
+- Suppresses fake denominators and preserves native currency breakdowns without mixing.
