@@ -142,3 +142,41 @@ CREATE INDEX "fx_observation_revisions_obs_idx" ON "fx_observation_revisions"("f
 - Mobile application renders `MobileValuationSection` with dedicated multi-currency consolidated summary (`valuation-multi-currency-summary`).
 - Displays `Câmbio PTAX` badge when complete, and `Câmbio Parcial` badge when missing foreign rates.
 - Suppresses fake denominators and preserves native currency breakdowns without mixing.
+
+---
+
+## 6. Phase 5C-R1.3 Micro-Closure Specifications
+
+### 6.1 Canonical Query-Key Shapes & Dimensions
+
+- `valuation`: `['portfolio-valuation', portfolioId]` (via `valuationQueryKey(portfolioId)`)
+- `allocation`: `['portfolio-allocation', portfolioId]` (via `allocationQueryKey(portfolioId)`)
+- `home`: `['portfolio-state', firstPortfolioId]` and `['portfolio-valuation', firstPortfolioId]`
+- `market`: `['portfolio-valuation', activePortfolioId]`
+- **Reporting Currency Dimension**: Currently hardcoded to `BRL` across UI consumers (`FUTURE_EXTENSION_REQUIRED` if multi-reporting currencies become user-selectable).
+- **As-Of Date Dimension**: Valuation and allocation represent current spot custody and persisted quotes only. Historical portfolio views use isolated performance/history endpoints.
+
+### 6.2 FX Update Invalidation Matrix
+
+- On successful FX ingestion (`POST /api/v1/fx/:base/:quote/update`):
+  - Invalidate `['portfolio-valuation', portfolioId]` -> Refetches new PTAX converted valuation.
+  - Invalidate `['portfolio-allocation', portfolioId]` -> Refetches updated converted allocation.
+  - Home and Market pages consume `['portfolio-valuation', portfolioId]` and update automatically without page reload.
+
+### 6.3 Same-Currency Ingestion Policy
+
+- Same-currency pairs (e.g. `BRL/BRL`, `USD/USD`) are rejected by `UpdateFxDataUseCase` with `400 Bad Request` (`VALIDATION.SAME_CURRENCY_NOT_ALLOWED`).
+- No upstream provider calls are made and 0 rows are inserted into `fx_observations`. Identity rate of 1.0 is handled internally in valuation logic.
+
+### 6.4 Zero-Live-Read Invariant
+
+- All 8 read surfaces (`valuation`, `allocation`, `home`, `market`, `performance`, `performance-series`, `intelligence`, `fx coverage`) execute 0 upstream calls (`fetch = 0`).
+- Proven under hard-failure harness throwing `UPSTREAM_CALL_FORBIDDEN`.
+
+### 6.5 I4 Surface Behavior Across API, Web, and Mobile
+
+- In mixed-currency portfolios where historical rates are not unified:
+  - API returns native segregated currency performance records; overall status is `PARTIAL` / `INSUFFICIENT_DATA`.
+  - Zero fabricated consolidated TWR percentage is ever produced.
+  - Web renders segregated currency cards with warning banners for partial history.
+  - Mobile renders segregated currency cards with warning banners, showing `—` for unpriced historical currencies.
