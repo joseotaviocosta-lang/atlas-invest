@@ -19,29 +19,29 @@ model User {
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  portfolios          Portfolio[]
-  sessions            Session[]
-  passwordResetTokens PasswordResetToken[]
-  aiConversations     AiConversation[]
-  taxTradeClassifications TaxTradeClassificationRecord[]
-  taxWithholdingInputs    TaxWithholdingInputRecord[]
-  fiiTaxEligibilityFacts  FiiTaxEligibilityFactRecord[]
-  taxObligations          TaxObligationRecord[]
-  taxPaymentEvidence      TaxPaymentEvidenceRecord[]
-  taxCarryForwardEntries  TaxCarryForwardEntry[]
-  taxPaymentAggregations  TaxPaymentAggregation[]
-  taxpayerIdentity        TaxpayerIdentityRecord?
-  darfGenerationRecords   OfficialDarfGenerationRecord[]
+  portfolios               Portfolio[]
+  sessions                 Session[]
+  passwordResetTokens      PasswordResetToken[]
+  aiConversations          AiConversation[]
+  taxTradeClassifications  TaxTradeClassificationRecord[]
+  taxWithholdingInputs     TaxWithholdingInputRecord[]
+  fiiTaxEligibilityFacts   FiiTaxEligibilityFactRecord[]
+  taxObligations           TaxObligationRecord[]
+  taxPaymentEvidence       TaxPaymentEvidenceRecord[]
+  taxCarryForwardEntries   TaxCarryForwardEntry[]
+  taxPaymentAggregations   TaxPaymentAggregation[]
+  taxpayerIdentity         TaxpayerIdentityRecord?
+  darfGenerationRecords    OfficialDarfGenerationRecord[]
   taxCompensationElections TaxCompensationElectionRecord[]
-  annualOpeningPositions  AnnualOpeningPositionInputRecord[]
-  taxpayerConfirmations   TaxpayerConfirmationRecord[]
-  highIncomeEvidence      HighIncomeEvidenceRecord[]
-  taxComplianceActions    TaxComplianceActionRecord[]
-  taxSettlementRecords    TaxSettlementRecord[]
-  taxReminderActions      TaxComplianceReminderActionRecord[]
-  taxNotificationEvents   TaxComplianceNotificationEventRecord[]
-  taxReminderPreferences  TaxComplianceReminderPreferenceRecord?
-  taxPeriodCloseRecords   TaxCompliancePeriodCloseRecord[]
+  annualOpeningPositions   AnnualOpeningPositionInputRecord[]
+  taxpayerConfirmations    TaxpayerConfirmationRecord[]
+  highIncomeEvidence       HighIncomeEvidenceRecord[]
+  taxComplianceActions     TaxComplianceActionRecord[]
+  taxSettlementRecords     TaxSettlementRecord[]
+  taxReminderActions       TaxComplianceReminderActionRecord[]
+  taxNotificationEvents    TaxComplianceNotificationEventRecord[]
+  taxReminderPreferences   TaxComplianceReminderPreferenceRecord?
+  taxPeriodCloseRecords    TaxCompliancePeriodCloseRecord[]
 
   @@map("users")
 }
@@ -108,10 +108,10 @@ model Portfolio {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accounts        Account[]
-  transactions    Transaction[]
-  aiConversations AiConversation[]
+  user                   User                               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts               Account[]
+  transactions           Transaction[]
+  aiConversations        AiConversation[]
   annualOpeningPositions AnnualOpeningPositionInputRecord[]
 
   @@index([userId])
@@ -128,9 +128,9 @@ model Account {
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  portfolio   Portfolio     @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
-  institution Institution   @relation(fields: [institutionId], references: [id], onDelete: Restrict)
-  transactions Transaction[]
+  portfolio              Portfolio                          @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  institution            Institution                        @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  transactions           Transaction[]
   annualOpeningPositions AnnualOpeningPositionInputRecord[]
 
   @@unique([id, portfolioId])
@@ -161,31 +161,31 @@ model Asset {
 }
 
 model Transaction {
-  id             String    @id @default(uuid()) @db.Uuid
-  portfolioId    String    @map("portfolio_id") @db.Uuid
-  accountId      String    @map("account_id") @db.Uuid
-  assetId        String?   @map("asset_id") @db.Uuid
-  type           String    @db.VarChar(50)
-  tradeDate      DateTime  @map("trade_date") @db.Date
-  settlementDate DateTime? @map("settlement_date") @db.Date
-  source         String    @default("MANUAL") @db.VarChar(50)
-  quantity       Decimal?  @db.Decimal(38, 18)
-  unitPrice      Decimal?  @map("unit_price") @db.Decimal(38, 18)
-  amount         Decimal?  @db.Decimal(38, 18)
-  currency       String    @db.VarChar(3)
-  fees           Decimal?  @db.Decimal(38, 18)
-  taxes          Decimal?  @db.Decimal(38, 18)
-  factor         Decimal?  @db.Decimal(38, 18)
-  provider       String?   @db.VarChar(100)
-  externalId     String?   @map("external_id") @db.VarChar(255)
-  notes          String?   @db.Text
-  transferGroupId String?  @map("transfer_group_id") @db.VarChar(255)
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              String    @id @default(uuid()) @db.Uuid
+  portfolioId     String    @map("portfolio_id") @db.Uuid
+  accountId       String    @map("account_id") @db.Uuid
+  assetId         String?   @map("asset_id") @db.Uuid
+  type            String    @db.VarChar(50)
+  tradeDate       DateTime  @map("trade_date") @db.Date
+  settlementDate  DateTime? @map("settlement_date") @db.Date
+  source          String    @default("MANUAL") @db.VarChar(50)
+  quantity        Decimal?  @db.Decimal(38, 18)
+  unitPrice       Decimal?  @map("unit_price") @db.Decimal(38, 18)
+  amount          Decimal?  @db.Decimal(38, 18)
+  currency        String    @db.VarChar(3)
+  fees            Decimal?  @db.Decimal(38, 18)
+  taxes           Decimal?  @db.Decimal(38, 18)
+  factor          Decimal?  @db.Decimal(38, 18)
+  provider        String?   @db.VarChar(100)
+  externalId      String?   @map("external_id") @db.VarChar(255)
+  notes           String?   @db.Text
+  transferGroupId String?   @map("transfer_group_id") @db.VarChar(255)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
-  account   Account   @relation(fields: [accountId, portfolioId], references: [id, portfolioId], onDelete: Restrict)
-  asset     Asset?    @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  portfolio               Portfolio                      @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  account                 Account                        @relation(fields: [accountId, portfolioId], references: [id, portfolioId], onDelete: Restrict)
+  asset                   Asset?                         @relation(fields: [assetId], references: [id], onDelete: Restrict)
   taxTradeClassifications TaxTradeClassificationRecord[]
 
   @@unique([portfolioId, provider, externalId], name: "portfolio_provider_external_id_unique")
@@ -205,9 +205,9 @@ model AiConversation {
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  portfolio   Portfolio              @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
-  messages    AiConversationMessage[]
+  user      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  portfolio Portfolio               @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  messages  AiConversationMessage[]
 
   @@index([userId])
   @@index([portfolioId])
@@ -216,21 +216,21 @@ model AiConversation {
 }
 
 model AiConversationMessage {
-  id                String    @id @default(uuid()) @db.Uuid
-  conversationId    String    @map("conversation_id") @db.Uuid
-  role              String    @db.VarChar(20)
-  content           String    @db.Text
-  status            String    @default("ANSWERED") @db.VarChar(50)
-  intent            String?   @db.VarChar(100)
-  evidenceSnapshot  Json?     @map("evidence_snapshot") @db.JsonB
-  claims            Json?     @map("claims") @db.JsonB
-  limitations       String[]  @default([]) @map("limitations")
-  provider          String?   @db.VarChar(100)
-  model             String?   @db.VarChar(100)
-  providerRequestId String?   @map("provider_request_id") @db.VarChar(255)
-  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                String   @id @default(uuid()) @db.Uuid
+  conversationId    String   @map("conversation_id") @db.Uuid
+  role              String   @db.VarChar(20)
+  content           String   @db.Text
+  status            String   @default("ANSWERED") @db.VarChar(50)
+  intent            String?  @db.VarChar(100)
+  evidenceSnapshot  Json?    @map("evidence_snapshot") @db.JsonB
+  claims            Json?    @map("claims") @db.JsonB
+  limitations       String[] @default([]) @map("limitations")
+  provider          String?  @db.VarChar(100)
+  model             String?  @db.VarChar(100)
+  providerRequestId String?  @map("provider_request_id") @db.VarChar(255)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  conversation      AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt, id])
   @@map("ai_conversation_messages")
@@ -303,22 +303,22 @@ model TaxTradeClassificationRecord {
 
 /// Phase 4B.3 — persisted canonical withholding/IRRF input (exact decimal).
 model TaxWithholdingInputRecord {
-  id              String    @id @default(uuid()) @db.Uuid
-  taxSubjectId    String    @map("tax_subject_id") @db.Uuid
-  competence      String    @db.Char(7)
-  economicDate    DateTime  @map("economic_date") @db.Date
-  category        String    @db.VarChar(50)
-  withholdingCategory String? @map("withholding_category") @db.VarChar(30)
-  amount          Decimal?  @db.Decimal(38, 18)
-  currency        String    @db.VarChar(3)
-  status          String    @db.VarChar(20)
-  sourceType      String    @map("source_type") @db.VarChar(50)
-  sourceReference String    @map("source_reference") @db.VarChar(255)
-  conflictStatus  String    @default("NONE") @map("conflict_status") @db.VarChar(20)
-  fingerprint     String    @db.VarChar(64)
-  provenance      Json
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  confirmedAt     DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  id                  String    @id @default(uuid()) @db.Uuid
+  taxSubjectId        String    @map("tax_subject_id") @db.Uuid
+  competence          String    @db.Char(7)
+  economicDate        DateTime  @map("economic_date") @db.Date
+  category            String    @db.VarChar(50)
+  withholdingCategory String?   @map("withholding_category") @db.VarChar(30)
+  amount              Decimal?  @db.Decimal(38, 18)
+  currency            String    @db.VarChar(3)
+  status              String    @db.VarChar(20)
+  sourceType          String    @map("source_type") @db.VarChar(50)
+  sourceReference     String    @map("source_reference") @db.VarChar(255)
+  conflictStatus      String    @default("NONE") @map("conflict_status") @db.VarChar(20)
+  fingerprint         String    @db.VarChar(64)
+  provenance          Json
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  confirmedAt         DateTime? @map("confirmed_at") @db.Timestamptz(6)
 
   taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
 
@@ -331,20 +331,20 @@ model TaxWithholdingInputRecord {
 /// Phase 4B.3 — persisted FII tax-condition metadata (factual input only).
 /// User-attested facts scoped to the tax subject; never tax treatment.
 model FiiTaxEligibilityFactRecord {
-  id                       String    @id @default(uuid()) @db.Uuid
-  taxSubjectId             String    @map("tax_subject_id") @db.Uuid
-  assetId                  String    @map("asset_id") @db.Uuid
-  asOfDate                 DateTime  @map("as_of_date") @db.Date
-  holderCount              Int?      @map("holder_count")
-  investorOwnershipPercent Decimal?  @map("investor_ownership_percent") @db.Decimal(38, 18)
-  isExchangeTraded         Boolean?  @map("is_exchange_traded")
-  sourceType               String    @map("source_type") @db.VarChar(50)
-  sourceReference          String    @map("source_reference") @db.VarChar(255)
-  status                   String    @db.VarChar(20)
-  conflictStatus           String    @default("NONE") @map("conflict_status") @db.VarChar(20)
-  fingerprint              String    @db.VarChar(64)
+  id                       String   @id @default(uuid()) @db.Uuid
+  taxSubjectId             String   @map("tax_subject_id") @db.Uuid
+  assetId                  String   @map("asset_id") @db.Uuid
+  asOfDate                 DateTime @map("as_of_date") @db.Date
+  holderCount              Int?     @map("holder_count")
+  investorOwnershipPercent Decimal? @map("investor_ownership_percent") @db.Decimal(38, 18)
+  isExchangeTraded         Boolean? @map("is_exchange_traded")
+  sourceType               String   @map("source_type") @db.VarChar(50)
+  sourceReference          String   @map("source_reference") @db.VarChar(255)
+  status                   String   @db.VarChar(20)
+  conflictStatus           String   @default("NONE") @map("conflict_status") @db.VarChar(20)
+  fingerprint              String   @db.VarChar(64)
   provenance               Json
-  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   taxSubject User  @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
   asset      Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
@@ -410,11 +410,11 @@ model TaxObligationRecord {
   createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  taxSubject    User                      @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
-  deadlineEntry FederalTaxDeadlineEntry?  @relation(fields: [deadlineEntryId], references: [id])
-  payments      TaxPaymentEvidenceRecord[]
-  carryForwardSources TaxCarryForwardEntry[]  @relation("CarryForwardSource")
-  paymentAggregations TaxPaymentAggregation[] @relation("AggregationCurrentObligation")
+  taxSubject            User                           @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+  deadlineEntry         FederalTaxDeadlineEntry?       @relation(fields: [deadlineEntryId], references: [id])
+  payments              TaxPaymentEvidenceRecord[]
+  carryForwardSources   TaxCarryForwardEntry[]         @relation("CarryForwardSource")
+  paymentAggregations   TaxPaymentAggregation[]        @relation("AggregationCurrentObligation")
   darfGenerationRecords OfficialDarfGenerationRecord[] @relation("DarfGenerationObligation")
 
   @@unique([taxSubjectId, competence, liabilityFingerprint, revision], name: "tax_obligation_identity")
@@ -452,21 +452,21 @@ model TaxPaymentEvidenceRecord {
 /// the business-day-sensitive late-fee amount/percent (no generic holiday
 /// calendar). Corrections create a new version (ADR-271).
 model OfficialLateFeeSnapshot {
-  id                String   @id @default(uuid()) @db.Uuid
-  municipalityCode  String   @map("municipality_code") @db.VarChar(10)
-  dueDate           DateTime @map("due_date") @db.Date
-  paymentDate       DateTime @map("payment_date") @db.Date
-  principalAmount   Decimal  @map("principal_amount") @db.Decimal(38, 18)
-  lateFeeAmount     Decimal  @map("late_fee_amount") @db.Decimal(38, 18)
-  lateFeePercent    Decimal  @map("late_fee_percent") @db.Decimal(38, 18)
+  id                String    @id @default(uuid()) @db.Uuid
+  municipalityCode  String    @map("municipality_code") @db.VarChar(10)
+  dueDate           DateTime  @map("due_date") @db.Date
+  paymentDate       DateTime  @map("payment_date") @db.Date
+  principalAmount   Decimal   @map("principal_amount") @db.Decimal(38, 18)
+  lateFeeAmount     Decimal   @map("late_fee_amount") @db.Decimal(38, 18)
+  lateFeePercent    Decimal   @map("late_fee_percent") @db.Decimal(38, 18)
   startBusinessDate DateTime? @map("start_business_date") @db.Date
-  sourceSystem      String   @map("source_system") @db.VarChar(30)
-  sourceReference   String   @map("source_reference") @db.VarChar(500)
-  sourceRetrievedAt DateTime @map("source_retrieved_at") @db.Timestamptz(6)
-  verifiedAt        DateTime @map("verified_at") @db.Timestamptz(6)
+  sourceSystem      String    @map("source_system") @db.VarChar(30)
+  sourceReference   String    @map("source_reference") @db.VarChar(500)
+  sourceRetrievedAt DateTime  @map("source_retrieved_at") @db.Timestamptz(6)
+  verifiedAt        DateTime  @map("verified_at") @db.Timestamptz(6)
   version           Int
-  fingerprint       String   @db.VarChar(64)
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  fingerprint       String    @db.VarChar(64)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@unique([municipalityCode, dueDate, paymentDate, principalAmount, version], name: "official_late_fee_snapshot_identity")
   @@index([municipalityCode, dueDate, paymentDate])
@@ -476,16 +476,16 @@ model OfficialLateFeeSnapshot {
 /// Phase 4D.2 — immutable official monthly SELIC rate snapshots. Source: RFB
 /// Sicalc/RFB acts only; missing rate fails closed (ADR-272).
 model TaxInterestRateSnapshot {
-  id              String   @id @default(uuid()) @db.Uuid
-  indexName       String   @map("index_name") @db.VarChar(30)
-  referenceMonth  String   @map("reference_month") @db.Char(7)
-  ratePercent     Decimal  @map("rate_percent") @db.Decimal(38, 18)
-  sourceAuthority String   @map("source_authority") @db.VarChar(100)
-  sourceReference String   @map("source_reference") @db.VarChar(500)
+  id                String   @id @default(uuid()) @db.Uuid
+  indexName         String   @map("index_name") @db.VarChar(30)
+  referenceMonth    String   @map("reference_month") @db.Char(7)
+  ratePercent       Decimal  @map("rate_percent") @db.Decimal(38, 18)
+  sourceAuthority   String   @map("source_authority") @db.VarChar(100)
+  sourceReference   String   @map("source_reference") @db.VarChar(500)
   sourceRetrievedAt DateTime @map("source_retrieved_at") @db.Timestamptz(6)
-  verifiedAt      DateTime @map("verified_at") @db.Timestamptz(6)
-  version         Int
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  verifiedAt        DateTime @map("verified_at") @db.Timestamptz(6)
+  version           Int
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@unique([indexName, referenceMonth, version], name: "tax_interest_rate_snapshot_identity")
   @@index([indexName, referenceMonth])
@@ -513,8 +513,8 @@ model TaxCarryForwardEntry {
   fingerprint             String    @db.VarChar(64)
   createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  taxSubject            User                  @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
-  sourceObligation      TaxObligationRecord   @relation("CarryForwardSource", fields: [sourceObligationId], references: [id], onDelete: Cascade)
+  taxSubject            User                   @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
+  sourceObligation      TaxObligationRecord    @relation("CarryForwardSource", fields: [sourceObligationId], references: [id], onDelete: Cascade)
   consumedByAggregation TaxPaymentAggregation? @relation("AggregationConsumedEntries", fields: [consumedByAggregationId], references: [id])
 
   @@unique([sourceObligationId, ruleId, ruleVersion], name: "tax_carry_forward_source_identity")
@@ -667,23 +667,23 @@ model AnnualOpeningPositionInputRecord {
 /// Captures taxpayer declarations (e.g. FII eligibility, dividend transition, opening positions, withholding).
 /// Monotonic revision increments on updates; stale confirmations are detected if sourceFingerprint changes.
 model TaxpayerConfirmationRecord {
-  id                 String    @id @default(uuid()) @db.Uuid
-  taxSubjectId       String    @map("tax_subject_id") @db.Uuid
-  calendarYear       Int       @map("calendar_year")
-  confirmationType   String    @map("confirmation_type") @db.VarChar(60)
-  subjectReference   String    @map("subject_reference") @db.VarChar(255)
-  decision           String    @db.VarChar(30)
-  statementVersion   String    @map("statement_version") @db.VarChar(30)
-  sourceFingerprint  String    @map("source_fingerprint") @db.VarChar(64)
-  source             String    @db.VarChar(50)
-  createdByPrincipal String    @map("created_by_principal") @db.VarChar(255)
+  id                 String   @id @default(uuid()) @db.Uuid
+  taxSubjectId       String   @map("tax_subject_id") @db.Uuid
+  calendarYear       Int      @map("calendar_year")
+  confirmationType   String   @map("confirmation_type") @db.VarChar(60)
+  subjectReference   String   @map("subject_reference") @db.VarChar(255)
+  decision           String   @db.VarChar(30)
+  statementVersion   String   @map("statement_version") @db.VarChar(30)
+  sourceFingerprint  String   @map("source_fingerprint") @db.VarChar(64)
+  source             String   @db.VarChar(50)
+  createdByPrincipal String   @map("created_by_principal") @db.VarChar(255)
   revision           Int
-  fingerprint        String    @db.VarChar(64)
-  supersedesId       String?   @map("supersedes_id") @db.Uuid
-  notes              String?   @db.Text
-  confirmedAt        DateTime  @default(now()) @map("confirmed_at") @db.Timestamptz(6)
-  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  fingerprint        String   @db.VarChar(64)
+  supersedesId       String?  @map("supersedes_id") @db.Uuid
+  notes              String?  @db.Text
+  confirmedAt        DateTime @default(now()) @map("confirmed_at") @db.Timestamptz(6)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
 
@@ -698,33 +698,33 @@ model TaxpayerConfirmationRecord {
 /// Only non-derivable evidence facts are stored; every calculation remains derived.
 /// Monotonic revision increments; conflicting candidates fail closed until resolved.
 model HighIncomeEvidenceRecord {
-  id                  String    @id @default(uuid()) @db.Uuid
-  taxSubjectId        String    @map("tax_subject_id") @db.Uuid
-  calendarYear        Int       @map("calendar_year")
-  payerKey            String    @map("payer_key") @db.VarChar(255)
-  payerId             String?   @map("payer_id") @db.VarChar(255)
-  evidenceType        String    @map("evidence_type") @db.VarChar(40)
-  payerType           String?   @map("payer_type") @db.VarChar(40)
+  id                   String   @id @default(uuid()) @db.Uuid
+  taxSubjectId         String   @map("tax_subject_id") @db.Uuid
+  calendarYear         Int      @map("calendar_year")
+  payerKey             String   @map("payer_key") @db.VarChar(255)
+  payerId              String?  @map("payer_id") @db.VarChar(255)
+  evidenceType         String   @map("evidence_type") @db.VarChar(40)
+  payerType            String?  @map("payer_type") @db.VarChar(40)
   profitPeriodExercise Int?     @map("profit_period_exercise")
-  evidenceMode        String?   @map("evidence_mode") @db.VarChar(20)
-  accountingProfit    Decimal?  @map("accounting_profit") @db.Decimal(38, 18)
-  irDue               Decimal?  @map("ir_due") @db.Decimal(38, 18)
-  csllDue             Decimal?  @map("csll_due") @db.Decimal(38, 18)
-  prouniTaxCredit     Decimal?  @map("prouni_tax_credit") @db.Decimal(38, 18)
-  simplifiedRevenue   Decimal?  @map("simplified_revenue") @db.Decimal(38, 18)
-  adjustmentAmount    Decimal?  @map("adjustment_amount") @db.Decimal(38, 18)
-  authority           String    @db.VarChar(30)
-  evidenceSource      String    @map("evidence_source") @db.VarChar(40)
-  conflictStatus      String    @default("NONE") @map("conflict_status") @db.VarChar(20)
-  upstreamFingerprint String?   @map("upstream_fingerprint") @db.VarChar(64)
-  sourceFingerprint   String    @map("source_fingerprint") @db.VarChar(64)
-  revision            Int
-  fingerprint         String    @db.VarChar(64)
-  supersedesId        String?   @map("supersedes_id") @db.Uuid
-  resolutionNote      String?   @map("resolution_note") @db.VarChar(40)
-  createdByPrincipal  String    @map("created_by_principal") @db.VarChar(255)
-  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  evidenceMode         String?  @map("evidence_mode") @db.VarChar(20)
+  accountingProfit     Decimal? @map("accounting_profit") @db.Decimal(38, 18)
+  irDue                Decimal? @map("ir_due") @db.Decimal(38, 18)
+  csllDue              Decimal? @map("csll_due") @db.Decimal(38, 18)
+  prouniTaxCredit      Decimal? @map("prouni_tax_credit") @db.Decimal(38, 18)
+  simplifiedRevenue    Decimal? @map("simplified_revenue") @db.Decimal(38, 18)
+  adjustmentAmount     Decimal? @map("adjustment_amount") @db.Decimal(38, 18)
+  authority            String   @db.VarChar(30)
+  evidenceSource       String   @map("evidence_source") @db.VarChar(40)
+  conflictStatus       String   @default("NONE") @map("conflict_status") @db.VarChar(20)
+  upstreamFingerprint  String?  @map("upstream_fingerprint") @db.VarChar(64)
+  sourceFingerprint    String   @map("source_fingerprint") @db.VarChar(64)
+  revision             Int
+  fingerprint          String   @db.VarChar(64)
+  supersedesId         String?  @map("supersedes_id") @db.Uuid
+  resolutionNote       String?  @map("resolution_note") @db.VarChar(40)
+  createdByPrincipal   String   @map("created_by_principal") @db.VarChar(255)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
 
@@ -739,16 +739,16 @@ model HighIncomeEvidenceRecord {
 /// for operational compliance obligations without mutating tax calculations.
 /// Monotonic revision increments on updates; stale actions are detected if sourceFingerprint changes.
 model TaxComplianceActionRecord {
-  id                String    @id @default(uuid()) @db.Uuid
-  taxSubjectId      String    @map("tax_subject_id") @db.Uuid
-  obligationKey     String    @map("obligation_key") @db.VarChar(255)
-  actionType        String    @map("action_type") @db.VarChar(50)
-  sourceFingerprint String?   @map("source_fingerprint") @db.VarChar(64)
-  note              String?   @db.Text
+  id                String   @id @default(uuid()) @db.Uuid
+  taxSubjectId      String   @map("tax_subject_id") @db.Uuid
+  obligationKey     String   @map("obligation_key") @db.VarChar(255)
+  actionType        String   @map("action_type") @db.VarChar(50)
+  sourceFingerprint String?  @map("source_fingerprint") @db.VarChar(64)
+  note              String?  @db.Text
   metadata          Json?
-  revision          Int       @default(1)
-  occurredAt        DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(6)
-  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  revision          Int      @default(1)
+  occurredAt        DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
 
@@ -790,18 +790,18 @@ model TaxSettlementRecord {
 /// sourceFingerprint current at interaction time and are never reused
 /// across a changed source. Snooze shifts surfacing only, never fiscal state.
 model TaxComplianceReminderActionRecord {
-  id                String   @id @default(uuid()) @db.Uuid
-  taxSubjectId      String   @map("tax_subject_id") @db.Uuid
-  reminderKey       String   @map("reminder_key") @db.VarChar(255)
-  obligationKey     String   @map("obligation_key") @db.VarChar(255)
-  reminderKind      String   @map("reminder_kind") @db.VarChar(50)
-  triggerAt         DateTime @map("trigger_at") @db.Date
-  sourceFingerprint String   @map("source_fingerprint") @db.VarChar(64)
-  actionType        String   @map("action_type") @db.VarChar(20)
+  id                String    @id @default(uuid()) @db.Uuid
+  taxSubjectId      String    @map("tax_subject_id") @db.Uuid
+  reminderKey       String    @map("reminder_key") @db.VarChar(255)
+  obligationKey     String    @map("obligation_key") @db.VarChar(255)
+  reminderKind      String    @map("reminder_kind") @db.VarChar(50)
+  triggerAt         DateTime  @map("trigger_at") @db.Date
+  sourceFingerprint String    @map("source_fingerprint") @db.VarChar(64)
+  actionType        String    @map("action_type") @db.VarChar(20)
   snoozedUntil      DateTime? @map("snoozed_until") @db.Date
-  revision          Int      @default(1)
-  occurredAt        DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  revision          Int       @default(1)
+  occurredAt        DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
 
@@ -836,14 +836,14 @@ model TaxComplianceNotificationEventRecord {
 /// Phase 4K.3 — per-subject reminder preferences (product UX policy, not tax law).
 /// Single mutable settings row per subject; upserted, never part of fiscal truth.
 model TaxComplianceReminderPreferenceRecord {
-  taxSubjectId      String   @id @map("tax_subject_id") @db.Uuid
-  remindersEnabled  Boolean  @default(true) @map("reminders_enabled")
-  upcomingEnabled   Boolean  @default(true) @map("upcoming_enabled")
-  overdueEnabled    Boolean  @default(true) @map("overdue_enabled")
-  annualEnabled     Boolean  @default(true) @map("annual_enabled")
-  leadTimes         Int[]    @default([7, 3, 1]) @map("lead_times")
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  taxSubjectId     String   @id @map("tax_subject_id") @db.Uuid
+  remindersEnabled Boolean  @default(true) @map("reminders_enabled")
+  upcomingEnabled  Boolean  @default(true) @map("upcoming_enabled")
+  overdueEnabled   Boolean  @default(true) @map("overdue_enabled")
+  annualEnabled    Boolean  @default(true) @map("annual_enabled")
+  leadTimes        Int[]    @default([7, 3, 1]) @map("lead_times")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   taxSubject User @relation(fields: [taxSubjectId], references: [id], onDelete: Cascade)
 
@@ -915,23 +915,23 @@ model MarketQuoteRecord {
 /// Phase 5A — Market Quote Revision Audit Trail.
 /// Immutable audit log capturing any upstream republishing or corrections.
 model MarketQuoteRevisionRecord {
-  id                String   @id @default(uuid()) @db.Uuid
-  marketQuoteId     String   @map("market_quote_id") @db.Uuid
-  changedAt         DateTime @default(now()) @map("changed_at") @db.Timestamptz(6)
-  priorOpen         Decimal? @map("prior_open") @db.Decimal(38, 18)
-  priorHigh         Decimal? @map("prior_high") @db.Decimal(38, 18)
-  priorLow          Decimal? @map("prior_low") @db.Decimal(38, 18)
-  priorClose        Decimal  @map("prior_close") @db.Decimal(38, 18)
+  id                 String   @id @default(uuid()) @db.Uuid
+  marketQuoteId      String   @map("market_quote_id") @db.Uuid
+  changedAt          DateTime @default(now()) @map("changed_at") @db.Timestamptz(6)
+  priorOpen          Decimal? @map("prior_open") @db.Decimal(38, 18)
+  priorHigh          Decimal? @map("prior_high") @db.Decimal(38, 18)
+  priorLow           Decimal? @map("prior_low") @db.Decimal(38, 18)
+  priorClose         Decimal  @map("prior_close") @db.Decimal(38, 18)
   priorAdjustedClose Decimal? @map("prior_adjusted_close") @db.Decimal(38, 18)
-  priorVolume       Decimal? @map("prior_volume") @db.Decimal(38, 18)
-  newOpen           Decimal? @map("new_open") @db.Decimal(38, 18)
-  newHigh           Decimal? @map("new_high") @db.Decimal(38, 18)
-  newLow            Decimal? @map("new_low") @db.Decimal(38, 18)
-  newClose          Decimal  @map("new_close") @db.Decimal(38, 18)
-  newAdjustedClose  Decimal? @map("new_adjusted_close") @db.Decimal(38, 18)
-  newVolume         Decimal? @map("new_volume") @db.Decimal(38, 18)
-  reason            String?  @db.VarChar(255)
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  priorVolume        Decimal? @map("prior_volume") @db.Decimal(38, 18)
+  newOpen            Decimal? @map("new_open") @db.Decimal(38, 18)
+  newHigh            Decimal? @map("new_high") @db.Decimal(38, 18)
+  newLow             Decimal? @map("new_low") @db.Decimal(38, 18)
+  newClose           Decimal  @map("new_close") @db.Decimal(38, 18)
+  newAdjustedClose   Decimal? @map("new_adjusted_close") @db.Decimal(38, 18)
+  newVolume          Decimal? @map("new_volume") @db.Decimal(38, 18)
+  reason             String?  @db.VarChar(255)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   marketQuote MarketQuoteRecord @relation(fields: [marketQuoteId], references: [id], onDelete: Cascade)
 
@@ -942,20 +942,20 @@ model MarketQuoteRevisionRecord {
 /// Phase 5B — Canonical Benchmark Observation.
 /// Preserves explicit semantics, frequency, and unit (Index Points vs Daily Percent vs Monthly Percent).
 model BenchmarkObservationRecord {
-  id               String   @id @default(uuid()) @db.Uuid
-  benchmarkId      String   @map("benchmark_id") @db.VarChar(32)
-  referenceDate    DateTime @map("reference_date") @db.Date
-  value            Decimal  @map("value") @db.Decimal(38, 18)
-  unit             String   @map("unit") @db.VarChar(32)
-  frequency        String   @map("frequency") @db.VarChar(32)
-  source           String   @map("source") @db.VarChar(64)
-  providerSeriesId String?  @map("provider_series_id") @db.VarChar(64)
-  firstFetchedAt   DateTime @default(now()) @map("first_fetched_at") @db.Timestamptz(6)
-  lastFetchedAt    DateTime @default(now()) @map("last_fetched_at") @db.Timestamptz(6)
-  fetchCount       Int      @default(1) @map("fetch_count")
+  id               String    @id @default(uuid()) @db.Uuid
+  benchmarkId      String    @map("benchmark_id") @db.VarChar(32)
+  referenceDate    DateTime  @map("reference_date") @db.Date
+  value            Decimal   @map("value") @db.Decimal(38, 18)
+  unit             String    @map("unit") @db.VarChar(32)
+  frequency        String    @map("frequency") @db.VarChar(32)
+  source           String    @map("source") @db.VarChar(64)
+  providerSeriesId String?   @map("provider_series_id") @db.VarChar(64)
+  firstFetchedAt   DateTime  @default(now()) @map("first_fetched_at") @db.Timestamptz(6)
+  lastFetchedAt    DateTime  @default(now()) @map("last_fetched_at") @db.Timestamptz(6)
+  fetchCount       Int       @default(1) @map("fetch_count")
   revisedAt        DateTime? @map("revised_at") @db.Timestamptz(6)
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   revisions BenchmarkObservationRevisionRecord[]
 
@@ -981,4 +981,48 @@ model BenchmarkObservationRevisionRecord {
 
   @@index([benchmarkObservationId], map: "benchmark_observation_revisions_obs_idx")
   @@map("benchmark_observation_revisions")
+}
+
+/// Phase 5C — Canonical Foreign Exchange (FX) Observations.
+/// Preserves currency pair exchange rates (baseCurrency, quoteCurrency) with exact decimal precision.
+model FxObservationRecord {
+  id               String    @id @default(uuid()) @db.Uuid
+  baseCurrency     String    @map("base_currency") @db.VarChar(3)
+  quoteCurrency    String    @map("quote_currency") @db.VarChar(3)
+  observationDate  DateTime  @map("observation_date") @db.Date
+  rate             Decimal   @map("rate") @db.Decimal(38, 18)
+  rateType         String    @default("MID") @map("rate_type") @db.VarChar(16)
+  source           String    @map("source") @db.VarChar(64)
+  providerSeriesId String?   @map("provider_series_id") @db.VarChar(64)
+  firstFetchedAt   DateTime  @default(now()) @map("first_fetched_at") @db.Timestamptz(6)
+  lastFetchedAt    DateTime  @default(now()) @map("last_fetched_at") @db.Timestamptz(6)
+  fetchCount       Int       @default(1) @map("fetch_count")
+  revisedAt        DateTime? @map("revised_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  revisions FxObservationRevisionRecord[]
+
+  @@unique([baseCurrency, quoteCurrency, observationDate, source, rateType], map: "fx_observations_pair_date_source_type_uniq")
+  @@index([baseCurrency, quoteCurrency, observationDate], map: "fx_observations_pair_date_idx")
+  @@index([observationDate], map: "fx_observations_date_idx")
+  @@index([source], map: "fx_observations_source_idx")
+  @@map("fx_observations")
+}
+
+/// Phase 5C — FX Observation Revision Audit Trail.
+/// Immutable audit log capturing any upstream republishing or corrections from official authorities.
+model FxObservationRevisionRecord {
+  id              String   @id @default(uuid()) @db.Uuid
+  fxObservationId String   @map("fx_observation_id") @db.Uuid
+  changedAt       DateTime @default(now()) @map("changed_at") @db.Timestamptz(6)
+  priorRate       Decimal  @map("prior_rate") @db.Decimal(38, 18)
+  newRate         Decimal  @map("new_rate") @db.Decimal(38, 18)
+  reason          String?  @db.VarChar(255)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  observation FxObservationRecord @relation(fields: [fxObservationId], references: [id], onDelete: Cascade)
+
+  @@index([fxObservationId], map: "fx_observation_revisions_obs_idx")
+  @@map("fx_observation_revisions")
 }

@@ -32,6 +32,7 @@ import {
   TaxPeriodCloseRepository,
   PrismaMarketQuoteRepository,
   PrismaBenchmarkObservationRepository,
+  PrismaFxObservationRepository,
 } from '@atlas/database';
 import {
   PRISMA_CLIENT,
@@ -66,6 +67,7 @@ import {
   TAX_PERIOD_CLOSE_REPOSITORY,
   MARKET_QUOTE_REPOSITORY,
   BENCHMARK_OBSERVATION_REPOSITORY,
+  FX_OBSERVATION_REPOSITORY,
 } from './tokens';
 
 type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
@@ -232,6 +234,11 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
       useFactory: (prisma: AtlasPrismaClient) => new PrismaBenchmarkObservationRepository(prisma),
       inject: [PRISMA_CLIENT],
     },
+    {
+      provide: FX_OBSERVATION_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new PrismaFxObservationRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
   ],
   exports: [
     PRISMA_CLIENT,
@@ -266,6 +273,7 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     TAX_PERIOD_CLOSE_REPOSITORY,
     MARKET_QUOTE_REPOSITORY,
     BENCHMARK_OBSERVATION_REPOSITORY,
+    FX_OBSERVATION_REPOSITORY,
   ],
 })
 export class DatabaseModule {}

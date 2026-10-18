@@ -20,6 +20,14 @@ export function usePortfolioValuation(portfolioId: string | null, isHistorical: 
               unrealizedGainLossPercent: string | null;
             }
           >;
+          translatedSummary?: {
+            reportingCurrency: string;
+            totalMarketValue: { amount: string; currency: string };
+            totalCostBasis: { amount: string; currency: string };
+            totalUnrealizedGainLoss: { amount: string; currency: string } | null;
+            totalUnrealizedGainLossPercent: string | null;
+            status: string;
+          };
           completeness: string;
           summary: { totalPositions: number; valuedPositions: number };
         };
@@ -86,6 +94,72 @@ export function MobileValuationSection({
           </Text>
         </View>
       )}
+
+      {/* Multi-Currency Translated Summary */}
+      {data.translatedSummary && totalsEntries.length > 1 && (
+        <View
+          style={{
+            padding: 16,
+            backgroundColor: colors.surface,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+          testID="valuation-multi-currency-summary"
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={{ fontWeight: '700', fontSize: 14 }}>
+              Total Consolidado ({data.translatedSummary.reportingCurrency})
+            </Text>
+            <Text style={{ fontSize: 11, color: colors.accent, fontWeight: '600' }}>
+              {data.translatedSummary.status === 'AVAILABLE' ? 'Câmbio PTAX' : 'Câmbio Parcial'}
+            </Text>
+          </View>
+          <View style={{ gap: 6 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 13, color: colors.textSecondary }}>Valor de mercado</Text>
+              <Text style={{ fontWeight: '700', fontSize: 14 }}>
+                {formatCurrency(
+                  data.translatedSummary.totalMarketValue.amount,
+                  data.translatedSummary.reportingCurrency,
+                )}
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 13, color: colors.textSecondary }}>Custo total</Text>
+              <Text style={{ fontSize: 13 }}>
+                {formatCurrency(
+                  data.translatedSummary.totalCostBasis.amount,
+                  data.translatedSummary.reportingCurrency,
+                )}
+              </Text>
+            </View>
+            {data.translatedSummary.totalUnrealizedGainLoss && (
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 13, color: colors.textSecondary }}>Resultado</Text>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '600',
+                    color: data.translatedSummary.totalUnrealizedGainLoss.amount.startsWith('-')
+                      ? colors.negative
+                      : colors.positive,
+                  }}
+                >
+                  {formatCurrency(
+                    data.translatedSummary.totalUnrealizedGainLoss.amount,
+                    data.translatedSummary.reportingCurrency,
+                  )}
+                  {data.translatedSummary.totalUnrealizedGainLossPercent
+                    ? ` (${formatPercentage(data.translatedSummary.totalUnrealizedGainLossPercent)})`
+                    : ''}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
       {totalsEntries.map(([currency, totals]) => (
         <View
           key={currency}

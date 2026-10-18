@@ -60,6 +60,26 @@ export interface AccountValuationReadModel {
   mismatchPositionsCount: number;
 }
 
+export interface TranslatedValuationRateInfoReadModel {
+  baseCurrency: string;
+  quoteCurrency: string;
+  rate: string;
+  rateDate: string;
+  source: string;
+  isInverted: boolean;
+}
+
+export interface TranslatedValuationSummaryReadModel {
+  reportingCurrency: string;
+  totalMarketValue: ValuationMoneyJSON;
+  totalCostBasis: ValuationMoneyJSON;
+  totalUnrealizedGainLoss: ValuationMoneyJSON | null;
+  totalUnrealizedGainLossPercent: string | null;
+  status: 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE';
+  ratesUsed: Record<string, TranslatedValuationRateInfoReadModel>;
+  untranslatedCurrencies: string[];
+}
+
 export interface PortfolioValuationReadModel {
   portfolioId: string;
   asOf: string | null;
@@ -68,6 +88,7 @@ export interface PortfolioValuationReadModel {
   positions: PositionValuationReadModel[];
   accounts: AccountValuationReadModel[];
   totalsByCurrency: Record<string, CurrencyValuationTotalsReadModel>;
+  translatedSummary?: TranslatedValuationSummaryReadModel;
   completeness: ValuationCompleteness;
   summary: {
     totalPositions: number;

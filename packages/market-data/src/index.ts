@@ -5,6 +5,7 @@ import {
   Currency,
   DomainError,
   Money,
+  Quantity,
   LocalDate,
   assertValidCurrency,
   isValidUUID,
@@ -2138,5 +2139,251 @@ export class BrapiHistoricalMarketDataProvider implements HistoricalMarketDataPr
     }
 
     return prices;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5C: Foreign Exchange (FX) Domain & Provider Models
+// ---------------------------------------------------------------------------
+
+export const FX_RATE_TYPES = ['MID', 'BID', 'ASK'] as const;
+export type FxRateType = (typeof FX_RATE_TYPES)[number];
+
+export const FX_AVAILABILITY = ['AVAILABLE', 'PARTIAL', 'UNAVAILABLE'] as const;
+export type FxAvailability = (typeof FX_AVAILABILITY)[number];
+
+export interface FxObservation {
+  baseCurrency: Currency;
+  quoteCurrency: Currency;
+  date: LocalDate;
+  rate: Quantity;
+  rateType: FxRateType;
+  source: string;
+}
+
+export interface IFxDataProvider {
+  readonly provider: string;
+  getRate(baseCurrency: Currency, quoteCurrency: Currency, date: LocalDate): Promise<FxObservation>;
+  getRates(
+    baseCurrency: Currency,
+    quoteCurrency: Currency,
+    from: LocalDate,
+    to: LocalDate,
+  ): Promise<FxObservation[]>;
+}
+
+export class InMemoryFxDataProvider implements IFxDataProvider {
+  readonly provider = 'IN_MEMORY';
+  private readonly observations = new Map<string, FxObservation>();
+
+  private key(baseCurrency: Currency, quoteCurrency: Currency, date: LocalDate): string {
+    return `${baseCurrency}::${quoteCurrency}::${date.toString()}`;
+  }
+
+  addObservation(obs: FxObservation): void {
+    this.observations.set(this.key(obs.baseCurrency, obs.quoteCurrency, obs.date), obs);
+  }
+
+  async getRate(
+    baseCurrency: Currency,
+    quoteCurrency: Currency,
+    date: LocalDate,
+  ): Promise<FxObservation> {
+    if (baseCurrency === quoteCurrency) {
+      return Object.freeze({
+        baseCurrency,
+        quoteCurrency,
+        date,
+        rate: Quantity.from('1'),
+        rateType: 'MID',
+        source: 'IDENTITY',
+      });
+    }
+
+    const exact = this.observations.get(this.key(baseCurrency, quoteCurrency, date));
+    if (exact) return Object.freeze({ ...exact });
+
+    // Try inversion
+    const inverted = this.observations.get(this.key(quoteCurrency, baseCurrency, date));
+    if (inverted) {
+      const one = Quantity.from('1');
+      const invRate = one.divide(inverted.rate);
+      return Object.freeze({
+        baseCurrency,
+        quoteCurrency,
+        date,
+        rate: invRate,
+        rateType: inverted.rateType,
+        source: `${inverted.source}_INVERTED`,
+      });
+    }
+
+    throw new Error(`FX rate not found for ${baseCurrency}/${quoteCurrency} on ${date.toString()}`);
+  }
+
+  async getRates(
+    baseCurrency: Currency,
+    quoteCurrency: Currency,
+    from: LocalDate,
+    to: LocalDate,
+  ): Promise<FxObservation[]> {
+    if (from.compare(to) > 0) throw new Error('Invalid range');
+    const results: FxObservation[] = [];
+    let cur = from;
+    while (cur.compare(to) <= 0) {
+      try {
+        const rate = await this.getRate(baseCurrency, quoteCurrency, cur);
+        results.push(rate);
+      } catch {
+        // Missing rates not pushed
+      }
+      const d = new Date(Date.UTC(cur.year, cur.month - 1, cur.day + 1));
+      cur = LocalDate.fromParts(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+    }
+    return results;
+  }
+}
+
+export class BcbFxDataProvider implements IFxDataProvider {
+  readonly provider = 'BCB_PTAX';
+  private readonly timeoutMs: number;
+  private readonly fetchFn: typeof fetch;
+
+  constructor(options: { timeoutMs?: number; fetchFn?: typeof fetch } = {}) {
+    this.timeoutMs = options.timeoutMs ?? 10000;
+    this.fetchFn = options.fetchFn ?? globalThis.fetch;
+  }
+
+  async getRate(
+    baseCurrency: Currency,
+    quoteCurrency: Currency,
+    date: LocalDate,
+  ): Promise<FxObservation> {
+    if (baseCurrency === quoteCurrency) {
+      return Object.freeze({
+        baseCurrency,
+        quoteCurrency,
+        date,
+        rate: Quantity.from('1'),
+        rateType: 'MID',
+        source: 'IDENTITY',
+      });
+    }
+
+    const rates = await this.getRates(baseCurrency, quoteCurrency, date, date);
+    const found = rates.find((r) => r.date.toString() === date.toString());
+    if (!found) {
+      throw new Error(
+        `BCB PTAX observation not found for ${baseCurrency}/${quoteCurrency} on ${date.toString()}`,
+      );
+    }
+    return found;
+  }
+
+  async getRates(
+    baseCurrency: Currency,
+    quoteCurrency: Currency,
+    from: LocalDate,
+    to: LocalDate,
+  ): Promise<FxObservation[]> {
+    if (from.compare(to) > 0) throw new Error('Invalid range');
+
+    // Only BRL pairs supported directly by BCB (e.g. USD/BRL, EUR/BRL)
+    const isDirectBrl = quoteCurrency === 'BRL';
+    const isInverseBrl = baseCurrency === 'BRL';
+
+    if (!isDirectBrl && !isInverseBrl) {
+      throw new Error(
+        `BCB PTAX provider only supports crosses against BRL (requested ${baseCurrency}/${quoteCurrency})`,
+      );
+    }
+
+    const foreignCurrency = isDirectBrl ? baseCurrency : quoteCurrency;
+
+    // BCB SGS Series for daily PTAX closing ask (venda)
+    // 10813 = Dólar americano (venda) PTAX fechamento
+    // 21619 = Euro (venda) PTAX fechamento
+    let seriesId: string;
+    if (foreignCurrency === 'USD') {
+      seriesId = '10813';
+    } else if (foreignCurrency === 'EUR') {
+      seriesId = '21619';
+    } else {
+      throw new Error(`Unsupported currency for BCB PTAX: ${foreignCurrency}`);
+    }
+
+    const formatDate = (d: LocalDate): string =>
+      `${String(d.day).padStart(2, '0')}/${String(d.month).padStart(2, '0')}/${d.year}`;
+
+    const url = `https://api.bcb.gov.br/dados/serie/bcdata.sgs.${seriesId}/dados?formato=json&dataInicial=${formatDate(from)}&dataFinal=${formatDate(to)}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    let response: Response;
+    try {
+      response = await this.fetchFn(url, { signal: controller.signal });
+    } catch (err) {
+      clearTimeout(timer);
+      throw new Error(
+        `BCB PTAX provider unavailable: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (!response.ok) {
+      throw new Error(`BCB PTAX provider error: ${response.status}`);
+    }
+
+    let json: Array<{ data: string; valor: string }>;
+    try {
+      json = (await response.json()) as never;
+    } catch {
+      throw new Error('BCB PTAX invalid response format');
+    }
+
+    const results: FxObservation[] = [];
+    for (const row of json) {
+      if (!row.data || !row.valor) continue;
+      const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(row.data.trim());
+      if (!match) continue;
+      const day = Number(match[1]);
+      const month = Number(match[2]);
+      const year = Number(match[3]);
+      let date: LocalDate;
+      try {
+        date = LocalDate.fromParts(year, month, day);
+      } catch {
+        continue;
+      }
+
+      if (date.compare(from) < 0 || date.compare(to) > 0) continue;
+
+      const rateStr = row.valor.trim().replace(',', '.');
+      if (!/^-?\d+(\.\d+)?$/.test(rateStr)) continue;
+
+      try {
+        let directRate = Quantity.from(rateStr);
+        if (isInverseBrl) {
+          // Requested BRL / foreignCurrency -> 1 / rate
+          const one = Quantity.from('1');
+          directRate = one.divide(directRate);
+        }
+
+        results.push(
+          Object.freeze({
+            baseCurrency,
+            quoteCurrency,
+            date,
+            rate: directRate,
+            rateType: 'ASK',
+            source: 'BCB_PTAX',
+          }),
+        );
+      } catch {
+        // Skip invalid numbers
+      }
+    }
+
+    return results;
   }
 }

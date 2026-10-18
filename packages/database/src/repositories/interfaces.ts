@@ -1607,3 +1607,92 @@ export interface IBenchmarkObservationRepository {
 
   listRevisions(benchmarkObservationId: string): Promise<BenchmarkObservationRevisionRecordRow[]>;
 }
+
+// ============================================================================
+// Phase 5C: FX Observations & Revisions Repository
+// ============================================================================
+
+export interface FxObservationRecordRow {
+  id: string;
+  baseCurrency: string;
+  quoteCurrency: string;
+  observationDate: LocalDate;
+  rate: string;
+  rateType: string;
+  source: string;
+  providerSeriesId: string | null;
+  firstFetchedAt: Date;
+  lastFetchedAt: Date;
+  fetchCount: number;
+  revisedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface FxObservationRevisionRecordRow {
+  id: string;
+  fxObservationId: string;
+  changedAt: Date;
+  priorRate: string;
+  newRate: string;
+  reason: string | null;
+  createdAt: Date;
+}
+
+export interface FxObservationUpsertInput {
+  baseCurrency: string;
+  quoteCurrency: string;
+  observationDate: LocalDate;
+  rate: string;
+  rateType?: string;
+  source: string;
+  providerSeriesId?: string | null;
+  reason?: string | null;
+}
+
+export type FxObservationUpsertOutcome = 'INSERTED' | 'UNCHANGED' | 'REVISED';
+
+export interface IFxObservationRepository {
+  findObservation(
+    baseCurrency: string,
+    quoteCurrency: string,
+    observationDate: LocalDate,
+    source?: string,
+    rateType?: string,
+  ): Promise<FxObservationRecordRow | null>;
+
+  findObservations(
+    baseCurrency: string,
+    quoteCurrency: string,
+    from: LocalDate,
+    to: LocalDate,
+    source?: string,
+    rateType?: string,
+  ): Promise<FxObservationRecordRow[]>;
+
+  findLatest(
+    baseCurrency: string,
+    quoteCurrency: string,
+    source?: string,
+    rateType?: string,
+  ): Promise<FxObservationRecordRow | null>;
+
+  upsertObservation(input: FxObservationUpsertInput): Promise<{
+    outcome: FxObservationUpsertOutcome;
+    observation: FxObservationRecordRow;
+    revision?: FxObservationRevisionRecordRow;
+  }>;
+
+  getCoverage(
+    baseCurrency: string,
+    quoteCurrency: string,
+    source?: string,
+    rateType?: string,
+  ): Promise<{
+    totalObservations: number;
+    firstObservationDate: LocalDate | null;
+    lastObservationDate: LocalDate | null;
+  }>;
+
+  listRevisions(fxObservationId: string): Promise<FxObservationRevisionRecordRow[]>;
+}

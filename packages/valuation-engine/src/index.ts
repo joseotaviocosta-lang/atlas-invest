@@ -112,6 +112,26 @@ export interface CurrencyValuationTotals {
   stalePositionsCount: number;
 }
 
+export interface TranslatedValuationRateInfo {
+  baseCurrency: Currency;
+  quoteCurrency: Currency;
+  rate: string;
+  rateDate: string;
+  source: string;
+  isInverted: boolean;
+}
+
+export interface TranslatedValuationSummary {
+  reportingCurrency: Currency;
+  totalMarketValue: MoneyJSON;
+  totalCostBasis: MoneyJSON;
+  totalUnrealizedGainLoss: MoneyJSON | null;
+  totalUnrealizedGainLossPercent: string | null;
+  status: 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE';
+  ratesUsed: Record<string, TranslatedValuationRateInfo>;
+  untranslatedCurrencies: Currency[];
+}
+
 export interface PortfolioValuation {
   portfolioId: string;
   asOf: string | null;
@@ -120,6 +140,7 @@ export interface PortfolioValuation {
   positions: PositionValuation[];
   accounts: AccountValuation[];
   totalsByCurrency: Record<string, CurrencyValuationTotals>;
+  translatedSummary?: TranslatedValuationSummary;
   completeness: ValuationCompleteness;
   summary: {
     totalPositions: number;
@@ -459,12 +480,23 @@ function determineCompleteness(vals: PositionValuation[]): ValuationCompleteness
   return 'PARTIAL_MULTIPLE';
 }
 
+export interface ValuationFxRate {
+  baseCurrency: Currency;
+  quoteCurrency: Currency;
+  rate: string;
+  rateDate: string;
+  source: string;
+  isInverted?: boolean;
+}
+
 export interface PortfolioValuationInput {
   portfolioId: string;
   asOf?: string | null;
   positions: PositionValuationInput[];
   accountPositions: Map<string, PositionValuationInput[]>;
   quotes: Map<string, ValuationQuote>;
+  reportingCurrency?: Currency;
+  fxRates?: Map<string, ValuationFxRate>;
 }
 
 export function valuePortfolio(input: PortfolioValuationInput): PortfolioValuation {
@@ -546,6 +578,112 @@ export function valuePortfolio(input: PortfolioValuationInput): PortfolioValuati
   const quotesUnavailable = totalPositions - quotesAvailable;
   const quotesStale = consolidatedValuations.filter((v) => v.quoteFreshness === 'STALE').length;
 
+  // Multi-Currency Translation (Phase 5C)
+  let translatedSummary: TranslatedValuationSummary | undefined = undefined;
+  const reportingCurrency: Currency =
+    input.reportingCurrency ?? currencies[0] ?? ('BRL' as Currency);
+
+  if (currencies.length > 0) {
+    let sumMv = Money.zero(reportingCurrency);
+    let sumCost = Money.zero(reportingCurrency);
+    let sumUnreal = Money.zero(reportingCurrency);
+    let hasAnyUnreal = false;
+    let translationStatus: 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE' = 'AVAILABLE';
+    const ratesUsed: Record<string, TranslatedValuationRateInfo> = {};
+    const untranslatedCurrencies: Currency[] = [];
+
+    for (const cur of currencies) {
+      const curTotals = totalsByCurrency[cur];
+      if (!curTotals) continue;
+
+      if (cur === reportingCurrency) {
+        sumMv = sumMv.add(Money.from(curTotals.marketValue.amount, reportingCurrency));
+        sumCost = sumCost.add(Money.from(curTotals.knownCost.amount, reportingCurrency));
+        if (curTotals.unrealizedGainLoss) {
+          sumUnreal = sumUnreal.add(
+            Money.from(curTotals.unrealizedGainLoss.amount, reportingCurrency),
+          );
+          hasAnyUnreal = true;
+        }
+        continue;
+      }
+
+      // Foreign currency requires FX rate (e.g., baseCurrency: USD, quoteCurrency: BRL)
+      const pairKey = `${cur}::${reportingCurrency}`;
+      const fxRate = input.fxRates?.get(pairKey);
+
+      if (!fxRate) {
+        translationStatus = 'PARTIAL';
+        untranslatedCurrencies.push(cur);
+        continue;
+      }
+
+      try {
+        const rateQty = Quantity.from(fxRate.rate);
+
+        // Convert market value: curMv × rate
+        const curMvQty = Quantity.from(curTotals.marketValue.amount);
+        const translatedMvQty = curMvQty.multiply(rateQty);
+        sumMv = sumMv.add(Money.from(translatedMvQty.value, reportingCurrency));
+
+        // Convert cost basis: curCost × rate
+        const curCostQty = Quantity.from(curTotals.knownCost.amount);
+        const translatedCostQty = curCostQty.multiply(rateQty);
+        sumCost = sumCost.add(Money.from(translatedCostQty.value, reportingCurrency));
+
+        // Convert unrealized gain/loss if present
+        if (curTotals.unrealizedGainLoss) {
+          const curUnrealQty = Quantity.from(curTotals.unrealizedGainLoss.amount);
+          const translatedUnrealQty = curUnrealQty.multiply(rateQty);
+          sumUnreal = sumUnreal.add(Money.from(translatedUnrealQty.value, reportingCurrency));
+          hasAnyUnreal = true;
+        }
+
+        ratesUsed[pairKey] = {
+          baseCurrency: fxRate.baseCurrency,
+          quoteCurrency: fxRate.quoteCurrency,
+          rate: fxRate.rate,
+          rateDate: fxRate.rateDate,
+          source: fxRate.source,
+          isInverted: fxRate.isInverted ?? false,
+        };
+      } catch {
+        translationStatus = 'PARTIAL';
+        untranslatedCurrencies.push(cur);
+      }
+    }
+
+    if (untranslatedCurrencies.length === currencies.length && currencies.length > 1) {
+      translationStatus = 'UNAVAILABLE';
+    }
+
+    let translatedPercent: string | null = null;
+    if (hasAnyUnreal && !sumCost.isZero()) {
+      try {
+        const unrealQty = Quantity.from(sumUnreal.amount);
+        const costQty = Quantity.from(sumCost.amount);
+        const ratio = unrealQty.divide(costQty);
+        const pct = ratio.multiply(Quantity.from('100'));
+        translatedPercent = Percentage.from(pct.value).value;
+      } catch {
+        translatedPercent = null;
+      }
+    }
+
+    translatedSummary = Object.freeze({
+      reportingCurrency,
+      totalMarketValue: { amount: sumMv.amount, currency: reportingCurrency },
+      totalCostBasis: { amount: sumCost.amount, currency: reportingCurrency },
+      totalUnrealizedGainLoss: hasAnyUnreal
+        ? { amount: sumUnreal.amount, currency: reportingCurrency }
+        : null,
+      totalUnrealizedGainLossPercent: translatedPercent,
+      status: translationStatus,
+      ratesUsed: Object.freeze(ratesUsed),
+      untranslatedCurrencies: Object.freeze(untranslatedCurrencies) as Currency[],
+    });
+  }
+
   return Object.freeze({
     portfolioId,
     asOf: input.asOf ?? null,
@@ -554,6 +692,7 @@ export function valuePortfolio(input: PortfolioValuationInput): PortfolioValuati
     positions: Object.freeze(consolidatedValuations) as PositionValuation[],
     accounts: Object.freeze(accountValuations) as AccountValuation[],
     totalsByCurrency,
+    ...(translatedSummary ? { translatedSummary } : {}),
     completeness,
     summary: Object.freeze({
       totalPositions,

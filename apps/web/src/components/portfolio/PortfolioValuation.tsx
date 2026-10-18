@@ -52,6 +52,26 @@ export interface CurrencyValuationTotalsDto {
   stalePositionsCount: number;
 }
 
+export interface TranslatedValuationRateInfoDto {
+  baseCurrency: string;
+  quoteCurrency: string;
+  rate: string;
+  rateDate: string;
+  source: string;
+  isInverted: boolean;
+}
+
+export interface TranslatedValuationSummaryDto {
+  reportingCurrency: string;
+  totalMarketValue: ValuationMoneyJSON;
+  totalCostBasis: ValuationMoneyJSON;
+  totalUnrealizedGainLoss: ValuationMoneyJSON | null;
+  totalUnrealizedGainLossPercent: string | null;
+  status: 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE';
+  ratesUsed: Record<string, TranslatedValuationRateInfoDto>;
+  untranslatedCurrencies: string[];
+}
+
 export interface PortfolioValuationResponse {
   data: {
     portfolioId: string;
@@ -60,6 +80,7 @@ export interface PortfolioValuationResponse {
     valuationVersion: string;
     positions: PositionValuationDto[];
     totalsByCurrency: Record<string, CurrencyValuationTotalsDto>;
+    translatedSummary?: TranslatedValuationSummaryDto;
     completeness: string;
     summary: {
       totalPositions: number;
@@ -206,6 +227,103 @@ export function PortfolioValuationSection({
                 cotação de pregões anteriores ao mais recente.
               </p>
             </div>
+          </div>
+        </Card>
+      )}
+
+      {/* 2.1 Multi-Currency Translated Consolidated Summary (Phase 5C) */}
+      {valuation.translatedSummary && currencyBuckets.length > 1 && (
+        <Card
+          data-testid="valuation-multi-currency-summary"
+          style={{
+            backgroundColor: colors.surface,
+            border: `1px solid ${colors.border}`,
+            padding: `${spacing.base}px`,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: `${spacing.sm}px`,
+            }}
+          >
+            <h4
+              style={{ margin: 0, fontSize: '1.05rem', color: colors.textPrimary, fontWeight: 600 }}
+            >
+              Patrimônio Consolidado ({valuation.translatedSummary.reportingCurrency})
+            </h4>
+            <Badge
+              variant={valuation.translatedSummary.status === 'AVAILABLE' ? 'success' : 'warning'}
+            >
+              {valuation.translatedSummary.status === 'AVAILABLE'
+                ? 'Câmbio Atualizado (PTAX)'
+                : 'Câmbio Parcial'}
+            </Badge>
+          </div>
+          <p style={{ margin: '0 0 12px 0', fontSize: '0.8125rem', color: colors.textSecondary }}>
+            Valores convertidos para a moeda base do portfólio utilizando taxas oficiais do Banco
+            Central do Brasil.
+          </p>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: `${spacing.base}px`,
+            }}
+          >
+            <div>
+              <span style={{ fontSize: '0.75rem', color: colors.textMuted }}>Valor Total</span>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: colors.textPrimary }}>
+                {formatCurrency(
+                  valuation.translatedSummary.totalMarketValue.amount,
+                  valuation.translatedSummary.reportingCurrency,
+                )}
+              </div>
+            </div>
+            <div>
+              <span style={{ fontSize: '0.75rem', color: colors.textMuted }}>Custo Total</span>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: colors.textPrimary }}>
+                {formatCurrency(
+                  valuation.translatedSummary.totalCostBasis.amount,
+                  valuation.translatedSummary.reportingCurrency,
+                )}
+              </div>
+            </div>
+            {valuation.translatedSummary.totalUnrealizedGainLoss && (
+              <div>
+                <span style={{ fontSize: '0.75rem', color: colors.textMuted }}>
+                  Resultado Não Realizado
+                </span>
+                <div
+                  style={{
+                    fontSize: '1.5rem',
+                    fontWeight: 700,
+                    color: valuation.translatedSummary.totalUnrealizedGainLoss.amount.startsWith(
+                      '-',
+                    )
+                      ? colors.negative
+                      : colors.positive,
+                  }}
+                >
+                  {formatCurrency(
+                    valuation.translatedSummary.totalUnrealizedGainLoss.amount,
+                    valuation.translatedSummary.reportingCurrency,
+                  )}
+                  {valuation.translatedSummary.totalUnrealizedGainLossPercent && (
+                    <span style={{ fontSize: '0.875rem', marginLeft: '6px' }}>
+                      (
+                      {formatPercentage(
+                        valuation.translatedSummary.totalUnrealizedGainLossPercent,
+                        { showSign: true },
+                      )}
+                      )
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </Card>
       )}

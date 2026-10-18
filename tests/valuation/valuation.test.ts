@@ -271,3 +271,85 @@ describe('Valuation: No Float Guard', () => {
     expect(typeof v.unrealizedGainLossPercent).toBe('string');
   });
 });
+
+describe('Valuation: Multi-Currency Translation (Phase 5C)', () => {
+  it('translates USD holdings to BRL reporting currency when FX is available', () => {
+    const positions: PositionValuationInput[] = [
+      makePos({ assetId: 'brl1', quantity: '10', totalCost: '100.00', currency: 'BRL' as never }),
+      makePos({ assetId: 'usd1', quantity: '2', totalCost: '50.00', currency: 'USD' as never }),
+    ];
+    const quotes = new Map<string, ValuationQuote>([
+      ['brl1', makeQuote({ assetId: 'brl1', price: '15.00', currency: 'BRL' as never })], // 150 BRL
+      ['usd1', makeQuote({ assetId: 'usd1', price: '60.00', currency: 'USD' as never })], // 120 USD
+    ]);
+
+    const fxRates = new Map([
+      [
+        'USD::BRL',
+        {
+          baseCurrency: 'USD' as never,
+          quoteCurrency: 'BRL' as never,
+          rate: '5.250000000000000000',
+          rateDate: '2026-09-15',
+          source: 'BCB_PTAX',
+        },
+      ],
+    ]);
+
+    const v = valuePortfolio({
+      portfolioId: 'p1',
+      positions,
+      accountPositions: new Map(),
+      quotes,
+      reportingCurrency: 'BRL' as never,
+      fxRates,
+    });
+
+    // Native totals preserved
+    expect(v.totalsByCurrency['BRL'].marketValue.amount).toBe('150');
+    expect(v.totalsByCurrency['USD'].marketValue.amount).toBe('120');
+
+    // Translated summary (BRL)
+    // 150 BRL + (120 USD * 5.25) = 150 + 630 = 780 BRL
+    // Cost: 100 BRL + (50 USD * 5.25) = 100 + 262.50 = 362.50 BRL
+    // Unrealized: (150 - 100) + (630 - 262.50) = 50 + 367.50 = 417.50 BRL
+    expect(v.translatedSummary).toBeDefined();
+    expect(v.translatedSummary?.reportingCurrency).toBe('BRL');
+    expect(v.translatedSummary?.totalMarketValue.amount).toBe('780');
+    expect(v.translatedSummary?.totalCostBasis.amount).toBe('362.5');
+    expect(v.translatedSummary?.totalUnrealizedGainLoss?.amount).toBe('417.5');
+    expect(v.translatedSummary?.status).toBe('AVAILABLE');
+    expect(v.translatedSummary?.ratesUsed['USD::BRL']).toBeDefined();
+    expect(v.translatedSummary?.untranslatedCurrencies).toHaveLength(0);
+  });
+
+  it('marks translated summary PARTIAL when foreign FX rate is missing (zero invention)', () => {
+    const positions: PositionValuationInput[] = [
+      makePos({ assetId: 'brl1', quantity: '10', totalCost: '100.00', currency: 'BRL' as never }),
+      makePos({ assetId: 'usd1', quantity: '2', totalCost: '50.00', currency: 'USD' as never }),
+    ];
+    const quotes = new Map<string, ValuationQuote>([
+      ['brl1', makeQuote({ assetId: 'brl1', price: '15.00', currency: 'BRL' as never })],
+      ['usd1', makeQuote({ assetId: 'usd1', price: '60.00', currency: 'USD' as never })],
+    ]);
+
+    const v = valuePortfolio({
+      portfolioId: 'p1',
+      positions,
+      accountPositions: new Map(),
+      quotes,
+      reportingCurrency: 'BRL' as never,
+      fxRates: new Map(), // No FX rates
+    });
+
+    // Native totals still intact
+    expect(v.totalsByCurrency['BRL'].marketValue.amount).toBe('150');
+    expect(v.totalsByCurrency['USD'].marketValue.amount).toBe('120');
+
+    // Translated summary reflects partial status and does NOT convert USD using 1.0 or 0.0
+    expect(v.translatedSummary).toBeDefined();
+    expect(v.translatedSummary?.status).toBe('PARTIAL');
+    expect(v.translatedSummary?.untranslatedCurrencies).toContain('USD');
+    expect(v.translatedSummary?.totalMarketValue.amount).toBe('150'); // Only BRL portion
+  });
+});

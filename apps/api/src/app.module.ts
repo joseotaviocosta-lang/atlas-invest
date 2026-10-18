@@ -13,6 +13,7 @@ import { PerformanceModule } from './modules/performance/performance.module';
 import { FiscalModule } from './modules/fiscal/fiscal.module';
 import { AiModule } from './modules/ai/ai.module';
 import { BenchmarkModule } from './modules/benchmarks/benchmark.module';
+import { FxModule } from './modules/fx/fx.module';
 import {
   RequestIdMiddleware,
   UnifiedAnnualNoStoreMiddleware,
@@ -39,7 +40,9 @@ import {
     FiscalModule,
     AiModule,
     BenchmarkModule,
+    FxModule,
   ],
+
   providers: [
     {
       provide: APP_GUARD,
