@@ -40,6 +40,35 @@ export interface CurrencyAllocationBucket {
   unvaluedAssets: UnvaluedAssetItem[];
 }
 
+export interface TranslatedAllocationItem {
+  assetId: string;
+  ticker?: string;
+  assetType?: string;
+  nativeCurrency: string;
+  nativeMarketValue: { amount: string; currency: string };
+  reportingCurrency: string;
+  reportingMarketValue: { amount: string; currency: string };
+  allocationPercent: string;
+  quoteFreshness: string | null;
+}
+
+export interface TranslatedAssetClassAllocationItem {
+  assetClass: string;
+  reportingCurrency: string;
+  reportingMarketValue: { amount: string; currency: string };
+  allocationPercent: string;
+  assetCount: number;
+}
+
+export interface TranslatedPortfolioAllocation {
+  reportingCurrency: string;
+  status: 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE';
+  totalMarketValue: { amount: string; currency: string };
+  byAsset: TranslatedAllocationItem[];
+  byAssetClass: TranslatedAssetClassAllocationItem[];
+  untranslatedCurrencies: string[];
+}
+
 export interface PortfolioAllocationResponse {
   data: {
     portfolioId: string;
@@ -47,6 +76,7 @@ export interface PortfolioAllocationResponse {
     status: 'COMPLETE' | 'PARTIAL' | 'EMPTY';
     valuationCoveragePercent: string;
     currencies: Record<string, CurrencyAllocationBucket>;
+    translatedAllocation?: TranslatedPortfolioAllocation;
   };
 }
 
@@ -172,6 +202,109 @@ export function PortfolioAllocationSection({
             </div>
           </div>
         </Card>
+      )}
+
+      {/* Multi-Currency Translated Consolidated Allocation (Phase 5C-R1.1) */}
+      {currencyBuckets.length > 1 && allocation.translatedAllocation && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.base}px` }}>
+          <div style={{ borderBottom: `1px solid ${colors.border}`, paddingBottom: '8px' }}>
+            <h3 style={{ margin: 0, fontSize: '1.125rem', color: colors.textPrimary }}>
+              Alocação Consolidada ({allocation.translatedAllocation.reportingCurrency})
+            </h3>
+          </div>
+
+          {allocation.translatedAllocation.status === 'AVAILABLE' ? (
+            <Card
+              data-testid="translated-allocation-available"
+              style={{ padding: `${spacing.base}px` }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: `${spacing.md}px`,
+                }}
+              >
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '1rem', color: colors.textPrimary }}>
+                    Distribuição Consolidada por Classe de Ativo
+                  </h4>
+                  <span style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+                    Valores convertidos para {allocation.translatedAllocation.reportingCurrency} via
+                    câmbio oficial PTAX
+                  </span>
+                </div>
+                <Badge variant="positive">Câmbio Oficial PTAX</Badge>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.md}px` }}>
+                {allocation.translatedAllocation.byAssetClass.map((item) => {
+                  const label = ASSET_CLASS_LABELS[item.assetClass] || item.assetClass;
+                  return (
+                    <div
+                      key={item.assetClass}
+                      data-testid={`translated-alloc-class-${item.assetClass}`}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'baseline',
+                          marginBottom: '4px',
+                          fontSize: '0.875rem',
+                        }}
+                      >
+                        <span style={{ fontWeight: 600, color: colors.textPrimary }}>
+                          {label} ({item.assetCount} {item.assetCount === 1 ? 'ativo' : 'ativos'})
+                        </span>
+                        <div style={{ display: 'flex', gap: `${spacing.md}px` }}>
+                          <span style={{ color: colors.textSecondary }}>
+                            {formatCurrency(
+                              item.reportingMarketValue.amount,
+                              item.reportingMarketValue.currency,
+                            )}
+                          </span>
+                          <strong
+                            style={{ color: colors.accent, minWidth: '55px', textAlign: 'right' }}
+                          >
+                            {formatPercentage(item.allocationPercent)}
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          ) : (
+            <Card
+              data-testid="translated-allocation-incomplete-warning"
+              style={{
+                backgroundColor: 'rgba(217, 119, 6, 0.08)',
+                border: '1px solid #D97706',
+                padding: `${spacing.base}px`,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px` }}>
+                <span style={{ fontSize: '1.25rem' }}>ℹ️</span>
+                <div>
+                  <strong style={{ color: '#D97706', fontSize: '0.9375rem' }}>
+                    Alocação Consolidada Incompleta
+                  </strong>
+                  <p
+                    style={{ margin: '4px 0 0 0', fontSize: '0.875rem', color: colors.textPrimary }}
+                  >
+                    Cotações de câmbio ausentes para{' '}
+                    {allocation.translatedAllocation.untranslatedCurrencies.join(', ')}. A alocação
+                    consolidada não pode ser calculada sem taxa de conversão oficial para evitar
+                    distorções percentuais. Consulte as alocações segregadas por moeda abaixo.
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
+        </div>
       )}
 
       {currencyBuckets.map((bucket) => {

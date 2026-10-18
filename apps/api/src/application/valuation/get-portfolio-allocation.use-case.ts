@@ -9,7 +9,9 @@ import {
   ITransactionRepository,
   IAssetRepository,
   IMarketQuoteRepository,
+  IFxObservationRepository,
 } from '@atlas/database';
+import { Quantity } from '@atlas/domain';
 import { replayPortfolio, PortfolioReplayError } from '@atlas/portfolio-engine';
 import { classifyEodQuoteFreshness } from '@atlas/market-data';
 import {
@@ -18,12 +20,14 @@ import {
   ValuationQuote,
   PositionValuationInput,
   PortfolioValuation,
+  ValuationFxRate,
 } from '@atlas/valuation-engine';
 import {
   PORTFOLIO_REPOSITORY,
   TRANSACTION_REPOSITORY,
   ASSET_REPOSITORY,
   MARKET_QUOTE_REPOSITORY,
+  FX_OBSERVATION_REPOSITORY,
 } from '../../database/tokens';
 import { PortfolioAllocationReadModel } from './read-models';
 
@@ -38,6 +42,8 @@ export class GetPortfolioAllocationUseCase {
     private readonly assetRepository: IAssetRepository,
     @Inject(MARKET_QUOTE_REPOSITORY)
     private readonly marketQuoteRepository: IMarketQuoteRepository,
+    @Inject(FX_OBSERVATION_REPOSITORY)
+    private readonly fxObservationRepository: IFxObservationRepository,
   ) {}
 
   async execute(params: {
@@ -147,11 +153,52 @@ export class GetPortfolioAllocationUseCase {
       }
     }
 
+    // Multi-Currency FX Rates Lookup (Phase 5C & 5C-R1.1)
+    const distinctCurrencies = Array.from(new Set(consolidatedPositions.map((p) => p.currency)));
+    const reportingCurrency = (portfolio.baseCurrency ?? 'BRL') as never;
+    const fxRatesMap = new Map<string, ValuationFxRate>();
+
+    for (const cur of distinctCurrencies) {
+      if (cur === reportingCurrency) continue;
+
+      const directObs = await this.fxObservationRepository.findLatest(cur, reportingCurrency);
+      if (directObs) {
+        fxRatesMap.set(`${cur}::${reportingCurrency}`, {
+          baseCurrency: cur as never,
+          quoteCurrency: reportingCurrency as never,
+          rate: directObs.rate,
+          rateDate: directObs.observationDate.toString(),
+          source: directObs.source,
+          isInverted: false,
+        });
+      } else {
+        const invObs = await this.fxObservationRepository.findLatest(reportingCurrency, cur);
+        if (invObs) {
+          try {
+            const one = Quantity.from('1');
+            const invRate = one.divide(Quantity.from(invObs.rate));
+            fxRatesMap.set(`${cur}::${reportingCurrency}`, {
+              baseCurrency: cur as never,
+              quoteCurrency: reportingCurrency as never,
+              rate: invRate.value,
+              rateDate: invObs.observationDate.toString(),
+              source: `${invObs.source}_INVERTED`,
+              isInverted: true,
+            });
+          } catch {
+            // ignore inversion error
+          }
+        }
+      }
+    }
+
     const valuation = valuePortfolio({
       portfolioId: params.portfolioId,
       positions: consolidatedPositions,
       accountPositions: new Map(),
       quotes: quotesMap,
+      reportingCurrency,
+      fxRates: fxRatesMap,
     });
 
     const enrichedPositions = valuation.positions.map((p) => {

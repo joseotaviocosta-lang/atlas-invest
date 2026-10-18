@@ -145,10 +145,40 @@ export interface CurrencyAllocationBucketReadModel {
   }>;
 }
 
+export interface TranslatedAllocationItemReadModel {
+  assetId: string;
+  ticker?: string;
+  assetType?: string;
+  nativeCurrency: string;
+  nativeMarketValue: ValuationMoneyJSON;
+  reportingCurrency: string;
+  reportingMarketValue: ValuationMoneyJSON;
+  allocationPercent: string;
+  quoteFreshness: string | null;
+}
+
+export interface TranslatedAssetClassAllocationItemReadModel {
+  assetClass: string;
+  reportingCurrency: string;
+  reportingMarketValue: ValuationMoneyJSON;
+  allocationPercent: string;
+  assetCount: number;
+}
+
+export interface TranslatedPortfolioAllocationReadModel {
+  reportingCurrency: string;
+  status: 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE';
+  totalMarketValue: ValuationMoneyJSON;
+  byAsset: TranslatedAllocationItemReadModel[];
+  byAssetClass: TranslatedAssetClassAllocationItemReadModel[];
+  untranslatedCurrencies: string[];
+}
+
 export interface PortfolioAllocationReadModel {
   portfolioId: string;
   asOf: string | null;
   status: 'COMPLETE' | 'PARTIAL' | 'EMPTY';
   valuationCoveragePercent: string;
   currencies: Record<string, CurrencyAllocationBucketReadModel>;
+  translatedAllocation?: TranslatedPortfolioAllocationReadModel;
 }

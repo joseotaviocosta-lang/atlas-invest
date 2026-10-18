@@ -45,6 +45,13 @@ export class UpdateFxDataUseCase {
     const baseCurrency = assertValidCurrency(params.baseCurrency);
     const quoteCurrency = assertValidCurrency(params.quoteCurrency);
 
+    if (baseCurrency === quoteCurrency) {
+      throw new BadRequestException({
+        message: `Same-currency FX pair '${baseCurrency}/${quoteCurrency}' is not allowed for ingestion. Identity rate 1.0 is handled internally.`,
+        code: 'VALIDATION.SAME_CURRENCY_NOT_ALLOWED',
+      });
+    }
+
     let fromDate: LocalDate;
     let toDate: LocalDate;
     try {

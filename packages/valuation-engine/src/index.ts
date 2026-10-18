@@ -750,12 +750,42 @@ export interface CurrencyAllocationBucket {
   }[];
 }
 
+export interface TranslatedAllocationItem {
+  assetId: string;
+  ticker?: string;
+  assetType?: string;
+  nativeCurrency: Currency;
+  nativeMarketValue: MoneyJSON;
+  reportingCurrency: Currency;
+  reportingMarketValue: MoneyJSON;
+  allocationPercent: string;
+  quoteFreshness: QuoteFreshness | null;
+}
+
+export interface TranslatedAssetClassAllocationItem {
+  assetClass: string;
+  reportingCurrency: Currency;
+  reportingMarketValue: MoneyJSON;
+  allocationPercent: string;
+  assetCount: number;
+}
+
+export interface TranslatedPortfolioAllocation {
+  reportingCurrency: Currency;
+  status: 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE';
+  totalMarketValue: MoneyJSON;
+  byAsset: readonly TranslatedAllocationItem[];
+  byAssetClass: readonly TranslatedAssetClassAllocationItem[];
+  untranslatedCurrencies: readonly Currency[];
+}
+
 export interface PortfolioAllocation {
   readonly portfolioId: string;
   readonly asOf: string | null;
   readonly status: 'COMPLETE' | 'PARTIAL' | 'EMPTY';
   readonly valuationCoveragePercent: string;
   readonly currencies: Readonly<Record<string, CurrencyAllocationBucket>>;
+  readonly translatedAllocation?: TranslatedPortfolioAllocation;
 }
 
 export function computePortfolioAllocation(valuation: PortfolioValuation): PortfolioAllocation {
@@ -884,11 +914,122 @@ export function computePortfolioAllocation(valuation: PortfolioValuation): Portf
     });
   }
 
+  // Multi-Currency Cross-Currency Translated Allocation (Phase 5C-R1.1)
+  let translatedAllocation: TranslatedPortfolioAllocation | undefined = undefined;
+  if (valuation.translatedSummary) {
+    const summary = valuation.translatedSummary;
+    const repCur = summary.reportingCurrency;
+    const isComplete = summary.status === 'AVAILABLE' && portfolioStatus === 'COMPLETE';
+    const translatedStatus: 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE' =
+      summary.status === 'UNAVAILABLE' ? 'UNAVAILABLE' : isComplete ? 'AVAILABLE' : 'PARTIAL';
+
+    // Only compute 100% normalized allocation percentages if status is AVAILABLE
+    // If PARTIAL or UNAVAILABLE, never fabricate a denominator across incomparable native currencies
+    const repTotalMv = Money.from(summary.totalMarketValue.amount, repCur);
+
+    const translatedByAsset: TranslatedAllocationItem[] = [];
+    const classMap = new Map<string, { total: Money; count: number }>();
+
+    for (const pos of valuation.positions) {
+      if (!pos.marketValue) continue;
+
+      let posRepMv: Money;
+      if (pos.currency === repCur) {
+        posRepMv = Money.from(pos.marketValue.amount, repCur);
+      } else {
+        const pairKey = `${pos.currency}::${repCur}`;
+        const rateInfo = summary.ratesUsed[pairKey];
+        if (!rateInfo) {
+          // Missing FX rate for this position's currency: cannot convert
+          continue;
+        }
+        const rateQty = Quantity.from(rateInfo.rate);
+        const posMvQty = Quantity.from(pos.marketValue.amount);
+        const convertedQty = posMvQty.multiply(rateQty);
+        posRepMv = Money.from(convertedQty.value, repCur);
+      }
+
+      let allocPct = '0';
+      if (translatedStatus === 'AVAILABLE' && !repTotalMv.isZero()) {
+        try {
+          const itemQty = Quantity.from(posRepMv.amount);
+          const totalQty = Quantity.from(repTotalMv.amount);
+          const ratio = itemQty.divide(totalQty);
+          const pct = ratio.multiply(Quantity.from('100'));
+          allocPct = Percentage.from(pct.value).value;
+        } catch {
+          allocPct = '0';
+        }
+      }
+
+      translatedByAsset.push(
+        Object.freeze({
+          assetId: pos.assetId,
+          ticker: pos.ticker,
+          assetType: pos.assetType,
+          nativeCurrency: pos.currency,
+          nativeMarketValue: pos.marketValue,
+          reportingCurrency: repCur,
+          reportingMarketValue: { amount: posRepMv.amount, currency: repCur },
+          allocationPercent: allocPct,
+          quoteFreshness: pos.quoteFreshness,
+        }),
+      );
+
+      const cls = pos.assetType ?? 'OTHER';
+      const existing = classMap.get(cls) ?? { total: Money.zero(repCur), count: 0 };
+      classMap.set(cls, {
+        total: existing.total.add(posRepMv),
+        count: existing.count + 1,
+      });
+    }
+
+    translatedByAsset.sort((a, b) => String(a.assetId).localeCompare(String(b.assetId)));
+
+    const translatedByClass: TranslatedAssetClassAllocationItem[] = [];
+    for (const [cls, data] of classMap.entries()) {
+      let allocPct = '0';
+      if (translatedStatus === 'AVAILABLE' && !repTotalMv.isZero()) {
+        try {
+          const itemQty = Quantity.from(data.total.amount);
+          const totalQty = Quantity.from(repTotalMv.amount);
+          const ratio = itemQty.divide(totalQty);
+          const pct = ratio.multiply(Quantity.from('100'));
+          allocPct = Percentage.from(pct.value).value;
+        } catch {
+          allocPct = '0';
+        }
+      }
+
+      translatedByClass.push(
+        Object.freeze({
+          assetClass: cls,
+          reportingCurrency: repCur,
+          reportingMarketValue: { amount: data.total.amount, currency: repCur },
+          allocationPercent: allocPct,
+          assetCount: data.count,
+        }),
+      );
+    }
+
+    translatedByClass.sort((a, b) => a.assetClass.localeCompare(b.assetClass));
+
+    translatedAllocation = Object.freeze({
+      reportingCurrency: repCur,
+      status: translatedStatus,
+      totalMarketValue: { amount: repTotalMv.amount, currency: repCur },
+      byAsset: Object.freeze(translatedByAsset),
+      byAssetClass: Object.freeze(translatedByClass),
+      untranslatedCurrencies: summary.untranslatedCurrencies,
+    });
+  }
+
   return Object.freeze({
     portfolioId: valuation.portfolioId,
     asOf: valuation.asOf,
     status: portfolioStatus,
     valuationCoveragePercent: valuation.summary.valuationCoveragePercent,
     currencies: Object.freeze(currenciesRecord),
+    ...(translatedAllocation ? { translatedAllocation } : {}),
   });
 }

@@ -85,3 +85,25 @@ CREATE INDEX "fx_observation_revisions_obs_idx" ON "fx_observation_revisions"("f
 - Migration 26 is strictly additive (creates two new tables and indexes).
 - Zero changes to existing tables (`users`, `portfolios`, `accounts`, `transactions`, `assets`, `market_quotes`, `benchmark_observations`).
 - Zero data loss or modification of previous migrations 1 to 25.
+
+---
+
+## 4. Phase 5C-R1.1 Focused Architecture Additions
+
+### 4.1 Cross-Currency Allocation (`translatedAllocation`)
+
+- Native allocation buckets (`currencies[cur]`) remain 100% segregated and preserved.
+- When `valuation.translatedSummary` is computed with `status: 'AVAILABLE'`, `computePortfolioAllocation` derives `translatedAllocation` containing `byAsset` and `byAssetClass` in `reportingCurrency`.
+- **Anti-Fabrication Guard**: If `translatedStatus` is `PARTIAL` or `UNAVAILABLE`, all `allocationPercent` values are suppressed (`'0'`) to prevent fabricating a false 100% denominator across un-translated foreign assets.
+
+### 4.2 Zero-Live-Read Invariant on Standard GET Endpoints
+
+- All standard read endpoints (`/valuation`, `/allocation`, `/history`, `/state`, `/positions`, `/fx/:base/:quote/coverage`) read exclusively from persisted PostgreSQL repositories via `PersistedFxDataProvider` or Prisma.
+- Zero network calls (`fetch`) are ever executed during read flows. Only `POST /api/v1/fx/:base/:quote/update` may query upstream official providers (BCB PTAX).
+
+### 4.3 I4 Go/No-Go Decision: Historical Multi-Currency TWR
+
+- **Decision: `I4_NO_GO_BY_DESIGN` for Historical Cross-Currency TWR in Phase 5C**.
+- Historical cross-currency TWR requires full daily historical FX series across every past cash flow date.
+- Backfilling current spot FX rates to past portfolio dates is strictly forbidden.
+- Spot valuation multi-currency translation is fully enabled, while historical TWR remains safely segregated by native currency.
