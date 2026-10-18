@@ -99,12 +99,18 @@ export function IntelligenceSummarySection({
                   <div style={{ fontSize: 12, fontWeight: 600, color: colors.textSecondary }}>
                     Benchmarks
                   </div>
-                  {cur.benchmarks.map((b) => (
-                    <div key={b.id} style={{ fontSize: 13 }}>
-                      {b.label}:{' '}
-                      {b.isAvailable ? `${b.returnFormatted} (${b.differenceFormatted} p.p.)` : '—'}
-                    </div>
-                  ))}
+                  {cur.benchmarks.length === 0 ? (
+                    <div style={{ fontSize: 13, color: colors.textSecondary }}>—</div>
+                  ) : (
+                    cur.benchmarks.map((b) => (
+                      <div key={b.id} style={{ fontSize: 13 }}>
+                        {b.label}:{' '}
+                        {b.isAvailable
+                          ? `${b.returnFormatted} (${b.differenceFormatted} p.p.)`
+                          : '—'}
+                      </div>
+                    ))
+                  )}
                 </div>
 
                 <div data-testid={`intelligence-risk-${cur.currency}`}>

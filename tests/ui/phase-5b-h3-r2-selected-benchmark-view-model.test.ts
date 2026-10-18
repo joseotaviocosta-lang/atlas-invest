@@ -136,19 +136,26 @@ describe('Phase 5B-H3-R2: Selected Benchmark Runtime Isolation & View Model Filt
     expect(obsCodes).toContain('MAX_DRAWDOWN');
   });
 
-  it('retains all benchmarks when no benchmark is selected ("" or undefined)', () => {
+  it('isolates Sem benchmark ("") to empty benchmarks and suppresses benchmark observations', () => {
     const raw = createMockSummary();
     const vmNoFilter = mapToPortfolioIntelligenceViewModel(raw);
     const vmEmpty = mapToPortfolioIntelligenceViewModel(raw, '');
+    const vmNone = mapToPortfolioIntelligenceViewModel(raw, 'none');
 
+    // Default when parameter omitted retains all
     expect(vmNoFilter!.currencies[0]!.benchmarks).toHaveLength(2);
-    expect(vmEmpty!.currencies[0]!.benchmarks).toHaveLength(2);
-
     expect(vmNoFilter!.observations.map((o) => o.code)).toEqual([
       'PERFORMANCE_VS_IBOV',
       'PERFORMANCE_VS_CDI',
       'MAX_DRAWDOWN',
     ]);
+
+    // Explicit none ("" or 'none') empties benchmarks and suppresses both benchmark observations
+    expect(vmEmpty!.currencies[0]!.benchmarks).toHaveLength(0);
+    expect(vmEmpty!.observations.map((o) => o.code)).toEqual(['MAX_DRAWDOWN']);
+
+    expect(vmNone!.currencies[0]!.benchmarks).toHaveLength(0);
+    expect(vmNone!.observations.map((o) => o.code)).toEqual(['MAX_DRAWDOWN']);
   });
 
   it('performanceQueryKey includes benchmark parameter for distinct cache keys', () => {

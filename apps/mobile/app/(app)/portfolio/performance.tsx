@@ -330,12 +330,23 @@ export default function MobilePerformanceScreen() {
     refetch: refetchIntelligence,
   } = useQuery<{ data: RawIntelligenceSummary }>({
     queryKey: portfolioId
-      ? [...intelligenceSummaryQueryKey(portfolioId, period.startDate, period.endDate)]
+      ? [
+          ...intelligenceSummaryQueryKey(
+            portfolioId,
+            period.startDate,
+            period.endDate,
+            selectedBenchmark,
+          ),
+        ]
       : ['portfolio-intelligence-summary', 'none'],
-    queryFn: () =>
-      apiClient.get<{ data: RawIntelligenceSummary }>(
-        `/api/v1/portfolios/${portfolioId}/intelligence/summary?startDate=${period.startDate}&endDate=${period.endDate}`,
-      ),
+    queryFn: () => {
+      const benchmarkParam = selectedBenchmark
+        ? `&benchmark=${selectedBenchmark}`
+        : '&benchmark=none';
+      return apiClient.get<{ data: RawIntelligenceSummary }>(
+        `/api/v1/portfolios/${portfolioId}/intelligence/summary?startDate=${period.startDate}&endDate=${period.endDate}${benchmarkParam}`,
+      );
+    },
     enabled: !!portfolioId,
   });
 

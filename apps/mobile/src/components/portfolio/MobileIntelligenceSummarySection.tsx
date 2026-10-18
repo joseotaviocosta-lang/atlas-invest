@@ -78,12 +78,18 @@ export function MobileIntelligenceSummarySection({
                   <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary }}>
                     Benchmarks
                   </Text>
-                  {cur.benchmarks.map((b) => (
-                    <Text key={b.id} style={{ fontSize: 13 }}>
-                      {b.label}:{' '}
-                      {b.isAvailable ? `${b.returnFormatted} (${b.differenceFormatted} p.p.)` : '—'}
-                    </Text>
-                  ))}
+                  {cur.benchmarks.length === 0 ? (
+                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>—</Text>
+                  ) : (
+                    cur.benchmarks.map((b) => (
+                      <Text key={b.id} style={{ fontSize: 13 }}>
+                        {b.label}:{' '}
+                        {b.isAvailable
+                          ? `${b.returnFormatted} (${b.differenceFormatted} p.p.)`
+                          : '—'}
+                      </Text>
+                    ))
+                  )}
                 </View>
                 <View testID={`intelligence-risk-${cur.currency}`}>
                   <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary }}>

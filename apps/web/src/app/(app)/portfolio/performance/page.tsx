@@ -417,13 +417,18 @@ function PerformancePageContent() {
             activePortfolioIdResolved,
             period.startDate,
             period.endDate,
+            selectedBenchmark,
           ),
         ]
       : ['portfolio-intelligence-summary', 'none'],
-    queryFn: () =>
-      apiClient.get<{ data: RawIntelligenceSummary }>(
-        `/api/v1/portfolios/${activePortfolioIdResolved}/intelligence/summary?startDate=${period.startDate}&endDate=${period.endDate}`,
-      ),
+    queryFn: () => {
+      const benchmarkParam = selectedBenchmark
+        ? `&benchmark=${selectedBenchmark}`
+        : '&benchmark=none';
+      return apiClient.get<{ data: RawIntelligenceSummary }>(
+        `/api/v1/portfolios/${activePortfolioIdResolved}/intelligence/summary?startDate=${period.startDate}&endDate=${period.endDate}${benchmarkParam}`,
+      );
+    },
     enabled: !!activePortfolioIdResolved,
     staleTime: 30000,
   });

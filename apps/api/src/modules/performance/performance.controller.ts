@@ -14,6 +14,7 @@ import {
   ApiOperation,
   ApiResponse,
   ApiParam,
+  ApiQuery,
   ApiBody,
   ApiBearerAuth,
 } from '@nestjs/swagger';
@@ -320,6 +321,13 @@ export class PerformanceController {
       'Get the deterministic Portfolio Intelligence Summary — consolidated read models over one shared period, with data quality and objective observations',
   })
   @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiQuery({ name: 'startDate', required: false, description: 'Start date in YYYY-MM-DD' })
+  @ApiQuery({ name: 'endDate', required: false, description: 'End date in YYYY-MM-DD' })
+  @ApiQuery({
+    name: 'benchmark',
+    required: false,
+    description: 'Selected benchmark: IBOV, CDI, or none',
+  })
   @ApiResponse({ status: 200, description: 'Portfolio intelligence summary (may be PARTIAL)' })
   @ApiResponse({ status: 400, description: 'Invalid period' })
   @ApiResponse({ status: 404, description: 'Portfolio not found' })
@@ -327,6 +335,7 @@ export class PerformanceController {
     @Param('portfolioId', UUIDParamPipe) portfolioId: string,
     @Query('startDate') startDate: string | undefined,
     @Query('endDate') endDate: string | undefined,
+    @Query('benchmark') benchmark: string | undefined,
     @CurrentPrincipal() principal: AuthenticatedPrincipal,
   ) {
     const data = await this.getPortfolioIntelligenceSummaryUseCase.execute({
@@ -334,6 +343,7 @@ export class PerformanceController {
       userId: principal.userId,
       startDate,
       endDate,
+      benchmark,
     });
     return { data };
   }

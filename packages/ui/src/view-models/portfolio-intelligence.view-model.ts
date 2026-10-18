@@ -16,6 +16,7 @@ const REASON_MESSAGES: Record<string, string> = {
   MISSING_MARKET_PRICE: 'Preço de mercado ausente',
   COST_BASIS_INCOMPLETE: 'Custo de aquisição incompleto',
   BENCHMARK_UNAVAILABLE: 'Benchmark indisponível',
+  NOT_REQUESTED: 'Nenhum benchmark selecionado',
   RISK_FREE_PROXY_UNAVAILABLE: 'Referência livre de risco indisponível',
   MULTI_CURRENCY_NO_FX: 'Moeda sem referência compatível',
   BETA_UNAVAILABLE: 'Beta indisponível',
@@ -227,8 +228,9 @@ export function mapToPortfolioIntelligenceViewModel(
 ): PortfolioIntelligenceSummaryViewModel | null {
   if (!data) return null;
 
+  const isExplicitNone = selectedBenchmark === '' || selectedBenchmark === 'none';
   const targetBenchmark =
-    selectedBenchmark && selectedBenchmark !== '' ? selectedBenchmark.toUpperCase() : null;
+    selectedBenchmark && !isExplicitNone ? selectedBenchmark.toUpperCase() : null;
 
   const currencies: IntelligenceCurrencySummaryVM[] = Object.values(data.currencies).map((c) => {
     const isPartial = c.status === 'PARTIAL';
@@ -240,9 +242,11 @@ export function mapToPortfolioIntelligenceViewModel(
       differenceFormatted: formatPercentage(b.differencePercentagePoints),
       isAvailable: b.return !== null,
     }));
-    const filteredBenchmarks = targetBenchmark
-      ? allBenchmarks.filter((b) => b.id.toUpperCase() === targetBenchmark)
-      : allBenchmarks;
+    const filteredBenchmarks = isExplicitNone
+      ? []
+      : targetBenchmark
+        ? allBenchmarks.filter((b) => b.id.toUpperCase() === targetBenchmark)
+        : allBenchmarks;
     return {
       currency: c.currency,
       status: c.status,
@@ -303,6 +307,10 @@ export function mapToPortfolioIntelligenceViewModel(
   });
 
   const rawObservations = data.observations.filter((o) => {
+    if (isExplicitNone) {
+      if (o.code === 'PERFORMANCE_VS_IBOV' || o.code === 'PERFORMANCE_VS_CDI') return false;
+      return true;
+    }
     if (targetBenchmark === 'CDI' && o.code === 'PERFORMANCE_VS_IBOV') return false;
     if (targetBenchmark === 'IBOV' && o.code === 'PERFORMANCE_VS_CDI') return false;
     return true;
@@ -350,6 +358,13 @@ export function intelligenceSummaryQueryKey(
   portfolioId: string,
   startDate: string,
   endDate: string,
+  benchmark?: string,
 ): readonly string[] {
-  return ['portfolio-intelligence-summary', portfolioId, startDate, endDate] as const;
+  return [
+    'portfolio-intelligence-summary',
+    portfolioId,
+    startDate,
+    endDate,
+    benchmark && benchmark.trim() !== '' ? benchmark : 'none',
+  ] as const;
 }

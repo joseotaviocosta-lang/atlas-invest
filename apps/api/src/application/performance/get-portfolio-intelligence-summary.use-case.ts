@@ -134,6 +134,7 @@ export class GetPortfolioIntelligenceSummaryUseCase {
     userId: string;
     startDate?: string;
     endDate?: string;
+    benchmark?: string;
   }): Promise<PortfolioIntelligenceSummary> {
     const portfolio = await this.portfolioRepository.findById(params.portfolioId);
     if (!portfolio || portfolio.userId !== params.userId) {
@@ -220,13 +221,23 @@ export class GetPortfolioIntelligenceSummaryUseCase {
       asOf: effectiveEnd,
     });
 
+    // Parse selected benchmark parameter
+    const rawBenchmark =
+      params.benchmark !== undefined ? params.benchmark.trim().toUpperCase() : undefined;
+    const isExplicitNone = rawBenchmark === '' || rawBenchmark === 'NONE';
+    const requestedBenchmark = rawBenchmark && !isExplicitNone ? rawBenchmark : undefined;
+
+    // When a specific benchmark is requested, evaluate over the requested civil period
+    const benchStart = requestedBenchmark ? start : effectiveStart;
+    const benchEnd = requestedBenchmark ? end : effectiveEnd;
+
     // ONE IBOV range fetch and ONE CDI range fetch for the whole summary.
     const benchmarkLevels: RelativeRiskBenchmarkLevel[] = [];
     try {
       const observations = await this.benchmarkProvider.getObservations(
         MARKET_BENCHMARK,
-        effectiveStart,
-        effectiveEnd,
+        benchStart,
+        benchEnd,
       );
       for (const o of observations) benchmarkLevels.push({ date: o.date, level: o.value });
     } catch {
@@ -237,8 +248,8 @@ export class GetPortfolioIntelligenceSummaryUseCase {
     try {
       cdiObservations = await this.rateBenchmarkProvider.getRateObservations(
         RISK_FREE_PROXY,
-        effectiveStart,
-        effectiveEnd,
+        benchStart,
+        benchEnd,
       );
     } catch {
       cdiObservations = [];
@@ -260,8 +271,8 @@ export class GetPortfolioIntelligenceSummaryUseCase {
       const rateReturn = calculateRateBenchmarkReturn({
         benchmarkId: RISK_FREE_PROXY,
         observations: cdiObservations,
-        startDate: effectiveStart,
-        endDate: effectiveEnd,
+        startDate: benchStart,
+        endDate: benchEnd,
       });
       cdiPeriodReturn = rateReturn.returnPercentage;
       if (rateReturn.status === 'PARTIAL') cdiPartial = true;
@@ -344,7 +355,7 @@ export class GetPortfolioIntelligenceSummaryUseCase {
       });
 
       // --- benchmarks ------------------------------------------------------
-      const benchmarks: IntelligenceBenchmarkBlock[] = [];
+      const allBenchmarks: IntelligenceBenchmarkBlock[] = [];
       if (isBrl && ibovPeriodReturn) {
         const difference =
           twr && ibovPeriodReturn
@@ -352,14 +363,14 @@ export class GetPortfolioIntelligenceSummaryUseCase {
                 Quantity.from(twr.value).subtract(Quantity.from(ibovPeriodReturn.value)).toString(),
               )
             : null;
-        benchmarks.push({
+        allBenchmarks.push({
           id: 'IBOV',
           return: ibovPeriodReturn.value,
           differencePercentagePoints: difference ? difference.value : null,
           status: 'AVAILABLE',
         });
       } else if (isBrl) {
-        benchmarks.push({
+        allBenchmarks.push({
           id: 'IBOV',
           return: null,
           differencePercentagePoints: null,
@@ -372,19 +383,63 @@ export class GetPortfolioIntelligenceSummaryUseCase {
               Quantity.from(twr.value).subtract(Quantity.from(cdiPeriodReturn.value)).toString(),
             )
           : null;
-        benchmarks.push({
+        allBenchmarks.push({
           id: 'CDI',
           return: cdiPeriodReturn.value,
           differencePercentagePoints: difference ? difference.value : null,
           status: cdiPartial ? 'PARTIAL' : 'AVAILABLE',
         });
       } else {
-        benchmarks.push({
+        allBenchmarks.push({
           id: 'CDI',
           return: null,
           differencePercentagePoints: null,
-          status: isBrl ? 'UNAVAILABLE' : 'UNAVAILABLE',
+          status: 'UNAVAILABLE',
         });
+      }
+
+      let benchmarks: IntelligenceBenchmarkBlock[];
+      let benchmarkAvailabilityStatus: IntelligenceStatus;
+      let benchmarkAvailabilityReason: string | null;
+
+      if (requestedBenchmark === 'IBOV') {
+        benchmarks = allBenchmarks.filter((b) => b.id === 'IBOV');
+        benchmarkAvailabilityStatus = isBrl
+          ? unavailableStatus(ibovAvailable, ibovAvailable)
+          : 'UNAVAILABLE';
+        benchmarkAvailabilityReason = isBrl
+          ? ibovAvailable
+            ? null
+            : 'BENCHMARK_UNAVAILABLE'
+          : 'UNSUPPORTED';
+      } else if (requestedBenchmark === 'CDI') {
+        benchmarks = allBenchmarks.filter((b) => b.id === 'CDI');
+        benchmarkAvailabilityStatus = isBrl
+          ? cdiAvailable
+            ? cdiPartial
+              ? 'PARTIAL'
+              : 'AVAILABLE'
+            : 'UNAVAILABLE'
+          : 'UNAVAILABLE';
+        benchmarkAvailabilityReason = isBrl
+          ? cdiAvailable
+            ? null
+            : 'BENCHMARK_UNAVAILABLE'
+          : 'UNSUPPORTED';
+      } else if (isExplicitNone) {
+        benchmarks = [];
+        benchmarkAvailabilityStatus = 'UNAVAILABLE';
+        benchmarkAvailabilityReason = 'NOT_REQUESTED';
+      } else {
+        benchmarks = allBenchmarks;
+        benchmarkAvailabilityStatus = isBrl
+          ? unavailableStatus(ibovAvailable, ibovAvailable)
+          : 'UNAVAILABLE';
+        benchmarkAvailabilityReason = isBrl
+          ? ibovAvailable
+            ? null
+            : 'BENCHMARK_UNAVAILABLE'
+          : 'UNSUPPORTED';
       }
 
       // --- risk-adjusted (3J, BRL only) ------------------------------------
@@ -535,8 +590,8 @@ export class GetPortfolioIntelligenceSummaryUseCase {
           reason: perf ? null : 'INSUFFICIENT_HISTORY',
         },
         benchmarkAvailability: {
-          status: isBrl ? unavailableStatus(ibovAvailable, ibovAvailable) : 'UNAVAILABLE',
-          reason: isBrl ? (ibovAvailable ? null : 'BENCHMARK_UNAVAILABLE') : 'UNSUPPORTED',
+          status: benchmarkAvailabilityStatus,
+          reason: benchmarkAvailabilityReason,
         },
         riskAvailability: {
           status:

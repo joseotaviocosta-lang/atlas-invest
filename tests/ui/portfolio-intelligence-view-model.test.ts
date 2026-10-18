@@ -154,12 +154,34 @@ describe('Portfolio Intelligence View Model', () => {
     expect(vm!.statusLabel).toContain('parcial');
   });
 
-  it('query key isolates period', () => {
+  it('query key isolates period and benchmark partition', () => {
     expect(intelligenceSummaryQueryKey('p', '2025-09-22', '2026-09-22')).toEqual([
       'portfolio-intelligence-summary',
       'p',
       '2025-09-22',
       '2026-09-22',
+      'none',
+    ]);
+    expect(intelligenceSummaryQueryKey('p', '2025-09-22', '2026-09-22', 'IBOV')).toEqual([
+      'portfolio-intelligence-summary',
+      'p',
+      '2025-09-22',
+      '2026-09-22',
+      'IBOV',
+    ]);
+    expect(intelligenceSummaryQueryKey('p', '2025-09-22', '2026-09-22', 'CDI')).toEqual([
+      'portfolio-intelligence-summary',
+      'p',
+      '2025-09-22',
+      '2026-09-22',
+      'CDI',
+    ]);
+    expect(intelligenceSummaryQueryKey('p', '2025-09-22', '2026-09-22', '')).toEqual([
+      'portfolio-intelligence-summary',
+      'p',
+      '2025-09-22',
+      '2026-09-22',
+      'none',
     ]);
   });
 
