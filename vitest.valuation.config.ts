@@ -13,6 +13,8 @@ export default defineConfig({
     alias: {
       '@atlas/domain': path.resolve(__dirname, 'packages/domain/src/index.ts'),
       '@atlas/valuation-engine': path.resolve(__dirname, 'packages/valuation-engine/src/index.ts'),
+      '@atlas/market-data': path.resolve(__dirname, 'packages/market-data/src/index.ts'),
+      '@atlas/database': path.resolve(__dirname, 'packages/database/src/index.ts'),
     },
   },
 });
