@@ -249,17 +249,19 @@ describe('Phase 5D — API Application Use Cases & Zero-Live-Read Invariant', ()
     it('proves exactly 0 provider/fetch network calls across all 8 read flows under UPSTREAM_CALL_FORBIDDEN', async () => {
       const originalFetch = globalThis.fetch;
       const failingFetch = vi.fn().mockImplementation(() => {
-        throw new Error('UPSTREAM_CALL_FORBIDDEN');
+        throw new Error('UPSTREAM_CALL_FORBIDDEN: Live network call forbidden on read path');
       });
       globalThis.fetch = failingFetch;
 
       try {
-        // 1. calendar coverage -> 0 calls
+        // Flow 1: calendar coverage -> 0 calls
         const getCoverageUseCase = new GetCalendarCoverageUseCase(mockCalendarRepo);
-        await getCoverageUseCase.execute('B3_TRADING');
+        const cov = await getCoverageUseCase.execute('B3_TRADING');
+        expect(cov.totalDays).toBe(365);
+        expect(cov.openDays).toBe(248);
         expect(failingFetch).not.toHaveBeenCalled();
 
-        // 2. calendar resolve -> 0 calls
+        // Flow 2: calendar resolve -> 0 calls
         const resolutionService = new CalendarResolutionService(mockCalendarRepo);
         (mockCalendarRepo.findDay as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
           id: 'day-1',
@@ -272,15 +274,17 @@ describe('Phase 5D — API Application Use Cases & Zero-Live-Read Invariant', ()
           createdAt: new Date(),
           updatedAt: new Date(),
         });
-        await resolutionService.isTradingDay(LocalDate.from('2026-10-15'));
+        const isTrading = await resolutionService.isTradingDay(LocalDate.from('2026-10-15'));
+        expect(isTrading).toBe(true);
         expect(failingFetch).not.toHaveBeenCalled();
 
-        // 3. macro coverage -> 0 calls
+        // Flow 3: macro coverage -> 0 calls
         const getMacroCov = new GetMacroCoverageUseCase(mockMacroRepo);
-        await getMacroCov.execute({ seriesId: 'IPCA' });
+        const macroCov = await getMacroCov.execute({ seriesId: 'IPCA' });
+        expect(macroCov.count).toBe(12);
         expect(failingFetch).not.toHaveBeenCalled();
 
-        // 4. macro latest -> 0 calls
+        // Flow 4: macro latest -> 0 calls
         (mockMacroRepo.findLatest as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
           id: 'macro-1',
           seriesId: 'IPCA',
@@ -298,23 +302,119 @@ describe('Phase 5D — API Application Use Cases & Zero-Live-Read Invariant', ()
           updatedAt: new Date(),
         });
         const getLatest = new GetMacroLatestUseCase(mockMacroRepo);
-        await getLatest.execute({ seriesId: 'IPCA' });
+        const latest = await getLatest.execute({ seriesId: 'IPCA' });
+        expect(latest.value.toString()).toBe('0.21');
         expect(failingFetch).not.toHaveBeenCalled();
 
-        // 5. macro context -> 0 calls
+        // Flow 5: macro context -> 0 calls
+        (mockMacroRepo.findLatest as unknown as ReturnType<typeof vi.fn>)
+          .mockResolvedValueOnce({
+            id: 'm-ipca',
+            seriesId: 'IPCA',
+            referenceDate: LocalDate.from('2026-09-01'),
+            value: '0.21',
+            unit: 'PERCENT',
+            frequency: 'MONTHLY',
+            source: 'BCB_SGS_433',
+            publishedAt: new Date(),
+            firstFetchedAt: new Date(),
+            lastFetchedAt: new Date(),
+            fetchCount: 1,
+            revisedAt: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .mockResolvedValueOnce({
+            id: 'm-selic-t',
+            seriesId: 'SELIC_TARGET',
+            referenceDate: LocalDate.from('2026-09-18'),
+            value: '10.75',
+            unit: 'PERCENT_PER_ANNUM',
+            frequency: 'EVENT_DRIVEN',
+            source: 'BCB_SGS_432',
+            publishedAt: new Date(),
+            firstFetchedAt: new Date(),
+            lastFetchedAt: new Date(),
+            fetchCount: 1,
+            revisedAt: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .mockResolvedValueOnce(null);
+
         const getContext = new GetMacroContextUseCase(mockMacroRepo);
-        await getContext.execute();
+        const context = await getContext.execute();
+        expect(context.ipcaMonthly?.value).toBe('0.21%');
+        expect(context.selicTarget?.rate).toBe('10.75% a.a.');
         expect(failingFetch).not.toHaveBeenCalled();
 
-        // 6. IBOV classification/read -> 0 calls
+        // Flow 6: IBOV classification/read -> 0 calls
+        (mockCalendarRepo.findDay as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+          id: 'day-holiday-1',
+          calendarType: 'B3_TRADING',
+          date: LocalDate.from('2026-01-01'),
+          isOpen: false,
+          reason: 'Confraternização Universal',
+          source: 'OFFICIAL',
+          importedAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        const ibovResult = await resolutionService.classifyObservation({
+          seriesId: 'IBOV',
+          date: LocalDate.from('2026-01-01'),
+          asOfDate: LocalDate.from('2026-10-19'),
+          hasData: false,
+          calendarType: 'B3_TRADING',
+        });
+        expect(ibovResult.status).toBe('CLOSED_DAY');
         expect(failingFetch).not.toHaveBeenCalled();
 
-        // 7. CDI classification/read -> 0 calls
+        // Flow 7: CDI classification/read -> 0 calls
+        (mockCalendarRepo.findDay as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+          id: 'day-holiday-2',
+          calendarType: 'BANKING',
+          date: LocalDate.from('2026-04-03'),
+          isOpen: false,
+          reason: 'Paixão de Cristo',
+          source: 'OFFICIAL',
+          importedAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        const cdiResult = await resolutionService.classifyObservation({
+          seriesId: 'CDI',
+          date: LocalDate.from('2026-04-03'),
+          asOfDate: LocalDate.from('2026-10-19'),
+          hasData: false,
+          calendarType: 'BANKING',
+        });
+        expect(cdiResult.status).toBe('CLOSED_DAY');
         expect(failingFetch).not.toHaveBeenCalled();
 
-        // 8. FX / PTAX read/resolution -> 0 calls
+        // Flow 8: FX / PTAX read/resolution -> 0 calls
+        (mockCalendarRepo.findDay as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+          id: 'day-holiday-3',
+          calendarType: 'BANKING',
+          date: LocalDate.from('2026-04-21'),
+          isOpen: false,
+          reason: 'Tiradentes',
+          source: 'OFFICIAL',
+          importedAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        const ptaxResult = await resolutionService.classifyObservation({
+          seriesId: 'USD/BRL',
+          date: LocalDate.from('2026-04-21'),
+          asOfDate: LocalDate.from('2026-10-19'),
+          hasData: false,
+          calendarType: 'BANKING',
+        });
+        expect(ptaxResult.status).toBe('CLOSED_DAY');
         expect(failingFetch).not.toHaveBeenCalled();
 
+        // Total live network calls across all 8 flows: strictly 0
         expect(failingFetch).toHaveBeenCalledTimes(0);
       } finally {
         globalThis.fetch = originalFetch;

@@ -284,14 +284,35 @@ describe('Phase 5D — Macro Data BCB SGS Provider', () => {
     const b3Days = provider.generateYear(2026, 'B3_TRADING');
 
     // In 2026, Jan 25 is a Sunday (closed due to Sunday)
-    const jan25 = b3Days.find((d) => d.date.toString() === '2026-01-25');
-    expect(jan25?.isOpen).toBe(false);
-    expect(jan25?.reason).toBe('Domingo');
+    const jan25_2026 = b3Days.find((d) => d.date.toString() === '2026-01-25');
+    expect(jan25_2026?.isOpen).toBe(false);
+    expect(jan25_2026?.reason).toBe('Domingo');
+
+    // In 2024, Jan 25 was a Thursday (weekday proof: post-2022 policy operates normally on Jan 25)
+    const b3Days2024 = provider.generateYear(2024, 'B3_TRADING');
+    const jan25_2024 = b3Days2024.find((d) => d.date.toString() === '2024-01-25');
+    expect(jan25_2024?.isOpen).toBe(true);
+    expect(jan25_2024?.reason).toBe('Dia útil regular');
 
     // In 2026, Jul 9 is a Thursday (regular trading day under B3 post-2022 unification)
     const jul09 = b3Days.find((d) => d.date.toString() === '2026-07-09');
     expect(jul09?.isOpen).toBe(true);
     expect(jul09?.reason).toBe('Dia útil regular');
+  });
+
+  it('demonstrates Dec 31 operational closure for B3 and Banking (Balanço Anual)', () => {
+    const provider = new BrazilianOfficialCalendarProvider();
+    const b3Days2026 = provider.generateYear(2026, 'B3_TRADING');
+    const bankDays2026 = provider.generateYear(2026, 'BANKING');
+
+    const dec31B3 = b3Days2026.find((d) => d.date.toString() === '2026-12-31');
+    const dec31Bank = bankDays2026.find((d) => d.date.toString() === '2026-12-31');
+
+    expect(dec31B3?.isOpen).toBe(false);
+    expect(dec31B3?.reason).toBe('Não há expediente (Balanço Anual)');
+
+    expect(dec31Bank?.isOpen).toBe(false);
+    expect(dec31Bank?.reason).toBe('Não há expediente (Balanço Anual)');
   });
 
   it('verifies Ash Wednesday session (2026-02-18) is OPEN with special trading schedule', () => {
