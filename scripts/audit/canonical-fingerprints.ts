@@ -32,11 +32,18 @@
  * Usage:
  *   tsx --tsconfig tsconfig.smoke.json scripts/audit/canonical-fingerprints.ts --mode owner-audit
  *   tsx --tsconfig tsconfig.smoke.json scripts/audit/canonical-fingerprints.ts --mode read-only --database-url <url>
+ *   tsx --tsconfig tsconfig.smoke.json scripts/audit/canonical-fingerprints.ts --mode owner-audit --verify-baseline [--baseline-file <path>]
  *
  * In --mode owner-audit the script aborts unless the target is exactly the
  * owner database (host localhost/127.0.0.1, port 5434, database atlas_dev).
+ *
+ * With --verify-baseline the recomputed hashes are compared against
+ * docs/audit/canonical-fingerprint-baseline.json (or --baseline-file) and the
+ * process exits nonzero on any mismatch. Read-only; never mutates data.
  */
 import { PrismaClient } from '@prisma/client';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const OWNER_PORT = '5434';
 const OWNER_DB = 'atlas_dev';
@@ -89,18 +96,29 @@ const QUERIES: Record<string, string> = {
     FROM macro_observations`,
 };
 
-function parseArgs(): { mode: string; databaseUrl?: string } {
+function parseArgs(): {
+  mode: string;
+  databaseUrl?: string;
+  verifyBaseline: boolean;
+  baselineFile?: string;
+} {
   const args = process.argv.slice(2);
   let mode = 'read-only';
   let databaseUrl: string | undefined;
+  let verifyBaseline = false;
+  let baselineFile: string | undefined;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--mode' && args[i + 1]) {
       mode = args[++i];
     } else if (args[i] === '--database-url' && args[i + 1]) {
       databaseUrl = args[++i];
+    } else if (args[i] === '--verify-baseline') {
+      verifyBaseline = true;
+    } else if (args[i] === '--baseline-file' && args[i + 1]) {
+      baselineFile = args[++i];
     }
   }
-  return { mode, databaseUrl };
+  return { mode, databaseUrl, verifyBaseline, baselineFile };
 }
 
 function describeUrl(url: string): { host: string; port: string; database: string } {
@@ -113,7 +131,7 @@ function describeUrl(url: string): { host: string; port: string; database: strin
 }
 
 async function main(): Promise<void> {
-  const { mode, databaseUrl } = parseArgs();
+  const { mode, databaseUrl, verifyBaseline, baselineFile } = parseArgs();
   const url = databaseUrl ?? process.env.DATABASE_URL ?? process.env.DATABASE_TEST_URL ?? '';
   if (!url) {
     console.error('canonical-fingerprints: no database URL provided (use --database-url).');
@@ -153,9 +171,39 @@ async function main(): Promise<void> {
       process.exit(1);
     }
 
+    const computed: Record<string, string> = {};
     for (const [name, sql] of Object.entries(QUERIES)) {
       const rows = await prisma.$queryRawUnsafe<Array<{ fp: string }>>(sql);
+      computed[name] = rows[0].fp;
       console.info(`${name}: ${rows[0].fp}`);
+    }
+
+    if (verifyBaseline) {
+      const baselinePath =
+        baselineFile ??
+        path.join(process.cwd(), 'docs', 'audit', 'canonical-fingerprint-baseline.json');
+      const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8')) as {
+        version: number;
+        status: string;
+        hashes: Record<string, string>;
+      };
+      if (baseline.version !== 2 || baseline.status !== 'CANONICAL_REPRODUCIBLE') {
+        console.error(
+          `canonical-fingerprints: baseline file '${baselinePath}' is not a V2 reproducible baseline.`,
+        );
+        process.exit(1);
+      }
+      const mismatches = Object.keys(QUERIES).filter(
+        (name) => computed[name] !== baseline.hashes[name],
+      );
+      if (mismatches.length > 0) {
+        console.error(
+          `canonical-fingerprints: BASELINE MISMATCH on: ${mismatches.join(', ')}. ` +
+            `Computed hashes differ from docs/audit/canonical-fingerprint-baseline.json.`,
+        );
+        process.exit(1);
+      }
+      console.info('canonical-fingerprints: baseline verification PASS (all 5 hashes match V2).');
     }
   } finally {
     await prisma.$disconnect();

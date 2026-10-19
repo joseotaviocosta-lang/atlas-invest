@@ -182,3 +182,17 @@ The original owner database baseline on port 5434 remains 100% bit-exact and unt
 - `fx_fingerprint`: `12be8af23229bee65c2247d78ec6c501` (MATCH)
 - `calendar_fingerprint`: `3258d42335bb638f8167d3c951b2b48e`
 - `macro_fingerprint`: `d4ceafff57b3f3615f9621d27b1dd1ae`
+
+### Phase 5D Fingerprint Baseline: V2 Canonical Reproducible Baseline (H1.2)
+
+The V1 hashes above are historical references only (`LEGACY_UNREPRODUCIBLE` —
+their text normalization was not preserved). The official baseline from the
+H1.2 reconciliation forward is V2 (`CANONICAL_REPRODUCIBLE`), recipe preserved
+in `scripts/audit/canonical-fingerprints.ts`, hashes versioned in
+`docs/audit/canonical-fingerprint-baseline.json`, reconciliation rationale in
+`docs/audit/canonical-fingerprints.md`. V2: ledger
+`5f4f9b2bcf4911f9b83eec31823af480`, benchmark
+`d5f99cbd02bbc0016518eb5c009a60cc`, fx
+`42e3954ef8aad9d950b362fce5fb3d19`, calendar
+`e0fd643474d350ac02e7812bd81afea2`, macro
+`05ee1cf47daf93306b88065d2b866ee3`. Future gates must use V2.

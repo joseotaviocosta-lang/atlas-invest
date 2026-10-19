@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "status": "CANONICAL_REPRODUCIBLE",
+  "effectiveFromCommit": null,
+  "effectiveFromNote": "V2 becomes effective with the Phase 5D-H1.2 reconciliation commit that introduces this file. Resolve it via: git log --diff-filter=A --format=%H -- docs/audit/canonical-fingerprint-baseline.json",
+  "database": {
+    "name": "atlas_dev",
+    "port": 5434
+  },
+  "normalization": "fields joined with '|', NULL as '', rows concatenated with '', numerics via ::text (full scale), dates via ::text (YYYY-MM-DD), booleans via ::text, md5 over UTF-8 bytes, lowercase hex",
+  "hashes": {
+    "ledger": "5f4f9b2bcf4911f9b83eec31823af480",
+    "benchmark": "d5f99cbd02bbc0016518eb5c009a60cc",
+    "fx": "42e3954ef8aad9d950b362fce5fb3d19",
+    "calendar": "e0fd643474d350ac02e7812bd81afea2",
+    "macro": "05ee1cf47daf93306b88065d2b866ee3"
+  },
+  "legacy": {
+    "version": 1,
+    "status": "LEGACY_UNREPRODUCIBLE",
+    "reason": "canonical normalization recipe was not preserved; not reproducible today; historical reference only",
+    "dataDriftEvidence": "NONE",
+    "hashes": {
+      "ledger": "89b9411dc11d42c5e319c8f898debaca",
+      "benchmark": "96e65282a33c89e734aa92ad9c9b8609",
+      "fx": "12be8af23229bee65c2247d78ec6c501",
+      "calendar": "3258d42335bb638f8167d3c951b2b48e",
+      "macro": "d4ceafff57b3f3615f9621d27b1dd1ae"
+    }
+  }
+}

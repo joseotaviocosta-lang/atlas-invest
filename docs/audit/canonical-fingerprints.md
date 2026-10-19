@@ -55,15 +55,47 @@ Note: inside Docker the container-side postgres port is `5432`; the host
 mapping (`5433` test, `5434` owner) is what differentiates the databases.
 The script reports both the client-side port and the server-side port.
 
-## Approved baseline hashes (Phase 5D)
+## Approved baseline hashes (Phase 5D) — BASELINE V1, LEGACY
 
-| Fingerprint | Approved hash                      |
-| ----------- | ---------------------------------- |
-| `ledger`    | `89b9411dc11d42c5e319c8f898debaca` |
-| `benchmark` | `96e65282a33c89e734aa92ad9c9b8609` |
-| `fx`        | `12be8af23229bee65c2247d78ec6c501` |
-| `calendar`  | `3258d42335bb638f8167d3c951b2b48e` |
-| `macro`     | `d4ceafff57b3f3615f9621d27b1dd1ae` |
+| Fingerprint | V1 hash (historical reference only) | Status                  |
+| ----------- | ----------------------------------- | ----------------------- |
+| `ledger`    | `89b9411dc11d42c5e319c8f898debaca`  | `LEGACY_UNREPRODUCIBLE` |
+| `benchmark` | `96e65282a33c89e734aa92ad9c9b8609`  | `LEGACY_UNREPRODUCIBLE` |
+| `fx`        | `12be8af23229bee65c2247d78ec6c501`  | `LEGACY_UNREPRODUCIBLE` |
+| `calendar`  | `3258d42335bb638f8167d3c951b2b48e`  | `LEGACY_UNREPRODUCIBLE` |
+| `macro`     | `d4ceafff57b3f3615f9621d27b1dd1ae`  | `LEGACY_UNREPRODUCIBLE` |
+
+V1 hashes are historical references only. Their text normalization was not
+preserved; they are not reproducible today and must never be used as gates.
+
+## Fingerprint Baseline Reconciliation — V1 → V2 (Phase 5D-H1.2)
+
+- Old owner data was NOT changed (row counts, timestamps, migrations and
+  canonical populations verified identical before/after; zero drift).
+- The old (V1) normalization recipe was lost and could not be recovered;
+  V1 hashes remain historical references only (`LEGACY_UNREPRODUCIBLE`).
+- The new (V2) recipe above is preserved in
+  `scripts/audit/canonical-fingerprints.ts` and is reproducible on demand.
+- V2 hashes below are the official canonical baseline from the H1.2
+  reconciliation commit forward. Future gates MUST use V2.
+- No claim is made that V1 hashes were reproduced.
+
+| Fingerprint | V2 canonical reproducible hash     | Status                   |
+| ----------- | ---------------------------------- | ------------------------ |
+| `ledger`    | `5f4f9b2bcf4911f9b83eec31823af480` | `CANONICAL_REPRODUCIBLE` |
+| `benchmark` | `d5f99cbd02bbc0016518eb5c009a60cc` | `CANONICAL_REPRODUCIBLE` |
+| `fx`        | `42e3954ef8aad9d950b362fce5fb3d19` | `CANONICAL_REPRODUCIBLE` |
+| `calendar`  | `e0fd643474d350ac02e7812bd81afea2` | `CANONICAL_REPRODUCIBLE` |
+| `macro`     | `05ee1cf47daf93306b88065d2b866ee3` | `CANONICAL_REPRODUCIBLE` |
+
+Machine-readable baseline (versioned, V1 legacy preserved):
+`docs/audit/canonical-fingerprint-baseline.json`.
+Verify on demand:
+
+```powershell
+$env:DATABASE_URL='postgresql://atlas:atlas@127.0.0.1:5434/atlas_dev?schema=public'
+pnpm exec tsx --tsconfig tsconfig.smoke.json scripts/audit/canonical-fingerprints.ts --mode owner-audit --verify-baseline
+```
 
 ## Recipe status (honest record, Phase 5D-H1.1)
 
