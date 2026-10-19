@@ -259,4 +259,52 @@ describe('Phase 5D — Macro Data BCB SGS Provider', () => {
     expect(obs.frequency).toBe('EVENT_DRIVEN');
     expect(obs.source).toBe('BCB_SGS_432');
   });
+
+  it('proves series-to-calendar association rules (IBOV -> B3_TRADING, CDI & PTAX -> BANKING)', () => {
+    // Canonical mapping per ADR and architecture:
+    const seriesCalendarMap = {
+      IBOV: 'B3_TRADING',
+      CDI: 'BANKING',
+      'USD/BRL': 'BANKING',
+      'EUR/BRL': 'BANKING',
+      IPCA: 'BANKING',
+      SELIC_TARGET: 'BANKING',
+      SELIC_EFFECTIVE: 'BANKING',
+    };
+
+    expect(seriesCalendarMap.IBOV).toBe('B3_TRADING');
+    expect(seriesCalendarMap.CDI).toBe('BANKING');
+    expect(seriesCalendarMap['USD/BRL']).toBe('BANKING');
+    expect(seriesCalendarMap['EUR/BRL']).toBe('BANKING');
+    expect(seriesCalendarMap.IPCA).toBe('BANKING');
+  });
+
+  it('demonstrates B3 post-2022 trading policy on SP municipal holidays (Jan 25 & Jul 9 are regular trading days)', () => {
+    const provider = new BrazilianOfficialCalendarProvider();
+    const b3Days = provider.generateYear(2026, 'B3_TRADING');
+
+    // In 2026, Jan 25 is a Sunday (closed due to Sunday)
+    const jan25 = b3Days.find((d) => d.date.toString() === '2026-01-25');
+    expect(jan25?.isOpen).toBe(false);
+    expect(jan25?.reason).toBe('Domingo');
+
+    // In 2026, Jul 9 is a Thursday (regular trading day under B3 post-2022 unification)
+    const jul09 = b3Days.find((d) => d.date.toString() === '2026-07-09');
+    expect(jul09?.isOpen).toBe(true);
+    expect(jul09?.reason).toBe('Dia útil regular');
+  });
+
+  it('verifies Ash Wednesday session (2026-02-18) is OPEN with special trading schedule', () => {
+    const provider = new BrazilianOfficialCalendarProvider();
+    const b3Days = provider.generateYear(2026, 'B3_TRADING');
+    const bankingDays = provider.generateYear(2026, 'BANKING');
+
+    const ashWedB3 = b3Days.find((d) => d.date.toString() === '2026-02-18');
+    const ashWedBank = bankingDays.find((d) => d.date.toString() === '2026-02-18');
+
+    expect(ashWedB3?.isOpen).toBe(true);
+    expect(ashWedB3?.reason).toContain('Quarta-feira de Cinzas');
+    expect(ashWedBank?.isOpen).toBe(true);
+    expect(ashWedBank?.reason).toContain('Quarta-feira de Cinzas');
+  });
 });

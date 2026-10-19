@@ -3,6 +3,7 @@
 ## 1. Executive Summary
 
 Phase 5D establishes the authoritative calendar and macroeconomic foundation for Project Atlas, providing:
+
 1. **Official Trading & Banking Calendars (`B3_TRADING` and `BANKING`)**: Authoritative Brazilian civil and financial calendars distinguishing open market sessions from weekends, national holidays, and special market closures.
 2. **Missing Observation Classification**: Rigorous deterministic classification preventing artificial "data gaps" on closed market days:
    - `CLOSED_DAY`: Market was officially closed (weekend, national holiday, special closure).
@@ -23,6 +24,7 @@ Phase 5D establishes the authoritative calendar and macroeconomic foundation for
 ## 2. Database Architecture & Migrations
 
 ### Migration 27: `20261018120000_add_official_calendar_days`
+
 - Table: `calendar_days`
 - Columns:
   - `id` (UUID PK)
@@ -37,6 +39,7 @@ Phase 5D establishes the authoritative calendar and macroeconomic foundation for
   - Indexes on `(calendar_type, date)` and `(date)`
 
 ### Migration 28: `20261018180000_add_macro_observations_and_revisions`
+
 - Table: `macro_observations`
   - Columns:
     - `id` (UUID PK)
@@ -70,6 +73,7 @@ Phase 5D establishes the authoritative calendar and macroeconomic foundation for
 ## 3. Official Calendar Specification
 
 ### Brazilian Official Calendar Engine
+
 - Meeus/Jones/Butcher algorithm for exact astronomical Easter Sunday calculation across any year.
 - Movable holidays:
   - Carnaval (Segunda-feira): Easter - 48 days
@@ -90,6 +94,7 @@ Phase 5D establishes the authoritative calendar and macroeconomic foundation for
   - Dec 31: Balanço Anual / Sem expediente bancário e de negociação
 
 ### B3 Post-2022 Trading Calendar Alignment
+
 Since 2022, B3 operates normally on São Paulo municipal holidays (Jan 25 Anniversary of São Paulo and Jul 9 Constitutionalist Revolution), unifying the national equity trading calendar.
 
 ---
@@ -97,11 +102,13 @@ Since 2022, B3 operates normally on São Paulo municipal holidays (Jan 25 Annive
 ## 4. API Endpoints
 
 ### Calendars (`/api/v1/calendars`)
+
 - `GET /api/v1/calendars/:calendarType/coverage`: Returns minDate, maxDate, totalDays, openDays, closedDays, sources, and latestImportedAt.
 - `GET /api/v1/calendars/:calendarType/resolve?date=YYYY-MM-DD&hasData=boolean`: Resolves day status (`CLOSED_DAY`, `DATA_GAP`, `NOT_PUBLISHED_YET`, `EXPECTED`, `CALENDAR_COVERAGE_MISSING`).
 - `POST /api/v1/calendars/:calendarType/update`: Explicit generation and persistence of official calendar sessions and closures for a date range.
 
 ### Macroeconomic Series (`/api/v1/macro`)
+
 - `GET /api/v1/macro/context`: Returns latest persisted macroeconomic context summary (`ipcaMonthly`, `selicTarget`, `selicEffective`).
 - `GET /api/v1/macro/:seriesId/latest`: Returns latest persisted observation for a given series.
 - `GET /api/v1/macro/:seriesId/coverage`: Returns count, minReferenceDate, maxReferenceDate, latestPublishedAt, source, and frequency.
@@ -122,6 +129,7 @@ Since 2022, B3 operates normally on São Paulo municipal holidays (Jan 25 Annive
 ## 6. Canonical Baseline Preservation
 
 The original owner database baseline on port 5434 remains 100% bit-exact and untampered:
+
 - Users: 5
 - Portfolios: 5 (including isolated validation fixture `VALIDAÇÃO FX 5C`)
 - Accounts: 6
@@ -131,11 +139,15 @@ The original owner database baseline on port 5434 remains 100% bit-exact and unt
 - Market Quote Revisions: 2
 - Benchmark Observations: 41
 - FX Observations: 1
-- Calendar Days: 0 (prior to explicit ingestion)
-- Macro Observations: 0 (prior to explicit ingestion)
+- Calendar Days: 730 (365 for `B3_TRADING` + 365 for `BANKING` in 2026)
+- Macro Observations: 18 (12 IPCA + 5 SELIC_TARGET + 1 SELIC_EFFECTIVE)
+- Macro Observation Revisions: 0
 - Migrations: 28
 
 ### Canonical Fingerprints
+
 - `original_owner_ledger_fingerprint`: `89b9411dc11d42c5e319c8f898debaca` (MATCH)
 - `benchmark_fingerprint`: `96e65282a33c89e734aa92ad9c9b8609` (MATCH)
 - `fx_fingerprint`: `12be8af23229bee65c2247d78ec6c501` (MATCH)
+- `calendar_fingerprint`: `3258d42335bb638f8167d3c951b2b48e`
+- `macro_fingerprint`: `d4ceafff57b3f3615f9621d27b1dd1ae`

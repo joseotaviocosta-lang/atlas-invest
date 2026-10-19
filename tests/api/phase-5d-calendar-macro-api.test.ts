@@ -200,5 +200,38 @@ describe('Phase 5D — API Application Use Cases & Zero-Live-Read Invariant', ()
       const getLatest = new GetMacroLatestUseCase(mockMacroRepo);
       await expect(getLatest.execute({ seriesId: 'IPCA' })).rejects.toThrow(NotFoundException);
     });
+
+    it('rejects range > 10 years in UpdateMacroDataUseCase', async () => {
+      const updateMacro = new UpdateMacroDataUseCase(mockMacroRepo);
+      await expect(
+        updateMacro.execute({
+          seriesId: 'IPCA',
+          from: '2010-01-01',
+          to: '2026-01-01',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects invalid date formats in UpdateMacroDataUseCase', async () => {
+      const updateMacro = new UpdateMacroDataUseCase(mockMacroRepo);
+      await expect(
+        updateMacro.execute({
+          seriesId: 'IPCA',
+          from: 'invalid-date',
+          to: '2026-01-01',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects date reversal (from > to) in UpdateMacroDataUseCase', async () => {
+      const updateMacro = new UpdateMacroDataUseCase(mockMacroRepo);
+      await expect(
+        updateMacro.execute({
+          seriesId: 'IPCA',
+          from: '2026-10-01',
+          to: '2026-01-01',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 });
