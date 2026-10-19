@@ -8,6 +8,9 @@ export default defineConfig({
     include: ['tests/api/**/*.test.ts'],
     fileParallelism: false,
     testTimeout: 20000,
+    // Phase 5D-H1.1: force the canonical test database (atlas_test:5433) and
+    // fail closed on any non-test DATABASE_URL before any test file runs.
+    setupFiles: ['./tests/api/setup-test-env.ts'],
   },
   resolve: {
     alias: {
