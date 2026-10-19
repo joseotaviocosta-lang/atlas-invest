@@ -49,6 +49,6 @@ describe('HealthController', () => {
     expect(statusCode).toBe(503);
     expect(result.status).toBe('error');
     expect(result.database).toBe('disconnected');
-    expect(result.error).toBe('Connection refused');
+    expect(result.error).toBe('Database ping failed');
   });
 });
