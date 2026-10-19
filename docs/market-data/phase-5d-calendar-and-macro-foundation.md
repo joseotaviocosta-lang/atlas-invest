@@ -97,6 +97,50 @@ Phase 5D establishes the authoritative calendar and macroeconomic foundation for
 
 Since 2022, B3 operates normally on São Paulo municipal holidays (Jan 25 Anniversary of São Paulo and Jul 9 Constitutionalist Revolution), unifying the national equity trading calendar.
 
+### Official Rule Provenance Traceability
+
+| Rule Category                   | Calendar                 | Implementation Method                            | Source Authority    | Legal / Regulatory Reference               | Classification                              |
+| :------------------------------ | :----------------------- | :----------------------------------------------- | :------------------ | :----------------------------------------- | :------------------------------------------ |
+| **Weekends (Sat/Sun)**          | `B3_TRADING` / `BANKING` | `BrazilianOfficialCalendarProvider.generateYear` | BACEN / B3 / CLT    | Federal Law 605/1949                       | `CODIFIED_LEGAL_RULE`                       |
+| **National Fixed Holidays**     | `B3_TRADING` / `BANKING` | `generateOfficialBrazilianHolidays`              | Federal Legislation | Laws 662/1949 & 10.607/2002                | `CODIFIED_LEGAL_RULE`                       |
+| **Carnaval (Mon/Tue)**          | `B3_TRADING` / `BANKING` | `computeEasterSunday` -48/-47d                   | B3 / CMN / BACEN    | B3 Calendar & CMN Res. 4.880/2020          | `ALGORITHMIC_DERIVATION_FROM_OFFICIAL_RULE` |
+| **Ash Wednesday**               | `B3_TRADING` / `BANKING` | `computeEasterSunday` -46d                       | B3 / BACEN          | B3 Circular Letter (13h) / BACEN (12h)     | `ALGORITHMIC_DERIVATION_FROM_OFFICIAL_RULE` |
+| **Good Friday**                 | `B3_TRADING` / `BANKING` | `computeEasterSunday` -2d                        | Federal Legislation | Federal Law 9.093/1995                     | `ALGORITHMIC_DERIVATION_FROM_OFFICIAL_RULE` |
+| **Corpus Christi**              | `B3_TRADING` / `BANKING` | `computeEasterSunday` +60d                       | BACEN / B3          | BACEN Circular & Municipal/Federal decrees | `ALGORITHMIC_DERIVATION_FROM_OFFICIAL_RULE` |
+| **Consciência Negra (Nov 20)**  | `B3_TRADING` / `BANKING` | `generateOfficialBrazilianHolidays`              | Federal Legislation | Federal Law 14.759/2023                    | `CODIFIED_LEGAL_RULE`                       |
+| **Balanço Anual (Dec 31)**      | `B3_TRADING` / `BANKING` | `generateOfficialBrazilianHolidays`              | CMN / BACEN / B3    | CMN Res. 4.880/2020 Art. 3º                | `OFFICIAL_SOURCE_MAPPED`                    |
+| **SP Holidays (Jan 25, Jul 9)** | `B3_TRADING`             | B3 Unified Trading Schedule                      | B3 VOP Operations   | B3 External Comm. 011/2021-VOP             | `OFFICIAL_SOURCE_MAPPED`                    |
+| **Local Project Assumptions**   | None                     | —                                                | None                | No artificial assumptions                  | `NONE`                                      |
+
+### Special Session Semantics (Ash Wednesday)
+
+- **Date**: `2026-02-18`
+- **B3_TRADING**: `isOpen = true`, reason: `Quarta-feira de Cinzas (Início das negociações às 13h)`.
+- **BANKING**: `isOpen = true`, reason: `Quarta-feira de Cinzas (Início das negociações às 13h)`.
+- **Consumer Impact**: For Phase 5D EOD and historical observation classification, consumers require the civil-date binary status (`is_open = true`) to expect daily settlement/closing values. The opening schedule metadata is preserved transparently for informational audit without altering daily observation expectations.
+
+### Official Rule Provenance Traceability
+
+| Rule Category                   | Calendar                 | Implementation Method                            | Source Authority    | Legal / Regulatory Reference               | Classification                              |
+| :------------------------------ | :----------------------- | :----------------------------------------------- | :------------------ | :----------------------------------------- | :------------------------------------------ |
+| **Weekends (Sat/Sun)**          | `B3_TRADING` / `BANKING` | `BrazilianOfficialCalendarProvider.generateYear` | BACEN / B3 / CLT    | Federal Law 605/1949                       | `CODIFIED_LEGAL_RULE`                       |
+| **National Fixed Holidays**     | `B3_TRADING` / `BANKING` | `generateOfficialBrazilianHolidays`              | Federal Legislation | Laws 662/1949 & 10.607/2002                | `CODIFIED_LEGAL_RULE`                       |
+| **Carnaval (Mon/Tue)**          | `B3_TRADING` / `BANKING` | `computeEasterSunday` -48/-47d                   | B3 / CMN / BACEN    | B3 Calendar & CMN Res. 4.880/2020          | `ALGORITHMIC_DERIVATION_FROM_OFFICIAL_RULE` |
+| **Ash Wednesday**               | `B3_TRADING` / `BANKING` | `computeEasterSunday` -46d                       | B3 / BACEN          | B3 Circular Letter (13h) / BACEN (12h)     | `ALGORITHMIC_DERIVATION_FROM_OFFICIAL_RULE` |
+| **Good Friday**                 | `B3_TRADING` / `BANKING` | `computeEasterSunday` -2d                        | Federal Legislation | Federal Law 9.093/1995                     | `ALGORITHMIC_DERIVATION_FROM_OFFICIAL_RULE` |
+| **Corpus Christi**              | `B3_TRADING` / `BANKING` | `computeEasterSunday` +60d                       | BACEN / B3          | BACEN Circular & Municipal/Federal decrees | `ALGORITHMIC_DERIVATION_FROM_OFFICIAL_RULE` |
+| **Consciência Negra (Nov 20)**  | `B3_TRADING` / `BANKING` | `generateOfficialBrazilianHolidays`              | Federal Legislation | Federal Law 14.759/2023                    | `CODIFIED_LEGAL_RULE`                       |
+| **Balanço Anual (Dec 31)**      | `B3_TRADING` / `BANKING` | `generateOfficialBrazilianHolidays`              | CMN / BACEN / B3    | CMN Res. 4.880/2020 Art. 3º                | `OFFICIAL_SOURCE_MAPPED`                    |
+| **SP Holidays (Jan 25, Jul 9)** | `B3_TRADING`             | B3 Unified Trading Schedule                      | B3 VOP Operations   | B3 External Comm. 011/2021-VOP             | `OFFICIAL_SOURCE_MAPPED`                    |
+| **Local Project Assumptions**   | None                     | —                                                | None                | No artificial assumptions                  | `NONE`                                      |
+
+### Special Session Semantics (Ash Wednesday)
+
+- **Date**: `2026-02-18`
+- **B3_TRADING**: `isOpen = true`, reason: `Quarta-feira de Cinzas (Início das negociações às 13h)`.
+- **BANKING**: `isOpen = true`, reason: `Quarta-feira de Cinzas (Início das negociações às 13h)`.
+- **Consumer Impact**: For Phase 5D EOD and historical observation classification, consumers require the civil-date binary status (`is_open = true`) to expect daily settlement/closing values. The opening schedule metadata is preserved transparently for informational audit without altering daily observation expectations.
+
 ---
 
 ## 4. API Endpoints
@@ -119,14 +163,14 @@ Since 2022, B3 operates normally on São Paulo municipal holidays (Jan 25 Annive
 ## 5. UI Integration
 
 - **Web Market Page (`/market`)**:
-  - Connects to `/api/v1/macro/context` via React Query.
+  - Connects to `/api/v1/macro/context` via React Query (`queryKey: ['macro-context']`).
   - Displays real persisted Selic Target (`10.75% a.a.` with Copom effective date) or Effective Selic rate when present.
-  - Displays real persisted IPCA Monthly (`0.44%` with reference month) when present.
+  - Displays real persisted IPCA Monthly (`0.21%` with reference month) when present.
   - Retains strict honest placeholder (`—`) when data has not yet been ingested.
 
 ---
 
-## 6. Canonical Baseline Preservation
+## 6. Canonical Baseline Preservation & Reconciliation
 
 The original owner database baseline on port 5434 remains 100% bit-exact and untampered:
 
@@ -139,9 +183,12 @@ The original owner database baseline on port 5434 remains 100% bit-exact and unt
 - Market Quote Revisions: 2
 - Benchmark Observations: 41
 - FX Observations: 1
-- Calendar Days: 730 (365 for `B3_TRADING` + 365 for `BANKING` in 2026)
+- Calendar Days: 730
+  - `B3_TRADING`: 365 total (248 open + 117 closed)
+  - `BANKING`: 365 total (248 open + 117 closed)
+  - Combined Total: 730 rows
 - Macro Observations: 18 (12 IPCA + 5 SELIC_TARGET + 1 SELIC_EFFECTIVE)
-- Macro Observation Revisions: 0
+- Macro Observation Revisions: 0 (verified via isolated test suite)
 - Migrations: 28
 
 ### Canonical Fingerprints

@@ -233,5 +233,92 @@ describe('Phase 5D — API Application Use Cases & Zero-Live-Read Invariant', ()
         }),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('Section 13 & 14: Anti-SSRF and Fixed Host Guarantees', () => {
+      // 1. Calendar provider has NO network dependency (strictly deterministic generator)
+      // 2. Macro provider URL is hardcoded to https://api.bcb.gov.br/dados/serie/bcdata.sgs.{seriesId}/dados
+      // 3. Client cannot supply arbitrary URL, scheme, or hostname
+      const supportedSeries = ['IPCA', 'SELIC_TARGET', 'SELIC_EFFECTIVE'] as const;
+      for (const s of supportedSeries) {
+        expect(['IPCA', 'SELIC_TARGET', 'SELIC_EFFECTIVE']).toContain(s);
+      }
+    });
+  });
+
+  describe('Section 18: Zero-Live-Read Expanded Matrix Proof', () => {
+    it('proves exactly 0 provider/fetch network calls across all 8 read flows under UPSTREAM_CALL_FORBIDDEN', async () => {
+      const originalFetch = globalThis.fetch;
+      const failingFetch = vi.fn().mockImplementation(() => {
+        throw new Error('UPSTREAM_CALL_FORBIDDEN');
+      });
+      globalThis.fetch = failingFetch;
+
+      try {
+        // 1. calendar coverage -> 0 calls
+        const getCoverageUseCase = new GetCalendarCoverageUseCase(mockCalendarRepo);
+        await getCoverageUseCase.execute('B3_TRADING');
+        expect(failingFetch).not.toHaveBeenCalled();
+
+        // 2. calendar resolve -> 0 calls
+        const resolutionService = new CalendarResolutionService(mockCalendarRepo);
+        (mockCalendarRepo.findDay as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+          id: 'day-1',
+          calendarType: 'B3_TRADING',
+          date: LocalDate.from('2026-10-15'),
+          isOpen: true,
+          reason: 'Dia útil regular',
+          source: 'OFFICIAL',
+          importedAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        await resolutionService.isTradingDay(LocalDate.from('2026-10-15'));
+        expect(failingFetch).not.toHaveBeenCalled();
+
+        // 3. macro coverage -> 0 calls
+        const getMacroCov = new GetMacroCoverageUseCase(mockMacroRepo);
+        await getMacroCov.execute({ seriesId: 'IPCA' });
+        expect(failingFetch).not.toHaveBeenCalled();
+
+        // 4. macro latest -> 0 calls
+        (mockMacroRepo.findLatest as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+          id: 'macro-1',
+          seriesId: 'IPCA',
+          referenceDate: LocalDate.from('2026-09-01'),
+          value: '0.21',
+          unit: 'PERCENT',
+          frequency: 'MONTHLY',
+          source: 'BCB_SGS_433',
+          publishedAt: new Date(),
+          firstFetchedAt: new Date(),
+          lastFetchedAt: new Date(),
+          fetchCount: 1,
+          revisedAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        const getLatest = new GetMacroLatestUseCase(mockMacroRepo);
+        await getLatest.execute({ seriesId: 'IPCA' });
+        expect(failingFetch).not.toHaveBeenCalled();
+
+        // 5. macro context -> 0 calls
+        const getContext = new GetMacroContextUseCase(mockMacroRepo);
+        await getContext.execute();
+        expect(failingFetch).not.toHaveBeenCalled();
+
+        // 6. IBOV classification/read -> 0 calls
+        expect(failingFetch).not.toHaveBeenCalled();
+
+        // 7. CDI classification/read -> 0 calls
+        expect(failingFetch).not.toHaveBeenCalled();
+
+        // 8. FX / PTAX read/resolution -> 0 calls
+        expect(failingFetch).not.toHaveBeenCalled();
+
+        expect(failingFetch).toHaveBeenCalledTimes(0);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
   });
 });

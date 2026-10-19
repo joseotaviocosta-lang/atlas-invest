@@ -2430,6 +2430,7 @@ export interface ClassifyObservationInput {
   readonly calendarDay?: CalendarDay | null;
   readonly coverageMin?: LocalDate;
   readonly coverageMax?: LocalDate;
+  readonly publicationDate?: LocalDate;
 }
 
 export interface ObservationClassificationResult {
@@ -2445,7 +2446,7 @@ export interface ObservationClassificationResult {
 export function classifyObservationStatus(
   input: ClassifyObservationInput,
 ): ObservationClassificationResult {
-  const { date, asOfDate, hasData, calendarDay, coverageMin, coverageMax } = input;
+  const { date, asOfDate, hasData, calendarDay, coverageMin, coverageMax, publicationDate } = input;
 
   // Check if calendar coverage is present for this date
   if (
@@ -2488,8 +2489,8 @@ export function classifyObservationStatus(
     };
   }
 
-  // Open day but no data: is it in the future / not yet published?
-  if (date.isAfter(asOfDate)) {
+  // Open day but no data: is it in the future or prior to official publication lag?
+  if (date.isAfter(asOfDate) || (publicationDate && asOfDate.isBefore(publicationDate))) {
     return {
       status: 'NOT_PUBLISHED_YET',
       reason: 'Sessão futura ou dado ainda não publicado',
