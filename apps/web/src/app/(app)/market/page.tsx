@@ -5,7 +5,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   PageHeader,
   SectionHeader,
-  StatCard,
   EmptyState,
   Card,
   Button,
@@ -21,6 +20,7 @@ import {
   formatUpdateReceiptFeedback,
   IngestionReceiptDto,
 } from '@/components/portfolio/PortfolioValuation';
+import { MacroIndicatorCards } from '@/components/market/MacroIndicatorCards';
 
 export default function MarketPage() {
   const queryClient = useQueryClient();
@@ -57,22 +57,6 @@ export default function MarketPage() {
     },
     enabled: Boolean(activePortfolioId),
     staleTime: 30 * 1000,
-  });
-
-  // Macro Context query (headline indicators: IPCA, SELIC, PTAX)
-  const { data: macroContextData } = useQuery<{
-    data: {
-      ipcaMonthly?: { referenceMonth: string; value: string; source: string };
-      selicTarget?: { rate: string; effectiveDate: string; source: string };
-      selicEffective?: { rate: string; effectiveDate: string; source: string };
-    };
-  }>({
-    queryKey: ['macro-context'],
-    queryFn: async () => {
-      return apiClient.get('/api/v1/macro/context');
-    },
-    staleTime: 0,
-    refetchOnMount: 'always',
   });
 
   const updateMarketDataMutation = useMutation({
@@ -128,49 +112,7 @@ export default function MarketPage() {
           title="Índices e Indicadores Macroeconômicos"
           description="Integração planejada com índices oficiais Bacen e B3 (sem números simulados)"
         />
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: `${spacing.base}px`,
-          }}
-        >
-          <StatCard
-            label="IBOVESPA"
-            value="—"
-            subValue="Integração futura oficial B3"
-            isPlaceholder
-          />
-          <StatCard
-            label="TAXA SELIC"
-            value={
-              macroContextData?.data?.selicTarget?.rate ??
-              macroContextData?.data?.selicEffective?.rate ??
-              '—'
-            }
-            subValue={
-              macroContextData?.data?.selicTarget
-                ? `Meta Copom (${macroContextData.data.selicTarget.effectiveDate})`
-                : macroContextData?.data?.selicEffective
-                  ? `Efetiva (${macroContextData.data.selicEffective.effectiveDate})`
-                  : 'Indicador oficial Bacen'
-            }
-            isPlaceholder={
-              !macroContextData?.data?.selicTarget && !macroContextData?.data?.selicEffective
-            }
-          />
-          <StatCard
-            label="IPCA (MENSAL)"
-            value={macroContextData?.data?.ipcaMonthly?.value ?? '—'}
-            subValue={
-              macroContextData?.data?.ipcaMonthly
-                ? `Variação mensal (${macroContextData.data.ipcaMonthly.referenceMonth})`
-                : 'Índice de inflação IBGE/Bacen'
-            }
-            isPlaceholder={!macroContextData?.data?.ipcaMonthly}
-          />
-          <StatCard label="DÓLAR (PTAX)" value="—" subValue="Cotação oficial Bacen" isPlaceholder />
-        </div>
+        <MacroIndicatorCards />
       </div>
 
       {/* Portfolio Assets Quote Coverage Section */}

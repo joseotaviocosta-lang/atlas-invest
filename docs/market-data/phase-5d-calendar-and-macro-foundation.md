@@ -143,9 +143,14 @@ Since 2022, B3 operates normally on São Paulo municipal holidays (Jan 25 Annive
 - **Web Market Page (`/market`)**:
   - Connects to `/api/v1/macro/context` via React Query (`queryKey: ['macro-context']`).
   - **Freshness Contract**: Configured with `staleTime: 0` and `refetchOnMount: 'always'`, guaranteeing that every intentional visit or remount retrieves the latest persisted macroeconomic context without stale retention after administrative updates (`POST /api/v1/macro/:seriesId/update`).
-  - Displays real persisted Selic Target (`10.75% a.a.` with Copom effective date) or Effective Selic rate when present.
+  - The macro panel (`MacroIndicatorCards`) renders five headline cards: `IBOVESPA`, `SELIC META`, `SELIC EFETIVA`, `IPCA (MENSAL)` and `DÓLAR (PTAX)`.
+  - **`SELIC_TARGET` and `SELIC_EFFECTIVE` are surfaced distinctly** (Phase 5D-H1):
+    - `SELIC META` — Copom target, e.g. `10.75% a.a.` with `Meta Copom (2026-09-18)`.
+    - `SELIC EFETIVA` — annualized effective rate, e.g. `10.65% a.a.` with `Efetiva anualizada (2026-10-16)`.
+    - The two series are never merged under a single "TAXA SELIC" label.
   - Displays real persisted IPCA Monthly (`0.21%` with reference month) when present.
-  - Retains strict honest placeholder (`—`) when data has not yet been ingested.
+  - Retains strict honest placeholder (`—`) only for genuinely absent series; `IBOVESPA` and `DÓLAR (PTAX)` remain honest placeholders until those surfaces are intentionally integrated.
+  - **Hydration stability (Phase 5D-H1)**: The card builder (`buildMacroIndicatorCards`) accepts a `hydrated` flag. SSR and the first client hydration render use `hydrated: false`, ignoring any warm React Query cache, so server and initial client markup are byte-identical. After hydration, resolved persisted values are rendered. No `suppressHydrationWarning` is used.
 
 ---
 
