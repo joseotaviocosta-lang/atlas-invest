@@ -1026,3 +1026,64 @@ model FxObservationRevisionRecord {
   @@index([fxObservationId], map: "fx_observation_revisions_obs_idx")
   @@map("fx_observation_revisions")
 }
+
+/// Phase 5D — Official Calendar Days.
+/// Distinguishes open trading/banking sessions from weekends and official holidays.
+model CalendarDayRecord {
+  id           String   @id @default(uuid()) @db.Uuid
+  calendarType String   @map("calendar_type") @db.VarChar(32)
+  date         DateTime @map("date") @db.Date
+  isOpen       Boolean  @map("is_open")
+  reason       String?  @map("reason") @db.VarChar(255)
+  source       String   @map("source") @db.VarChar(64)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([calendarType, date], map: "calendar_days_type_date_uniq")
+  @@index([calendarType, date], map: "calendar_days_type_date_idx")
+  @@index([date], map: "calendar_days_date_idx")
+  @@map("calendar_days")
+}
+
+/// Phase 5D — Canonical Macroeconomic Series Observations.
+/// Stores headline macroeconomic series (e.g., IPCA monthly, SELIC Copom target, SELIC effective).
+model MacroObservationRecord {
+  id             String    @id @default(uuid()) @db.Uuid
+  seriesId       String    @map("series_id") @db.VarChar(32)
+  referenceDate  DateTime  @map("reference_date") @db.Date
+  value          Decimal   @map("value") @db.Decimal(38, 18)
+  unit           String    @map("unit") @db.VarChar(32)
+  frequency      String    @map("frequency") @db.VarChar(32)
+  source         String    @map("source") @db.VarChar(64)
+  publishedAt    DateTime? @map("published_at") @db.Timestamptz(6)
+  firstFetchedAt DateTime  @default(now()) @map("first_fetched_at") @db.Timestamptz(6)
+  lastFetchedAt  DateTime  @default(now()) @map("last_fetched_at") @db.Timestamptz(6)
+  fetchCount     Int       @default(1) @map("fetch_count")
+  revisedAt      DateTime? @map("revised_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  revisions MacroObservationRevisionRecord[]
+
+  @@unique([seriesId, referenceDate, source], map: "macro_observations_series_date_source_uniq")
+  @@index([seriesId, referenceDate], map: "macro_observations_series_date_idx")
+  @@index([referenceDate], map: "macro_observations_date_idx")
+  @@index([source], map: "macro_observations_source_idx")
+  @@map("macro_observations")
+}
+
+/// Phase 5D — Macro Observation Revision Audit Trail.
+model MacroObservationRevisionRecord {
+  id                 String   @id @default(uuid()) @db.Uuid
+  macroObservationId String   @map("macro_observation_id") @db.Uuid
+  changedAt          DateTime @default(now()) @map("changed_at") @db.Timestamptz(6)
+  priorValue         Decimal  @map("prior_value") @db.Decimal(38, 18)
+  newValue           Decimal  @map("new_value") @db.Decimal(38, 18)
+  reason             String?  @db.VarChar(255)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  observation MacroObservationRecord @relation(fields: [macroObservationId], references: [id], onDelete: Cascade)
+
+  @@index([macroObservationId], map: "macro_observation_revisions_obs_idx")
+  @@map("macro_observation_revisions")
+}

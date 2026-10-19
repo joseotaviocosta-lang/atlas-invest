@@ -59,6 +59,21 @@ export default function MarketPage() {
     staleTime: 30 * 1000,
   });
 
+  // Macro Context query (headline indicators: IPCA, SELIC, PTAX)
+  const { data: macroContextData } = useQuery<{
+    data: {
+      ipcaMonthly?: { referenceMonth: string; value: string; source: string };
+      selicTarget?: { rate: string; effectiveDate: string; source: string };
+      selicEffective?: { rate: string; effectiveDate: string; source: string };
+    };
+  }>({
+    queryKey: ['macro-context'],
+    queryFn: async () => {
+      return apiClient.get('/api/v1/macro/context');
+    },
+    staleTime: 60 * 1000,
+  });
+
   const updateMarketDataMutation = useMutation({
     mutationFn: async () => {
       if (!activePortfolioId) throw new Error('Nenhuma carteira selecionada.');
@@ -125,8 +140,34 @@ export default function MarketPage() {
             subValue="Integração futura oficial B3"
             isPlaceholder
           />
-          <StatCard label="TAXA SELIC" value="—" subValue="Indicador oficial Bacen" isPlaceholder />
-          <StatCard label="IPCA (12M)" value="—" subValue="Índice de inflação IBGE" isPlaceholder />
+          <StatCard
+            label="TAXA SELIC"
+            value={
+              macroContextData?.data?.selicTarget?.rate ??
+              macroContextData?.data?.selicEffective?.rate ??
+              '—'
+            }
+            subValue={
+              macroContextData?.data?.selicTarget
+                ? `Meta Copom (${macroContextData.data.selicTarget.effectiveDate})`
+                : macroContextData?.data?.selicEffective
+                  ? `Efetiva (${macroContextData.data.selicEffective.effectiveDate})`
+                  : 'Indicador oficial Bacen'
+            }
+            isPlaceholder={
+              !macroContextData?.data?.selicTarget && !macroContextData?.data?.selicEffective
+            }
+          />
+          <StatCard
+            label="IPCA (MENSAL)"
+            value={macroContextData?.data?.ipcaMonthly?.value ?? '—'}
+            subValue={
+              macroContextData?.data?.ipcaMonthly
+                ? `Variação mensal (${macroContextData.data.ipcaMonthly.referenceMonth})`
+                : 'Índice de inflação IBGE/Bacen'
+            }
+            isPlaceholder={!macroContextData?.data?.ipcaMonthly}
+          />
           <StatCard label="DÓLAR (PTAX)" value="—" subValue="Cotação oficial Bacen" isPlaceholder />
         </div>
       </div>

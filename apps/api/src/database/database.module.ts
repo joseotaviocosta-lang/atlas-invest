@@ -33,6 +33,8 @@ import {
   PrismaMarketQuoteRepository,
   PrismaBenchmarkObservationRepository,
   PrismaFxObservationRepository,
+  PrismaCalendarRepository,
+  PrismaMacroRepository,
 } from '@atlas/database';
 import {
   PRISMA_CLIENT,
@@ -68,6 +70,8 @@ import {
   MARKET_QUOTE_REPOSITORY,
   BENCHMARK_OBSERVATION_REPOSITORY,
   FX_OBSERVATION_REPOSITORY,
+  CALENDAR_REPOSITORY,
+  MACRO_REPOSITORY,
 } from './tokens';
 
 type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
@@ -239,6 +243,16 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
       useFactory: (prisma: AtlasPrismaClient) => new PrismaFxObservationRepository(prisma),
       inject: [PRISMA_CLIENT],
     },
+    {
+      provide: CALENDAR_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new PrismaCalendarRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
+    {
+      provide: MACRO_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new PrismaMacroRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
   ],
   exports: [
     PRISMA_CLIENT,
@@ -274,6 +288,8 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     MARKET_QUOTE_REPOSITORY,
     BENCHMARK_OBSERVATION_REPOSITORY,
     FX_OBSERVATION_REPOSITORY,
+    CALENDAR_REPOSITORY,
+    MACRO_REPOSITORY,
   ],
 })
 export class DatabaseModule {}

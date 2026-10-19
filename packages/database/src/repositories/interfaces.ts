@@ -1696,3 +1696,117 @@ export interface IFxObservationRepository {
 
   listRevisions(fxObservationId: string): Promise<FxObservationRevisionRecordRow[]>;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 5D — Official Calendar Days
+// ---------------------------------------------------------------------------
+
+export interface CalendarDayRow {
+  id: string;
+  calendarType: string;
+  date: LocalDate;
+  isOpen: boolean;
+  reason: string | null;
+  source: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CalendarDayUpsertInput {
+  calendarType: string;
+  date: LocalDate;
+  isOpen: boolean;
+  reason?: string | null;
+  source: string;
+}
+
+export interface ICalendarRepository {
+  findDay(calendarType: string, date: LocalDate): Promise<CalendarDayRow | null>;
+  findDays(calendarType: string, from: LocalDate, to: LocalDate): Promise<CalendarDayRow[]>;
+  saveMany(days: CalendarDayUpsertInput[]): Promise<{ inserted: number; updated: number }>;
+  getCoverage(calendarType: string): Promise<{
+    minDate: LocalDate | null;
+    maxDate: LocalDate | null;
+    totalDays: number;
+    openDays: number;
+    closedDays: number;
+    sources: string[];
+    latestImportedAt: Date | null;
+  }>;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5D — Canonical Macroeconomic Series Observations & Revisions
+// ---------------------------------------------------------------------------
+
+export interface MacroObservationRecordRow {
+  id: string;
+  seriesId: string;
+  referenceDate: LocalDate;
+  value: string;
+  unit: string;
+  frequency: string;
+  source: string;
+  publishedAt: Date | null;
+  firstFetchedAt: Date;
+  lastFetchedAt: Date;
+  fetchCount: number;
+  revisedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface MacroObservationRevisionRecordRow {
+  id: string;
+  macroObservationId: string;
+  changedAt: Date;
+  priorValue: string;
+  newValue: string;
+  reason: string | null;
+  createdAt: Date;
+}
+
+export interface MacroObservationUpsertInput {
+  seriesId: string;
+  referenceDate: LocalDate;
+  value: string;
+  unit: string;
+  frequency: string;
+  source: string;
+  publishedAt?: Date | null;
+  reason?: string | null;
+}
+
+export type MacroObservationUpsertOutcome = 'INSERTED' | 'UNCHANGED' | 'REVISED';
+
+export interface IMacroRepository {
+  findObservation(
+    seriesId: string,
+    referenceDate: LocalDate,
+    source?: string,
+  ): Promise<MacroObservationRecordRow | null>;
+  findObservations(
+    seriesId: string,
+    from: LocalDate,
+    to: LocalDate,
+    source?: string,
+  ): Promise<MacroObservationRecordRow[]>;
+  findLatest(seriesId: string, source?: string): Promise<MacroObservationRecordRow | null>;
+  upsertObservation(input: MacroObservationUpsertInput): Promise<{
+    outcome: MacroObservationUpsertOutcome;
+    observation: MacroObservationRecordRow;
+    revision?: MacroObservationRevisionRecordRow;
+  }>;
+  getCoverage(
+    seriesId: string,
+    source?: string,
+  ): Promise<{
+    count: number;
+    minReferenceDate: LocalDate | null;
+    maxReferenceDate: LocalDate | null;
+    latestPublishedAt: Date | null;
+    source: string | null;
+    frequency: string | null;
+  }>;
+  listRevisions(macroObservationId: string): Promise<MacroObservationRevisionRecordRow[]>;
+}

@@ -2387,3 +2387,465 @@ export class BcbFxDataProvider implements IFxDataProvider {
     return results;
   }
 }
+
+// ============================================================================
+// Phase 5D: Official Calendar Foundation & Macro Series Contracts
+// ============================================================================
+
+export type CalendarType = 'B3_TRADING' | 'BANKING';
+
+export type CalendarClosureReason =
+  'WEEKEND' | 'NATIONAL_HOLIDAY' | 'LOCAL_EXCHANGE_HOLIDAY' | 'SPECIAL_CLOSURE' | 'UNKNOWN';
+
+export interface CalendarDay {
+  readonly id?: string;
+  readonly calendarType: CalendarType;
+  readonly date: LocalDate;
+  readonly isOpen: boolean;
+  readonly reason?: string;
+  readonly source: string;
+  readonly createdAt?: Date;
+  readonly updatedAt?: Date;
+}
+
+export interface CalendarCoverage {
+  readonly calendarType: CalendarType;
+  readonly minDate: string; // YYYY-MM-DD
+  readonly maxDate: string; // YYYY-MM-DD
+  readonly totalDays: number;
+  readonly openDays: number;
+  readonly closedDays: number;
+  readonly sources: string[];
+  readonly latestImportedAt?: string;
+}
+
+export type ObservationDataStatus =
+  'EXPECTED' | 'CLOSED_DAY' | 'DATA_GAP' | 'NOT_PUBLISHED_YET' | 'CALENDAR_COVERAGE_MISSING';
+
+export interface ClassifyObservationInput {
+  readonly seriesId: string;
+  readonly date: LocalDate;
+  readonly asOfDate: LocalDate;
+  readonly hasData: boolean;
+  readonly calendarDay?: CalendarDay | null;
+  readonly coverageMin?: LocalDate;
+  readonly coverageMax?: LocalDate;
+}
+
+export interface ObservationClassificationResult {
+  readonly status: ObservationDataStatus;
+  readonly reason: string;
+  readonly isOpenDay: boolean;
+}
+
+/**
+ * Classifies whether a missing observation is a legitimate market closure,
+ * an authentic data gap from the provider, or a future/unpublished session.
+ */
+export function classifyObservationStatus(
+  input: ClassifyObservationInput,
+): ObservationClassificationResult {
+  const { date, asOfDate, hasData, calendarDay, coverageMin, coverageMax } = input;
+
+  // Check if calendar coverage is present for this date
+  if (
+    !calendarDay ||
+    (coverageMin && date.isBefore(coverageMin)) ||
+    (coverageMax && date.isAfter(coverageMax))
+  ) {
+    if (hasData) {
+      return {
+        status: 'EXPECTED',
+        reason: 'Dado presente (cobertura de calendário ausente)',
+        isOpenDay: true,
+      };
+    }
+    return {
+      status: 'CALENDAR_COVERAGE_MISSING',
+      reason: 'Cobertura de calendário oficial ausente para esta data',
+      isOpenDay: false,
+    };
+  }
+
+  // If the session is officially closed (weekend or holiday)
+  if (!calendarDay.isOpen) {
+    const reasonText = calendarDay.reason
+      ? `Mercado fechado: ${calendarDay.reason}`
+      : 'Mercado fechado';
+    return {
+      status: 'CLOSED_DAY',
+      reason: reasonText,
+      isOpenDay: false,
+    };
+  }
+
+  // The session was open
+  if (hasData) {
+    return {
+      status: 'EXPECTED',
+      reason: 'Sessão aberta com dado presente',
+      isOpenDay: true,
+    };
+  }
+
+  // Open day but no data: is it in the future / not yet published?
+  if (date.isAfter(asOfDate)) {
+    return {
+      status: 'NOT_PUBLISHED_YET',
+      reason: 'Sessão futura ou dado ainda não publicado',
+      isOpenDay: true,
+    };
+  }
+
+  // Open day in the past or on asOfDate with no quote -> Authentic Data Gap
+  return {
+    status: 'DATA_GAP',
+    reason: 'Sessão aberta com dado ausente do provedor',
+    isOpenDay: true,
+  };
+}
+
+/**
+ * Computes Easter Sunday for a given year using the Meeus/Jones/Butcher algorithm.
+ */
+export function computeEasterSunday(year: number): LocalDate {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return LocalDate.fromParts(year, month, day);
+}
+
+/**
+ * Computes official Brazilian national holidays for a given year.
+ */
+export function generateOfficialBrazilianHolidays(
+  year: number,
+): Map<string, { name: string; type: CalendarClosureReason }> {
+  const holidays = new Map<string, { name: string; type: CalendarClosureReason }>();
+
+  // Fixed National Holidays
+  holidays.set(`${year}-01-01`, { name: 'Confraternização Universal', type: 'NATIONAL_HOLIDAY' });
+  holidays.set(`${year}-04-21`, { name: 'Tiradentes', type: 'NATIONAL_HOLIDAY' });
+  holidays.set(`${year}-05-01`, { name: 'Dia do Trabalho', type: 'NATIONAL_HOLIDAY' });
+  holidays.set(`${year}-09-07`, { name: 'Independência do Brasil', type: 'NATIONAL_HOLIDAY' });
+  holidays.set(`${year}-10-12`, { name: 'Nossa Senhora Aparecida', type: 'NATIONAL_HOLIDAY' });
+  holidays.set(`${year}-11-02`, { name: 'Finados', type: 'NATIONAL_HOLIDAY' });
+  holidays.set(`${year}-11-15`, { name: 'Proclamação da República', type: 'NATIONAL_HOLIDAY' });
+
+  // Consciência Negra: National Holiday by Federal Law 14.759/2023 (and previously observed by B3)
+  holidays.set(`${year}-11-20`, { name: 'Dia da Consciência Negra', type: 'NATIONAL_HOLIDAY' });
+
+  holidays.set(`${year}-12-25`, { name: 'Natal', type: 'NATIONAL_HOLIDAY' });
+  holidays.set(`${year}-12-31`, {
+    name: 'Não há expediente (Balanço Anual)',
+    type: 'SPECIAL_CLOSURE',
+  });
+
+  // Movable holidays relative to Easter Sunday
+  const easter = computeEasterSunday(year);
+
+  // Carnaval: Segunda (-48) e Terça (-47)
+  const carnavalSeg = addDays(easter, -48);
+  const carnavalTer = addDays(easter, -47);
+  holidays.set(carnavalSeg.toString(), {
+    name: 'Carnaval (Segunda-feira)',
+    type: 'NATIONAL_HOLIDAY',
+  });
+  holidays.set(carnavalTer.toString(), {
+    name: 'Carnaval (Terça-feira)',
+    type: 'NATIONAL_HOLIDAY',
+  });
+
+  // Paixão de Cristo / Sexta-feira Santa (-2)
+  const sextaSanta = addDays(easter, -2);
+  holidays.set(sextaSanta.toString(), { name: 'Paixão de Cristo', type: 'NATIONAL_HOLIDAY' });
+
+  // Corpus Christi (+60)
+  const corpusChristi = addDays(easter, 60);
+  holidays.set(corpusChristi.toString(), { name: 'Corpus Christi', type: 'NATIONAL_HOLIDAY' });
+
+  return holidays;
+}
+
+/**
+ * Generator for authoritative Brazilian market calendars (B3_TRADING and BANKING).
+ */
+export class BrazilianOfficialCalendarProvider {
+  /**
+   * Generates calendar days for an entire civil calendar year.
+   */
+  generateYear(year: number, calendarType: CalendarType): CalendarDay[] {
+    const holidays = generateOfficialBrazilianHolidays(year);
+    const easter = computeEasterSunday(year);
+    const quartaCinzas = addDays(easter, -46);
+    const results: CalendarDay[] = [];
+
+    const isLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+    const totalDays = isLeap ? 366 : 365;
+
+    let current = LocalDate.fromParts(year, 1, 1);
+    for (let d = 0; d < totalDays; d++) {
+      const jsDate = new Date(Date.UTC(current.year, current.month - 1, current.day));
+      const dayOfWeek = jsDate.getUTCDay(); // 0 = Sunday, 6 = Saturday
+
+      const dateStr = current.toString();
+      const holiday = holidays.get(dateStr);
+
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        results.push(
+          Object.freeze({
+            calendarType,
+            date: current,
+            isOpen: false,
+            reason: dayOfWeek === 0 ? 'Domingo' : 'Sábado',
+            source: 'OFFICIAL_BRAZILIAN_CALENDAR',
+          }),
+        );
+      } else if (holiday) {
+        results.push(
+          Object.freeze({
+            calendarType,
+            date: current,
+            isOpen: false,
+            reason: holiday.name,
+            source: 'OFFICIAL_BRAZILIAN_CALENDAR',
+          }),
+        );
+      } else if (dateStr === quartaCinzas.toString()) {
+        // Ash Wednesday: Special session open starting 13h for B3, 12h for banking
+        results.push(
+          Object.freeze({
+            calendarType,
+            date: current,
+            isOpen: true,
+            reason: 'Quarta-feira de Cinzas (Início das negociações às 13h)',
+            source: 'OFFICIAL_BRAZILIAN_CALENDAR',
+          }),
+        );
+      } else {
+        results.push(
+          Object.freeze({
+            calendarType,
+            date: current,
+            isOpen: true,
+            reason: 'Dia útil regular',
+            source: 'OFFICIAL_BRAZILIAN_CALENDAR',
+          }),
+        );
+      }
+
+      current = addDays(current, 1);
+    }
+
+    return results;
+  }
+}
+
+// ============================================================================
+// Macroeconomic Series Contracts & Providers
+// ============================================================================
+
+export type MacroSeriesId = 'IPCA' | 'SELIC_TARGET' | 'SELIC_EFFECTIVE';
+
+export type MacroFrequency = 'MONTHLY' | 'EVENT_DRIVEN' | 'DAILY';
+
+export type MacroUnit = 'PERCENT' | 'PERCENT_PER_ANNUM' | 'INDEX_POINTS';
+
+export interface MacroObservation {
+  readonly id?: string;
+  readonly seriesId: MacroSeriesId;
+  readonly referenceDate: LocalDate;
+  readonly value: Quantity;
+  readonly unit: MacroUnit;
+  readonly frequency: MacroFrequency;
+  readonly source: string;
+  readonly publishedAt?: Date;
+  readonly firstFetchedAt?: Date;
+  readonly lastFetchedAt?: Date;
+  readonly fetchCount?: number;
+  readonly revisedAt?: Date;
+  readonly createdAt?: Date;
+  readonly updatedAt?: Date;
+}
+
+export interface MacroObservationRevision {
+  readonly id: string;
+  readonly macroObservationId: string;
+  readonly changedAt: Date;
+  readonly priorValue: Quantity;
+  readonly newValue: Quantity;
+  readonly reason?: string;
+  readonly createdAt: Date;
+}
+
+export interface MacroCoverage {
+  readonly seriesId: MacroSeriesId;
+  readonly count: number;
+  readonly minReferenceDate: string;
+  readonly maxReferenceDate: string;
+  readonly latestPublishedAt?: string;
+  readonly source: string;
+  readonly frequency: MacroFrequency;
+}
+
+export interface MacroContextSummary {
+  readonly ipcaMonthly?: {
+    readonly referenceMonth: string; // YYYY-MM
+    readonly value: string; // e.g. "0.44%"
+    readonly publishedAt?: string;
+    readonly source: string;
+  };
+  readonly selicTarget?: {
+    readonly rate: string; // e.g. "10.75% a.a."
+    readonly effectiveDate: string; // YYYY-MM-DD
+    readonly source: string;
+  };
+  readonly selicEffective?: {
+    readonly rate: string; // e.g. "10.65% a.a."
+    readonly effectiveDate: string; // YYYY-MM-DD
+    readonly source: string;
+  };
+}
+
+export interface IMacroDataProvider {
+  getObservation(seriesId: MacroSeriesId, date: LocalDate): Promise<MacroObservation>;
+  getObservations(
+    seriesId: MacroSeriesId,
+    from: LocalDate,
+    to: LocalDate,
+  ): Promise<MacroObservation[]>;
+}
+
+/**
+ * Authoritative BCB SGS Macro Data Provider.
+ * Fetches:
+ * - IPCA: SGS 433 (Monthly variation %)
+ * - SELIC_TARGET: SGS 432 (Copom Target rate % a.a.)
+ * - SELIC_EFFECTIVE: SGS 1178 (Annualized effective rate base 252 % a.a.)
+ */
+export class BcbMacroDataProvider implements IMacroDataProvider {
+  private readonly timeoutMs: number;
+  private readonly fetchFn: typeof fetch;
+
+  constructor(options: { timeoutMs?: number; fetchFn?: typeof fetch } = {}) {
+    this.timeoutMs = options.timeoutMs ?? 15000;
+    this.fetchFn = options.fetchFn ?? globalThis.fetch;
+  }
+
+  private mapSeriesToSgsId(seriesId: MacroSeriesId): {
+    sgsId: string;
+    unit: MacroUnit;
+    frequency: MacroFrequency;
+  } {
+    switch (seriesId) {
+      case 'IPCA':
+        return { sgsId: '433', unit: 'PERCENT', frequency: 'MONTHLY' };
+      case 'SELIC_TARGET':
+        return { sgsId: '432', unit: 'PERCENT_PER_ANNUM', frequency: 'EVENT_DRIVEN' };
+      case 'SELIC_EFFECTIVE':
+        return { sgsId: '1178', unit: 'PERCENT_PER_ANNUM', frequency: 'DAILY' };
+      default:
+        throw new Error(`Unsupported macro series ID: ${seriesId}`);
+    }
+  }
+
+  async getObservation(seriesId: MacroSeriesId, date: LocalDate): Promise<MacroObservation> {
+    const list = await this.getObservations(seriesId, date, date);
+    const found = list.find((obs) => obs.referenceDate.toString() === date.toString());
+    if (!found) {
+      throw new Error(`Macro observation not found for ${seriesId} on ${date.toString()}`);
+    }
+    return found;
+  }
+
+  async getObservations(
+    seriesId: MacroSeriesId,
+    from: LocalDate,
+    to: LocalDate,
+  ): Promise<MacroObservation[]> {
+    if (from.compare(to) > 0) throw new Error('Invalid range: from cannot be after to');
+
+    const meta = this.mapSeriesToSgsId(seriesId);
+
+    const formatDate = (d: LocalDate): string =>
+      `${String(d.day).padStart(2, '0')}/${String(d.month).padStart(2, '0')}/${d.year}`;
+
+    const url = `https://api.bcb.gov.br/dados/serie/bcdata.sgs.${meta.sgsId}/dados?formato=json&dataInicial=${formatDate(from)}&dataFinal=${formatDate(to)}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    let response: Response;
+    try {
+      response = await this.fetchFn(url, { signal: controller.signal });
+    } catch (err) {
+      clearTimeout(timer);
+      throw new Error(
+        `BCB SGS macro provider unavailable: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (!response.ok) {
+      throw new Error(`BCB SGS macro provider error: HTTP ${response.status}`);
+    }
+
+    let json: Array<{ data: string; valor: string }>;
+    try {
+      json = (await response.json()) as never;
+    } catch {
+      throw new Error('BCB SGS macro invalid JSON response');
+    }
+
+    const results: MacroObservation[] = [];
+    for (const row of json) {
+      if (!row.data || !row.valor) continue;
+      const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(row.data.trim());
+      if (!match) continue;
+      const day = Number(match[1]);
+      const month = Number(match[2]);
+      const year = Number(match[3]);
+
+      let refDate: LocalDate;
+      try {
+        refDate = LocalDate.fromParts(year, month, day);
+      } catch {
+        continue;
+      }
+
+      if (refDate.compare(from) < 0 || refDate.compare(to) > 0) continue;
+
+      const valStr = row.valor.trim().replace(',', '.');
+      if (!/^-?\d+(\.\d+)?$/.test(valStr)) continue;
+
+      try {
+        const valDecimal = Quantity.from(valStr);
+        results.push(
+          Object.freeze({
+            seriesId,
+            referenceDate: refDate,
+            value: valDecimal,
+            unit: meta.unit,
+            frequency: meta.frequency,
+            source: `BCB_SGS_${meta.sgsId}`,
+          }),
+        );
+      } catch {
+        // Skip unparseable decimal rows
+      }
+    }
+
+    return results;
+  }
+}

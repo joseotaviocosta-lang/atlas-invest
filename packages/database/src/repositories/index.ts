@@ -32,3 +32,5 @@ export * from './tax-reminder-preferences.repository';
 export * from './market-quote.repository';
 export * from './benchmark-observation.repository';
 export * from './fx-observation.repository';
+export * from './calendar.repository';
+export * from './macro.repository';

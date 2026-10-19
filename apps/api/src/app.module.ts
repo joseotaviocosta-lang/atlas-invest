@@ -14,6 +14,8 @@ import { FiscalModule } from './modules/fiscal/fiscal.module';
 import { AiModule } from './modules/ai/ai.module';
 import { BenchmarkModule } from './modules/benchmarks/benchmark.module';
 import { FxModule } from './modules/fx/fx.module';
+import { CalendarsModule } from './modules/calendars/calendars.module';
+import { MacroModule } from './modules/macro/macro.module';
 import {
   RequestIdMiddleware,
   UnifiedAnnualNoStoreMiddleware,
@@ -41,6 +43,8 @@ import {
     AiModule,
     BenchmarkModule,
     FxModule,
+    CalendarsModule,
+    MacroModule,
   ],
 
   providers: [
