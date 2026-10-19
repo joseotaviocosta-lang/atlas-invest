@@ -71,7 +71,8 @@ export default function MarketPage() {
     queryFn: async () => {
       return apiClient.get('/api/v1/macro/context');
     },
-    staleTime: 60 * 1000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   const updateMarketDataMutation = useMutation({

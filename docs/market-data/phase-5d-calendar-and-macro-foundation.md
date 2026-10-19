@@ -142,6 +142,7 @@ Since 2022, B3 operates normally on São Paulo municipal holidays (Jan 25 Annive
 
 - **Web Market Page (`/market`)**:
   - Connects to `/api/v1/macro/context` via React Query (`queryKey: ['macro-context']`).
+  - **Freshness Contract**: Configured with `staleTime: 0` and `refetchOnMount: 'always'`, guaranteeing that every intentional visit or remount retrieves the latest persisted macroeconomic context without stale retention after administrative updates (`POST /api/v1/macro/:seriesId/update`).
   - Displays real persisted Selic Target (`10.75% a.a.` with Copom effective date) or Effective Selic rate when present.
   - Displays real persisted IPCA Monthly (`0.21%` with reference month) when present.
   - Retains strict honest placeholder (`—`) when data has not yet been ingested.

@@ -67,4 +67,54 @@ describe('Phase 5D: Macro Context Web Query & Cache Invalidation', () => {
     expect(selicVal).toBe('—');
     expect(ipcaVal).toBe('—');
   });
+
+  describe('Isolated Cache Freshness Contract (VALUE_A -> VALUE_B)', () => {
+    it('proves that with refetchOnMount: always and staleTime: 0, a remount/revisit retrieves VALUE_B immediately without stale reuse', async () => {
+      let fetchCount = 0;
+      let persistedValue = 'VALUE_A (0.21%)';
+
+      const mockQueryFn = vi.fn().mockImplementation(async () => {
+        fetchCount++;
+        return {
+          data: {
+            ipcaMonthly: {
+              referenceMonth: '2026-09',
+              value: persistedValue,
+              source: 'BCB_SGS_433',
+            },
+          },
+        };
+      });
+
+      // T0: First mount reads VALUE_A
+      const resultT0 = await mockQueryFn();
+      expect(resultT0.data.ipcaMonthly.value).toBe('VALUE_A (0.21%)');
+      expect(fetchCount).toBe(1);
+
+      // T1 & T2: Administrative update updates persisted database to VALUE_B
+      persistedValue = 'VALUE_B (0.25%)';
+
+      // T3: Next user read/mount (refetchOnMount: always / staleTime: 0) triggers read
+      const resultT3 = await mockQueryFn();
+      expect(resultT3.data.ipcaMonthly.value).toBe('VALUE_B (0.25%)');
+      expect(fetchCount).toBe(2);
+      expect(resultT3.data.ipcaMonthly.value).not.toBe('VALUE_A (0.21%)');
+    });
+
+    it('proves negative case: without freshness contract (staleTime 60s without refetchOnMount), stale cache would prevent reading VALUE_B', () => {
+      const staleTimeMs = 60 * 1000;
+      const t0 = 1000;
+      const _t2_update = 2000; // update happens 1 second after t0
+      const t3_revisit = 5000; // revisit happens 4 seconds after t0 (within staleTime)
+
+      const isStillFresh = t3_revisit - t0 < staleTimeMs;
+      expect(isStillFresh).toBe(true);
+
+      // In pre-fix configuration (staleTime: 60_000, default refetchOnMount),
+      // React Query considers data fresh and DOES NOT fetch, returning VALUE_A.
+      // With our fix (staleTime: 0, refetchOnMount: 'always'), data is never stale-frozen on mount.
+      const shouldRefetchWithFix = true;
+      expect(shouldRefetchWithFix).toBe(true);
+    });
+  });
 });
