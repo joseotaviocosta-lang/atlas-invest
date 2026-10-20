@@ -13,10 +13,7 @@ import { getTestPrismaClient } from '../database/setup';
 import { PrismaJobRepository } from '../../apps/api/src/ingestion/job-repository';
 import { PrismaJobLock } from '../../apps/api/src/ingestion/job-lock';
 import { JobRunner } from '../../apps/api/src/ingestion/job-runner';
-import {
-  buildLogicalJobKey,
-  JobExecutionResult,
-} from '../../apps/api/src/ingestion/job-types';
+import { buildLogicalJobKey, JobExecutionResult } from '../../apps/api/src/ingestion/job-types';
 
 const prisma = getTestPrismaClient();
 const createdKeys: string[] = [];

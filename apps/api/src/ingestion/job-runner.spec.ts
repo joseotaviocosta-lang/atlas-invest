@@ -11,12 +11,7 @@ import {
   isPermanentError,
   isTransientError,
 } from './job-types';
-import {
-  CreateRunInput,
-  IJobRepository,
-  ListRunsInput,
-  ListRunsResult,
-} from './job-repository';
+import { CreateRunInput, IJobRepository, ListRunsInput, ListRunsResult } from './job-repository';
 import { IJobLock, JobLockHandle } from './job-lock';
 import { JobRunner } from './job-runner';
 import { JobExecutionResult, JobReceipt } from './job-types';

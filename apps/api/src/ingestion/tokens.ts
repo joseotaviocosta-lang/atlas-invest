@@ -1,3 +1,6 @@
-/** Phase 5E (R3-A) - Ingestion DI tokens. */
+/** Phase 5E - Ingestion DI tokens. */
 export const INGESTION_JOB_REPOSITORY = Symbol('INGESTION_JOB_REPOSITORY');
 export const INGESTION_JOB_LOCK = Symbol('INGESTION_JOB_LOCK');
+export const INGESTION_SCHEDULER = Symbol('INGESTION_SCHEDULER');
+export const INGESTION_PORTFOLIO_DIRECTORY = Symbol('INGESTION_PORTFOLIO_DIRECTORY');
+export const INGESTION_JOB_REGISTRY = Symbol('INGESTION_JOB_REGISTRY');

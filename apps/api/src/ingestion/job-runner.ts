@@ -119,7 +119,8 @@ export class JobRunner {
         };
 
         await this.repository.completeRun(run.jobRunId, completed);
-        lastReceipt = (await this.repository.findById(run.jobRunId)) ?? this.fallbackReceipt(ctx, completed);
+        lastReceipt =
+          (await this.repository.findById(run.jobRunId)) ?? this.fallbackReceipt(ctx, completed);
 
         shouldRetry =
           loop < maxAttempts && shouldRetryResult(completed) && completed.status === 'FAILED';
@@ -149,11 +150,7 @@ export class JobRunner {
     }
   }
 
-  private lockedReceipt(
-    input: RunJobInput,
-    logicalJobKey: string,
-    startedAt: string,
-  ): JobReceipt {
+  private lockedReceipt(input: RunJobInput, logicalJobKey: string, startedAt: string): JobReceipt {
     const finishedAt = new Date().toISOString();
     return {
       jobRunId: `skipped-locked:${logicalJobKey}`,

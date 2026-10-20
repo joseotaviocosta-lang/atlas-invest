@@ -9,6 +9,12 @@ export interface UpdateCalendarDataParams {
   year?: number;
   from?: string;
   to?: string;
+  /**
+   * Phase 5E: scheduled refreshes must never overwrite calendar rows that are
+   * already present (including authoritative exceptional overrides). When true,
+   * only missing dates are written.
+   */
+  preserveExisting?: boolean;
 }
 
 export interface UpdateCalendarDataReceipt {
@@ -112,6 +118,16 @@ export class UpdateCalendarDataUseCase {
         code: 'VALIDATION.MISSING_PARAMETERS',
         message: 'Must provide either year or both from and to date parameters.',
       });
+    }
+
+    if (params.preserveExisting) {
+      const from = LocalDate.from(fromStr);
+      const to = LocalDate.from(toStr);
+      const existing = await this.calendarRepository.findDays(calType, from, to);
+      const existingDates = new Set(existing.map((day) => day.date.toString()));
+      const missing = daysToSave.filter((day) => !existingDates.has(day.date.toString()));
+      daysToSave.length = 0;
+      daysToSave.push(...missing);
     }
 
     const { inserted, updated } = await this.calendarRepository.saveMany(daysToSave);

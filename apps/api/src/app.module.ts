@@ -16,6 +16,7 @@ import { BenchmarkModule } from './modules/benchmarks/benchmark.module';
 import { FxModule } from './modules/fx/fx.module';
 import { CalendarsModule } from './modules/calendars/calendars.module';
 import { MacroModule } from './modules/macro/macro.module';
+import { IngestionModule } from './ingestion/ingestion.module';
 import {
   RequestIdMiddleware,
   UnifiedAnnualNoStoreMiddleware,
@@ -45,6 +46,7 @@ import {
     FxModule,
     CalendarsModule,
     MacroModule,
+    IngestionModule,
   ],
 
   providers: [
