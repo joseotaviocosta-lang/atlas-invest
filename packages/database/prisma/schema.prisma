@@ -1088,8 +1088,7 @@ model MacroObservationRevisionRecord {
   @@map("macro_observation_revisions")
 }
 
-/// Phase 5E (R3-A) - Ingestion job run history for scheduled ingestion orchestration.
-/// logical_job_key is the attempt-independent job identity
+/// Phase 5E (R3-A) - Ingestion job run history for scheduled ingestion orchestration./// logical_job_key is the attempt-independent job identity
 /// (e.g. MARKET_QUOTES_DAILY:2026-10-19). attempt is history metadata only.
 /// Active-run exclusivity is enforced by a PostgreSQL advisory lock held for the
 /// whole execution (multi-instance safe, no in-memory mutex, no SELECT-then-INSERT).
@@ -1123,4 +1122,30 @@ model IngestionJobRunRecord {
   @@index([status], map: "ingestion_job_runs_status_idx")
   @@index([startedAt], map: "ingestion_job_runs_started_at_idx")
   @@map("ingestion_job_runs")
+}
+
+/// Phase 5G - Operational alert event (dedupe + lifecycle, never financial).
+/// At most one ACTIVE row per dedupe_key (code-enforced via advisory lock).
+/// Resolution flips status to RESOLVED (history preserved, never deleted).
+model OperationalAlertEventRecord {
+  id              String    @id @default(uuid()) @db.Uuid
+  dedupeKey       String    @map("dedupe_key") @db.VarChar(255)
+  alertType       String    @map("alert_type") @db.VarChar(64)
+  severity        String    @db.VarChar(16)
+  source          String    @db.VarChar(64)
+  status          String    @db.VarChar(16)
+  reasonCode      String    @map("reason_code") @db.VarChar(64)
+  firstDetectedAt DateTime  @map("first_detected_at") @db.Timestamptz(6)
+  lastDetectedAt  DateTime  @map("last_detected_at") @db.Timestamptz(6)
+  resolvedAt      DateTime? @map("resolved_at") @db.Timestamptz(6)
+  occurrenceCount Int       @default(1) @map("occurrence_count")
+  metadata        Json?     @map("metadata") @db.JsonB
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([dedupeKey, status], map: "operational_alert_events_dedupe_status_idx")
+  @@index([status], map: "operational_alert_events_status_idx")
+  @@index([alertType], map: "operational_alert_events_alert_type_idx")
+  @@index([lastDetectedAt], map: "operational_alert_events_detected_at_idx")
+  @@map("operational_alert_events")
 }
