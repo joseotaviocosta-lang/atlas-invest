@@ -245,6 +245,80 @@ describe('Phase 5E R3-D - persisted data safety and idempotent reruns', () => {
     return { assetId: asset.id, userId: fixtures.userId, portfolioId: fixtures.portfolioId };
   }
 
+  it('persists 8 of 10 items and records 2 failures as PARTIAL', async () => {
+    const assets = await Promise.all(
+      Array.from({ length: 10 }, async (_, index) => {
+        return prisma.asset.create({
+          data: {
+            id: randomUUID(),
+            ticker: `TEST${index}`,
+            name: `Test Asset ${index}`,
+            type: 'STOCK',
+            currency: 'BRL',
+            exchange: 'B3',
+          },
+        });
+      }),
+    );
+
+    const quoteRepository = new PrismaMarketQuoteRepository(prisma);
+    const core = {
+      repository: new PrismaJobRepository(prisma),
+      lock: new PrismaJobLock(prisma),
+    };
+    const runner = new JobRunner(core.repository, core.lock);
+
+    const calendar = { isTradingDay: async () => true } as unknown as CalendarResolutionService;
+    const portfolios = {
+      listActive: async () =>
+        Array.from({ length: 10 }, (_, index) => ({ id: `p${index}`, userId: `u${index}` })),
+    } as unknown as IIngestionPortfolioDirectory;
+
+    let index = 0;
+    const update = {
+      execute: async () => {
+        const asset = assets[index];
+        index += 1;
+        if (index > 8) throw new Error('provider unavailable');
+        const result = await quoteRepository.upsertQuote({
+          assetId: asset!.id,
+          tradingDate: LocalDate.from('2026-10-19'),
+          currency: 'BRL',
+          close: '10.00',
+          provider: 'TEST',
+          providerSymbol: asset!.ticker,
+        });
+        return {
+          ...marketReceipt(),
+          portfolioId: `p${index - 1}`,
+          requestedAssets: 1,
+          quotesFetched: 1,
+          quotesInserted: result.outcome === 'INSERTED' ? 1 : 0,
+        };
+      },
+    } as unknown as UpdatePortfolioMarketDataUseCase;
+
+    const job = new MarketQuotesDailyJob(calendar, portfolios, update);
+    const scheduledFor = '2026-10-19';
+    const logicalJobKey = buildLogicalJobKey('MARKET_QUOTES_DAILY', scheduledFor);
+
+    const receipt = await runner.run({
+      jobType: 'MARKET_QUOTES_DAILY',
+      triggerType: 'SCHEDULED',
+      scheduledFor,
+      execute: (ctx) => job.execute(ctx),
+      maxAttempts: 1,
+    });
+
+    expect(receipt.status).toBe('PARTIAL');
+    expect(receipt.itemsRequested).toBe(10);
+    expect(receipt.itemsInserted).toBe(8);
+    expect(receipt.itemsFailed).toBe(2);
+    expect(await prisma.marketQuoteRecord.count()).toBe(8);
+
+    await prisma.$executeRaw`DELETE FROM ingestion_job_runs WHERE logical_job_key = ${logicalJobKey}`;
+  });
+
   it('keeps existing good data unchanged when the provider fails', async () => {
     const { assetId, userId, portfolioId } = await createQuoteFixture();
     const quoteRepository = new PrismaMarketQuoteRepository(prisma);
