@@ -13,13 +13,7 @@ export const OPERATIONS_BASE = '/api/v1/admin/operations';
 export const INGESTION_JOBS_BASE = '/api/v1/admin/ingestion/jobs';
 export const BACKFILL_BASE = '/api/v1/admin/ingestion/backfill';
 
-export type OperationalState =
-  | 'HEALTHY'
-  | 'DEGRADED'
-  | 'STALE'
-  | 'FAILED'
-  | 'UNKNOWN'
-  | 'DISABLED';
+export type OperationalState = 'HEALTHY' | 'DEGRADED' | 'STALE' | 'FAILED' | 'UNKNOWN' | 'DISABLED';
 
 export interface OperationalFreshnessDto {
   source: string;
@@ -181,7 +175,8 @@ export function reasonCodeCopy(code: string): string {
 export const operationsQueryKeys = {
   status: ['operations', 'data-status'] as const,
   health: ['operations', 'jobs-health'] as const,
-  alerts: (status?: string, limit = 50) => ['operations', 'alerts', status ?? 'all', limit] as const,
+  alerts: (status?: string, limit = 50) =>
+    ['operations', 'alerts', status ?? 'all', limit] as const,
   metrics: ['operations', 'metrics'] as const,
   readiness: ['operations', 'scheduler-readiness'] as const,
   jobs: (params: Record<string, string | number | undefined>) =>

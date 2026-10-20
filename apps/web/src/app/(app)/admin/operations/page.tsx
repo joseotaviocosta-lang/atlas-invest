@@ -127,10 +127,7 @@ function OverviewTab() {
           <OperationalStateBadge state={data.overall} /> Agendador:{' '}
           {data.scheduler.enabled ? 'habilitado' : 'desabilitado'}
           {readinessQuery.data ? (
-            <>
-              {' '}
-              · Prontidão: {readinessQuery.data.ready ? 'READY' : 'NOT_READY'}
-            </>
+            <> · Prontidão: {readinessQuery.data.ready ? 'READY' : 'NOT_READY'}</>
           ) : null}
         </p>
         <p>
@@ -300,7 +297,11 @@ function AlertsTab() {
           </div>
         )}
       </Card>
-      <Modal isOpen={selectedId !== null} onClose={() => setSelectedId(null)} title="Detalhe do alerta">
+      <Modal
+        isOpen={selectedId !== null}
+        onClose={() => setSelectedId(null)}
+        title="Detalhe do alerta"
+      >
         {detailQuery.isLoading && <Skeleton />}
         {detailQuery.isError && (
           <ErrorState title="Falha ao carregar alerta" message="Tente novamente." />
@@ -389,9 +390,9 @@ function JobsTab() {
           <h2>Saúde das execuções</h2>
           <p>
             Falhas recentes: {healthQuery.data.recentFailures.length} · Parciais:{' '}
-            {healthQuery.data.partialRuns.length} · Presas: {healthQuery.data.staleRunning.length}{' '}
-            · Retentativas esgotadas: {healthQuery.data.retryExhausted.length} · Agendadas
-            perdidas: {healthQuery.data.missedSchedules.length}
+            {healthQuery.data.partialRuns.length} · Presas: {healthQuery.data.staleRunning.length} ·
+            Retentativas esgotadas: {healthQuery.data.retryExhausted.length} · Agendadas perdidas:{' '}
+            {healthQuery.data.missedSchedules.length}
           </p>
         </Card>
       )}
@@ -485,8 +486,8 @@ function JobsTab() {
       <Card>
         <h2>Execução manual</h2>
         <p>
-          Execuções manuais podem chamar provedores externos. Confira o tipo e o período antes
-          de confirmar. Nenhum campo de provedor, URL ou código SGS é aceito.
+          Execuções manuais podem chamar provedores externos. Confira o tipo e o período antes de
+          confirmar. Nenhum campo de provedor, URL ou código SGS é aceito.
         </p>
         <Select
           label="Tipo de job (allowlist fixa)"
@@ -501,7 +502,10 @@ function JobsTab() {
           placeholder="2026-10-20"
           error={scheduledForError ?? undefined}
         />
-        <Button disabled={manualMutation.isPending || Boolean(scheduledForError)} onClick={() => setConfirmOpen(true)}>
+        <Button
+          disabled={manualMutation.isPending || Boolean(scheduledForError)}
+          onClick={() => setConfirmOpen(true)}
+        >
           {manualMutation.isPending ? 'Executando…' : 'Revisar e confirmar'}
         </Button>
         {manualMutation.isError && (
@@ -531,7 +535,11 @@ function JobsTab() {
           {manualMutation.isPending ? 'Executando…' : 'Confirmar execução'}
         </Button>
       </Modal>
-      <Modal isOpen={selectedId !== null} onClose={() => setSelectedId(null)} title="Detalhe da execução">
+      <Modal
+        isOpen={selectedId !== null}
+        onClose={() => setSelectedId(null)}
+        title="Detalhe da execução"
+      >
         {detailQuery.isLoading && <Skeleton />}
         {detailQuery.data && (
           <dl>
@@ -541,7 +549,10 @@ function JobsTab() {
             <dd>{detailQuery.data.logicalJobKey}</dd>
             <dt>Período (targetPeriod)</dt>
             <dd>
-              {formatTargetPeriod(detailQuery.data.targetPeriod, detailQuery.data.targetPeriodGranularity)}
+              {formatTargetPeriod(
+                detailQuery.data.targetPeriod,
+                detailQuery.data.targetPeriodGranularity,
+              )}
             </dd>
             <dt>scheduledFor</dt>
             <dd>{detailQuery.data.scheduledFor}</dd>
@@ -598,7 +609,9 @@ function BackfillsTab() {
     setRunning(true);
     setRunError(null);
     try {
-      setReceipt((await executeBackfill(domain, from, to, confirmLarge)) as Record<string, unknown>);
+      setReceipt(
+        (await executeBackfill(domain, from, to, confirmLarge)) as Record<string, unknown>,
+      );
       setConfirmOpen(false);
     } catch (error) {
       setRunError(error instanceof Error ? error.message : 'Falha na execução');
@@ -620,8 +633,16 @@ function BackfillsTab() {
           onChange={(event) => setDomain(event.target.value)}
           options={BACKFILL_DOMAINS.map((value) => ({ value, label: value }))}
         />
-        <Input label="De (YYYY-MM-DD)" value={from} onChange={(event) => setFrom(event.target.value)} />
-        <Input label="Até (YYYY-MM-DD)" value={to} onChange={(event) => setTo(event.target.value)} />
+        <Input
+          label="De (YYYY-MM-DD)"
+          value={from}
+          onChange={(event) => setFrom(event.target.value)}
+        />
+        <Input
+          label="Até (YYYY-MM-DD)"
+          value={to}
+          onChange={(event) => setTo(event.target.value)}
+        />
         {rangeError && <p>{rangeError}</p>}
         <Button disabled={planning || Boolean(rangeError)} onClick={() => void handlePlan()}>
           {planning ? 'Planejando…' : 'Gerar plano (dry-run)'}
@@ -713,7 +734,11 @@ function ReadinessTab() {
         <ul>
           {data.checks.map((check) => (
             <li key={check.name}>
-              {check.pass ? <Badge variant="positive">PASS</Badge> : <Badge variant="danger">FAIL</Badge>}{' '}
+              {check.pass ? (
+                <Badge variant="positive">PASS</Badge>
+              ) : (
+                <Badge variant="danger">FAIL</Badge>
+              )}{' '}
               <strong>{check.name}</strong> ({check.reasonCode})
               {check.detail ? ` — ${check.detail}` : null}
             </li>
