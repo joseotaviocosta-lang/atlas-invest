@@ -156,6 +156,14 @@ export class RectifyPortfolioTransactionUseCase {
     const originalQtyStr = originalTx.quantity ? originalTx.quantity.value : '0';
     const originalPriceStr = originalTx.unitPrice ? originalTx.unitPrice.amount : '0';
 
+    // Canonical replay orders by (tradeDate, createdAt, id). The compensating
+    // leg must always sort before the replacement leg, otherwise a same-day
+    // BUY/SELL pair can be replayed in the wrong order (e.g. replacement BUY
+    // before the reversal SELL) and corrupt the derived average cost. Timestamps
+    // are technical audit metadata; financial semantics are unchanged.
+    const rectificationCreatedAt = new Date();
+    const replacementCreatedAt = new Date(rectificationCreatedAt.getTime() + 1);
+
     const commonCompensatingProps = {
       portfolioId: originalTx.portfolioId,
       accountId: originalTx.accountId,
@@ -171,6 +179,7 @@ export class RectifyPortfolioTransactionUseCase {
       provider,
       externalId: reversalExternalId,
       notes: compensatingNotes,
+      createdAt: rectificationCreatedAt,
     };
 
     const compensatingTx =
@@ -245,6 +254,7 @@ export class RectifyPortfolioTransactionUseCase {
         provider,
         externalId: replacementExternalId,
         notes: replacementNotes,
+        createdAt: replacementCreatedAt,
       };
 
       const repType = rep.type || originalTx.type;
