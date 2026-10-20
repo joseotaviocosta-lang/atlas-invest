@@ -63,11 +63,16 @@ history (never deleted). A later recurrence inserts a new row.
 
 `GET /api/v1/admin/operations/scheduler/readiness` verifies: flag explicitly
 true, NODE_ENV not test, DATABASE_URL present, operator allowlist non-empty,
-timezone America/Sao_Paulo, exactly 10 unique definitions, scheduler not
-already running, database reachable, required tables present, current-year
-calendar coverage, provider env presence (names only). NOT_READY never starts
-jobs; the lifecycle gate enforces this. Production enablement stays explicit
-opt-in per environment; test is forced off.
+timezone America/Sao_Paulo, exactly 10 unique definitions, database
+reachable, required tables present, current-year calendar coverage, provider
+env presence (names only). The `scheduler-not-already-running` entry is an
+informational duplicate-start guard (pass + `ALREADY_RUNNING` reason when the
+scheduler is running, pass + `UP_TO_DATE` when stopped) — a running
+scheduler therefore reports the healthy steady state `READY` + runtime
+`RUNNING`, never `NOT_READY` merely for running. Second start attempts are
+rejected as no-ops (idempotent adapter, no duplicate registration). NOT_READY
+never starts jobs; the lifecycle gate enforces this. Production enablement
+stays explicit opt-in per environment; test is forced off.
 
 ## 6. Endpoints (all operator-only, persisted-only, zero provider calls)
 

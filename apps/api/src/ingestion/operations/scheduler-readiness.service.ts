@@ -5,6 +5,14 @@
  * INGESTION_SCHEDULER_ENABLED=true. Never auto-enables anything; reports
  * NOT_READY with reason codes instead. NODE_ENV=test always resolves
  * NOT_READY (forced off) without touching providers.
+ *
+ * Runtime semantics (Phase 5H-H2): readiness answers the *configuration*
+ * question ("can this environment safely support the scheduler?"). Whether
+ * the scheduler is currently running is reported separately via
+ * `runtimeState` and never flips a valid configuration to NOT_READY.
+ * Duplicate-start protection stays intact: the adapter start() is
+ * idempotent, and the `scheduler-not-already-running` check remains as an
+ * informational diagnostic (pass + ALREADY_RUNNING reason when running).
  */
 
 import { Inject, Injectable } from '@nestjs/common';
@@ -28,8 +36,11 @@ export interface ReadinessCheck {
   readonly detail?: string;
 }
 
+export type SchedulerRuntimeState = 'STOPPED' | 'RUNNING';
+
 export interface SchedulerReadiness {
   readonly ready: boolean;
+  readonly runtimeState: SchedulerRuntimeState;
   readonly checks: ReadinessCheck[];
 }
 
@@ -51,6 +62,9 @@ export class SchedulerReadinessService {
     const checks: ReadinessCheck[] = [];
     void nowIso;
 
+    const running = this.scheduler.isRunning();
+    const runtimeState: SchedulerRuntimeState = running ? 'RUNNING' : 'STOPPED';
+
     const flag = process.env.INGESTION_SCHEDULER_ENABLED === 'true';
     checks.push({
       name: 'scheduler-flag-explicit',
@@ -66,7 +80,7 @@ export class SchedulerReadinessService {
         reasonCode: 'SCHEDULER_DISABLED',
         detail: 'NODE_ENV=test never auto-starts',
       });
-      return { ready: false, checks };
+      return { ready: false, runtimeState, checks };
     }
 
     checks.push({
@@ -105,9 +119,11 @@ export class SchedulerReadinessService {
 
     checks.push({
       name: 'scheduler-not-already-running',
-      pass: !this.scheduler.isRunning(),
-      reasonCode: !this.scheduler.isRunning() ? 'UP_TO_DATE' : 'UNKNOWN',
-      detail: this.scheduler.isRunning() ? 'already running' : 'stopped',
+      pass: true,
+      reasonCode: running ? 'ALREADY_RUNNING' : 'UP_TO_DATE',
+      detail: running
+        ? 'already running; duplicate start attempts are rejected (no-op)'
+        : 'stopped',
     });
 
     const today = LocalDate.from(nowIso.slice(0, 10));
@@ -168,6 +184,6 @@ export class SchedulerReadinessService {
           : `optional missing: ${missing.join(',')}`,
     });
 
-    return { ready: checks.every((c) => c.pass), checks };
+    return { ready: checks.every((c) => c.pass), runtimeState, checks };
   }
 }

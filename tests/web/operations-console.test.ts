@@ -29,6 +29,7 @@ describe('5H operator console contracts', () => {
     expect(reasonCodeCopy('MISSED_SCHEDULE')).toBe('Execução programada não encontrada');
     expect(reasonCodeCopy('SCHEDULER_DISABLED')).toBe('Agendador desabilitado por configuração');
     expect(reasonCodeCopy('NOT_PUBLISHED_YET')).toContain('publicado');
+    expect(reasonCodeCopy('ALREADY_RUNNING')).toBe('Em execução (protegido contra início duplo)');
     // Unknown codes fall back to the raw code (never blank).
     expect(reasonCodeCopy('SOME_FUTURE_CODE')).toBe('SOME_FUTURE_CODE');
   });

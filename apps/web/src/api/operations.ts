@@ -91,6 +91,7 @@ export interface ReadinessCheckDto {
 
 export interface SchedulerReadinessDto {
   ready: boolean;
+  runtimeState: 'STOPPED' | 'RUNNING';
   checks: ReadinessCheckDto[];
 }
 
@@ -160,6 +161,7 @@ export const REASON_CODE_COPY: Record<string, string> = {
   LATEST_DATA_MISSING: 'Dados esperados ainda não foram persistidos',
   CALENDAR_COVERAGE_MISSING: 'Cobertura de calendário ausente',
   NOT_PUBLISHED_YET: 'Ainda não publicado (aguardando calendário oficial)',
+  ALREADY_RUNNING: 'Em execução (protegido contra início duplo)',
   SCHEDULER_DISABLED: 'Agendador desabilitado por configuração',
   MISSED_SCHEDULE: 'Execução programada não encontrada',
   PROVIDER_FAILURE: 'Falha no provedor',

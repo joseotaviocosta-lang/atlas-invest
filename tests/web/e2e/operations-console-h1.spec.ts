@@ -1,18 +1,22 @@
 /**
- * Phase 5H-H1 - Readiness READY + real backfill execution (browser, real servers).
- * Web :3004 -> API :3002 (staging-like, scheduler flag ON, scheduler started at boot).
+ * Phase 5H-H1/H2 - Scheduler readiness runtime semantics + real backfill execution.
+ * Browser tests run against a staging-like stack (scheduler flag ON):
+ *   H1_API_URL (default http://localhost:3002), H1_WEB_URL (default http://localhost:3004).
  * No stubs: every assertion observes live backend responses. Single shared
  * login per run keeps clear of the login rate limit (5/min).
  */
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
+
+const STACK_API = process.env.H1_API_URL ?? 'http://localhost:3002';
+const STACK_WEB = process.env.H1_WEB_URL ?? 'http://localhost:3004';
 
 const OP_EMAIL = 'hv-operator@atlas.test';
 const OP_PASS = 'Hv-Operator-12345';
 
 let sharedCtx: BrowserContext;
 
-async function uiLogin(page: Page) {
-  await page.goto('http://localhost:3004/login');
+async function uiLogin(page: Page, base: string = STACK_WEB) {
+  await page.goto(`${base}/login`);
   await page.getByLabel('E-mail').fill(OP_EMAIL);
   await page.getByLabel('Senha').fill(OP_PASS);
   await page.getByRole('button', { name: /entrar/i }).click();
@@ -22,9 +26,13 @@ async function uiLogin(page: Page) {
 test.beforeAll(async ({ browser }: { browser: Browser }) => {
   // Environment gate: skip cleanly when the staging-like stack is absent.
   try {
-    const res = await fetch('http://localhost:3002/health');
+    const res = await fetch(`${STACK_API}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: OP_EMAIL, password: OP_PASS }),
+    });
     if (!res.ok) {
-      test.skip(true, 'H1 staging-like stack unavailable (API health check failed)');
+      test.skip(true, 'H1 staging-like stack unavailable (login probe failed)');
       return;
     }
   } catch {
@@ -41,19 +49,22 @@ test.afterAll(async () => {
   await sharedCtx?.close().catch(() => undefined);
 });
 
-test('H24-B readiness panel renders live check matrix (all config checks green)', async () => {
+test('H24-B readiness panel renders READY + RUNNING with informational duplicate-start guard', async () => {
   const page = await sharedCtx.newPage();
   const seen: string[] = [];
   page.on('request', (req) => {
     if (/\/api\/v1\/admin\/operations\/scheduler\/readiness/.test(req.url())) seen.push(req.url());
   });
-  await page.goto('http://localhost:3004/admin/operations');
+  await page.goto(`${STACK_WEB}/admin/operations`);
   await expect(page.getByRole('heading', { name: /console de opera/i })).toBeVisible({
     timeout: 25000,
   });
   await page.getByRole('tab', { name: 'Prontidão' }).click();
   await expect(page.getByText(/prontidão do agendador/i)).toBeVisible({ timeout: 25000 });
-  // Every readiness check from the frozen contract is rendered.
+  // Steady state of a legitimately running scheduler: READY + RUNNING.
+  await expect(page.getByText('READY', { exact: true }).first()).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('RUNNING', { exact: true }).first()).toBeVisible();
+  // Every readiness check from the frozen contract is rendered and green.
   for (const check of [
     'scheduler-flag',
     'database-url',
@@ -68,14 +79,13 @@ test('H24-B readiness panel renders live check matrix (all config checks green)'
   ]) {
     await expect(page.getByText(new RegExp(check, 'i')).first()).toBeVisible({ timeout: 15000 });
   }
+  // Duplicate-start guard is informational here, not a readiness failure.
   await expect(page.getByText('timezone-america-sao-paulo').first()).toBeVisible();
   await expect(page.getByText(/10 definitions/i).first()).toBeVisible();
-  // 10/11 checks green; duplicate-start guard reports the running scheduler
-  // (boot verdict was READY, which is why the scheduler started).
   await expect(page.getByText(/already running/i).first()).toBeVisible();
   // Panel performed at least one real persisted-only readiness fetch.
   expect(seen.length).toBeGreaterThanOrEqual(1);
-  for (const url of seen) expect(url).toContain('localhost:3002');
+  for (const url of seen) expect(url).toContain(new URL(STACK_API).host);
   await page.close();
 });
 
@@ -87,7 +97,7 @@ test('H32 real CALENDAR_B3 2034 backfill plan + execute + receipt via browser', 
       calls.push({ method: req.method(), url: req.url() });
     }
   });
-  await page.goto('http://localhost:3004/admin/operations');
+  await page.goto(`${STACK_WEB}/admin/operations`);
   await expect(page.getByRole('heading', { name: /console de opera/i })).toBeVisible({
     timeout: 25000,
   });
