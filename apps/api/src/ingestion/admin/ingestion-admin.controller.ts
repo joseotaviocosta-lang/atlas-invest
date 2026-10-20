@@ -122,6 +122,10 @@ export class IngestionAdminController {
     const limit = query.limit ?? 50;
     const result = await this.jobs.listRuns({
       jobType: query.jobType,
+      triggerType: query.triggerType,
+      status: query.status,
+      from: query.from,
+      to: query.to,
       limit,
       cursor: query.cursor,
     });

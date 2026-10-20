@@ -64,6 +64,12 @@ export interface CreateRunInput {
 
 export interface ListRunsInput {
   jobType?: IngestionJobType;
+  triggerType?: TriggerType;
+  status?: JobStatus;
+  /** Inclusive civil from (YYYY-MM-DD) on scheduled_for. */
+  from?: string;
+  /** Inclusive civil to (YYYY-MM-DD) on scheduled_for. */
+  to?: string;
   limit?: number;
   cursor?: string;
 }
@@ -243,6 +249,10 @@ export class PrismaJobRepository implements IJobRepository {
   async listRuns(input: ListRunsInput): Promise<ListRunsResult> {
     const limit = Math.min(200, Math.max(1, input.limit ?? 50));
     const jobType = input.jobType ?? null;
+    const triggerType = input.triggerType ?? null;
+    const status = input.status ?? null;
+    const from = input.from ?? null;
+    const to = input.to ?? null;
 
     let rows: JobRunRow[];
     if (input.cursor) {
@@ -260,6 +270,10 @@ export class PrismaJobRepository implements IJobRepository {
                error_message AS "errorMessage", metadata, created_at AS "createdAt"
           FROM ingestion_job_runs
          WHERE (${jobType}::text IS NULL OR job_type = ${jobType}::text)
+           AND (${triggerType}::text IS NULL OR trigger_type = ${triggerType}::text)
+           AND (${status}::text IS NULL OR status = ${status}::text)
+           AND (${from}::date IS NULL OR scheduled_for >= ${from}::date)
+           AND (${to}::date IS NULL OR scheduled_for <= ${to}::date)
            AND (created_at, id) < (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)
          ORDER BY created_at DESC, id DESC
          LIMIT ${limit + 1}`;
@@ -277,6 +291,10 @@ export class PrismaJobRepository implements IJobRepository {
                error_message AS "errorMessage", metadata, created_at AS "createdAt"
           FROM ingestion_job_runs
          WHERE (${jobType}::text IS NULL OR job_type = ${jobType}::text)
+           AND (${triggerType}::text IS NULL OR trigger_type = ${triggerType}::text)
+           AND (${status}::text IS NULL OR status = ${status}::text)
+           AND (${from}::date IS NULL OR scheduled_for >= ${from}::date)
+           AND (${to}::date IS NULL OR scheduled_for <= ${to}::date)
          ORDER BY created_at DESC, id DESC
          LIMIT ${limit + 1}`;
     }
