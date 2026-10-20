@@ -174,9 +174,9 @@ Only scheduler ticks and explicit operator `POST .../run` call ingestion use cas
 ## 10. Migration notes
 
 - Canonical migration: `packages/database/prisma/migrations/20261019120000_add_ingestion_job_runs`.
-- Applied and verified on `atlas_test` (29/29).
-- Owner DB `atlas_dev` intentionally remains at 28 migrations and has no `ingestion_job_runs` table. Existing financial data and the five V2 fingerprints are unchanged.
-- Owner deployment of migration 29 is part of human validation, not automated tests.
+- Applied and verified on `atlas_test` (29/29) and on the owner DB `atlas_dev` (29 migrations, `ingestion_job_runs` present with 0 rows).
+- Owner financial data and the five V2 fingerprints are unchanged.
+- Applied checksum matches the tracked file SHA-256 exactly in both databases.
 - No migration 30 exists; no `prisma db push` was used.
 
 ## 11. Validation coverage
@@ -190,7 +190,6 @@ Only scheduler ticks and explicit operator `POST .../run` call ingestion use cas
 ## 12. Deferred / out of scope
 
 - Production distributed scheduler, cloud queues, alerting.
-- Owner DB migration application (human validation step).
 - New provider integrations or changes to Phase 5D semantics.
 - Phase 5F.
 
@@ -198,8 +197,8 @@ Only scheduler ticks and explicit operator `POST .../run` call ingestion use cas
 
 Do **not** enable the scheduler against the owner database during validation.
 
-1. Use `atlas_test` (port 5433) or a dedicated scratch database, never `atlas_dev`.
-2. Apply the canonical schema with `prisma migrate deploy` (migration 29 included).
+1. Use `atlas_test` (port 5433) or a dedicated scratch database, never `atlas_dev` for ingestion validation writes.
+2. The canonical schema (including migration 29) is already applied; confirm with `prisma migrate status` rather than re-applying blindly.
 3. Keep `INGESTION_SCHEDULER_ENABLED=false` for the first checks.
 4. Set `INGESTION_OPERATOR_USER_IDS` to a disposable test user only.
 5. Trigger one closed-day job (for example `FX_USD_BRL_DAILY` with a Sunday `scheduledFor`) through the admin API. Expected: `200`, `SKIPPED_BANKING_CLOSED`, zero provider calls.

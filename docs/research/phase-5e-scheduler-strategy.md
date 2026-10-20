@@ -140,8 +140,9 @@ INGESTION_OPERATOR_USER_IDS=<uuid>[,<uuid>...]
 - At the Phase 5D baseline (`5274022`) and at `b05e806`, **no** tracked migration for `ingestion_job_runs` existed.
 - The owner database contained **28** applied migrations and no `ingestion_job_runs` table.
 - The test database had an out-of-band 29th entry with a divergent checksum. The original SQL bytes were unrecoverable, so the untracked draft was not accepted as an applied-migration edit.
-- The canonical migration 29 is now tracked in Git, was applied to a freshly rebuilt `atlas_test` via `prisma migrate reset` + `migrate deploy`, and is verified as migration 29 of 29.
-- The owner database remains untouched (28 migrations, no table, financial data and fingerprints unchanged). Owner deployment of migration 29 is deliberately deferred to human validation.
+- The canonical migration 29 is now tracked in Git and was applied to a freshly rebuilt `atlas_test` via `prisma migrate reset` + `migrate deploy`.
+- The same canonical migration was then applied to the owner database with `prisma migrate deploy` (additive table only). Owner state: **29 migrations**, `ingestion_job_runs` present with **0 rows**; all financial counts and the five V2 fingerprints remain unchanged.
+- The applied checksum in both databases matches the tracked `migration.sql` SHA-256 exactly (`9955f016…0a0099`).
 
 ## 12. Production scheduler deferred
 
