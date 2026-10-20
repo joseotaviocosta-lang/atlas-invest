@@ -13,12 +13,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { getPrismaClient } from '@atlas/database';
 import { IJobLock, JobLockHandle } from '../job-lock';
 import { INGESTION_JOB_LOCK } from '../tokens';
-import {
-  AlertSeverity,
-  AlertStatus,
-  AlertType,
-  buildAlertDedupeKey,
-} from './operational-state';
+import { AlertSeverity, AlertStatus, AlertType, buildAlertDedupeKey } from './operational-state';
 
 type PrismaLikeClient = ReturnType<typeof getPrismaClient>;
 
@@ -106,7 +101,13 @@ export class OperationalAlertRepository {
     return rows[0] ?? null;
   }
 
-  async bumpActive(id: string, severity: string, reasonCode: string, metadata: string | null, nowIso: string): Promise<void> {
+  async bumpActive(
+    id: string,
+    severity: string,
+    reasonCode: string,
+    metadata: string | null,
+    nowIso: string,
+  ): Promise<void> {
     await this.prisma.$executeRaw`
       UPDATE operational_alert_events
          SET last_detected_at = ${nowIso}::timestamptz,
@@ -192,7 +193,13 @@ export class OperationalAlertDetector {
       const existing = await this.alerts.findActiveByDedupeKey(dedupeKey);
       const metadata = condition.metadata ? JSON.stringify(condition.metadata) : null;
       if (existing) {
-        await this.alerts.bumpActive(existing.id, condition.severity, condition.reasonCode, metadata, nowIso);
+        await this.alerts.bumpActive(
+          existing.id,
+          condition.severity,
+          condition.reasonCode,
+          metadata,
+          nowIso,
+        );
         return;
       }
       await this.alerts.insertActive({

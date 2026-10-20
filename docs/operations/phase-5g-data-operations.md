@@ -24,16 +24,16 @@ operator allowlist, scheduler default-off, coverage planner semantics.
 
 ## 2. Freshness policy
 
-| Source | Calendar | Expected through | Stale rule |
-| --- | --- | --- | --- |
-| MARKET_QUOTES | B3_TRADING | latest open day before 20:00 SP cutoff | lag 0 healthy, 1–2 degraded, 3–5 stale, >5 failed |
-| IBOV | B3_TRADING | same as market | same ladder |
-| CDI | BANKING | latest open banking day before 20:00 SP cutoff | same ladder |
-| USD_BRL / EUR_BRL | BANKING | latest open banking day before 15:00 SP cutoff | same ladder |
-| IPCA | none (publication) | month-1 (month-2 before day 12) | lag 0 healthy, 1 stale, >1 failed; current month never expected |
-| SELIC_TARGET | none (event-driven) | n/a | any observation healthy, none unknown (never stale by date) |
-| SELIC_EFFECTIVE | BANKING | latest open banking day before 20:00 cutoff | same ladder |
-| B3/BANKING calendars | self | current + next year | current incomplete failed; next missing + month ≥ 10 stale, else degraded |
+| Source               | Calendar            | Expected through                               | Stale rule                                                                |
+| -------------------- | ------------------- | ---------------------------------------------- | ------------------------------------------------------------------------- |
+| MARKET_QUOTES        | B3_TRADING          | latest open day before 20:00 SP cutoff         | lag 0 healthy, 1–2 degraded, 3–5 stale, >5 failed                         |
+| IBOV                 | B3_TRADING          | same as market                                 | same ladder                                                               |
+| CDI                  | BANKING             | latest open banking day before 20:00 SP cutoff | same ladder                                                               |
+| USD_BRL / EUR_BRL    | BANKING             | latest open banking day before 15:00 SP cutoff | same ladder                                                               |
+| IPCA                 | none (publication)  | month-1 (month-2 before day 12)                | lag 0 healthy, 1 stale, >1 failed; current month never expected           |
+| SELIC_TARGET         | none (event-driven) | n/a                                            | any observation healthy, none unknown (never stale by date)               |
+| SELIC_EFFECTIVE      | BANKING             | latest open banking day before 20:00 cutoff    | same ladder                                                               |
+| B3/BANKING calendars | self                | current + next year                            | current incomplete failed; next missing + month ≥ 10 stale, else degraded |
 
 Weekends and holidays never raise stale flags: expected dates derive only
 from open calendar days. IPCA never expects the unpublished current month.

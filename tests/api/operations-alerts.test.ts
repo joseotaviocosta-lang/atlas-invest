@@ -10,7 +10,10 @@ import { getTestPrismaClient } from '../database/setup';
 import { PrismaJobRepository } from '../../apps/api/src/ingestion/job-repository';
 import { PrismaJobLock } from '../../apps/api/src/ingestion/job-lock';
 import { JobRunner } from '../../apps/api/src/ingestion/job-runner';
-import { OperationalAlertDetector, OperationalAlertRepository } from '../../apps/api/src/ingestion/operations/operational-alerts';
+import {
+  OperationalAlertDetector,
+  OperationalAlertRepository,
+} from '../../apps/api/src/ingestion/operations/operational-alerts';
 import { buildAlertDedupeKey } from '../../apps/api/src/ingestion/operations/operational-state';
 
 const prisma = getTestPrismaClient();
@@ -19,19 +22,30 @@ const createdKeys: string[] = [];
 function core() {
   const repository = new PrismaJobRepository(prisma);
   const lock = new PrismaJobLock(prisma);
-  return { repository, lock, runner: new JobRunner(repository, lock), alerts: new OperationalAlertRepository(prisma) };
+  return {
+    repository,
+    lock,
+    runner: new JobRunner(repository, lock),
+    alerts: new OperationalAlertRepository(prisma),
+  };
 }
 
 async function cleanup(): Promise<void> {
   for (const key of createdKeys.splice(0)) {
-    await prisma.$executeRawUnsafe(`DELETE FROM ingestion_job_runs WHERE logical_job_key = '${key}'`);
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM ingestion_job_runs WHERE logical_job_key = '${key}'`,
+    );
   }
-  await prisma.$executeRawUnsafe(`DELETE FROM operational_alert_events WHERE dedupe_key LIKE 'TEST:%'`);
+  await prisma.$executeRawUnsafe(
+    `DELETE FROM operational_alert_events WHERE dedupe_key LIKE 'TEST:%'`,
+  );
 }
 
 describe('5G alert lifecycle', () => {
   beforeAll(async () => {
-    const db = (await prisma.$queryRawUnsafe<Array<{ db: string }>>('SELECT current_database() AS db'))[0].db;
+    const db = (
+      await prisma.$queryRawUnsafe<Array<{ db: string }>>('SELECT current_database() AS db')
+    )[0].db;
     expect(db).toBe('atlas_test');
   });
 
@@ -51,28 +65,57 @@ describe('5G alert lifecycle', () => {
       finishedAt: new Date().toISOString(),
       durationMs: 1,
     });
-    await runner.run({ jobType: 'MARKET_QUOTES_DAILY', triggerType: 'SCHEDULED', targetPeriod: '2026-09-01', targetPeriodGranularity: 'DAY', scheduledFor: '2026-09-01', execute: failing, maxAttempts: 1 });
+    await runner.run({
+      jobType: 'MARKET_QUOTES_DAILY',
+      triggerType: 'SCHEDULED',
+      targetPeriod: '2026-09-01',
+      targetPeriodGranularity: 'DAY',
+      scheduledFor: '2026-09-01',
+      execute: failing,
+      maxAttempts: 1,
+    });
 
     const detector = new OperationalAlertDetector(alerts, new PrismaJobLock(prisma));
     const dedupe = buildAlertDedupeKey('INGESTION_FAILED', 'MARKET_QUOTES_DAILY');
-    await prisma.$executeRawUnsafe(`DELETE FROM operational_alert_events WHERE dedupe_key = 'TEST:${dedupe}'`);
-    const namespaced = { alertType: 'INGESTION_FAILED' as const, severity: 'WARNING' as const, source: `TEST:${dedupe}`, reasonCode: 'LAST_RUN_FAILED' as const };
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM operational_alert_events WHERE dedupe_key = 'TEST:${dedupe}'`,
+    );
+    const namespaced = {
+      alertType: 'INGESTION_FAILED' as const,
+      severity: 'WARNING' as const,
+      source: `TEST:${dedupe}`,
+      reasonCode: 'LAST_RUN_FAILED' as const,
+    };
 
-    const first = await detector.reconcile([{ ...namespaced, source: 'TEST:SRC' }], '2026-10-20T10:00:00.000Z');
-    const active = first.filter((r) => r.dedupeKey === buildAlertDedupeKey('INGESTION_FAILED', 'TEST:SRC'));
+    const first = await detector.reconcile(
+      [{ ...namespaced, source: 'TEST:SRC' }],
+      '2026-10-20T10:00:00.000Z',
+    );
+    const active = first.filter(
+      (r) => r.dedupeKey === buildAlertDedupeKey('INGESTION_FAILED', 'TEST:SRC'),
+    );
     expect(active).toHaveLength(1);
     expect(active[0]!.occurrenceCount).toBe(1);
 
-    const second = await detector.reconcile([{ ...namespaced, source: 'TEST:SRC' }], '2026-10-20T11:00:00.000Z');
-    const same = second.filter((r) => r.dedupeKey === buildAlertDedupeKey('INGESTION_FAILED', 'TEST:SRC'));
+    const second = await detector.reconcile(
+      [{ ...namespaced, source: 'TEST:SRC' }],
+      '2026-10-20T11:00:00.000Z',
+    );
+    const same = second.filter(
+      (r) => r.dedupeKey === buildAlertDedupeKey('INGESTION_FAILED', 'TEST:SRC'),
+    );
     expect(same).toHaveLength(1);
     expect(same[0]!.occurrenceCount).toBe(2);
     expect(same[0]!.id).toBe(active[0]!.id);
 
     const cleared = await detector.reconcile([], '2026-10-20T12:00:00.000Z');
-    expect(cleared.filter((r) => r.dedupeKey === buildAlertDedupeKey('INGESTION_FAILED', 'TEST:SRC'))).toHaveLength(0);
+    expect(
+      cleared.filter((r) => r.dedupeKey === buildAlertDedupeKey('INGESTION_FAILED', 'TEST:SRC')),
+    ).toHaveLength(0);
     const history = await alerts.listHistory(50);
-    const resolved = history.find((r) => r.dedupeKey === buildAlertDedupeKey('INGESTION_FAILED', 'TEST:SRC'));
+    const resolved = history.find(
+      (r) => r.dedupeKey === buildAlertDedupeKey('INGESTION_FAILED', 'TEST:SRC'),
+    );
     expect(resolved?.status).toBe('RESOLVED');
     expect(resolved?.resolvedAt).not.toBeNull();
   });
@@ -81,8 +124,15 @@ describe('5G alert lifecycle', () => {
     const { alerts } = core();
     const detector = new OperationalAlertDetector(alerts, new PrismaJobLock(prisma));
     const dedupe = buildAlertDedupeKey('DATA_STALE', 'TEST:REOPEN');
-    await prisma.$executeRawUnsafe(`DELETE FROM operational_alert_events WHERE dedupe_key = '${dedupe}'`);
-    const cond = { alertType: 'DATA_STALE' as const, severity: 'WARNING' as const, source: 'TEST:REOPEN', reasonCode: 'LATEST_DATA_MISSING' as const };
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM operational_alert_events WHERE dedupe_key = '${dedupe}'`,
+    );
+    const cond = {
+      alertType: 'DATA_STALE' as const,
+      severity: 'WARNING' as const,
+      source: 'TEST:REOPEN',
+      reasonCode: 'LATEST_DATA_MISSING' as const,
+    };
     const first = await detector.reconcile([{ ...cond }], '2026-10-20T10:00:00.000Z');
     const firstId = first.find((r) => r.dedupeKey === dedupe)!.id;
     await detector.reconcile([], '2026-10-20T11:00:00.000Z');
@@ -91,8 +141,12 @@ describe('5G alert lifecycle', () => {
     expect(reopened.status).toBe('ACTIVE');
     expect(reopened.id).not.toBe(firstId);
     expect(reopened.occurrenceCount).toBe(1);
-    expect(new Date(reopened.firstDetectedAt as unknown as string | Date).toISOString()).toBe('2026-10-20T12:00:00.000Z');
-    await prisma.$executeRawUnsafe(`DELETE FROM operational_alert_events WHERE dedupe_key = '${dedupe}'`);
+    expect(new Date(reopened.firstDetectedAt as unknown as string | Date).toISOString()).toBe(
+      '2026-10-20T12:00:00.000Z',
+    );
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM operational_alert_events WHERE dedupe_key = '${dedupe}'`,
+    );
   });
 
   it('stale RUNNING jobs are detected via jobs health', async () => {

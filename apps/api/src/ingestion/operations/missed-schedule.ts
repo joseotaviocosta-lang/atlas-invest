@@ -59,7 +59,12 @@ export function detectMissedDailySchedules(input: {
     const scheduledAt = Date.UTC(date.year, date.month - 1, date.day, hour, 0, 0);
     if (now - scheduledAt < MISSED_SCHEDULE_GRACE_HOURS * 3_600_000) continue;
     if (!scheduledByPeriod.has(date.toString())) {
-      missed.push({ jobType: input.jobType, expectedDate: date.toString(), scheduledHour: hour, reasonCode: 'MISSED_SCHEDULE' });
+      missed.push({
+        jobType: input.jobType,
+        expectedDate: date.toString(),
+        scheduledHour: hour,
+        reasonCode: 'MISSED_SCHEDULE',
+      });
     }
   }
   return missed;

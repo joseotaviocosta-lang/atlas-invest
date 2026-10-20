@@ -60,7 +60,12 @@ export class SchedulerReadinessService {
     });
 
     if (process.env.NODE_ENV === 'test') {
-      checks.push({ name: 'test-env-forced-off', pass: false, reasonCode: 'SCHEDULER_DISABLED', detail: 'NODE_ENV=test never auto-starts' });
+      checks.push({
+        name: 'test-env-forced-off',
+        pass: false,
+        reasonCode: 'SCHEDULER_DISABLED',
+        detail: 'NODE_ENV=test never auto-starts',
+      });
       return { ready: false, checks };
     }
 
@@ -71,7 +76,10 @@ export class SchedulerReadinessService {
       detail: 'DATABASE_URL configured',
     });
 
-    const allowlist = (process.env.INGESTION_OPERATOR_USER_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    const allowlist = (process.env.INGESTION_OPERATOR_USER_IDS ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     checks.push({
       name: 'operator-allowlist-configured',
       pass: allowlist.length > 0,
@@ -90,7 +98,8 @@ export class SchedulerReadinessService {
     checks.push({
       name: 'ten-definitions-once',
       pass: INGESTION_CRON_DEFINITIONS.length === 10 && jobTypes.size === 10 && allTz,
-      reasonCode: INGESTION_CRON_DEFINITIONS.length === 10 && jobTypes.size === 10 ? 'UP_TO_DATE' : 'UNKNOWN',
+      reasonCode:
+        INGESTION_CRON_DEFINITIONS.length === 10 && jobTypes.size === 10 ? 'UP_TO_DATE' : 'UNKNOWN',
       detail: `${INGESTION_CRON_DEFINITIONS.length} definitions`,
     });
 
@@ -116,7 +125,11 @@ export class SchedulerReadinessService {
       ) as Promise<Array<{ name: string }>>);
       const names = new Set(tables.map((t) => t.name));
       const ok = names.has('ingestion_job_runs') && names.has('operational_alert_events');
-      checks.push({ name: 'migrations-current', pass: ok, reasonCode: ok ? 'UP_TO_DATE' : 'UNKNOWN' });
+      checks.push({
+        name: 'migrations-current',
+        pass: ok,
+        reasonCode: ok ? 'UP_TO_DATE' : 'UNKNOWN',
+      });
     } catch {
       checks.push({ name: 'migrations-current', pass: false, reasonCode: 'DB_FAILURE' });
     }
@@ -124,19 +137,35 @@ export class SchedulerReadinessService {
     try {
       const coverage = await this.calendars.getCoverage('B3_TRADING' as never);
       const yearStart = LocalDate.fromParts(today.year, 1, 1).toString();
-      const ok = !!coverage.minDate && !!coverage.maxDate && coverage.minDate.toString() <= yearStart;
-      checks.push({ name: 'calendar-coverage-sufficient', pass: ok, reasonCode: ok ? 'UP_TO_DATE' : 'CALENDAR_COVERAGE_MISSING' });
+      const ok =
+        !!coverage.minDate && !!coverage.maxDate && coverage.minDate.toString() <= yearStart;
+      checks.push({
+        name: 'calendar-coverage-sufficient',
+        pass: ok,
+        reasonCode: ok ? 'UP_TO_DATE' : 'CALENDAR_COVERAGE_MISSING',
+      });
     } catch {
-      checks.push({ name: 'calendar-coverage-sufficient', pass: false, reasonCode: 'CALENDAR_COVERAGE_MISSING' });
+      checks.push({
+        name: 'calendar-coverage-sufficient',
+        pass: false,
+        reasonCode: 'CALENDAR_COVERAGE_MISSING',
+      });
     }
 
-    const providers = ['MARKET_DATA_PROVIDER', 'BENCHMARK_DATA_PROVIDER', 'RATE_BENCHMARK_DATA_PROVIDER'];
+    const providers = [
+      'MARKET_DATA_PROVIDER',
+      'BENCHMARK_DATA_PROVIDER',
+      'RATE_BENCHMARK_DATA_PROVIDER',
+    ];
     const missing = providers.filter((name) => !requiredEnvPresent(name));
     checks.push({
       name: 'providers-configured',
       pass: true,
       reasonCode: 'UP_TO_DATE',
-      detail: missing.length === 0 ? 'all provider envs present' : `optional missing: ${missing.join(',')}`,
+      detail:
+        missing.length === 0
+          ? 'all provider envs present'
+          : `optional missing: ${missing.join(',')}`,
     });
 
     return { ready: checks.every((c) => c.pass), checks };

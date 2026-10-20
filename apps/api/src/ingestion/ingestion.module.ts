@@ -34,7 +34,10 @@ import { BackfillAdminController } from './backfill/backfill-admin.controller';
 import { BackfillCoveragePlanner } from './backfill/coverage-planner';
 import { BackfillOrchestrator } from './backfill/backfill-orchestrator';
 import { DataFreshnessService } from './operations/freshness-service';
-import { OperationalAlertDetector, OperationalAlertRepository } from './operations/operational-alerts';
+import {
+  OperationalAlertDetector,
+  OperationalAlertRepository,
+} from './operations/operational-alerts';
 import { OperationsSummaryService } from './operations/operations-summary.service';
 import { SchedulerReadinessService } from './operations/scheduler-readiness.service';
 import { OperationsAdminController } from './operations/operations-admin.controller';

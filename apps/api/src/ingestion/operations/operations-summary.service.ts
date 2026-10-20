@@ -107,7 +107,9 @@ export class OperationsSummaryService {
     const generatedAt = new Date().toISOString();
     const sources: OperationalFreshnessStatus[] = [];
     for (const family of FAMILIES) {
-      sources.push(await this.freshness.evaluateFamily(family.source as never, family.jobType, nowIso));
+      sources.push(
+        await this.freshness.evaluateFamily(family.source as never, family.jobType, nowIso),
+      );
     }
 
     const page = await this.runs.listRuns({ limit: OPERATIONS_RECENT_RUN_LIMIT } as ListRunsInput);
@@ -146,7 +148,13 @@ export class OperationsSummaryService {
   }
 
   async getJobsHealth(nowIso: string = new Date().toISOString()): Promise<{
-    recentFailures: Array<{ jobRunId: string; jobType: string; status: string; errorCode?: string; finishedAt: string }>;
+    recentFailures: Array<{
+      jobRunId: string;
+      jobType: string;
+      status: string;
+      errorCode?: string;
+      finishedAt: string;
+    }>;
     staleRunning: Array<{ jobRunId: string; jobType: string; startedAt: string }>;
     retryExhausted: Array<{ jobRunId: string; jobType: string; attempt: number }>;
     missedSchedules: Array<{ jobType: string; expectedDate: string; scheduledHour: number }>;
@@ -159,9 +167,19 @@ export class OperationsSummaryService {
       recentFailures: items
         .filter((r) => r.status === 'FAILED')
         .slice(0, 20)
-        .map((r) => ({ jobRunId: r.jobRunId, jobType: r.jobType, status: r.status, errorCode: r.errorCode, finishedAt: r.finishedAt })),
+        .map((r) => ({
+          jobRunId: r.jobRunId,
+          jobType: r.jobType,
+          status: r.status,
+          errorCode: r.errorCode,
+          finishedAt: r.finishedAt,
+        })),
       staleRunning: items
-        .filter((r) => (r.status === 'RUNNING' || r.status === 'PENDING') && new Date(r.startedAt).getTime() < staleCutoff)
+        .filter(
+          (r) =>
+            (r.status === 'RUNNING' || r.status === 'PENDING') &&
+            new Date(r.startedAt).getTime() < staleCutoff,
+        )
         .map((r) => ({ jobRunId: r.jobRunId, jobType: r.jobType, startedAt: r.startedAt })),
       retryExhausted: items
         .filter((r) => r.status === 'FAILED' && r.attempt >= 3)
@@ -177,7 +195,9 @@ export class OperationsSummaryService {
 
   async getMetrics(): Promise<OperationsMetrics> {
     const prisma: PrismaLikeClient = getPrismaClient();
-    const cutoff = new Date(Date.now() - OPERATIONS_HISTORY_LOOKBACK_DAYS * 86_400_000).toISOString();
+    const cutoff = new Date(
+      Date.now() - OPERATIONS_HISTORY_LOOKBACK_DAYS * 86_400_000,
+    ).toISOString();
     const byStatus = await prisma.$queryRaw<Array<{ status: string; count: number }>>`
       SELECT status, COUNT(*)::int AS count FROM ingestion_job_runs
        WHERE created_at >= ${cutoff}::timestamptz GROUP BY status`;
@@ -228,11 +248,26 @@ export class OperationsSummaryService {
     const now = new Date(nowIso);
     const today = LocalDate.from(nowIso.slice(0, 10));
     const missed: Array<{ jobType: string; expectedDate: string; scheduledHour: number }> = [];
-    const dailyJobs = INGESTION_CRON_DEFINITIONS.filter((d) => d.expression.startsWith('0 ') && !d.jobType.startsWith('MACRO_IPCA') && !d.jobType.startsWith('CALENDAR'));
+    const dailyJobs = INGESTION_CRON_DEFINITIONS.filter(
+      (d) =>
+        d.expression.startsWith('0 ') &&
+        !d.jobType.startsWith('MACRO_IPCA') &&
+        !d.jobType.startsWith('CALENDAR'),
+    );
     for (const definition of dailyJobs) {
-      const calendarType = definition.jobType.includes('BANKING') || definition.jobType.includes('CDI') || definition.jobType.includes('FX') || definition.jobType === 'MACRO_SELIC_EFFECTIVE' ? 'BANKING' : 'B3_TRADING';
+      const calendarType =
+        definition.jobType.includes('BANKING') ||
+        definition.jobType.includes('CDI') ||
+        definition.jobType.includes('FX') ||
+        definition.jobType === 'MACRO_SELIC_EFFECTIVE'
+          ? 'BANKING'
+          : 'B3_TRADING';
       const from = new Date(Date.UTC(today.year, today.month - 1, today.day) - 7 * 86_400_000);
-      const fromDate = LocalDate.fromParts(from.getUTCFullYear(), from.getUTCMonth() + 1, from.getUTCDate());
+      const fromDate = LocalDate.fromParts(
+        from.getUTCFullYear(),
+        from.getUTCMonth() + 1,
+        from.getUTCDate(),
+      );
       const days = await this.calendars.findDays(calendarType as never, fromDate, today);
       const openDates = days.filter((d) => d.isOpen).map((d) => d.date);
       const jobRuns = runs.filter((r) => r.jobType === definition.jobType);
@@ -255,8 +290,14 @@ export class OperationsSummaryService {
     nowIso: string,
   ): Array<{ jobType: string; jobRunId: string }> {
     const cutoff = new Date(nowIso).getTime() - STALE_RUNNING_THRESHOLD_MS;
-    return (items as Array<{ status: string; startedAt: string; jobType: string; jobRunId: string }>)
-      .filter((r) => (r.status === 'RUNNING' || r.status === 'PENDING') && new Date(r.startedAt).getTime() < cutoff)
+    return (
+      items as Array<{ status: string; startedAt: string; jobType: string; jobRunId: string }>
+    )
+      .filter(
+        (r) =>
+          (r.status === 'RUNNING' || r.status === 'PENDING') &&
+          new Date(r.startedAt).getTime() < cutoff,
+      )
       .map((r) => ({ jobType: r.jobType, jobRunId: r.jobRunId }));
   }
 
@@ -265,7 +306,13 @@ export class OperationsSummaryService {
     latestRuns: OperationsLatestRun[],
     missed: Array<{ jobType: string; expectedDate: string }>,
     staleRunning: Array<{ jobType: string; jobRunId: string }>,
-    recentItems: Array<{ status: string; errorCode?: string; jobType: string; triggerType: string; attempt: number }>,
+    recentItems: Array<{
+      status: string;
+      errorCode?: string;
+      jobType: string;
+      triggerType: string;
+      attempt: number;
+    }>,
   ): DetectedCondition[] {
     void latestRuns;
     const conditions: DetectedCondition[] = [];
@@ -276,7 +323,10 @@ export class OperationsSummaryService {
           severity: (source.lagPeriods ?? 0) > 5 ? 'CRITICAL' : 'WARNING',
           source: source.source,
           reasonCode: source.reasonCode,
-          metadata: { lagPeriods: source.lagPeriods ?? 0, expectedThrough: source.expectedThrough ?? '' },
+          metadata: {
+            lagPeriods: source.lagPeriods ?? 0,
+            expectedThrough: source.expectedThrough ?? '',
+          },
         });
       }
       if (source.reasonCode === 'CALENDAR_COVERAGE_MISSING' && source.state !== 'HEALTHY') {
@@ -330,7 +380,10 @@ export class OperationsSummaryService {
       });
     }
     const providerFailures = recentItems.filter(
-      (r) => r.status === 'FAILED' && r.errorCode && /PROVIDER|TIMEOUT|RATE_LIMITED|UNAVAILABLE/.test(r.errorCode),
+      (r) =>
+        r.status === 'FAILED' &&
+        r.errorCode &&
+        /PROVIDER|TIMEOUT|RATE_LIMITED|UNAVAILABLE/.test(r.errorCode),
     );
     const byJob = new Map<string, number>();
     for (const failure of providerFailures) {
@@ -372,29 +425,60 @@ export class OperationsSummaryService {
     const issues: OperationsIssue[] = [];
     for (const source of sources) {
       if (source.state === 'FAILED') {
-        issues.push({ severity: 'CRITICAL', code: source.reasonCode, source: source.source, detail: `expected ${source.expectedThrough ?? '?'} actual ${source.actualThrough ?? 'none'}` });
+        issues.push({
+          severity: 'CRITICAL',
+          code: source.reasonCode,
+          source: source.source,
+          detail: `expected ${source.expectedThrough ?? '?'} actual ${source.actualThrough ?? 'none'}`,
+        });
       } else if (source.state === 'STALE' || source.state === 'DEGRADED') {
-        issues.push({ severity: 'WARNING', code: source.reasonCode, source: source.source, detail: `lag ${source.lagPeriods ?? '?'} expected ${source.expectedThrough ?? '?'}` });
+        issues.push({
+          severity: 'WARNING',
+          code: source.reasonCode,
+          source: source.source,
+          detail: `lag ${source.lagPeriods ?? '?'} expected ${source.expectedThrough ?? '?'}`,
+        });
       }
     }
     for (const miss of missed) {
-      issues.push({ severity: 'WARNING', code: 'MISSED_SCHEDULE', source: miss.jobType, detail: `expected run for ${miss.expectedDate} missing` });
+      issues.push({
+        severity: 'WARNING',
+        code: 'MISSED_SCHEDULE',
+        source: miss.jobType,
+        detail: `expected run for ${miss.expectedDate} missing`,
+      });
     }
     for (const run of latestRuns.filter((r) => r.status === 'FAILED').slice(0, 5)) {
-      issues.push({ severity: 'WARNING', code: 'LAST_RUN_FAILED', source: run.jobType, detail: 'latest run failed' });
+      issues.push({
+        severity: 'WARNING',
+        code: 'LAST_RUN_FAILED',
+        source: run.jobType,
+        detail: 'latest run failed',
+      });
     }
     for (const stale of staleRunning.slice(0, 5)) {
-      issues.push({ severity: 'WARNING', code: 'STALE_RUNNING_JOB', source: stale.jobType, detail: `run ${stale.jobRunId} exceeds stale lease` });
+      issues.push({
+        severity: 'WARNING',
+        code: 'STALE_RUNNING_JOB',
+        source: stale.jobType,
+        detail: `run ${stale.jobRunId} exceeds stale lease`,
+      });
     }
     for (const retry of retryExhausted.slice(0, 5)) {
-      issues.push({ severity: 'WARNING', code: 'RETRY_EXHAUSTED', source: retry.jobType, detail: 'max attempts exhausted without success' });
+      issues.push({
+        severity: 'WARNING',
+        code: 'RETRY_EXHAUSTED',
+        source: retry.jobType,
+        detail: 'max attempts exhausted without success',
+      });
     }
     return issues;
   }
 
   private overallState(issues: OperationsIssue[]): OperationsDataStatus['overall'] {
     if (issues.some((i) => i.severity === 'CRITICAL')) return 'FAILED';
-    if (issues.some((i) => i.code === 'MISSED_SCHEDULE' || i.code === 'LAST_RUN_FAILED')) return 'DEGRADED';
+    if (issues.some((i) => i.code === 'MISSED_SCHEDULE' || i.code === 'LAST_RUN_FAILED'))
+      return 'DEGRADED';
     if (issues.some((i) => i.severity === 'WARNING')) return 'STALE';
     return 'HEALTHY';
   }

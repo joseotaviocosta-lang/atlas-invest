@@ -83,7 +83,10 @@ export class OperationsAdminController {
   async getAlertById(@Param('id', new ZodValidationPipe(OperationsAlertIdParamSchema)) id: string) {
     const row = await this.alerts.findById(id);
     if (!row) {
-      throw new NotFoundException({ message: `Operational alert '${id}' was not found.`, code: 'OPERATIONS.ALERT_NOT_FOUND' });
+      throw new NotFoundException({
+        message: `Operational alert '${id}' was not found.`,
+        code: 'OPERATIONS.ALERT_NOT_FOUND',
+      });
     }
     return { data: row };
   }

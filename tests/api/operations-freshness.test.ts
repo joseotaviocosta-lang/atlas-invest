@@ -36,9 +36,15 @@ function openCalendar(openDates: string[], min = '2026-01-01', max = '2026-12-31
 function makeService(
   calendar: ReturnType<typeof openCalendar>,
   present: Record<string, string | null>,
-  runs: Array<{ status: string; triggerType?: string; finishedAt?: string; startedAt?: string }> = [],
+  runs: Array<{
+    status: string;
+    triggerType?: string;
+    finishedAt?: string;
+    startedAt?: string;
+  }> = [],
 ) {
-  const at = (key: string): LocalDate | null => (present[key] ? LocalDate.from(present[key]!) : null);
+  const at = (key: string): LocalDate | null =>
+    present[key] ? LocalDate.from(present[key]!) : null;
   const runItems = runs.map((r, i) => ({
     jobRunId: `run-${i}`,
     logicalJobKey: `JOB:${i}`,
@@ -65,7 +71,11 @@ function makeService(
     {
       getCoverage: async (base: string, quote: string) => {
         const last = at(`${base}_${quote}`);
-        return { totalObservations: last ? 1 : 0, firstObservationDate: last, lastObservationDate: last };
+        return {
+          totalObservations: last ? 1 : 0,
+          firstObservationDate: last,
+          lastObservationDate: last,
+        };
       },
     } as never,
     {
@@ -91,30 +101,52 @@ const WEEKDAYS_JAN5_9 = ['2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08',
 
 describe('5G freshness - daily families', () => {
   it('HEALTHY when latest open day is covered', async () => {
-    const svc = makeService(openCalendar(WEEKDAYS_JAN5_9), { IBOV: '2026-01-09' }, [{ status: 'SUCCESS' }]);
-    const result = await svc.evaluateFamily('IBOV', 'BENCHMARK_IBOV_DAILY', '2026-01-09T23:30:00.000Z');
+    const svc = makeService(openCalendar(WEEKDAYS_JAN5_9), { IBOV: '2026-01-09' }, [
+      { status: 'SUCCESS' },
+    ]);
+    const result = await svc.evaluateFamily(
+      'IBOV',
+      'BENCHMARK_IBOV_DAILY',
+      '2026-01-09T23:30:00.000Z',
+    );
     expect(result.state).toBe('HEALTHY');
     expect(result.reasonCode).toBe('UP_TO_DATE');
     expect(result.lagPeriods).toBe(0);
   });
 
   it('weekend does not become stale (calendar-aware)', async () => {
-    const svc = makeService(openCalendar(WEEKDAYS_JAN5_9), { IBOV: '2026-01-09' }, [{ status: 'SUCCESS' }]);
-    const result = await svc.evaluateFamily('IBOV', 'BENCHMARK_IBOV_DAILY', '2026-01-10T15:00:00.000Z');
+    const svc = makeService(openCalendar(WEEKDAYS_JAN5_9), { IBOV: '2026-01-09' }, [
+      { status: 'SUCCESS' },
+    ]);
+    const result = await svc.evaluateFamily(
+      'IBOV',
+      'BENCHMARK_IBOV_DAILY',
+      '2026-01-10T15:00:00.000Z',
+    );
     expect(result.state).toBe('HEALTHY');
     expect(result.expectedThrough).toBe('2026-01-09');
   });
 
   it('STALE/FAILED ladder follows lag thresholds', async () => {
-    const svc = makeService(openCalendar(WEEKDAYS_JAN5_9), { CDI: '2026-01-06' }, [{ status: 'SUCCESS' }]);
-    const stale = await svc.evaluateFamily('CDI', 'BENCHMARK_CDI_DAILY', '2026-01-09T23:30:00.000Z');
+    const svc = makeService(openCalendar(WEEKDAYS_JAN5_9), { CDI: '2026-01-06' }, [
+      { status: 'SUCCESS' },
+    ]);
+    const stale = await svc.evaluateFamily(
+      'CDI',
+      'BENCHMARK_CDI_DAILY',
+      '2026-01-09T23:30:00.000Z',
+    );
     expect(stale.lagPeriods).toBe(3);
     expect(stale.state).toBe('STALE');
   });
 
   it('UNKNOWN with no run history and no data', async () => {
     const svc = makeService(openCalendar(WEEKDAYS_JAN5_9), {}, []);
-    const result = await svc.evaluateFamily('USD_BRL', 'FX_USD_BRL_DAILY', '2026-01-09T23:30:00.000Z');
+    const result = await svc.evaluateFamily(
+      'USD_BRL',
+      'FX_USD_BRL_DAILY',
+      '2026-01-09T23:30:00.000Z',
+    );
     expect(result.state).toBe('UNKNOWN');
     expect(result.reasonCode).toBe('NO_RUN_HISTORY');
   });
@@ -139,7 +171,9 @@ describe('5G freshness - IPCA publication semantics', () => {
 
 describe('5G freshness - SELIC target event-driven + calendar horizon', () => {
   it('SELIC target with any observation is HEALTHY regardless of date', async () => {
-    const svc = makeService(openCalendar([]), { SELIC_TARGET: '2026-03-19' }, [{ status: 'SUCCESS' }]);
+    const svc = makeService(openCalendar([]), { SELIC_TARGET: '2026-03-19' }, [
+      { status: 'SUCCESS' },
+    ]);
     const result = await svc.evaluateFamily('SELIC_TARGET', 'MACRO_SELIC_TARGET', NOW_MON_10AM);
     expect(result.state).toBe('HEALTHY');
   });
@@ -154,10 +188,17 @@ describe('5G freshness - SELIC target event-driven + calendar horizon', () => {
     const partial = {
       findDay: async () => ({ isOpen: true }),
       findDays: async () => [],
-      getCoverage: async () => ({ minDate: LocalDate.from('2026-01-01'), maxDate: LocalDate.from('2026-12-31') }),
+      getCoverage: async () => ({
+        minDate: LocalDate.from('2026-01-01'),
+        maxDate: LocalDate.from('2026-12-31'),
+      }),
     };
     const svc = makeService(partial, {}, [{ status: 'SUCCESS' }]);
-    const dec = await svc.evaluateFamily('B3_CALENDAR', 'CALENDAR_B3_REFRESH', '2026-12-15T12:00:00.000Z');
+    const dec = await svc.evaluateFamily(
+      'B3_CALENDAR',
+      'CALENDAR_B3_REFRESH',
+      '2026-12-15T12:00:00.000Z',
+    );
     expect(dec.state).toBe('STALE');
     const empty = {
       findDay: async () => null,
@@ -175,7 +216,13 @@ describe('5G missed schedule', () => {
     const missed = detectMissedDailySchedules({
       jobType: 'BENCHMARK_IBOV_DAILY',
       openDates: [LocalDate.from('2026-10-19'), LocalDate.from('2026-10-20')],
-      runs: [{ triggerType: 'SCHEDULED', targetPeriod: '2026-10-19', startedAt: '2026-10-19T19:05:00.000Z' }],
+      runs: [
+        {
+          triggerType: 'SCHEDULED',
+          targetPeriod: '2026-10-19',
+          startedAt: '2026-10-19T19:05:00.000Z',
+        },
+      ],
       nowIso: '2026-10-21T12:00:00.000Z',
       schedulerEnabled: true,
     });

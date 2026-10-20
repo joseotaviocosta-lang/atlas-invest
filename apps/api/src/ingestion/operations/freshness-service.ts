@@ -55,7 +55,9 @@ export interface FreshnessCalendar {
 }
 
 export interface FreshnessObservations {
-  maxReferenceDate(series: 'IBOV' | 'CDI' | 'USD_BRL' | 'EUR_BRL' | 'IPCA' | 'SELIC_TARGET' | 'SELIC_EFFECTIVE'): Promise<LocalDate | null>;
+  maxReferenceDate(
+    series: 'IBOV' | 'CDI' | 'USD_BRL' | 'EUR_BRL' | 'IPCA' | 'SELIC_TARGET' | 'SELIC_EFFECTIVE',
+  ): Promise<LocalDate | null>;
   maxQuoteDate(): Promise<LocalDate | null>;
 }
 
@@ -175,7 +177,8 @@ export class DataFreshnessService {
           return coverage.lastObservationDate ?? null;
         }
         if (series === 'USD_BRL' || series === 'EUR_BRL') {
-          const [base, quote] = series === 'USD_BRL' ? (['USD', 'BRL'] as const) : (['EUR', 'BRL'] as const);
+          const [base, quote] =
+            series === 'USD_BRL' ? (['USD', 'BRL'] as const) : (['EUR', 'BRL'] as const);
           const coverage = await fx.getCoverage(base as never, quote as never);
           return coverage.lastObservationDate ?? null;
         }
@@ -220,20 +223,56 @@ export class DataFreshnessService {
     if (family === 'SELIC_TARGET') {
       const actual = await this.observations.maxReferenceDate('SELIC_TARGET');
       if (!actual) {
-        return this.status(family, null, null, null, lastSuccessAt, lastAttemptAt, lastJobStatus, recent.length === 0 ? 'UNKNOWN' : 'FAILED', recent.length === 0 ? 'NO_RUN_HISTORY' : 'LATEST_DATA_MISSING');
+        return this.status(
+          family,
+          null,
+          null,
+          null,
+          lastSuccessAt,
+          lastAttemptAt,
+          lastJobStatus,
+          recent.length === 0 ? 'UNKNOWN' : 'FAILED',
+          recent.length === 0 ? 'NO_RUN_HISTORY' : 'LATEST_DATA_MISSING',
+        );
       }
-      return this.status(family, null, actual.toString(), 0, lastSuccessAt, lastAttemptAt, lastJobStatus ?? 'SUCCESS', 'HEALTHY', 'UP_TO_DATE');
+      return this.status(
+        family,
+        null,
+        actual.toString(),
+        0,
+        lastSuccessAt,
+        lastAttemptAt,
+        lastJobStatus ?? 'SUCCESS',
+        'HEALTHY',
+        'UP_TO_DATE',
+      );
     }
 
     if (family === 'IPCA') {
-      return this.evaluateIpca(family, today, lastSuccessAt, lastAttemptAt, lastJobStatus, recent.length);
+      return this.evaluateIpca(
+        family,
+        today,
+        lastSuccessAt,
+        lastAttemptAt,
+        lastJobStatus,
+        recent.length,
+      );
     }
 
     if (family === 'B3_CALENDAR' || family === 'BANKING_CALENDAR') {
       return this.evaluateCalendar(family, today);
     }
 
-    return this.evaluateDaily(family, jobType, today, hour, lastSuccessAt, lastAttemptAt, lastJobStatus, recent.length);
+    return this.evaluateDaily(
+      family,
+      jobType,
+      today,
+      hour,
+      lastSuccessAt,
+      lastAttemptAt,
+      lastJobStatus,
+      recent.length,
+    );
   }
 
   private async evaluateDaily(
@@ -247,26 +286,69 @@ export class DataFreshnessService {
     runCount: number,
   ): Promise<OperationalFreshnessStatus> {
     const calendarType = family === 'MARKET_QUOTES' || family === 'IBOV' ? 'B3_TRADING' : 'BANKING';
-    const cutoff = family === 'USD_BRL' || family === 'EUR_BRL' ? FRESHNESS_CUTOFF_HOUR_FX : FRESHNESS_CUTOFF_HOUR_DEFAULT;
+    const cutoff =
+      family === 'USD_BRL' || family === 'EUR_BRL'
+        ? FRESHNESS_CUTOFF_HOUR_FX
+        : FRESHNESS_CUTOFF_HOUR_DEFAULT;
     const asOf = hour >= cutoff ? today : addDays(today, -1);
     const coverage = await this.calendars.getCoverage(calendarType);
     if (!coverage.minDate || !coverage.maxDate) {
-      return this.status(family, null, null, null, lastSuccessAt, lastAttemptAt, lastJobStatus, runCount === 0 ? 'UNKNOWN' : 'FAILED', runCount === 0 ? 'NO_RUN_HISTORY' : 'CALENDAR_COVERAGE_MISSING');
+      return this.status(
+        family,
+        null,
+        null,
+        null,
+        lastSuccessAt,
+        lastAttemptAt,
+        lastJobStatus,
+        runCount === 0 ? 'UNKNOWN' : 'FAILED',
+        runCount === 0 ? 'NO_RUN_HISTORY' : 'CALENDAR_COVERAGE_MISSING',
+      );
     }
     const expected = await latestOpenOnOrBefore(this.calendars, calendarType, asOf);
     if (!expected) {
-      return this.status(family, null, null, null, lastSuccessAt, lastAttemptAt, lastJobStatus, 'FAILED', 'CALENDAR_COVERAGE_MISSING');
+      return this.status(
+        family,
+        null,
+        null,
+        null,
+        lastSuccessAt,
+        lastAttemptAt,
+        lastJobStatus,
+        'FAILED',
+        'CALENDAR_COVERAGE_MISSING',
+      );
     }
     const actual = await this.actualFor(family);
     if (!actual) {
       const lagDays = await openDatesBetween(this.calendars, calendarType, null, expected);
       void lagDays;
-      return this.status(family, expected.toString(), null, null, lastSuccessAt, lastAttemptAt, lastJobStatus, runCount === 0 ? 'UNKNOWN' : 'FAILED', runCount === 0 ? 'NO_RUN_HISTORY' : 'LATEST_DATA_MISSING');
+      return this.status(
+        family,
+        expected.toString(),
+        null,
+        null,
+        lastSuccessAt,
+        lastAttemptAt,
+        lastJobStatus,
+        runCount === 0 ? 'UNKNOWN' : 'FAILED',
+        runCount === 0 ? 'NO_RUN_HISTORY' : 'LATEST_DATA_MISSING',
+      );
     }
     const missing = await openDatesBetween(this.calendars, calendarType, actual, expected);
     const lag = missing.length;
     const { state, reason } = classifyDailyLag(lag);
-    return this.status(family, expected.toString(), actual.toString(), lag, lastSuccessAt, lastAttemptAt, lastJobStatus ?? 'SUCCESS', state, reason);
+    return this.status(
+      family,
+      expected.toString(),
+      actual.toString(),
+      lag,
+      lastSuccessAt,
+      lastAttemptAt,
+      lastJobStatus ?? 'SUCCESS',
+      state,
+      reason,
+    );
   }
 
   private async evaluateIpca(
@@ -277,21 +359,62 @@ export class DataFreshnessService {
     lastJobStatus: string | null,
     runCount: number,
   ): Promise<OperationalFreshnessStatus> {
-    const expectedMonth = today.day >= IPCA_PUBLICATION_DAY ? addMonths(today, -1) : addMonths(today, -2);
+    const expectedMonth =
+      today.day >= IPCA_PUBLICATION_DAY ? addMonths(today, -1) : addMonths(today, -2);
     const expectedKey = toMonthKey(expectedMonth);
     const actual = await this.observations.maxReferenceDate('IPCA');
     if (!actual) {
-      return this.status(family, expectedKey, null, null, lastSuccessAt, lastAttemptAt, lastJobStatus, runCount === 0 ? 'UNKNOWN' : 'FAILED', runCount === 0 ? 'NO_RUN_HISTORY' : 'LATEST_DATA_MISSING');
+      return this.status(
+        family,
+        expectedKey,
+        null,
+        null,
+        lastSuccessAt,
+        lastAttemptAt,
+        lastJobStatus,
+        runCount === 0 ? 'UNKNOWN' : 'FAILED',
+        runCount === 0 ? 'NO_RUN_HISTORY' : 'LATEST_DATA_MISSING',
+      );
     }
     const actualKey = toMonthKey(actual);
     const lag = monthDiff(actualKey, expectedKey);
     if (lag <= 0) {
-      return this.status(family, expectedKey, actualKey, 0, lastSuccessAt, lastAttemptAt, lastJobStatus ?? 'SUCCESS', 'HEALTHY', 'UP_TO_DATE');
+      return this.status(
+        family,
+        expectedKey,
+        actualKey,
+        0,
+        lastSuccessAt,
+        lastAttemptAt,
+        lastJobStatus ?? 'SUCCESS',
+        'HEALTHY',
+        'UP_TO_DATE',
+      );
     }
     if (lag === 1) {
-      return this.status(family, expectedKey, actualKey, 1, lastSuccessAt, lastAttemptAt, lastJobStatus ?? 'SUCCESS', 'STALE', 'LATEST_DATA_MISSING');
+      return this.status(
+        family,
+        expectedKey,
+        actualKey,
+        1,
+        lastSuccessAt,
+        lastAttemptAt,
+        lastJobStatus ?? 'SUCCESS',
+        'STALE',
+        'LATEST_DATA_MISSING',
+      );
     }
-    return this.status(family, expectedKey, actualKey, lag, lastSuccessAt, lastAttemptAt, lastJobStatus ?? 'SUCCESS', 'FAILED', 'LATEST_DATA_MISSING');
+    return this.status(
+      family,
+      expectedKey,
+      actualKey,
+      lag,
+      lastSuccessAt,
+      lastAttemptAt,
+      lastJobStatus ?? 'SUCCESS',
+      'FAILED',
+      'LATEST_DATA_MISSING',
+    );
   }
 
   private async evaluateCalendar(
@@ -304,14 +427,44 @@ export class DataFreshnessService {
     const nextYearEnd = LocalDate.fromParts(today.year + 1, 12, 31).toString();
     const max = coverage.maxDate?.toString() ?? null;
     if (!coverage.minDate || !max) {
-      return this.status(family, nextYearEnd, null, null, null, null, null, 'FAILED', 'CALENDAR_COVERAGE_MISSING');
+      return this.status(
+        family,
+        nextYearEnd,
+        null,
+        null,
+        null,
+        null,
+        null,
+        'FAILED',
+        'CALENDAR_COVERAGE_MISSING',
+      );
     }
     if (max < yearEnd) {
-      return this.status(family, nextYearEnd, max, null, null, null, null, 'FAILED', 'CALENDAR_COVERAGE_MISSING');
+      return this.status(
+        family,
+        nextYearEnd,
+        max,
+        null,
+        null,
+        null,
+        null,
+        'FAILED',
+        'CALENDAR_COVERAGE_MISSING',
+      );
     }
     if (max < nextYearEnd) {
       const state: OperationalState = today.month >= 10 ? 'STALE' : 'DEGRADED';
-      return this.status(family, nextYearEnd, max, null, null, null, null, state, 'CALENDAR_COVERAGE_MISSING');
+      return this.status(
+        family,
+        nextYearEnd,
+        max,
+        null,
+        null,
+        null,
+        null,
+        state,
+        'CALENDAR_COVERAGE_MISSING',
+      );
     }
     return this.status(family, nextYearEnd, max, 0, null, null, null, 'HEALTHY', 'UP_TO_DATE');
   }
@@ -346,7 +499,17 @@ export class DataFreshnessService {
     state: OperationalState,
     reasonCode: OperationalFreshnessStatus['reasonCode'],
   ): OperationalFreshnessStatus {
-    return { source, state, expectedThrough, actualThrough, lagPeriods, lastSuccessAt, lastAttemptAt, lastJobStatus, reasonCode };
+    return {
+      source,
+      state,
+      expectedThrough,
+      actualThrough,
+      lagPeriods,
+      lastSuccessAt,
+      lastAttemptAt,
+      lastJobStatus,
+      reasonCode,
+    };
   }
 }
 

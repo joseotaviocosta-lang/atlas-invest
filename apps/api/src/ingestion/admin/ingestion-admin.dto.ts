@@ -56,10 +56,10 @@ export const ListIngestionJobsQuerySchema = z
     cursor: z.string().min(1).max(512).optional(),
   })
   .strict()
-  .refine(
-    (q) => !q.from || !q.to || q.from <= q.to,
-    { message: 'from must be <= to', path: ['from'] },
-  );
+  .refine((q) => !q.from || !q.to || q.from <= q.to, {
+    message: 'from must be <= to',
+    path: ['from'],
+  });
 
 export type ListIngestionJobsQueryDto = z.infer<typeof ListIngestionJobsQuerySchema>;
 
