@@ -193,3 +193,16 @@ Only scheduler ticks and explicit operator `POST .../run` call ingestion use cas
 - Owner DB migration application (human validation step).
 - New provider integrations or changes to Phase 5D semantics.
 - Phase 5F.
+
+## 13. Safe human-validation procedure
+
+Do **not** enable the scheduler against the owner database during validation.
+
+1. Use `atlas_test` (port 5433) or a dedicated scratch database, never `atlas_dev`.
+2. Apply the canonical schema with `prisma migrate deploy` (migration 29 included).
+3. Keep `INGESTION_SCHEDULER_ENABLED=false` for the first checks.
+4. Set `INGESTION_OPERATOR_USER_IDS` to a disposable test user only.
+5. Trigger one closed-day job (for example `FX_USD_BRL_DAILY` with a Sunday `scheduledFor`) through the admin API. Expected: `200`, `SKIPPED_BANKING_CLOSED`, zero provider calls.
+6. Trigger one controlled open-day job with test/in-memory provider configuration. Expected: a persisted receipt and a visible row in `GET /api/v1/admin/ingestion/jobs`.
+7. For a scheduler tick, use only a scratch environment with `INGESTION_SCHEDULER_ENABLED=true`; observe one tick, then set it back to `false`.
+8. Re-run the owner count snapshot and the five V2 fingerprints. Financial counts must be identical and all five hashes must match the baseline.
