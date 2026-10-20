@@ -104,7 +104,7 @@ describe('Phase 4L.1V-C3-R1: Production Readiness Evidence Closure & Provider Ga
         Array<{ migration_name: string; rolled_back_at: Date | null }>
       >('SELECT migration_name, rolled_back_at FROM _prisma_migrations ORDER BY started_at ASC');
 
-      expect(migrationRows.length).toBe(30);
+      expect(migrationRows.length).toBe(31);
       for (const row of migrationRows) {
         expect(row.rolled_back_at).toBeNull();
       }
@@ -264,7 +264,7 @@ describe('Phase 4L.1V-C3-R1: Production Readiness Evidence Closure & Provider Ga
       expect(pfCount).toBe(1);
       expect(accCount).toBe(1);
       expect(txCount).toBe(3);
-      expect(migrationsCount.length).toBe(30);
+      expect(migrationsCount.length).toBe(31);
 
       // 7. Validate that restored data performs mathematically identical PortfolioReplay
       const restoredTransactions = await targetPrisma.transaction.findMany({
