@@ -1087,3 +1087,37 @@ model MacroObservationRevisionRecord {
   @@index([macroObservationId], map: "macro_observation_revisions_obs_idx")
   @@map("macro_observation_revisions")
 }
+
+/// Phase 5E (R3-A) - Ingestion job run history for scheduled ingestion orchestration.
+/// logical_job_key is the attempt-independent job identity
+/// (e.g. MARKET_QUOTES_DAILY:2026-10-19). attempt is history metadata only.
+/// Active-run exclusivity is enforced by a PostgreSQL advisory lock held for the
+/// whole execution (multi-instance safe, no in-memory mutex, no SELECT-then-INSERT).
+model IngestionJobRunRecord {
+  id              String    @id @default(uuid()) @db.Uuid
+  logicalJobKey   String    @map("logical_job_key") @db.VarChar(255)
+  jobType         String    @map("job_type") @db.VarChar(64)
+  triggerType     String    @map("trigger_type") @db.VarChar(32)
+  scheduledFor    DateTime  @map("scheduled_for") @db.Date
+  startedAt       DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt      DateTime? @map("finished_at") @db.Timestamptz(6)
+  status          String    @db.VarChar(32)
+  attempt         Int       @default(1)
+  itemsRequested  Int?      @map("items_requested")
+  itemsFetched    Int?      @map("items_fetched")
+  itemsInserted   Int?      @map("items_inserted")
+  itemsRevised    Int?      @map("items_revised")
+  itemsUnchanged  Int?      @map("items_unchanged")
+  itemsFailed     Int       @default(0) @map("items_failed")
+  errorCode       String?   @map("error_code") @db.VarChar(64)
+  errorMessage    String?   @map("error_message") @db.Text
+  metadata        Json?     @map("metadata") @db.JsonB
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([logicalJobKey, attempt], map: "ingestion_job_runs_logical_key_attempt_uniq")
+  @@index([logicalJobKey], map: "ingestion_job_runs_logical_key_idx")
+  @@index([jobType, scheduledFor], map: "ingestion_job_runs_job_type_scheduled_for_idx")
+  @@index([status], map: "ingestion_job_runs_status_idx")
+  @@index([startedAt], map: "ingestion_job_runs_started_at_idx")
+  @@map("ingestion_job_runs")
+}
