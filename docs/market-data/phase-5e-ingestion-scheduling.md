@@ -1,8 +1,8 @@
 # Phase 5E — Automated Ingestion Scheduling (Implementation)
 
-**Phase:** 5E-R3 (controlled rebuild)
+**Phase:** 5E-R3 + H1 period contract fix (closed)
 **Implementation root:** `apps/api/src/ingestion`
-**Status:** ready for human validation; scheduler default-off
+**Status:** closed; scheduler default-off; production scheduler deferred
 
 ## 1. Module map
 
@@ -201,11 +201,16 @@ Only scheduler ticks and explicit operator `POST .../run` call ingestion use cas
 
 ## 10. Migration notes
 
-- Canonical migration: `packages/database/prisma/migrations/20261019120000_add_ingestion_job_runs`.
-- Applied and verified on `atlas_test` (29/29) and on the owner DB `atlas_dev` (29 migrations, `ingestion_job_runs` present with 0 rows).
+- Canonical migrations: `20261019120000_add_ingestion_job_runs` (29) and
+  additive `20261020120000_add_ingestion_target_period` (30, H1).
+- Migration 29 is never edited. Migration 30 adds `target_period TEXT NOT
+NULL`, `target_period_granularity VARCHAR(16) NOT NULL`, backfills pre-H1
+  DAY rows from the execution date, and adds
+  `ingestion_job_runs_job_type_target_period_idx`.
+- Applied and verified on `atlas_test` (30/30) and on the owner DB `atlas_dev`
+  (30 migrations, `ingestion_job_runs` present with 0 rows).
 - Owner financial data and the five V2 fingerprints are unchanged.
-- Applied checksum matches the tracked file SHA-256 exactly in both databases.
-- No migration 30 exists; no `prisma db push` was used.
+- No `prisma db push` was used.
 
 ## 11. Validation coverage
 
@@ -213,11 +218,21 @@ Only scheduler ticks and explicit operator `POST .../run` call ingestion use cas
 - R3-B: ten jobs registered once, cron/timezone table, default-off, test no-auto-start, closed-day zero provider calls, IPCA pre-publication, calendar current+next year.
 - R3-C: 401/403/200 matrix, empty allowlist denial, strict input/SSRF rejection, unknown id 404.
 - R3-D: bounded retry/backoff, permanent no-retry, 10/8/2 partial success, provider-failure data preservation, idempotent rerun, revision preservation, zero-live-read matrix.
-- Full API suite: 58 files / 414 tests, 0 failures.
+- H1: DAY/MONTH/YEAR exact round-trip, granularity mismatch rejected before insert, calendar/IPCA admin 200 after fix, clean SUCCESS + SKIPPED_LOCKED pair.
+- Full API suite: 59 files / 422 tests, 0 failures.
 
 ## 12. Deferred / out of scope
 
-- Production distributed scheduler, cloud queues, alerting.
+- Production distributed scheduler, cloud queues, alerting/monitoring for failed jobs.
+- Staging scheduler deployment and recurring production execution enablement.
+- Centralized observability/metrics platform.
+- Operator admin UI.
+- Broader historical backfill orchestration.
+- Direct IBOV headline integration if still deferred.
+- Direct PTAX headline integration if still deferred.
+- Historical cross-currency TWR.
+- Foreign tax rules.
+- Deployment.
 - New provider integrations or changes to Phase 5D semantics.
 - Phase 5F.
 
