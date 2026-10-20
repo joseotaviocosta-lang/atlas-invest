@@ -33,6 +33,11 @@ import { IngestionOperatorGuard } from './admin/ingestion-operator.guard';
 import { BackfillAdminController } from './backfill/backfill-admin.controller';
 import { BackfillCoveragePlanner } from './backfill/coverage-planner';
 import { BackfillOrchestrator } from './backfill/backfill-orchestrator';
+import { DataFreshnessService } from './operations/freshness-service';
+import { OperationalAlertDetector, OperationalAlertRepository } from './operations/operational-alerts';
+import { OperationsSummaryService } from './operations/operations-summary.service';
+import { SchedulerReadinessService } from './operations/scheduler-readiness.service';
+import { OperationsAdminController } from './operations/operations-admin.controller';
 import {
   INGESTION_JOB_LOCK,
   INGESTION_JOB_REGISTRY,
@@ -43,7 +48,7 @@ import {
 
 @Module({
   imports: [ApplicationModule, FxModule, CalendarsModule, MacroModule],
-  controllers: [IngestionAdminController, BackfillAdminController],
+  controllers: [IngestionAdminController, BackfillAdminController, OperationsAdminController],
   providers: [
     IngestionOperatorGuard,
     {
@@ -84,6 +89,15 @@ import {
     IngestionSchedulerLifecycle,
     BackfillCoveragePlanner,
     BackfillOrchestrator,
+    DataFreshnessService,
+    OperationalAlertDetector,
+    {
+      provide: OperationalAlertRepository,
+      useFactory: () => new OperationalAlertRepository(getPrismaClient()),
+    },
+    OperationsSummaryService,
+    SchedulerReadinessService,
+    OperationsAdminController,
   ],
   exports: [
     INGESTION_JOB_REPOSITORY,
