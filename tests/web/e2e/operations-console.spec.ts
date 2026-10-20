@@ -44,6 +44,22 @@ async function openConsole(page: Page) {
 }
 
 test.beforeAll(async ({ browser }: { browser: Browser }) => {
+  // Environment gate: this suite needs the local dev stack (:3000/:3001)
+  // plus seeded HV users. Skip cleanly (do not fail) when absent, e.g. CI.
+  try {
+    const probe = await fetch('http://localhost:3001/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: OP_EMAIL, password: OP_PASS }),
+    });
+    if (!probe.ok) {
+      test.skip(true, 'operator console e2e stack unavailable (login probe failed)');
+      return;
+    }
+  } catch {
+    test.skip(true, 'operator console e2e stack unavailable (API unreachable)');
+    return;
+  }
   opCtx = await browser.newContext();
   const opPage = await opCtx.newPage();
   await uiLogin(opPage, OP_EMAIL, OP_PASS);
