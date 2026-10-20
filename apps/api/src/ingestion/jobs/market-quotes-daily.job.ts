@@ -44,7 +44,7 @@ export class MarketQuotesDailyJob implements IngestionJobHandler {
     }
 
     const active = await this.portfolios.listActive();
-    let requested = 0;
+    let requestedAssets = 0;
     let fetched = 0;
     let inserted = 0;
     let revised = 0;
@@ -61,7 +61,7 @@ export class MarketQuotesDailyJob implements IngestionJobHandler {
           portfolioId: portfolio.id,
           userId: portfolio.userId,
         });
-        requested += receipt.requestedAssets;
+        requestedAssets += receipt.requestedAssets;
         fetched += receipt.quotesFetched;
         inserted += receipt.quotesInserted;
         revised += receipt.quotesRevised;
@@ -91,6 +91,9 @@ export class MarketQuotesDailyJob implements IngestionJobHandler {
 
     const target = ctx.scheduledFor;
     const provider = 'MARKET_DATA';
+    // A failed portfolio must still count as requested; use the larger of the
+    // portfolio count and the asset count reported by successful use cases.
+    const requested = Math.max(active.length, requestedAssets);
 
     if (active.length === 0) {
       return completedResult('SUCCESS', {
