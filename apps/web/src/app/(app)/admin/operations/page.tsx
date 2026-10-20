@@ -110,9 +110,9 @@ function OverviewTab() {
     refetchInterval: REFRESH_INTERVAL_MS,
   });
 
-  if (statusQuery.isLoading || !statusQuery.data) return <Skeleton />;
   if (statusQuery.isError)
     return <AuthErrorState error={statusQuery.error} onRetry={() => statusQuery.refetch()} />;
+  if (statusQuery.isLoading || !statusQuery.data) return <Skeleton />;
   const data = statusQuery.data;
   const healthy = data.sources.filter((s) => s.state === 'HEALTHY').length;
   const stale = data.sources.filter((s) => s.state === 'STALE' || s.state === 'FAILED').length;
@@ -769,9 +769,9 @@ function ReadinessTab() {
     queryFn: fetchSchedulerReadiness,
     refetchInterval: REFRESH_INTERVAL_MS,
   });
-  if (readinessQuery.isLoading || !readinessQuery.data) return <Skeleton />;
   if (readinessQuery.isError)
     return <AuthErrorState error={readinessQuery.error} onRetry={() => readinessQuery.refetch()} />;
+  if (readinessQuery.isLoading || !readinessQuery.data) return <Skeleton />;
   const data = readinessQuery.data;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.base}px` }}>
@@ -815,9 +815,9 @@ function MetricsTab() {
     queryFn: fetchOperationsMetrics,
     refetchInterval: REFRESH_INTERVAL_MS,
   });
-  if (metricsQuery.isLoading || !metricsQuery.data) return <Skeleton />;
   if (metricsQuery.isError)
     return <AuthErrorState error={metricsQuery.error} onRetry={() => metricsQuery.refetch()} />;
+  if (metricsQuery.isLoading || !metricsQuery.data) return <Skeleton />;
   const metrics = metricsQuery.data;
   const total = Object.values(metrics.byStatus).reduce((sum, value) => sum + value, 0);
   return (

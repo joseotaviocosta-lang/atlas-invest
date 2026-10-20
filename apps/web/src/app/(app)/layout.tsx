@@ -222,7 +222,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <span style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
               {CANONICAL_NAV_ITEMS.find(
                 (item) => pathname === item.path || pathname.startsWith(`${item.path}/`),
-              )?.label || (pathname === '/onboarding' ? 'Boas-vindas' : 'Perfil')}
+              )?.label ||
+                (pathname === '/onboarding'
+                  ? 'Boas-vindas'
+                  : pathname.startsWith('/admin')
+                    ? 'Operações'
+                    : 'Perfil')}
             </span>
           </div>
 
