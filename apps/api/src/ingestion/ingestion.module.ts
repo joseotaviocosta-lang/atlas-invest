@@ -3,6 +3,11 @@
  *
  * R3-C adds the privileged admin surface. The scheduler is default-off and the
  * module has no cloud-specific coupling.
+ *
+ * Phase 5F adds the coverage-driven backfill orchestration (planner +
+ * orchestrator + admin plan/run surface). Backfill reuses the frozen 5E
+ * primitives (targetPeriod contract, advisory lock, bounded retry) and adds
+ * no new job types and no migration.
  */
 import { Module } from '@nestjs/common';
 import { getPrismaClient } from '@atlas/database';
@@ -25,6 +30,9 @@ import { NodeCronIngestionScheduler } from './scheduler/node-cron-ingestion.sche
 import { IngestionSchedulerLifecycle } from './scheduler/ingestion-scheduler.lifecycle';
 import { IngestionAdminController } from './admin/ingestion-admin.controller';
 import { IngestionOperatorGuard } from './admin/ingestion-operator.guard';
+import { BackfillAdminController } from './backfill/backfill-admin.controller';
+import { BackfillCoveragePlanner } from './backfill/coverage-planner';
+import { BackfillOrchestrator } from './backfill/backfill-orchestrator';
 import {
   INGESTION_JOB_LOCK,
   INGESTION_JOB_REGISTRY,
@@ -35,7 +43,7 @@ import {
 
 @Module({
   imports: [ApplicationModule, FxModule, CalendarsModule, MacroModule],
-  controllers: [IngestionAdminController],
+  controllers: [IngestionAdminController, BackfillAdminController],
   providers: [
     IngestionOperatorGuard,
     {
@@ -74,6 +82,8 @@ import {
       useExisting: NodeCronIngestionScheduler,
     },
     IngestionSchedulerLifecycle,
+    BackfillCoveragePlanner,
+    BackfillOrchestrator,
   ],
   exports: [
     INGESTION_JOB_REPOSITORY,

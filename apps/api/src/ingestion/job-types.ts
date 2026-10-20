@@ -20,7 +20,7 @@ export const INGESTION_JOB_TYPES = [
 
 export type IngestionJobType = (typeof INGESTION_JOB_TYPES)[number];
 
-export const TRIGGER_TYPES = ['SCHEDULED', 'MANUAL', 'RETRY'] as const;
+export const TRIGGER_TYPES = ['SCHEDULED', 'MANUAL', 'RETRY', 'BACKFILL'] as const;
 export type TriggerType = (typeof TRIGGER_TYPES)[number];
 
 export const JOB_STATUSES = [
