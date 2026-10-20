@@ -790,9 +790,9 @@ function ReadinessTab() {
         <p>
           O agendador permanece desabilitado por padrão (controle por ambiente). NOT_READY com
           agendador intencionalmente desligado é estado de configuração, não falha crítica. Um
-          agendador em execução legítima permanece READY + RUNNING; uma segunda tentativa de
-          início é rejeitada sem efeito (sem registro duplicado). A prontidão reflete a
-          configuração; o estado de execução é reportado separadamente.
+          agendador em execução legítima permanece READY + RUNNING; uma segunda tentativa de início
+          é rejeitada sem efeito (sem registro duplicado). A prontidão reflete a configuração; o
+          estado de execução é reportado separadamente.
         </p>
       </Card>
       <Card>

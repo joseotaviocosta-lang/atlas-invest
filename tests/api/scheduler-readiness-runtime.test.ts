@@ -54,7 +54,10 @@ afterEach(() => {
 describe('5H-H2 readiness runtime semantics', () => {
   it('CASE 1: flag unset -> NOT_READY, runtime STOPPED, nothing started', async () => {
     setEnv({ NODE_ENV: 'staging', INGESTION_SCHEDULER_ENABLED: undefined });
-    const readiness = new SchedulerReadinessService(calendarsStub() as never, fakeScheduler() as never);
+    const readiness = new SchedulerReadinessService(
+      calendarsStub() as never,
+      fakeScheduler() as never,
+    );
     const verdict = await readiness.check();
     expect(verdict.ready).toBe(false);
     expect(verdict.runtimeState).toBe('STOPPED');
@@ -62,7 +65,11 @@ describe('5H-H2 readiness runtime semantics', () => {
   });
 
   it('CASE 2: flag true + missing allowlist -> NOT_READY, runtime STOPPED', async () => {
-    setEnv({ NODE_ENV: 'staging', INGESTION_SCHEDULER_ENABLED: 'true', INGESTION_OPERATOR_USER_IDS: '' });
+    setEnv({
+      NODE_ENV: 'staging',
+      INGESTION_SCHEDULER_ENABLED: 'true',
+      INGESTION_OPERATOR_USER_IDS: '',
+    });
     const scheduler = fakeScheduler();
     const readiness = new SchedulerReadinessService(calendarsStub() as never, scheduler as never);
     const verdict = await readiness.check();
@@ -77,15 +84,19 @@ describe('5H-H2 readiness runtime semantics', () => {
       INGESTION_SCHEDULER_ENABLED: 'true',
       INGESTION_OPERATOR_USER_IDS: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     });
-    const readiness = new SchedulerReadinessService(calendarsStub() as never, fakeScheduler() as never);
+    const readiness = new SchedulerReadinessService(
+      calendarsStub() as never,
+      fakeScheduler() as never,
+    );
     const verdict = await readiness.check();
     expect(verdict.ready).toBe(true);
     expect(verdict.runtimeState).toBe('STOPPED');
     expect(verdict.checks.find((c) => c.name === 'ten-definitions-once')?.pass).toBe(true);
     expect(verdict.checks.find((c) => c.name === 'timezone-america-sao-paulo')?.pass).toBe(true);
-    expect(
-      verdict.checks.find((c) => c.name === 'scheduler-not-already-running'),
-    ).toMatchObject({ pass: true, reasonCode: 'UP_TO_DATE' });
+    expect(verdict.checks.find((c) => c.name === 'scheduler-not-already-running')).toMatchObject({
+      pass: true,
+      reasonCode: 'UP_TO_DATE',
+    });
   });
 
   it('CASE 4: legitimately running scheduler stays READY with runtime RUNNING', async () => {
@@ -100,9 +111,10 @@ describe('5H-H2 readiness runtime semantics', () => {
     const verdict = await readiness.check();
     expect(verdict.ready).toBe(true);
     expect(verdict.runtimeState).toBe('RUNNING');
-    expect(
-      verdict.checks.find((c) => c.name === 'scheduler-not-already-running'),
-    ).toMatchObject({ pass: true, reasonCode: 'ALREADY_RUNNING' });
+    expect(verdict.checks.find((c) => c.name === 'scheduler-not-already-running')).toMatchObject({
+      pass: true,
+      reasonCode: 'ALREADY_RUNNING',
+    });
   });
 
   it('CASE 5: second start is a no-op (no duplicate registration), stays READY/RUNNING', async () => {
@@ -125,19 +137,15 @@ describe('5H-H2 readiness runtime semantics', () => {
       INGESTION_SCHEDULER_ENABLED: 'true',
       INGESTION_OPERATOR_USER_IDS: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     });
-    const readiness = new SchedulerReadinessService(
-      calendarsStub() as never,
-      adapter as never,
-    );
+    const readiness = new SchedulerReadinessService(calendarsStub() as never, adapter as never);
     const verdict = await readiness.check();
     expect(verdict.ready).toBe(true);
     expect(verdict.runtimeState).toBe('STOPPED');
   });
 
   it('production mode alone never auto-enables the scheduler', async () => {
-    const { isIngestionSchedulerEnabled } = await import(
-      '../../apps/api/src/ingestion/scheduler/ingestion-scheduler'
-    );
+    const { isIngestionSchedulerEnabled } =
+      await import('../../apps/api/src/ingestion/scheduler/ingestion-scheduler');
     setEnv({ NODE_ENV: 'production', INGESTION_SCHEDULER_ENABLED: undefined });
     expect(isIngestionSchedulerEnabled()).toBe(false);
     vi.restoreAllMocks();
