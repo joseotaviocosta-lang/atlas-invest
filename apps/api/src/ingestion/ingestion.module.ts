@@ -23,6 +23,8 @@ import { MacroIpcaJob, MacroSelicEffectiveJob, MacroSelicTargetJob } from './job
 import { CalendarB3RefreshJob, CalendarBankingRefreshJob } from './jobs/calendar-refresh.job';
 import { NodeCronIngestionScheduler } from './scheduler/node-cron-ingestion.scheduler';
 import { IngestionSchedulerLifecycle } from './scheduler/ingestion-scheduler.lifecycle';
+import { IngestionAdminController } from './admin/ingestion-admin.controller';
+import { IngestionOperatorGuard } from './admin/ingestion-operator.guard';
 import {
   INGESTION_JOB_LOCK,
   INGESTION_JOB_REGISTRY,
@@ -33,7 +35,9 @@ import {
 
 @Module({
   imports: [ApplicationModule, FxModule, CalendarsModule, MacroModule],
+  controllers: [IngestionAdminController],
   providers: [
+    IngestionOperatorGuard,
     {
       provide: INGESTION_JOB_REPOSITORY,
       useFactory: () => new PrismaJobRepository(getPrismaClient()),
