@@ -71,6 +71,8 @@ export interface OperationsMetrics {
   readonly providerFailuresTotal: number;
   readonly retryAttemptsTotal: number;
   readonly backfillRunsTotal: number;
+  readonly jobsSkippedTotal: number;
+  readonly jobsLockedTotal: number;
   readonly avgDurationMs: number | null;
   readonly dataLagPeriods: Record<string, number | null>;
 }
@@ -123,9 +125,13 @@ export class OperationsSummaryService {
 
     const missed = await this.detectMissed(nowIso, page.items);
     const staleRunning = this.findStaleRunning(page.items, nowIso);
+    const retryExhausted = page.items
+      .filter((r) => r.status === 'FAILED' && r.attempt >= 3)
+      .slice(0, 5)
+      .map((r) => ({ jobType: r.jobType }));
     const conditions = this.buildConditions(sources, latestRuns, missed, staleRunning, page.items);
     const activeAlerts = await this.detector.reconcile(conditions, generatedAt);
-    const issues = this.buildIssues(sources, missed, latestRuns, staleRunning);
+    const issues = this.buildIssues(sources, missed, latestRuns, staleRunning, retryExhausted);
 
     return {
       overall: this.overallState(issues),
@@ -205,6 +211,10 @@ export class OperationsSummaryService {
       providerFailuresTotal: providerFailures[0]?.count ?? 0,
       retryAttemptsTotal: retries[0]?.count ?? 0,
       backfillRunsTotal: triggerMap['BACKFILL'] ?? 0,
+      jobsSkippedTotal: Object.entries(statusMap)
+        .filter(([status]) => status === 'SKIPPED' || status.startsWith('SKIPPED_'))
+        .reduce((sum, [, count]) => sum + count, 0),
+      jobsLockedTotal: statusMap['SKIPPED_LOCKED'] ?? 0,
       avgDurationMs: durations[0]?.avgMs ?? null,
       dataLagPeriods: {},
     };
@@ -255,8 +265,9 @@ export class OperationsSummaryService {
     latestRuns: OperationsLatestRun[],
     missed: Array<{ jobType: string; expectedDate: string }>,
     staleRunning: Array<{ jobType: string; jobRunId: string }>,
-    recentItems: Array<{ status: string; errorCode?: string; jobType: string; triggerType: string }>,
+    recentItems: Array<{ status: string; errorCode?: string; jobType: string; triggerType: string; attempt: number }>,
   ): DetectedCondition[] {
+    void latestRuns;
     const conditions: DetectedCondition[] = [];
     for (const source of sources) {
       if (source.state === 'FAILED' && source.reasonCode !== 'CALENDAR_COVERAGE_MISSING') {
@@ -277,22 +288,26 @@ export class OperationsSummaryService {
         });
       }
     }
-    for (const run of latestRuns.slice(0, 10)) {
+    const perJobLatest = new Map<string, (typeof recentItems)[number]>();
+    for (const item of recentItems) {
+      if (!perJobLatest.has(item.jobType)) perJobLatest.set(item.jobType, item);
+    }
+    for (const [jobType, run] of perJobLatest) {
       if (run.status === 'FAILED') {
         conditions.push({
           alertType: 'INGESTION_FAILED',
           severity: 'WARNING',
-          source: run.jobType,
+          source: jobType,
           reasonCode: 'LAST_RUN_FAILED',
-          metadata: { jobType: run.jobType },
+          metadata: { jobType },
         });
       } else if (run.status === 'PARTIAL') {
         conditions.push({
           alertType: 'INGESTION_PARTIAL',
           severity: 'WARNING',
-          source: run.jobType,
+          source: jobType,
           reasonCode: 'PARTIAL_RUN',
-          metadata: { jobType: run.jobType },
+          metadata: { jobType },
         });
       }
     }
@@ -322,7 +337,7 @@ export class OperationsSummaryService {
       byJob.set(failure.jobType, (byJob.get(failure.jobType) ?? 0) + 1);
     }
     for (const [jobType, count] of byJob) {
-      if (count >= 3) {
+      if (count >= 3 && perJobLatest.get(jobType)?.status !== 'SUCCESS') {
         conditions.push({
           alertType: 'REPEATED_PROVIDER_FAILURE',
           severity: 'CRITICAL',
@@ -352,6 +367,7 @@ export class OperationsSummaryService {
     missed: Array<{ jobType: string; expectedDate: string }>,
     latestRuns: OperationsLatestRun[],
     staleRunning: Array<{ jobType: string; jobRunId: string }>,
+    retryExhausted: Array<{ jobType: string }>,
   ): OperationsIssue[] {
     const issues: OperationsIssue[] = [];
     for (const source of sources) {
@@ -369,6 +385,9 @@ export class OperationsSummaryService {
     }
     for (const stale of staleRunning.slice(0, 5)) {
       issues.push({ severity: 'WARNING', code: 'STALE_RUNNING_JOB', source: stale.jobType, detail: `run ${stale.jobRunId} exceeds stale lease` });
+    }
+    for (const retry of retryExhausted.slice(0, 5)) {
+      issues.push({ severity: 'WARNING', code: 'RETRY_EXHAUSTED', source: retry.jobType, detail: 'max attempts exhausted without success' });
     }
     return issues;
   }
