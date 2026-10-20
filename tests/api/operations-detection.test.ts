@@ -193,6 +193,21 @@ describe('5G-R1 detection contracts', () => {
     }
   });
 
+  it('public /health stays 200 even when operations data is FAILED (separation)', async () => {
+    const { runner } = core();
+    const key = 'MARKET_QUOTES_DAILY:2026-09-09';
+    createdKeys.push(key);
+    createdAlerts.push(buildAlertDedupeKey('INGESTION_FAILED', 'MARKET_QUOTES_DAILY'));
+    await runner.run({ jobType: 'MARKET_QUOTES_DAILY', triggerType: 'SCHEDULED', targetPeriod: '2026-09-09', targetPeriodGranularity: 'DAY', scheduledFor: '2026-09-09', execute: async () => ({ status: 'FAILED' as const, itemsFailed: 1, errorCode: 'MARKET_DATA.PROVIDER_UNAVAILABLE', errorMessage: 'down', finishedAt: new Date().toISOString(), durationMs: 1 }), maxAttempts: 1 });
+    const auth = { Authorization: `Bearer ${operatorToken}` };
+    const status = await request(app.getHttpServer()).get('/api/v1/admin/operations/data-status').set(auth).expect(200);
+    expect(status.body.data.overall).not.toBe('HEALTHY');
+    expect(status.body.data.issues.length).toBeGreaterThan(0);
+    await request(app.getHttpServer()).get('/health').expect(200);
+    await request(app.getHttpServer()).get('/ready').expect(200);
+    await cleanup();
+  });
+
   it('scheduler readiness fails closed on missing config; ready with staging-like config', async () => {
     const { SchedulerReadinessService } = await import('../../apps/api/src/ingestion/operations/scheduler-readiness.service');
     const readiness = app.get(SchedulerReadinessService, { strict: false });

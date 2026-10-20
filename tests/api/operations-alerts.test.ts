@@ -77,6 +77,24 @@ describe('5G alert lifecycle', () => {
     expect(resolved?.resolvedAt).not.toBeNull();
   });
 
+  it('reopen after resolution creates a new lifecycle instance (deterministic)', async () => {
+    const { alerts } = core();
+    const detector = new OperationalAlertDetector(alerts, new PrismaJobLock(prisma));
+    const dedupe = buildAlertDedupeKey('DATA_STALE', 'TEST:REOPEN');
+    await prisma.$executeRawUnsafe(`DELETE FROM operational_alert_events WHERE dedupe_key = '${dedupe}'`);
+    const cond = { alertType: 'DATA_STALE' as const, severity: 'WARNING' as const, source: 'TEST:REOPEN', reasonCode: 'LATEST_DATA_MISSING' as const };
+    const first = await detector.reconcile([{ ...cond }], '2026-10-20T10:00:00.000Z');
+    const firstId = first.find((r) => r.dedupeKey === dedupe)!.id;
+    await detector.reconcile([], '2026-10-20T11:00:00.000Z');
+    const second = await detector.reconcile([{ ...cond }], '2026-10-20T12:00:00.000Z');
+    const reopened = second.find((r) => r.dedupeKey === dedupe)!;
+    expect(reopened.status).toBe('ACTIVE');
+    expect(reopened.id).not.toBe(firstId);
+    expect(reopened.occurrenceCount).toBe(1);
+    expect(new Date(reopened.firstDetectedAt as unknown as string | Date).toISOString()).toBe('2026-10-20T12:00:00.000Z');
+    await prisma.$executeRawUnsafe(`DELETE FROM operational_alert_events WHERE dedupe_key = '${dedupe}'`);
+  });
+
   it('stale RUNNING jobs are detected via jobs health', async () => {
     const { repository } = core();
     const key = 'BENCHMARK_IBOV_DAILY:2026-09-02';

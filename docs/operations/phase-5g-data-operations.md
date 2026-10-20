@@ -103,3 +103,11 @@ always fresh; a 0–30s cache was considered and rejected as stale-hiding).
   persisted reads, schema shape, bounded filters, unknown-id 404.
 - 5E/5F regression: ingestion + backfill suites green.
 - Full canonical matrix: all suites green (see implementation report).
+
+## 9. Health contract separation
+
+- `GET /health`: process alive (never fails because IBOV is stale).
+- `GET /ready`: API + database reachable (readiness probe).
+- `GET /api/v1/admin/operations/*`: data freshness and job health
+  (operator-only). No separate liveness endpoint exists by design; the three
+  layers above keep process, dependency and data concerns distinct.
