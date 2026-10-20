@@ -74,7 +74,7 @@ export class BenchmarkIbovDailyJob implements IngestionJobHandler {
     if (!(await this.calendar.isTradingDay(date))) {
       return skippedResult(
         'SKIPPED_MARKET_CLOSED',
-        `B3 trading calendar closed on ${ctx.scheduledFor}`,
+        `B3 trading calendar closed on ${ctx.targetPeriod}`,
       );
     }
 
@@ -84,7 +84,7 @@ export class BenchmarkIbovDailyJob implements IngestionJobHandler {
         from: shiftCivilDate(date, -LOOKBACK_DAYS).toString(),
         to: date.toString(),
       });
-      return mapBenchmarkReceipt(receipt, ctx.scheduledFor);
+      return mapBenchmarkReceipt(receipt, ctx.targetPeriod);
     } catch (error: unknown) {
       return failureResult(ctx, error, 'BENCHMARK.PROVIDER_UNAVAILABLE');
     }
@@ -107,7 +107,7 @@ export class BenchmarkCdiDailyJob implements IngestionJobHandler {
     if (!(await this.calendar.isBankingDay(date))) {
       return skippedResult(
         'SKIPPED_BANKING_CLOSED',
-        `BANKING calendar closed on ${ctx.scheduledFor}`,
+        `BANKING calendar closed on ${ctx.targetPeriod}`,
       );
     }
 
@@ -117,7 +117,7 @@ export class BenchmarkCdiDailyJob implements IngestionJobHandler {
         from: shiftCivilDate(date, -LOOKBACK_DAYS).toString(),
         to: date.toString(),
       });
-      return mapBenchmarkReceipt(receipt, ctx.scheduledFor);
+      return mapBenchmarkReceipt(receipt, ctx.targetPeriod);
     } catch (error: unknown) {
       return failureResult(ctx, error, 'BENCHMARK.PROVIDER_UNAVAILABLE');
     }

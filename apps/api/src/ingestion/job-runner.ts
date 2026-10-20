@@ -15,14 +15,18 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  assertValidExecutionDate,
+  assertValidTargetPeriod,
   buildLogicalJobKey,
   failedResultFromError,
+  getPeriodGranularity,
   IngestionJobType,
   JobExecutionContext,
   JobExecutionResult,
   JobReceipt,
   JobStatus,
   MAX_JOB_ATTEMPTS,
+  PeriodGranularity,
   RETRY_BACKOFF_BASE_MS,
   shouldRetryResult,
   TriggerType,
@@ -36,6 +40,10 @@ export type JobHandler = (ctx: JobExecutionContext) => Promise<JobExecutionResul
 export interface RunJobInput {
   jobType: IngestionJobType;
   triggerType: TriggerType;
+  /** Canonical logical business window (DAY YYYY-MM-DD, MONTH YYYY-MM, YEAR YYYY). */
+  targetPeriod: string;
+  targetPeriodGranularity: PeriodGranularity;
+  /** Execution civil date (always YYYY-MM-DD). Never the period. */
   scheduledFor: string;
   execute: JobHandler;
   maxAttempts?: number;
@@ -61,7 +69,16 @@ export class JobRunner {
     const maxAttempts = Math.max(1, input.maxAttempts ?? MAX_JOB_ATTEMPTS);
     const backoffBaseMs = input.backoffBaseMs ?? RETRY_BACKOFF_BASE_MS;
     const sleep = input.sleep ?? defaultSleep;
-    const logicalJobKey = buildLogicalJobKey(input.jobType, input.scheduledFor);
+    assertValidTargetPeriod(input.jobType, input.targetPeriod);
+    assertValidExecutionDate(input.scheduledFor);
+    const expectedGranularity = getPeriodGranularity(input.jobType);
+    if (input.targetPeriodGranularity !== expectedGranularity) {
+      throw new Error(
+        `Mismatched target period granularity '${input.targetPeriodGranularity}' for '${input.jobType}'. Expected '${expectedGranularity}'.`,
+      );
+    }
+    const targetPeriodGranularity = input.targetPeriodGranularity;
+    const logicalJobKey = buildLogicalJobKey(input.jobType, input.targetPeriod);
 
     let lastReceipt: JobReceipt | null = null;
 
@@ -87,6 +104,8 @@ export class JobRunner {
           logicalJobKey,
           jobType: input.jobType,
           triggerType,
+          targetPeriod: input.targetPeriod,
+          targetPeriodGranularity,
           scheduledFor: input.scheduledFor,
           attempt,
           startedAt,
@@ -98,6 +117,8 @@ export class JobRunner {
           logicalJobKey,
           jobType: input.jobType,
           triggerType,
+          targetPeriod: input.targetPeriod,
+          targetPeriodGranularity,
           scheduledFor: input.scheduledFor,
           attempt,
           startedAt,
@@ -157,6 +178,8 @@ export class JobRunner {
       logicalJobKey,
       jobType: input.jobType,
       triggerType: input.triggerType,
+      targetPeriod: input.targetPeriod,
+      targetPeriodGranularity: input.targetPeriodGranularity,
       scheduledFor: input.scheduledFor,
       attempt: 0,
       status: 'SKIPPED_LOCKED',
@@ -174,6 +197,8 @@ export class JobRunner {
       logicalJobKey: ctx.logicalJobKey,
       jobType: ctx.jobType,
       triggerType: ctx.triggerType,
+      targetPeriod: ctx.targetPeriod,
+      targetPeriodGranularity: ctx.targetPeriodGranularity,
       scheduledFor: ctx.scheduledFor,
       attempt: ctx.attempt,
       status: result.status as JobStatus,

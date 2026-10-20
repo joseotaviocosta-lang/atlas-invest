@@ -7,12 +7,20 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { buildLogicalJobKey, IngestionJobType, JobReceipt, TriggerType } from './job-types';
+import {
+  assertValidExecutionDate,
+  assertValidTargetPeriod,
+  buildLogicalJobKey,
+  getPeriodGranularity,
+  IngestionJobType,
+  JobReceipt,
+  TriggerType,
+} from './job-types';
 import { JobRunner, RunJobInput } from './job-runner';
 import { IJobRepository, ListRunsInput, ListRunsResult } from './job-repository';
 import { INGESTION_JOB_REGISTRY, INGESTION_JOB_REPOSITORY } from './tokens';
 import { IngestionJobRegistry } from './jobs/job-registry';
-import { civilDateInSaoPaulo, resolveScheduledPeriod } from './scheduler/ingestion-scheduler';
+import { civilDateInSaoPaulo, resolveTargetPeriod } from './scheduler/ingestion-scheduler';
 
 export interface RunIngestionJobOptions {
   maxAttempts?: number;
@@ -37,13 +45,18 @@ export class IngestionJobService {
     civilDate: string = civilDateInSaoPaulo(),
     options: RunIngestionJobOptions = {},
   ): Promise<JobReceipt> {
-    const period = resolveScheduledPeriod(jobType, civilDate);
+    assertValidExecutionDate(civilDate);
+    const targetPeriod = resolveTargetPeriod(jobType, civilDate);
+    const targetPeriodGranularity = getPeriodGranularity(jobType);
+    assertValidTargetPeriod(jobType, targetPeriod);
     const handler = this.registry.get(jobType);
 
     return this.runner.run({
       jobType,
       triggerType,
-      scheduledFor: period,
+      targetPeriod,
+      targetPeriodGranularity,
+      scheduledFor: civilDate,
       execute: (ctx) => handler.execute(ctx),
       maxAttempts: options.maxAttempts,
       backoffBaseMs: options.backoffBaseMs,
@@ -52,7 +65,7 @@ export class IngestionJobService {
   }
 
   logicalKey(jobType: IngestionJobType, civilDate: string): string {
-    return buildLogicalJobKey(jobType, resolveScheduledPeriod(jobType, civilDate));
+    return buildLogicalJobKey(jobType, resolveTargetPeriod(jobType, civilDate));
   }
 
   async findById(runId: string): Promise<JobReceipt | null> {

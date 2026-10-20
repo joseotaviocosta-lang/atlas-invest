@@ -12,10 +12,13 @@
 import { Injectable } from '@nestjs/common';
 import { getPrismaClient } from '@atlas/database';
 import {
+  assertValidExecutionDate,
+  assertValidTargetPeriod,
   IngestionJobType,
   JobExecutionResult,
   JobReceipt,
   JobStatus,
+  PeriodGranularity,
   STALE_RUN_TTL_MS,
   TriggerType,
 } from './job-types';
@@ -27,6 +30,8 @@ interface JobRunRow {
   logicalJobKey: string;
   jobType: string;
   triggerType: string;
+  targetPeriod: string;
+  targetPeriodGranularity: string;
   scheduledFor: Date;
   startedAt: Date | null;
   finishedAt: Date | null;
@@ -48,6 +53,10 @@ export interface CreateRunInput {
   logicalJobKey: string;
   jobType: IngestionJobType;
   triggerType: TriggerType;
+  /** Canonical logical business window (DAY YYYY-MM-DD, MONTH YYYY-MM, YEAR YYYY). Never coerced. */
+  targetPeriod: string;
+  targetPeriodGranularity: PeriodGranularity;
+  /** Execution civil date (always YYYY-MM-DD). */
   scheduledFor: string;
   attempt: number;
   startedAt: string;
@@ -96,6 +105,8 @@ function mapRow(row: JobRunRow): JobReceipt {
     logicalJobKey: row.logicalJobKey,
     jobType: row.jobType as IngestionJobType,
     triggerType: row.triggerType as TriggerType,
+    targetPeriod: row.targetPeriod,
+    targetPeriodGranularity: row.targetPeriodGranularity as JobReceipt['targetPeriodGranularity'],
     scheduledFor: toCivilDate(row.scheduledFor),
     attempt: row.attempt,
     status: row.status as JobStatus,
@@ -168,15 +179,21 @@ export class PrismaJobRepository implements IJobRepository {
   }
 
   async createRun(input: CreateRunInput): Promise<JobReceipt> {
+    assertValidTargetPeriod(input.jobType, input.targetPeriod);
+    assertValidExecutionDate(input.scheduledFor);
     const rows = await this.prisma.$queryRaw<JobRunRow[]>`
       INSERT INTO ingestion_job_runs
-        (id, logical_job_key, job_type, trigger_type, scheduled_for,
+        (id, logical_job_key, job_type, trigger_type, target_period,
+         target_period_granularity, scheduled_for,
          started_at, status, attempt, items_failed, created_at)
       VALUES (gen_random_uuid(), ${input.logicalJobKey}, ${input.jobType},
-              ${input.triggerType}, ${input.scheduledFor}::date,
+              ${input.triggerType}, ${input.targetPeriod},
+              ${input.targetPeriodGranularity}, ${input.scheduledFor}::date,
               ${input.startedAt}::timestamptz, 'RUNNING', ${input.attempt}, 0, NOW())
       RETURNING id, logical_job_key AS "logicalJobKey", job_type AS "jobType",
-        trigger_type AS "triggerType", scheduled_for AS "scheduledFor",
+        trigger_type AS "triggerType", target_period AS "targetPeriod",
+        target_period_granularity AS "targetPeriodGranularity",
+        scheduled_for AS "scheduledFor",
         started_at AS "startedAt", finished_at AS "finishedAt",
         status, attempt, items_requested AS "itemsRequested",
         items_fetched AS "itemsFetched", items_inserted AS "itemsInserted",
@@ -208,7 +225,9 @@ export class PrismaJobRepository implements IJobRepository {
   async findById(runId: string): Promise<JobReceipt | null> {
     const rows = await this.prisma.$queryRaw<JobRunRow[]>`
       SELECT id, logical_job_key AS "logicalJobKey", job_type AS "jobType",
-             trigger_type AS "triggerType", scheduled_for AS "scheduledFor",
+             trigger_type AS "triggerType", target_period AS "targetPeriod",
+             target_period_granularity AS "targetPeriodGranularity",
+             scheduled_for AS "scheduledFor",
              started_at AS "startedAt", finished_at AS "finishedAt",
              status, attempt, items_requested AS "itemsRequested",
              items_fetched AS "itemsFetched", items_inserted AS "itemsInserted",
@@ -230,7 +249,9 @@ export class PrismaJobRepository implements IJobRepository {
       const cursor = decodeCursor(input.cursor);
       rows = await this.prisma.$queryRaw<JobRunRow[]>`
         SELECT id, logical_job_key AS "logicalJobKey", job_type AS "jobType",
-               trigger_type AS "triggerType", scheduled_for AS "scheduledFor",
+               trigger_type AS "triggerType", target_period AS "targetPeriod",
+               target_period_granularity AS "targetPeriodGranularity",
+               scheduled_for AS "scheduledFor",
                started_at AS "startedAt", finished_at AS "finishedAt",
                status, attempt, items_requested AS "itemsRequested",
                items_fetched AS "itemsFetched", items_inserted AS "itemsInserted",
@@ -245,7 +266,9 @@ export class PrismaJobRepository implements IJobRepository {
     } else {
       rows = await this.prisma.$queryRaw<JobRunRow[]>`
         SELECT id, logical_job_key AS "logicalJobKey", job_type AS "jobType",
-               trigger_type AS "triggerType", scheduled_for AS "scheduledFor",
+               trigger_type AS "triggerType", target_period AS "targetPeriod",
+               target_period_granularity AS "targetPeriodGranularity",
+               scheduled_for AS "scheduledFor",
                started_at AS "startedAt", finished_at AS "finishedAt",
                status, attempt, items_requested AS "itemsRequested",
                items_fetched AS "itemsFetched", items_inserted AS "itemsInserted",

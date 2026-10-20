@@ -1,9 +1,13 @@
 /**
- * Phase 5E (R3-C) - Privileged ingestion administration API.
+ * Phase 5E (R3-C/H1) - Privileged ingestion administration API.
  *
  * Every route requires an authenticated operator (server-side allowlist) and
  * delegates to the same IngestionJobService used by the scheduler. Ordinary
  * authenticated users receive 403; unauthenticated requests receive 401.
+ *
+ * Manual body `scheduledFor` is the execution civil date (YYYY-MM-DD, never a
+ * period). The service derives the canonical `targetPeriod` (DAY YYYY-MM-DD,
+ * MONTH YYYY-MM, YEAR YYYY) from the job type. Receipts expose both.
  */
 
 import {

@@ -105,7 +105,7 @@ async function executeFx(
   if (!(await calendar.isBankingDay(date))) {
     return skippedResult(
       'SKIPPED_BANKING_CLOSED',
-      `BANKING calendar closed on ${ctx.scheduledFor}`,
+      `BANKING calendar closed on ${ctx.targetPeriod}`,
     );
   }
 
@@ -116,7 +116,7 @@ async function executeFx(
       from: shiftCivilDate(date, -LOOKBACK_DAYS).toString(),
       to: date.toString(),
     });
-    return mapFxReceipt(receipt, ctx.scheduledFor);
+    return mapFxReceipt(receipt, ctx.targetPeriod);
   } catch (error: unknown) {
     return failureResult(ctx, error, 'FX.PROVIDER_UNAVAILABLE');
   }

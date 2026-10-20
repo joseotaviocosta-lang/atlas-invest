@@ -23,7 +23,7 @@ async function refreshCalendar(
   ctx: JobExecutionContext,
 ): Promise<JobExecutionResult> {
   try {
-    const year = yearFromPeriod(ctx.scheduledFor);
+    const year = yearFromPeriod(ctx.targetPeriod);
     const current = await useCase.execute({ calendarType, year, preserveExisting: true });
     const next = await useCase.execute({ calendarType, year: year + 1, preserveExisting: true });
 

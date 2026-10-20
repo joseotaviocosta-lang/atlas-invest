@@ -39,6 +39,8 @@ class FakeJobRepository implements IJobRepository {
       logicalJobKey: input.logicalJobKey,
       jobType: input.jobType,
       triggerType: input.triggerType,
+      targetPeriod: input.targetPeriod,
+      targetPeriodGranularity: input.targetPeriodGranularity,
       scheduledFor: input.scheduledFor,
       attempt: input.attempt,
       status: 'RUNNING',
@@ -138,6 +140,8 @@ describe('JobRunner concurrency and lock lifecycle (R3-A)', () => {
     const receipt = await runner.run({
       jobType: 'MARKET_QUOTES_DAILY',
       triggerType: 'SCHEDULED',
+      targetPeriod: '2026-10-19',
+      targetPeriodGranularity: 'DAY',
       scheduledFor: '2026-10-19',
       execute: async () => {
         handlerCalls += 1;
@@ -160,6 +164,8 @@ describe('JobRunner concurrency and lock lifecycle (R3-A)', () => {
     const first = await runner.run({
       jobType: 'MARKET_QUOTES_DAILY',
       triggerType: 'SCHEDULED',
+      targetPeriod: '2026-10-19',
+      targetPeriodGranularity: 'DAY',
       scheduledFor: '2026-10-19',
       execute: async () => successResult(),
     });
@@ -169,6 +175,8 @@ describe('JobRunner concurrency and lock lifecycle (R3-A)', () => {
     const second = await runner.run({
       jobType: 'MARKET_QUOTES_DAILY',
       triggerType: 'SCHEDULED',
+      targetPeriod: '2026-10-20',
+      targetPeriodGranularity: 'DAY',
       scheduledFor: '2026-10-20',
       execute: async () => successResult(),
     });
@@ -184,6 +192,8 @@ describe('JobRunner concurrency and lock lifecycle (R3-A)', () => {
     const failed = await runner.run({
       jobType: 'MARKET_QUOTES_DAILY',
       triggerType: 'SCHEDULED',
+      targetPeriod: '2026-10-19',
+      targetPeriodGranularity: 'DAY',
       scheduledFor: '2026-10-19',
       execute: async () => ({
         status: 'FAILED',
@@ -200,6 +210,8 @@ describe('JobRunner concurrency and lock lifecycle (R3-A)', () => {
     const next = await runner.run({
       jobType: 'MARKET_QUOTES_DAILY',
       triggerType: 'MANUAL',
+      targetPeriod: '2026-10-19',
+      targetPeriodGranularity: 'DAY',
       scheduledFor: '2026-10-19',
       execute: async () => successResult(),
     });
@@ -214,6 +226,8 @@ describe('JobRunner concurrency and lock lifecycle (R3-A)', () => {
     const receipt = await runner.run({
       jobType: 'MARKET_QUOTES_DAILY',
       triggerType: 'SCHEDULED',
+      targetPeriod: '2026-10-19',
+      targetPeriodGranularity: 'DAY',
       scheduledFor: '2026-10-19',
       execute: async () => {
         throw new Error('boom');
@@ -235,6 +249,8 @@ describe('JobRunner concurrency and lock lifecycle (R3-A)', () => {
     const receipt = await runner.run({
       jobType: 'MARKET_QUOTES_DAILY',
       triggerType: 'SCHEDULED',
+      targetPeriod: '2026-10-19',
+      targetPeriodGranularity: 'DAY',
       scheduledFor: '2026-10-19',
       execute: async (ctx) => {
         calls += 1;
@@ -273,6 +289,8 @@ describe('JobRunner concurrency and lock lifecycle (R3-A)', () => {
     const receipt = await runner.run({
       jobType: 'MARKET_QUOTES_DAILY',
       triggerType: 'SCHEDULED',
+      targetPeriod: '2026-10-19',
+      targetPeriodGranularity: 'DAY',
       scheduledFor: '2026-10-19',
       execute: async () => {
         calls += 1;

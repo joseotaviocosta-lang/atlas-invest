@@ -55,6 +55,8 @@ class InMemoryJobRepository implements IJobRepository {
       logicalJobKey: input.logicalJobKey,
       jobType: input.jobType,
       triggerType: input.triggerType,
+      targetPeriod: input.targetPeriod,
+      targetPeriodGranularity: input.targetPeriodGranularity,
       scheduledFor: input.scheduledFor,
       attempt: input.attempt,
       status: 'RUNNING',
@@ -98,12 +100,26 @@ class InMemoryJobLock implements IJobLock {
   }
 }
 
-function context(jobType: IngestionJobType, scheduledFor: string): JobExecutionContext {
+function context(jobType: IngestionJobType, targetPeriod: string): JobExecutionContext {
+  const granularity =
+    jobType === 'MACRO_IPCA'
+      ? ('MONTH' as const)
+      : jobType === 'CALENDAR_B3_REFRESH' || jobType === 'CALENDAR_BANKING_REFRESH'
+        ? ('YEAR' as const)
+        : ('DAY' as const);
+  const scheduledFor =
+    granularity === 'DAY'
+      ? targetPeriod
+      : granularity === 'MONTH'
+        ? `${targetPeriod}-01`
+        : `${targetPeriod}-01-01`;
   return {
     jobRunId: 'run-test',
-    logicalJobKey: `${jobType}:${scheduledFor}`,
+    logicalJobKey: `${jobType}:${targetPeriod}`,
     jobType,
     triggerType: 'SCHEDULED',
+    targetPeriod,
+    targetPeriodGranularity: granularity,
     scheduledFor,
     attempt: 1,
     startedAt: new Date().toISOString(),
@@ -139,6 +155,8 @@ describe('Phase 5E R3-D - bounded retry and partial success', () => {
     const receipt = await runner.run({
       jobType: 'BENCHMARK_CDI_DAILY',
       triggerType: 'SCHEDULED',
+      targetPeriod: '2026-10-19',
+      targetPeriodGranularity: 'DAY',
       scheduledFor: '2026-10-19',
       maxAttempts: 3,
       backoffBaseMs: 30_000,
@@ -172,7 +190,9 @@ describe('Phase 5E R3-D - bounded retry and partial success', () => {
     const receipt = await runner.run({
       jobType: 'MACRO_IPCA',
       triggerType: 'SCHEDULED',
-      scheduledFor: '2026-10',
+      targetPeriod: '2026-10',
+      targetPeriodGranularity: 'MONTH',
+      scheduledFor: '2026-10-01',
       maxAttempts: 3,
       backoffBaseMs: 1,
       sleep: async () => undefined,
@@ -305,6 +325,8 @@ describe('Phase 5E R3-D - persisted data safety and idempotent reruns', () => {
     const receipt = await runner.run({
       jobType: 'MARKET_QUOTES_DAILY',
       triggerType: 'SCHEDULED',
+      targetPeriod: scheduledFor,
+      targetPeriodGranularity: 'DAY',
       scheduledFor,
       execute: (ctx) => job.execute(ctx),
       maxAttempts: 1,
@@ -354,6 +376,8 @@ describe('Phase 5E R3-D - persisted data safety and idempotent reruns', () => {
     const receipt = await runner.run({
       jobType: 'MARKET_QUOTES_DAILY',
       triggerType: 'SCHEDULED',
+      targetPeriod: scheduledFor,
+      targetPeriodGranularity: 'DAY',
       scheduledFor,
       execute: (ctx) => job.execute(ctx),
       maxAttempts: 1,
@@ -405,12 +429,16 @@ describe('Phase 5E R3-D - persisted data safety and idempotent reruns', () => {
     const first = await runner.run({
       jobType: 'MARKET_QUOTES_DAILY',
       triggerType: 'SCHEDULED',
+      targetPeriod: scheduledFor,
+      targetPeriodGranularity: 'DAY',
       scheduledFor,
       execute: handler,
     });
     const second = await runner.run({
       jobType: 'MARKET_QUOTES_DAILY',
       triggerType: 'SCHEDULED',
+      targetPeriod: scheduledFor,
+      targetPeriodGranularity: 'DAY',
       scheduledFor,
       execute: handler,
     });
@@ -424,6 +452,8 @@ describe('Phase 5E R3-D - persisted data safety and idempotent reruns', () => {
     const third = await runner.run({
       jobType: 'MARKET_QUOTES_DAILY',
       triggerType: 'SCHEDULED',
+      targetPeriod: scheduledFor,
+      targetPeriodGranularity: 'DAY',
       scheduledFor,
       execute: handler,
     });

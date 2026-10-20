@@ -71,12 +71,16 @@ describe('ingestion atomic advisory locking (R3-A, atlas_test)', () => {
       runner.run({
         jobType: 'MARKET_QUOTES_DAILY',
         triggerType: 'SCHEDULED',
+        targetPeriod: scheduledFor,
+        targetPeriodGranularity: 'DAY',
         scheduledFor,
         execute: slowHandler,
       }),
       runner.run({
         jobType: 'MARKET_QUOTES_DAILY',
         triggerType: 'SCHEDULED',
+        targetPeriod: scheduledFor,
+        targetPeriodGranularity: 'DAY',
         scheduledFor,
         execute: slowHandler,
       }),
@@ -112,12 +116,16 @@ describe('ingestion atomic advisory locking (R3-A, atlas_test)', () => {
       runner.run({
         jobType: 'BENCHMARK_IBOV_DAILY',
         triggerType: 'SCHEDULED',
+        targetPeriod: '2026-10-19',
+        targetPeriodGranularity: 'DAY',
         scheduledFor: '2026-10-19',
         execute: handler,
       }),
       runner.run({
         jobType: 'BENCHMARK_CDI_DAILY',
         triggerType: 'SCHEDULED',
+        targetPeriod: '2026-10-19',
+        targetPeriodGranularity: 'DAY',
         scheduledFor: '2026-10-19',
         execute: handler,
       }),
@@ -136,6 +144,8 @@ describe('ingestion atomic advisory locking (R3-A, atlas_test)', () => {
     const first = await runner.run({
       jobType: 'BENCHMARK_IBOV_DAILY',
       triggerType: 'SCHEDULED',
+      targetPeriod: scheduledFor,
+      targetPeriodGranularity: 'DAY',
       scheduledFor,
       execute: async () => successResult(),
     });
@@ -145,6 +155,8 @@ describe('ingestion atomic advisory locking (R3-A, atlas_test)', () => {
     const second = await runner.run({
       jobType: 'BENCHMARK_IBOV_DAILY',
       triggerType: 'MANUAL',
+      targetPeriod: scheduledFor,
+      targetPeriodGranularity: 'DAY',
       scheduledFor,
       execute: async () => successResult(),
     });
@@ -160,6 +172,8 @@ describe('ingestion atomic advisory locking (R3-A, atlas_test)', () => {
     const failed = await runner.run({
       jobType: 'FX_USD_BRL_DAILY',
       triggerType: 'SCHEDULED',
+      targetPeriod: scheduledFor,
+      targetPeriodGranularity: 'DAY',
       scheduledFor,
       execute: async () => ({
         status: 'FAILED',
@@ -175,6 +189,8 @@ describe('ingestion atomic advisory locking (R3-A, atlas_test)', () => {
     const next = await runner.run({
       jobType: 'FX_USD_BRL_DAILY',
       triggerType: 'MANUAL',
+      targetPeriod: scheduledFor,
+      targetPeriodGranularity: 'DAY',
       scheduledFor,
       execute: async () => successResult(),
     });
@@ -184,12 +200,15 @@ describe('ingestion atomic advisory locking (R3-A, atlas_test)', () => {
 
   it('releases the lock after an unexpected throw', async () => {
     const { runner } = makeCore();
+    const targetPeriod = '2026-10';
     const scheduledFor = '2026-10-22';
-    trackKey(buildLogicalJobKey('MACRO_IPCA', scheduledFor));
+    trackKey(buildLogicalJobKey('MACRO_IPCA', targetPeriod));
 
     const thrown = await runner.run({
       jobType: 'MACRO_IPCA',
       triggerType: 'SCHEDULED',
+      targetPeriod,
+      targetPeriodGranularity: 'MONTH',
       scheduledFor,
       execute: async () => {
         throw new Error('unexpected crash');
@@ -201,6 +220,8 @@ describe('ingestion atomic advisory locking (R3-A, atlas_test)', () => {
     const next = await runner.run({
       jobType: 'MACRO_IPCA',
       triggerType: 'MANUAL',
+      targetPeriod,
+      targetPeriodGranularity: 'MONTH',
       scheduledFor,
       execute: async () => successResult(),
     });
@@ -216,6 +237,8 @@ describe('ingestion atomic advisory locking (R3-A, atlas_test)', () => {
     const receipt = await runner.run({
       jobType: 'MACRO_SELIC_EFFECTIVE',
       triggerType: 'SCHEDULED',
+      targetPeriod: scheduledFor,
+      targetPeriodGranularity: 'DAY',
       scheduledFor,
       execute: async (ctx) => {
         calls += 1;
@@ -252,6 +275,8 @@ describe('ingestion atomic advisory locking (R3-A, atlas_test)', () => {
       logicalJobKey: key,
       jobType: 'FX_EUR_BRL_DAILY',
       triggerType: 'SCHEDULED',
+      targetPeriod: scheduledFor,
+      targetPeriodGranularity: 'DAY',
       scheduledFor,
       attempt: 1,
       startedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
@@ -260,6 +285,8 @@ describe('ingestion atomic advisory locking (R3-A, atlas_test)', () => {
     const receipt = await runner.run({
       jobType: 'FX_EUR_BRL_DAILY',
       triggerType: 'SCHEDULED',
+      targetPeriod: scheduledFor,
+      targetPeriodGranularity: 'DAY',
       scheduledFor,
       execute: async () => successResult(),
     });

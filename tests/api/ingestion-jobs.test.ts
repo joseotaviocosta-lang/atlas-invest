@@ -10,6 +10,7 @@ import {
   IngestionJobType,
   JobExecutionContext,
   JobExecutionResult,
+  getPeriodGranularity,
 } from '../../apps/api/src/ingestion/job-types';
 import { IngestionJobRegistry } from '../../apps/api/src/ingestion/jobs/job-registry';
 import { MarketQuotesDailyJob } from '../../apps/api/src/ingestion/jobs/market-quotes-daily.job';
@@ -44,12 +45,21 @@ import { UpdateMacroDataUseCase } from '../../apps/api/src/application/macro';
 import { UpdateCalendarDataUseCase } from '../../apps/api/src/application/calendar';
 import { IIngestionPortfolioDirectory } from '../../apps/api/src/ingestion/jobs/portfolio-directory';
 
-function context(jobType: IngestionJobType, scheduledFor: string): JobExecutionContext {
+function context(jobType: IngestionJobType, targetPeriod: string): JobExecutionContext {
+  const granularity = getPeriodGranularity(jobType);
+  const scheduledFor =
+    granularity === 'DAY'
+      ? targetPeriod
+      : granularity === 'MONTH'
+        ? `${targetPeriod}-01`
+        : `${targetPeriod}-01-01`;
   return {
     jobRunId: 'run-test',
-    logicalJobKey: `${jobType}:${scheduledFor}`,
+    logicalJobKey: `${jobType}:${targetPeriod}`,
     jobType,
     triggerType: 'SCHEDULED',
+    targetPeriod,
+    targetPeriodGranularity: granularity,
     scheduledFor,
     attempt: 1,
     startedAt: new Date().toISOString(),

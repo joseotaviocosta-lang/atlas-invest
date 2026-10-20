@@ -99,10 +99,13 @@ export function civilDateInSaoPaulo(now: Date = new Date()): string {
 }
 
 /**
- * Logical period for a job type:
+ * Logical target period for a job type given an execution civil date:
  *   daily jobs  -> YYYY-MM-DD
  *   MACRO_IPCA  -> YYYY-MM
  *   calendars   -> YYYY
+ *
+ * This is the canonical business window (never the execution timestamp).
+ * Use `getPeriodGranularity` for the DAY/MONTH/YEAR contract.
  */
 export function resolveScheduledPeriod(jobType: IngestionJobType, civilDate: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(civilDate)) {
@@ -113,4 +116,9 @@ export function resolveScheduledPeriod(jobType: IngestionJobType, civilDate: str
     return civilDate.slice(0, 4);
   }
   return civilDate;
+}
+
+/** Alias with explicit period semantics (same derivation, no behavior change). */
+export function resolveTargetPeriod(jobType: IngestionJobType, civilDate: string): string {
+  return resolveScheduledPeriod(jobType, civilDate);
 }

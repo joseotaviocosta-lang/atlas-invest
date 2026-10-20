@@ -113,7 +113,14 @@ Rules:
 
 ## 5. Logical identity and locking
 
-- Logical key examples: `MARKET_QUOTES_DAILY:2026-10-19`, `MACRO_IPCA:2026-09`, `CALENDAR_B3_REFRESH:2027`.
+- Canonical contract (H1): `targetPeriod` is the logical business window;
+  `scheduledFor` is the execution civil date in America/Sao_Paulo.
+- Granularity: DAY (`YYYY-MM-DD`, 7 daily jobs), MONTH (`YYYY-MM`,
+  `MACRO_IPCA`), YEAR (`YYYY`, 2 calendar refresh jobs).
+- Logical key examples: `MARKET_QUOTES_DAILY:2026-10-19`, `MACRO_IPCA:2026-10`,
+  `CALENDAR_B3_REFRESH:2027` (attempt excluded, period-based).
+- `targetPeriod` is stored exactly (`TEXT`, never coerced to `2026-01-01` or
+  `2026-10-01`); `scheduledFor` is stored as `DATE` execution semantics.
 - Attempt is history metadata, never identity.
 - Lock key: 64-bit FNV-1a of the UTF-8 logical key, passed to `pg_try_advisory_xact_lock(bigint)`.
 - The lock lives inside an interactive transaction for the entire handler; release is commit/rollback/connection loss.
@@ -122,14 +129,30 @@ Rules:
 
 ## 6. Persistence and receipts
 
-Table `ingestion_job_runs` (migration 29) stores:
+Table `ingestion_job_runs` (migration 29 + additive migration 30) stores:
 
-- identity: `logical_job_key`, `job_type`, `trigger_type`, `scheduled_for`, `attempt`
+- identity: `logical_job_key`, `job_type`, `trigger_type`,
+  `target_period`, `target_period_granularity`, `scheduled_for`, `attempt`
 - timing: `started_at`, `finished_at`, `created_at` (UTC timestamps)
 - outcome: `status`, `error_code`, `error_message`, `metadata`
 - counters: `items_requested`, `items_fetched`, `items_inserted`, `items_revised`, `items_unchanged`, `items_failed`
 
+Semantics:
+
+- `target_period`: `YYYY-MM-DD` (DAY), `YYYY-MM` (MONTH), `YYYY` (YEAR).
+  This is the only period component of the logical key.
+- `target_period_granularity`: `DAY` | `MONTH` | `YEAR`.
+- `scheduled_for`: execution civil date (`YYYY-MM-DD`, America/Sao_Paulo),
+  never overloaded with the period. For daily jobs it equals the period;
+  for MONTH/YEAR jobs it is the trigger date the period was derived from.
+- Migration 29 `scheduled_for DATE` remains for execution semantics;
+  migration 30 adds `target_period` + granularity + index, backfilling
+  pre-H1 DAY rows from the execution date.
+
 Receipts returned by the runner/API include the same fields plus `durationMs` and `logicalJobKey`.
+History (`GET .../jobs`) and detail (`GET .../jobs/:id`) expose
+`targetPeriod`, `targetPeriodGranularity`, `scheduledFor`, `jobType`,
+`triggerType`, `attempt` and `status` distinctly.
 
 ## 7. Retry and partial success
 
@@ -152,11 +175,16 @@ GET  /api/v1/admin/ingestion/jobs/:id
 
 - Server-side operator allowlist only.
 - `401` unauthenticated, `403` ordinary user, `200` operator.
-- Manual body: `{ "scheduledFor": "YYYY-MM-DD" }` only (optional, real civil date, not future).
+- Manual body: `{ "scheduledFor": "YYYY-MM-DD" }` only (optional execution
+  civil date, real calendar date, not future). The service derives
+  `targetPeriod` from the job type (DAY/MONTH/YEAR); receipts echo both.
 - Strict Zod schemas reject unknown keys: `provider`, `url`, `sgsId`, `from`, `to`, etc. ⇒ `400`.
 - `limit` 1–200; unknown query keys ⇒ `400`.
 - Unknown job run UUID ⇒ `404 INGESTION.JOB_NOT_FOUND`.
 - `Cache-Control: private, no-store`.
+- H1 regression: `CALENDAR_*` (`YYYY`), `MACRO_IPCA` (`YYYY-MM`) and daily
+  (`YYYY-MM-DD`) round-trip exactly; mismatched granularity is rejected
+  before insertion (no `::date` coercion).
 
 ## 9. Zero-live-read boundary
 

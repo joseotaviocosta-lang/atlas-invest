@@ -39,7 +39,7 @@ export class MarketQuotesDailyJob implements IngestionJobHandler {
     if (!isTradingDay) {
       return skippedResult(
         'SKIPPED_MARKET_CLOSED',
-        `B3 trading calendar closed on ${ctx.scheduledFor}`,
+        `B3 trading calendar closed on ${ctx.targetPeriod}`,
       );
     }
 
@@ -89,7 +89,7 @@ export class MarketQuotesDailyJob implements IngestionJobHandler {
       }
     }
 
-    const target = ctx.scheduledFor;
+    const target = ctx.targetPeriod;
     const provider = 'MARKET_DATA';
     // A failed portfolio must still count as requested; use the larger of the
     // portfolio count and the asset count reported by successful use cases.

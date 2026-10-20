@@ -82,9 +82,9 @@ export function failureResult(
   };
 }
 
-/** Resolves the scheduled civil date for daily jobs (YYYY-MM-DD). */
+/** Resolves the target business date for daily jobs (DAY YYYY-MM-DD). */
 export function civilDateFromContext(ctx: JobExecutionContext): LocalDate {
-  return LocalDate.from(ctx.scheduledFor);
+  return LocalDate.from(ctx.targetPeriod);
 }
 
 /** Adds (or subtracts) civil days without timezone drift. */
