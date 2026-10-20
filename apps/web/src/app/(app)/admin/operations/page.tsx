@@ -346,14 +346,62 @@ function JobsTab() {
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [receipt, setReceipt] = React.useState<Record<string, unknown> | null>(null);
 
+  const [limit, setLimit] = React.useState(25);
   const params = React.useMemo(
-    () => ({ jobType, status, triggerType, from, to, limit: 50 }),
-    [jobType, status, triggerType, from, to],
+    () => ({ jobType, status, triggerType, from, to, limit }),
+    [jobType, status, triggerType, from, to, limit],
   );
-  const historyQuery = useQuery({
-    queryKey: [...operationsQueryKeys.jobs(params)],
-    queryFn: () => fetchJobHistory(params),
-  });
+  const [pages, setPages] = React.useState<JobRunDto[][]>([]);
+  const [cursor, setCursor] = React.useState<string | undefined>(undefined);
+  const [hasMore, setHasMore] = React.useState(false);
+  const [historyLoading, setHistoryLoading] = React.useState(false);
+  const [historyError, setHistoryError] = React.useState<Error | null>(null);
+  const paramsKey = JSON.stringify(params);
+
+  const filterError =
+    (from && !isValidCivilDate(from)) || (to && !isValidCivilDate(to)) || (from && to && from > to)
+      ? 'Período inválido: use datas civis YYYY-MM-DD com início ≤ fim.'
+      : null;
+
+  const loadHistory = React.useCallback(
+    async (nextCursor?: string, append = false) => {
+      if (filterError) return;
+      setHistoryLoading(true);
+      setHistoryError(null);
+      try {
+        const res = await fetchJobHistory(
+          append && nextCursor ? { ...params, cursor: nextCursor } : params,
+        );
+        const meta = res.meta as { nextCursor?: string; hasMore?: boolean };
+        setPages((previous) => (append ? [...previous, res.data] : [res.data]));
+        setCursor(meta.nextCursor);
+        setHasMore(Boolean(meta.hasMore));
+      } catch (error) {
+        setHistoryError(error instanceof Error ? error : new Error('Falha ao carregar histórico'));
+      } finally {
+        setHistoryLoading(false);
+      }
+    },
+    [paramsKey, filterError, params],
+  );
+
+  React.useEffect(() => {
+    void loadHistory(undefined, false);
+  }, [loadHistory]);
+
+  const historyRows = React.useMemo(() => {
+    const seen = new Set<string>();
+    const rows: JobRunDto[] = [];
+    for (const page of pages) {
+      for (const run of page) {
+        if (!seen.has(run.jobRunId)) {
+          seen.add(run.jobRunId);
+          rows.push(run);
+        }
+      }
+    }
+    return rows;
+  }, [pages]);
   const healthQuery = useQuery({
     queryKey: [...operationsQueryKeys.health],
     queryFn: fetchJobsHealth,
@@ -374,10 +422,6 @@ function JobsTab() {
     },
   });
 
-  const filterError =
-    (from && !isValidCivilDate(from)) || (to && !isValidCivilDate(to)) || (from && to && from > to)
-      ? 'Período inválido: use datas civis YYYY-MM-DD com início ≤ fim.'
-      : null;
   const scheduledForError =
     scheduledFor && !isValidCivilDate(scheduledFor)
       ? 'scheduledFor deve ser uma data civil válida YYYY-MM-DD (ou vazio para hoje).'
@@ -443,13 +487,23 @@ function JobsTab() {
             onChange={(event) => setTo(event.target.value)}
             placeholder="2026-09-30"
           />
+          <Select
+            label="Limite por página"
+            value={String(limit)}
+            onChange={(event) => setLimit(Number(event.target.value))}
+            options={[
+              { value: '10', label: '10' },
+              { value: '25', label: '25' },
+              { value: '50', label: '50' },
+            ]}
+          />
         </div>
         {filterError && <ErrorState title="Filtro inválido" message={filterError} />}
-        {historyQuery.isLoading && <Skeleton />}
-        {historyQuery.isError && (
-          <AuthErrorState error={historyQuery.error} onRetry={() => historyQuery.refetch()} />
+        {historyLoading && pages.length === 0 && <Skeleton />}
+        {historyError && !historyLoading && (
+          <AuthErrorState error={historyError} onRetry={() => void loadHistory(undefined, false)} />
         )}
-        {historyQuery.data && (
+        {!historyLoading && !historyError && (
           <div style={{ overflowX: 'auto' }}>
             <table>
               <thead>
@@ -464,7 +518,7 @@ function JobsTab() {
                 </tr>
               </thead>
               <tbody>
-                {historyQuery.data.data.map((run: JobRunDto) => (
+                {historyRows.map((run: JobRunDto) => (
                   <tr key={run.jobRunId}>
                     <td>{run.jobType}</td>
                     <td>{formatTargetPeriod(run.targetPeriod, run.targetPeriodGranularity)}</td>
@@ -480,6 +534,12 @@ function JobsTab() {
                 ))}
               </tbody>
             </table>
+            {historyRows.length === 0 && <p>Nenhuma execução corresponde aos filtros.</p>}
+            {hasMore && (
+              <Button disabled={historyLoading} onClick={() => void loadHistory(cursor, true)}>
+                {historyLoading ? 'Carregando…' : 'Carregar mais'}
+              </Button>
+            )}
           </div>
         )}
       </Card>
