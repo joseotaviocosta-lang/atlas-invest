@@ -6,4 +6,7 @@ export * from './normalize';
 export * from './fingerprint';
 export * from './resolve';
 export * from './classify';
+export * from './b3';
+export * from './reconcile';
+export * from './sync';
 export { IMPORT_ENGINE_VERSION as VERSION } from './version';

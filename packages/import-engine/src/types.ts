@@ -101,6 +101,12 @@ export interface NormalizedCandidate {
   accountLabel?: string;
   externalId?: string;
   notes?: string;
+  /**
+   * Phase 5L — custody-transfer pairing key. Set by source adapters when a
+   * movement belongs to a mirrored pair (e.g. B3 TRANSFERENCIA legs sharing
+   * a pairKey). Opaque to the ledger until confirm wiring consumes it.
+   */
+  transferGroupId?: string;
   status: ImportRowStatus;
   issues: ImportIssue[];
 }
