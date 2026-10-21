@@ -16,6 +16,7 @@ import {
   type EquityElectionValue,
 } from '@atlas/ui';
 import { apiClient } from '@/api/client';
+import { useAuthReady } from '@/hooks/use-auth-ready';
 import {
   Card,
   SectionHeader,
@@ -178,13 +179,18 @@ export function EquityFiscalSection({
   onRefetch,
 }: EquityFiscalSectionProps) {
   const queryClient = useQueryClient();
+  const authReady = useAuthReady();
   const [pendingValue, setPendingValue] = useState<EquityElectionValue | null>(null);
 
   const mutation = useMutation({
-    mutationFn: (value: EquityElectionValue) =>
-      apiClient.put(`/api/v1/fiscal/monthly/${competence}/elections/equity-exempt-loss`, {
+    mutationFn: (value: EquityElectionValue) => {
+      if (!authReady) {
+        throw new Error('Sessão não está pronta. Entre novamente para continuar.');
+      }
+      return apiClient.put(`/api/v1/fiscal/monthly/${competence}/elections/equity-exempt-loss`, {
         value,
-      }),
+      });
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: taxLiabilityQueryKey(competence) });
       setPendingValue(null);

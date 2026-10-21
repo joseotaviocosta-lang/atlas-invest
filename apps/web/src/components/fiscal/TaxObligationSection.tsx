@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
+import { useAuthReady } from '@/hooks/use-auth-ready';
 import {
   colors,
   spacing,
@@ -41,11 +42,16 @@ interface RawAdjustment {
  * generated here.
  */
 export function TaxObligationSection({ competence }: { competence: string }) {
-  const enabled = /^\d{4}-\d{2}$/.test(competence);
+  const authReady = useAuthReady();
+  const enabled = authReady && /^\d{4}-\d{2}$/.test(competence);
   const [payDate, setPayDate] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [adjustDate, setAdjustDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [adjustDate, setAdjustDate] = useState('');
+
+  useEffect(() => {
+    setAdjustDate(new Date().toISOString().slice(0, 10));
+  }, []);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: taxObligationQueryKey(competence),
@@ -82,7 +88,7 @@ export function TaxObligationSection({ competence }: { competence: string }) {
       );
       return res.data;
     },
-    enabled: Boolean(raw) && /^\d{4}-\d{2}-\d{2}$/.test(adjustDate),
+    enabled: authReady && Boolean(raw) && /^\d{4}-\d{2}-\d{2}$/.test(adjustDate),
     staleTime: 30_000,
   });
 
@@ -99,7 +105,7 @@ export function TaxObligationSection({ competence }: { competence: string }) {
       );
       return res.data;
     },
-    enabled: darfEnabled,
+    enabled: authReady && darfEnabled,
     staleTime: 30_000,
   });
   const darf = useMemo(() => mapToDarfHandoffViewModel(darfReadiness ?? null), [darfReadiness]);
@@ -109,6 +115,7 @@ export function TaxObligationSection({ competence }: { competence: string }) {
       : null;
 
   async function confirmPayment() {
+    if (!authReady) return;
     if (!raw || !raw.principalAmount || !raw.currency) return;
     const when = payDate || new Date().toISOString().slice(0, 10);
     if (

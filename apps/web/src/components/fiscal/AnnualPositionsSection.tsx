@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   colors,
@@ -11,6 +11,7 @@ import {
   type RawAnnualPositionReport,
 } from '@atlas/ui';
 import { apiClient } from '@/api/client';
+import { useAuthReady } from '@/hooks/use-auth-ready';
 import { Card, SectionHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui';
 
 interface AnnualPositionsSectionProps {
@@ -18,8 +19,13 @@ interface AnnualPositionsSectionProps {
 }
 
 export function AnnualPositionsSection({ portfolioId }: AnnualPositionsSectionProps) {
-  const currentYear = new Date().getFullYear() - 1; // Default to last completed calendar year (e.g. 2025)
-  const [calendarYear, setCalendarYear] = useState<number>(currentYear > 2000 ? currentYear : 2025);
+  const authReady = useAuthReady();
+  const [calendarYear, setCalendarYear] = useState<number>(2025);
+
+  useEffect(() => {
+    const previousYear = new Date().getFullYear() - 1;
+    setCalendarYear(previousYear > 2000 ? previousYear : 2025);
+  }, []);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: portfolioId
@@ -32,7 +38,7 @@ export function AnnualPositionsSection({ portfolioId }: AnnualPositionsSectionPr
       );
       return res.data;
     },
-    enabled: Boolean(portfolioId && calendarYear >= 1900 && calendarYear <= 2100),
+    enabled: authReady && Boolean(portfolioId && calendarYear >= 1900 && calendarYear <= 2100),
     staleTime: 30_000,
   });
 

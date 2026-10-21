@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
+import { useAuthReady } from '@/hooks/use-auth-ready';
 import {
   colors,
   spacing,
@@ -22,7 +23,8 @@ import { Card, Skeleton, EmptyState, SectionHeader } from '@/components/ui';
  * components or recomputes tax; it only formats server values.
  */
 export function Composed6015Section({ competence }: { competence: string }) {
-  const enabled = /^\d{4}-\d{2}$/.test(competence);
+  const authReady = useAuthReady();
+  const enabled = authReady && /^\d{4}-\d{2}$/.test(competence);
   const { data, isLoading } = useQuery({
     queryKey: taxPaymentSummaryQueryKey(competence),
     queryFn: async () => {

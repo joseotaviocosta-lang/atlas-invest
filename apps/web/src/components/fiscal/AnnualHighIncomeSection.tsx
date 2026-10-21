@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   colors,
@@ -16,6 +16,7 @@ import {
 } from '@atlas/ui';
 import { apiClient, ApiError } from '@/api/client';
 import { getInMemoryAccessToken } from '@/stores/auth.store';
+import { useAuthReady } from '@/hooks/use-auth-ready';
 import {
   Card,
   SectionHeader,
@@ -152,10 +153,8 @@ function buildEvidencePayload(form: EvidenceFormState): Record<string, unknown> 
 }
 
 export function AnnualHighIncomeSection({ initialYear }: { initialYear?: number }) {
-  const currentYear = new Date().getFullYear() - 1;
-  const [calendarYear, setCalendarYear] = useState<number>(
-    initialYear ?? (currentYear > 2000 ? currentYear : 2026),
-  );
+  const authReady = useAuthReady();
+  const [calendarYear, setCalendarYear] = useState<number>(initialYear ?? 2025);
   const [payerSort, setPayerSort] = useState<'payer' | 'status'>('payer');
   const [payerStatusFilter, setPayerStatusFilter] = useState<string>('ALL');
   const [payerEvidenceFilter, setPayerEvidenceFilter] = useState<string>('ALL');
@@ -164,6 +163,13 @@ export function AnnualHighIncomeSection({ initialYear }: { initialYear?: number 
   const [form, setForm] = useState<EvidenceFormState>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialYear === undefined) {
+      const previousYear = new Date().getFullYear() - 1;
+      setCalendarYear(previousYear > 2000 ? previousYear : 2026);
+    }
+  }, [initialYear]);
 
   const queryClient = useQueryClient();
 
@@ -175,7 +181,7 @@ export function AnnualHighIncomeSection({ initialYear }: { initialYear?: number 
       );
       return res.data;
     },
-    enabled: Boolean(calendarYear >= 1900 && calendarYear <= 2100),
+    enabled: authReady && Boolean(calendarYear >= 1900 && calendarYear <= 2100),
     staleTime: 30_000,
   });
 
@@ -198,7 +204,7 @@ export function AnnualHighIncomeSection({ initialYear }: { initialYear?: number 
       );
       return res.data;
     },
-    enabled: Boolean(calendarYear >= 1900 && calendarYear <= 2100),
+    enabled: authReady && Boolean(calendarYear >= 1900 && calendarYear <= 2100),
     staleTime: 30_000,
   });
 
@@ -221,7 +227,7 @@ export function AnnualHighIncomeSection({ initialYear }: { initialYear?: number 
   }
 
   async function handleExport() {
-    if (!canExport || exporting) {
+    if (!authReady || !canExport || exporting) {
       return;
     }
     setExporting(true);
@@ -300,8 +306,12 @@ export function AnnualHighIncomeSection({ initialYear }: { initialYear?: number 
   }, [viewModel, payerSort, payerStatusFilter, payerEvidenceFilter]);
 
   const evidenceMutation = useMutation({
-    mutationFn: (payload: Record<string, unknown>) =>
-      apiClient.post(`/api/v1/fiscal/annual/${calendarYear}/high-income/evidence`, payload),
+    mutationFn: (payload: Record<string, unknown>) => {
+      if (!authReady) {
+        throw new Error('Sessão não está pronta. Entre novamente para continuar.');
+      }
+      return apiClient.post(`/api/v1/fiscal/annual/${calendarYear}/high-income/evidence`, payload);
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: annualHighIncomeQueryKey(calendarYear) });
       setFormOpen(false);
@@ -315,10 +325,17 @@ export function AnnualHighIncomeSection({ initialYear }: { initialYear?: number 
   });
 
   const resolveMutation = useMutation({
-    mutationFn: ({ id, decision }: { id: string; decision: 'KEEP_EXISTING' | 'ACCEPT_NEW' }) =>
-      apiClient.post(`/api/v1/fiscal/annual/${calendarYear}/high-income/evidence/${id}/resolve`, {
-        decision,
-      }),
+    mutationFn: ({ id, decision }: { id: string; decision: 'KEEP_EXISTING' | 'ACCEPT_NEW' }) => {
+      if (!authReady) {
+        throw new Error('Sessão não está pronta. Entre novamente para continuar.');
+      }
+      return apiClient.post(
+        `/api/v1/fiscal/annual/${calendarYear}/high-income/evidence/${id}/resolve`,
+        {
+          decision,
+        },
+      );
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: annualHighIncomeQueryKey(calendarYear) });
       setResolvingId(null);

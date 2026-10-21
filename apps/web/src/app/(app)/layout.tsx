@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth.store';
+import { useHydrated } from '@/lib/use-hydrated';
 import { OfflineBanner, Avatar } from '@/components/ui';
 import { colors, borderRadius, spacing, CANONICAL_NAV_ITEMS } from '@atlas/ui';
 
@@ -14,6 +15,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const logout = useAuthStore((state) => state.logout);
   const status = useAuthStore((state) => state.status);
   const isInitialized = useAuthStore((state) => state.isInitialized);
+  const isHydrated = useHydrated();
+  const visibleUser = isHydrated ? user : null;
 
   React.useEffect(() => {
     if (isInitialized && status === 'unauthenticated') {
@@ -156,7 +159,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               flex: 1,
             }}
           >
-            <Avatar name={user?.name} size="sm" />
+            <Avatar name={visibleUser?.name} size="sm" />
             <div style={{ overflow: 'hidden' }}>
               <div
                 style={{
@@ -168,7 +171,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   textOverflow: 'ellipsis',
                 }}
               >
-                {user?.name || 'Investidor'}
+                {visibleUser?.name || 'Investidor'}
               </div>
               <div
                 style={{
@@ -179,7 +182,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   textOverflow: 'ellipsis',
                 }}
               >
-                {user?.email || ''}
+                {visibleUser?.email || ''}
               </div>
             </div>
           </Link>
@@ -247,8 +250,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 border: `1px solid ${colors.border}`,
               }}
             >
-              <Avatar name={user?.name} size="sm" />
-              <span className="profile-label">{user?.name?.split(' ')[0] || 'Perfil'}</span>
+              <Avatar name={visibleUser?.name} size="sm" />
+              <span className="profile-label">{visibleUser?.name?.split(' ')[0] || 'Perfil'}</span>
             </Link>
           </div>
         </header>

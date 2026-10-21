@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiClient, ApiError } from '@/api/client';
+import { useAuthReady } from '@/hooks/use-auth-ready';
 import { colors, spacing, borderRadius } from '@atlas/ui';
 import { Card, Button } from '@/components/ui';
 
@@ -47,6 +48,7 @@ export function TaxInputEntry({
   events: readonly FiscalEventLite[];
   onSaved: () => void;
 }) {
+  const authReady = useAuthReady();
   const [tradeRows, setTradeRows] = useState<TradeRow[]>([]);
   const [withholdingRows, setWithholdingRows] = useState<WithholdingRow[]>([]);
   const [message, setMessage] = useState<string | null>(null);
@@ -69,7 +71,15 @@ export function TaxInputEntry({
     sourceReference: '',
   });
 
+  useEffect(() => {
+    if (!competence) return;
+    setWithholding((current) => ({ ...current, economicDate: `${competence}-15` }));
+    setFii((current) => ({ ...current, asOfDate: `${competence}-28` }));
+  }, [competence]);
+
   const load = useCallback(async () => {
+    if (!authReady) return;
+
     try {
       const [t, w] = await Promise.all([
         apiClient.get<{ data: TradeRow[] }>('/api/v1/fiscal/inputs/trade-classifications'),
@@ -82,13 +92,15 @@ export function TaxInputEntry({
     } catch {
       /* ignore load errors; readiness remains authoritative */
     }
-  }, [competence]);
+  }, [authReady, competence]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   async function saveTradeClassification(event: FiscalEventLite, classification: string) {
+    if (!authReady) return;
+
     try {
       await apiClient.post('/api/v1/fiscal/inputs/trade-classifications', {
         transactionId: event.sourceTransactionId,
@@ -110,6 +122,8 @@ export function TaxInputEntry({
   }
 
   async function saveWithholding() {
+    if (!authReady) return;
+
     try {
       await apiClient.post('/api/v1/fiscal/inputs/withholdings', {
         competence,
@@ -134,6 +148,8 @@ export function TaxInputEntry({
   }
 
   async function saveFii() {
+    if (!authReady) return;
+
     try {
       await apiClient.post('/api/v1/fiscal/inputs/fii-metadata', {
         assetId: fii.assetId,
@@ -160,6 +176,8 @@ export function TaxInputEntry({
   }
 
   async function resolve(entity: string, id: string, action: 'KEEP_EXISTING' | 'ACCEPT_NEW') {
+    if (!authReady) return;
+
     try {
       await apiClient.post(`/api/v1/fiscal/inputs/${entity}/${id}/resolve`, { action });
       setMessage('Conflito resolvido.');

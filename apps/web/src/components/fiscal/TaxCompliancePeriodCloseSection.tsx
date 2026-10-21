@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, ApiError } from '@/api/client';
 import { getInMemoryAccessToken } from '@/stores/auth.store';
+import { useAuthReady } from '@/hooks/use-auth-ready';
 import {
   colors,
   spacing,
@@ -44,14 +45,20 @@ function filenameFromContentDisposition(header: string | null, fallback: string)
 
 export function TaxCompliancePeriodCloseSection() {
   const queryClient = useQueryClient();
+  const authReady = useAuthReady();
   const [scope, setScope] = useState<'MONTHLY' | 'ANNUAL'>('MONTHLY');
-  const [month, setMonth] = useState(currentCompetence());
-  const [year, setYear] = useState(currentYear());
+  const [month, setMonth] = useState('2025-01');
+  const [year, setYear] = useState(2025);
   const [reopenReason, setReopenReason] = useState('');
   const [reopenTargetId, setReopenTargetId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMonth(currentCompetence());
+    setYear(currentYear());
+  }, []);
 
   const period = scope === 'MONTHLY' ? month : String(year);
   const validMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
@@ -80,7 +87,7 @@ export function TaxCompliancePeriodCloseSection() {
       );
       return res.data;
     },
-    enabled: scope === 'ANNUAL' || validMonth,
+    enabled: authReady && (scope === 'ANNUAL' || validMonth),
     staleTime: 30_000,
   });
 
@@ -97,6 +104,7 @@ export function TaxCompliancePeriodCloseSection() {
       );
       return res.data;
     },
+    enabled: authReady,
     staleTime: 30_000,
   });
 
@@ -113,12 +121,15 @@ export function TaxCompliancePeriodCloseSection() {
       );
       return res.data;
     },
-    enabled: (scope === 'ANNUAL' || validMonth) && vm !== null,
+    enabled: authReady && (scope === 'ANNUAL' || validMonth) && vm !== null,
     staleTime: 30_000,
   });
 
   const closeMutation = useMutation({
     mutationFn: async () => {
+      if (!authReady) {
+        throw new Error('Sessão não está pronta. Entre novamente para continuar.');
+      }
       const body: Record<string, unknown> = { scope, calendarYear: year };
       if (scope === 'MONTHLY') {
         body.month = month;
@@ -154,6 +165,9 @@ export function TaxCompliancePeriodCloseSection() {
 
   const reopenMutation = useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      if (!authReady) {
+        throw new Error('Sessão não está pronta. Entre novamente para continuar.');
+      }
       const res = await apiClient.post<{ data: RawTaxCompliancePeriodCloseRecord }>(
         `/api/v1/fiscal/compliance/period-close/${encodeURIComponent(id)}/reopen`,
         { reason },
@@ -177,7 +191,7 @@ export function TaxCompliancePeriodCloseSection() {
   });
 
   async function handleExport(format: 'csv' | 'json') {
-    if (exporting) {
+    if (!authReady || exporting) {
       return;
     }
     setExporting(true);

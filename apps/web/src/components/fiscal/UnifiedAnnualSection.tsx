@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { colors, spacing } from '@atlas/ui';
 import { apiClient, ApiError } from '@/api/client';
 import { getInMemoryAccessToken } from '@/stores/auth.store';
+import { useAuthReady } from '@/hooks/use-auth-ready';
 import { Card, SectionHeader, ErrorState, Skeleton, EmptyState, Badge } from '@/components/ui';
 import {
   isPackageStale,
@@ -91,13 +92,14 @@ function errorMessageFor(error: unknown): { title: string; message: string } {
 }
 
 export function UnifiedAnnualSection({ calendarYear }: { calendarYear: number }) {
+  const authReady = useAuthReady();
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['unified-annual-irpf', calendarYear],
     queryFn: async () => {
       const res = await apiClient.get<{ data: unknown }>(`/api/v1/fiscal/annual/${calendarYear}`);
       return res.data;
     },
-    enabled: Boolean(calendarYear >= 1900 && calendarYear <= 2100),
+    enabled: authReady && Boolean(calendarYear >= 1900 && calendarYear <= 2100),
     staleTime: 30_000,
   });
 
@@ -137,7 +139,7 @@ export function UnifiedAnnualSection({ calendarYear }: { calendarYear: number })
       );
       return res.data;
     },
-    enabled: Boolean(calendarYear >= 1900 && calendarYear <= 2100),
+    enabled: authReady && Boolean(calendarYear >= 1900 && calendarYear <= 2100),
     staleTime: 30_000,
   });
 
@@ -157,7 +159,7 @@ export function UnifiedAnnualSection({ calendarYear }: { calendarYear: number })
   const packageStale = isPackageStale(lastExportedFingerprint, currentPackageFingerprint);
 
   async function handleExport() {
-    if (!canExport || exporting) {
+    if (!authReady || !canExport || exporting) {
       return;
     }
     setExporting(true);

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   colors,
@@ -11,14 +11,20 @@ import {
   type AnnualEvidenceRequirementVM,
 } from '@atlas/ui';
 import { apiClient } from '@/api/client';
+import { useAuthReady } from '@/hooks/use-auth-ready';
 import { Card, SectionHeader, ErrorState, Skeleton } from '@/components/ui';
 
 export function AnnualReadinessSection() {
   const queryClient = useQueryClient();
-  const currentYear = new Date().getFullYear() - 1;
-  const [calendarYear, setCalendarYear] = useState<number>(currentYear > 2000 ? currentYear : 2025);
+  const authReady = useAuthReady();
+  const [calendarYear, setCalendarYear] = useState<number>(2025);
   const [selectedReq, setSelectedReq] = useState<AnnualEvidenceRequirementVM | null>(null);
   const [confirmationNotes, setConfirmationNotes] = useState('');
+
+  useEffect(() => {
+    const previousYear = new Date().getFullYear() - 1;
+    setCalendarYear(previousYear > 2000 ? previousYear : 2025);
+  }, []);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: annualTaxReadinessQueryKey(calendarYear),
@@ -85,12 +91,16 @@ export function AnnualReadinessSection() {
 
       return res.data;
     },
-    enabled: Boolean(calendarYear >= 1900 && calendarYear <= 2100),
+    enabled: authReady && Boolean(calendarYear >= 1900 && calendarYear <= 2100),
     staleTime: 30_000,
   });
 
   const confirmMutation = useMutation({
     mutationFn: async (req: AnnualEvidenceRequirementVM) => {
+      if (!authReady) {
+        throw new Error('Sessão não está pronta. Entre novamente para continuar.');
+      }
+
       let confType = 'GENERAL_TAX_DATA';
       if (req.section === 'TRANSITION_EVIDENCE') {
         confType = 'DIVIDEND_TRANSITION_EVIDENCE';
@@ -447,7 +457,7 @@ export function AnnualReadinessSection() {
                       {c.subjectReference} (rev {c.revision})
                     </div>
                     <div style={{ color: colors.textSecondary, fontSize: '0.75rem' }}>
-                      {new Date(c.confirmedAt).toLocaleDateString('pt-BR')}
+                      {new Date(c.confirmedAt).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
                     </div>
                   </div>
                 ))}

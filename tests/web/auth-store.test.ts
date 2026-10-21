@@ -90,6 +90,22 @@ describe('Web Foundation: Zustand Auth Store Lifecycle & Cache Purge', () => {
     expect(getInMemoryAccessToken()).toBe('new-restored-token');
   });
 
+  it('should clear cached fiscal data before session restoration completes', async () => {
+    const fiscalKey = ['fiscal', 'annual', 2025, 'high-income'];
+    queryClient.setQueryData(fiscalKey, { privateValue: 'previous session' });
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      json: async () => ({ message: 'No cookie' }),
+    }) as unknown as typeof fetch;
+
+    const restore = useAuthStore.getState().restoreSession();
+
+    expect(queryClient.getQueryData(fiscalKey)).toBeUndefined();
+    await expect(restore).resolves.toBe(false);
+    expect(useAuthStore.getState().status).toBe('unauthenticated');
+  });
+
   it('should single-flight concurrent restoreSession calls into one refresh request', async () => {
     // Regression for H3 blocker: React 18 StrictMode double-invokes the
     // AuthProvider mount effect in development, firing two concurrent

@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, ApiError } from '@/api/client';
+import { useAuthReady } from '@/hooks/use-auth-ready';
 import {
   colors,
   spacing,
@@ -18,13 +19,19 @@ import { TaxPaymentSupportModal } from './TaxPaymentSupportModal';
 
 export function ComplianceTimelineSection({ initialYear }: { initialYear?: number }) {
   const queryClient = useQueryClient();
-  const currentYear = initialYear ?? new Date().getFullYear();
-  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
+  const authReady = useAuthReady();
+  const [selectedYear, setSelectedYear] = useState<number>(initialYear ?? 2025);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [actionNotes, setActionNotes] = useState<Record<string, string>>({});
   const [activeModalKey, setActiveModalKey] = useState<string | null>(null);
   const [pendingActionType, setPendingActionType] = useState<TaxComplianceActionType | null>(null);
   const [paymentSupportKey, setPaymentSupportKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialYear === undefined) {
+      setSelectedYear(new Date().getFullYear());
+    }
+  }, [initialYear]);
 
   const {
     data: rawData,
@@ -40,6 +47,7 @@ export function ComplianceTimelineSection({ initialYear }: { initialYear?: numbe
       );
       return res.data;
     },
+    enabled: authReady,
     staleTime: 30_000,
   });
 
@@ -57,6 +65,10 @@ export function ComplianceTimelineSection({ initialYear }: { initialYear?: numbe
       sourceFingerprint: string;
       note?: string;
     }) => {
+      if (!authReady) {
+        throw new Error('Sessão não está pronta. Entre novamente para continuar.');
+      }
+
       const res = await apiClient.post<{ data: unknown }>(
         `/api/v1/fiscal/compliance/${encodeURIComponent(obligationKey)}/actions`,
         {

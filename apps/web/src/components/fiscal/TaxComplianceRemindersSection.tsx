@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, ApiError } from '@/api/client';
+import { useAuthReady } from '@/hooks/use-auth-ready';
 import {
   colors,
   spacing,
@@ -70,6 +71,7 @@ function ReminderCard({
   isRegisteringDelivery,
   actionError,
 }: ReminderCardProps) {
+  const authReady = useAuthReady();
   const [showSnooze, setShowSnooze] = useState(false);
   const [snoozeDate, setSnoozeDate] = useState('');
   const [snoozeError, setSnoozeError] = useState<string | null>(null);
@@ -83,7 +85,7 @@ function ReminderCard({
       );
       return res.data;
     },
-    enabled: showHistory,
+    enabled: authReady && showHistory,
     staleTime: 10_000,
   });
 
@@ -354,13 +356,19 @@ function ReminderCard({
 
 export function TaxComplianceRemindersSection({ initialYear }: { initialYear?: number }) {
   const queryClient = useQueryClient();
-  const fallbackYear = initialYear ?? currentYear();
-  const [selectedYear, setSelectedYear] = useState<number>(fallbackYear);
+  const authReady = useAuthReady();
+  const [selectedYear, setSelectedYear] = useState<number>(initialYear ?? 2025);
   const [kindFilter, setKindFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [actionErrorByKey, setActionErrorByKey] = useState<Record<string, string | null>>({});
   const [leadTimesDraft, setLeadTimesDraft] = useState<string | null>(null);
   const [preferencesError, setPreferencesError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialYear === undefined) {
+      setSelectedYear(currentYear());
+    }
+  }, [initialYear]);
 
   const {
     data: rawReminders,
@@ -376,6 +384,7 @@ export function TaxComplianceRemindersSection({ initialYear }: { initialYear?: n
       );
       return res.data;
     },
+    enabled: authReady,
     staleTime: 30_000,
   });
 
@@ -392,6 +401,7 @@ export function TaxComplianceRemindersSection({ initialYear }: { initialYear?: n
       );
       return res.data;
     },
+    enabled: authReady,
     staleTime: 30_000,
   });
 
@@ -433,6 +443,9 @@ export function TaxComplianceRemindersSection({ initialYear }: { initialYear?: n
       actionType: TaxReminderActionType;
       snoozedUntil?: string;
     }) => {
+      if (!authReady) {
+        throw new Error('Sessão não está pronta. Entre novamente para continuar.');
+      }
       const payload = buildTaxReminderActionPayload(reminder, actionType, { snoozedUntil });
       const res = await apiClient.post<{ data: unknown }>(
         `/api/v1/fiscal/compliance/reminders/${encodeURIComponent(reminder.reminderKey)}/actions`,
@@ -461,6 +474,9 @@ export function TaxComplianceRemindersSection({ initialYear }: { initialYear?: n
 
   const deliveryMutation = useMutation({
     mutationFn: async ({ reminder }: { reminder: TaxComplianceReminderViewModel }) => {
+      if (!authReady) {
+        throw new Error('Sessão não está pronta. Entre novamente para continuar.');
+      }
       const payload = buildTaxReminderDeliveryPayload(reminder, 'IN_APP');
       const res = await apiClient.post<{ data: unknown }>(
         `/api/v1/fiscal/compliance/reminders/${encodeURIComponent(reminder.reminderKey)}/deliveries`,
@@ -478,6 +494,9 @@ export function TaxComplianceRemindersSection({ initialYear }: { initialYear?: n
 
   const preferencesMutation = useMutation({
     mutationFn: async (body: RawTaxReminderPreferences) => {
+      if (!authReady) {
+        throw new Error('Sessão não está pronta. Entre novamente para continuar.');
+      }
       const res = await apiClient.put<{ data: RawTaxReminderPreferences }>(
         '/api/v1/fiscal/compliance/reminder-preferences',
         body,

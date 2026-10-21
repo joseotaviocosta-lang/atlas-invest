@@ -134,6 +134,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return activeRestorePromise;
     }
 
+    clearQueryCache();
+
     // Defer to an in-flight ApiClient refresh (e.g. a 401-triggered interceptor
     // refresh racing this restore) so only one network refresh runs per runtime.
     const externalRefresh = externalRefreshGetter?.();

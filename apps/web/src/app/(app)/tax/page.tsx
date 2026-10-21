@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
+import { useAuthStore } from '@/stores/auth.store';
 import { apiClient, ApiError } from '@/api/client';
 import {
   colors,
@@ -40,7 +41,15 @@ function currentCompetence(): string {
 }
 
 function FiscalContent() {
-  const [competence, setCompetence] = useState(currentCompetence());
+  const status = useAuthStore((state) => state.status);
+  const isInitialized = useAuthStore((state) => state.isInitialized);
+  const authReady = isInitialized && status === 'authenticated';
+
+  const [competence, setCompetence] = useState('');
+
+  useEffect(() => {
+    setCompetence(currentCompetence());
+  }, []);
 
   const { data: portfoliosData } = useQuery({
     queryKey: ['portfolios'],
@@ -50,6 +59,7 @@ function FiscalContent() {
       );
       return res.data;
     },
+    enabled: authReady,
     staleTime: 60_000,
   });
 
@@ -64,7 +74,7 @@ function FiscalContent() {
       );
       return res.data;
     },
-    enabled: /^\d{4}-\d{2}$/.test(competence),
+    enabled: authReady && /^\d{4}-\d{2}$/.test(competence),
     staleTime: 30_000,
   });
 
@@ -84,7 +94,7 @@ function FiscalContent() {
       );
       return res.data;
     },
-    enabled: /^\d{4}-\d{2}$/.test(competence),
+    enabled: authReady && /^\d{4}-\d{2}$/.test(competence),
     staleTime: 30_000,
   });
 
@@ -101,7 +111,7 @@ function FiscalContent() {
       );
       return res.data;
     },
-    enabled: /^\d{4}-\d{2}$/.test(competence),
+    enabled: authReady && /^\d{4}-\d{2}$/.test(competence),
     staleTime: 30_000,
   });
 

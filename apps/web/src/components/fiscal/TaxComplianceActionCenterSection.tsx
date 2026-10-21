@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
+import { useAuthReady } from '@/hooks/use-auth-ready';
 import {
   colors,
   spacing,
@@ -122,14 +123,18 @@ function ActionCard({ item }: { item: TaxComplianceActionItemViewModel }) {
 }
 
 export function TaxComplianceActionCenterSection() {
-  const year = currentYear();
+  const authReady = useAuthReady();
+  const [year, setYear] = useState(2025);
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [calendarMonth, setCalendarMonth] = useState(() => {
+  const [calendarMonth, setCalendarMonth] = useState({ year: 2025, month: 1 });
+
+  useEffect(() => {
     const now = new Date();
-    return { year: now.getFullYear(), month: now.getMonth() + 1 };
-  });
+    setYear(currentYear());
+    setCalendarMonth({ year: now.getFullYear(), month: now.getMonth() + 1 });
+  }, []);
 
   const qs = useMemo(() => {
     const params = new URLSearchParams({ calendarYear: String(year), limit: '100' });
@@ -156,6 +161,7 @@ export function TaxComplianceActionCenterSection() {
       }>(`/api/v1/fiscal/compliance/action-center?${qs}`);
       return res;
     },
+    enabled: authReady,
     staleTime: 30_000,
   });
 
@@ -172,6 +178,7 @@ export function TaxComplianceActionCenterSection() {
       );
       return res.data;
     },
+    enabled: authReady,
     staleTime: 30_000,
   });
 

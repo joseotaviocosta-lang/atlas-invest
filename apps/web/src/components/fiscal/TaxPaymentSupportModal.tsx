@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
+import { useAuthReady } from '@/hooks/use-auth-ready';
 import {
   colors,
   spacing,
@@ -27,16 +28,19 @@ export function TaxPaymentSupportModal({
   onClose,
 }: TaxPaymentSupportModalProps) {
   const queryClient = useQueryClient();
+  const authReady = useAuthReady();
 
-  const [paymentDate, setPaymentDate] = useState<string>(() =>
-    new Date().toISOString().slice(0, 10),
-  );
+  const [paymentDate, setPaymentDate] = useState<string>('');
   const [amountReported, setAmountReported] = useState<string>('');
   const [revenueCodeReported, setRevenueCodeReported] = useState<string>('');
   const [referencePeriod, setReferencePeriod] = useState<string>('');
   const [externalReference, setExternalReference] = useState<string>('');
   const [note, setNote] = useState<string>('');
   const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPaymentDate(new Date().toISOString().slice(0, 10));
+  }, []);
 
   const {
     data: rawSupport,
@@ -50,7 +54,7 @@ export function TaxPaymentSupportModal({
       );
       return res.data;
     },
-    enabled: isOpen,
+    enabled: authReady && isOpen,
     staleTime: 10_000,
   });
 
@@ -62,7 +66,7 @@ export function TaxPaymentSupportModal({
       );
       return res.data;
     },
-    enabled: isOpen,
+    enabled: authReady && isOpen,
     staleTime: 10_000,
   });
 
@@ -82,6 +86,10 @@ export function TaxPaymentSupportModal({
 
   const recordEvidenceMutation = useMutation({
     mutationFn: async () => {
+      if (!authReady) {
+        throw new Error('Sessão não está pronta. Entre novamente para continuar.');
+      }
+
       const cleanAmount = amountReported.trim();
       if (!/^\d+(\.\d{1,18})?$/.test(cleanAmount) || /^0(\.0+)?$/.test(cleanAmount)) {
         throw new Error('Informe um valor monetário positivo válido (ex: 150.00).');
@@ -114,6 +122,8 @@ export function TaxPaymentSupportModal({
   });
 
   async function handleExport(format: 'json' | 'csv') {
+    if (!authReady) return;
+
     try {
       const res = await apiClient.get<string>(
         `/api/v1/fiscal/compliance/${encodeURIComponent(obligationKey)}/payment-support/export?format=${format}`,

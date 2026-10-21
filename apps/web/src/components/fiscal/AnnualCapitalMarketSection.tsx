@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   colors,
@@ -11,11 +11,17 @@ import {
   type RawAnnualCapitalMarketFiscalSummary,
 } from '@atlas/ui';
 import { apiClient } from '@/api/client';
+import { useAuthReady } from '@/hooks/use-auth-ready';
 import { Card, SectionHeader, ErrorState, Skeleton } from '@/components/ui';
 
 export function AnnualCapitalMarketSection() {
-  const currentYear = new Date().getFullYear() - 1;
-  const [calendarYear, setCalendarYear] = useState<number>(currentYear > 2000 ? currentYear : 2025);
+  const authReady = useAuthReady();
+  const [calendarYear, setCalendarYear] = useState<number>(2025);
+
+  useEffect(() => {
+    const previousYear = new Date().getFullYear() - 1;
+    setCalendarYear(previousYear > 2000 ? previousYear : 2025);
+  }, []);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: annualCapitalMarketQueryKey(calendarYear),
@@ -25,7 +31,7 @@ export function AnnualCapitalMarketSection() {
       );
       return res.data;
     },
-    enabled: Boolean(calendarYear >= 1900 && calendarYear <= 2100),
+    enabled: authReady && Boolean(calendarYear >= 1900 && calendarYear <= 2100),
     staleTime: 30_000,
   });
 
