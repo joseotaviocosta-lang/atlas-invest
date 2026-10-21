@@ -61,4 +61,19 @@ describe('Web Import Hub boundaries (Phase 5K)', () => {
     expect(portfolio).toContain('/portfolio/import?portfolioId=');
     expect(portfolio).toContain('Importar carteira');
   });
+
+  it('derives confirmation eligibility from effective user decisions, not server summary', () => {
+    const page = readWeb('apps/web/src/app/(app)/portfolio/import/page.tsx');
+    expect(page).toContain('getConfirmEligibility');
+    expect(page).toContain('getEffectiveRowState');
+    expect(page).not.toMatch(/disabled=\{[^}]*preview\.summary\.ready === 0/);
+    expect(page).toContain('eligibility.canConfirm');
+    expect(page).toContain('eligibility.hint');
+    expect(page).toContain('Será importada');
+    expect(page).toContain('Importar mesmo assim');
+
+    const helper = readWeb('apps/web/src/lib/import-review.ts');
+    expect(helper).toContain('Nenhuma operação será importada');
+    expect(helper).toContain('Resolva ou ignore');
+  });
 });

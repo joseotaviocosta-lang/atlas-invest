@@ -6,6 +6,11 @@ import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, ApiError } from '@/api/client';
 import { useAuthReady } from '@/hooks/use-auth-ready';
+import {
+  getConfirmEligibility,
+  getEffectiveRowState,
+  type EffectiveRowState,
+} from '@/lib/import-review';
 import { colors, spacing, formatCurrency, formatQuantity, formatCivilDateDisplay } from '@atlas/ui';
 import {
   Card,
@@ -107,6 +112,13 @@ const STATUS_LABEL: Record<PreviewCandidate['status'], string> = {
   NEEDS_REVIEW: 'Precisa de revisão',
 };
 
+const EFFECTIVE_LABEL: Record<EffectiveRowState, string> = {
+  importable: 'Será importada',
+  skipped: 'Será ignorada',
+  auto_skipped: 'Ignorada automaticamente',
+  blocked: 'Aguardando decisão',
+};
+
 function ImportHubContent() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
@@ -120,6 +132,7 @@ function ImportHubContent() {
   const [skipRows, setSkipRows] = useState<Set<number>>(new Set());
   const [assetOverrides, setAssetOverrides] = useState<Record<number, string>>({});
   const [accountOverrides, setAccountOverrides] = useState<Record<number, string>>({});
+  const [forceRows, setForceRows] = useState<Set<number>>(new Set());
   const [fileError, setFileError] = useState<string | null>(null);
 
   const { data: portfoliosData } = useQuery({
@@ -174,26 +187,69 @@ function ImportHubContent() {
     },
   });
 
+  const effectiveRows = useMemo(() => {
+    const previewData = previewMutation.data ?? null;
+    if (!previewData) return [];
+    return previewData.candidates.map((candidate) => ({
+      candidate,
+      effective: getEffectiveRowState(candidate, {
+        skipped: skipRows.has(candidate.rowNumber),
+        assetOverrideId: assetOverrides[candidate.rowNumber],
+        accountOverrideId: accountOverrides[candidate.rowNumber],
+        forceImport: forceRows.has(candidate.rowNumber),
+      }),
+    }));
+  }, [previewMutation.data, skipRows, assetOverrides, accountOverrides, forceRows]);
+
+  const eligibility = useMemo(
+    () =>
+      getConfirmEligibility(
+        effectiveRows.map((row) => ({
+          candidate: row.candidate,
+          decision: {
+            skipped: skipRows.has(row.candidate.rowNumber),
+            assetOverrideId: assetOverrides[row.candidate.rowNumber],
+            accountOverrideId: accountOverrides[row.candidate.rowNumber],
+            forceImport: forceRows.has(row.candidate.rowNumber),
+          },
+        })),
+      ),
+    [effectiveRows, skipRows, assetOverrides, accountOverrides, forceRows],
+  );
+
   const confirmMutation = useMutation({
     mutationFn: async () => {
-      const preview = previewMutation.data;
-      if (!preview) throw new Error('Gere a análise do arquivo antes de confirmar.');
-      const decisions = preview.candidates.map((candidate) => ({
-        rowNumber: candidate.rowNumber,
-        action: (skipRows.has(candidate.rowNumber) ? 'skip' : 'import') as 'skip' | 'import',
-        ...(assetOverrides[candidate.rowNumber]
-          ? { assetId: assetOverrides[candidate.rowNumber] }
-          : {}),
-        ...(accountOverrides[candidate.rowNumber]
-          ? { accountId: accountOverrides[candidate.rowNumber] }
-          : {}),
-      }));
+      const previewData = previewMutation.data;
+      if (!previewData) throw new Error('Gere a análise do arquivo antes de confirmar.');
+      const decisions: Array<{
+        rowNumber: number;
+        action: 'skip' | 'import';
+        assetId?: string;
+        accountId?: string;
+      }> = [];
+      for (const candidate of previewData.candidates) {
+        const rowNumber = candidate.rowNumber;
+        if (skipRows.has(rowNumber)) {
+          decisions.push({ rowNumber, action: 'skip' });
+          continue;
+        }
+        const assetId = assetOverrides[rowNumber];
+        const accountId = accountOverrides[rowNumber];
+        if (assetId !== undefined || accountId !== undefined || forceRows.has(rowNumber)) {
+          decisions.push({
+            rowNumber,
+            action: 'import',
+            ...(assetId !== undefined ? { assetId } : {}),
+            ...(accountId !== undefined ? { accountId } : {}),
+          });
+        }
+      }
       const res = await apiClient.post<{ data: ImportReceipt }>(
         `/api/v1/portfolios/${activePortfolioId}/imports/confirm`,
         {
           sourceType: 'GENERIC_CSV',
           provider: provider.trim() === '' ? 'CSV' : provider.trim(),
-          fileName: preview.fileName,
+          fileName: previewData.fileName,
           content,
           ...(defaultAccountId === '' ? {} : { defaultAccountId }),
           decisions,
@@ -223,6 +279,7 @@ function ImportHubContent() {
     setSkipRows(new Set());
     setAssetOverrides({});
     setAccountOverrides({});
+    setForceRows(new Set());
     previewMutation.reset();
     confirmMutation.reset();
   };
@@ -239,6 +296,18 @@ function ImportHubContent() {
 
   const toggleSkip = (rowNumber: number) => {
     setSkipRows((previous) => {
+      const next = new Set(previous);
+      if (next.has(rowNumber)) {
+        next.delete(rowNumber);
+      } else {
+        next.add(rowNumber);
+      }
+      return next;
+    });
+  };
+
+  const toggleForce = (rowNumber: number) => {
+    setForceRows((previous) => {
       const next = new Set(previous);
       if (next.has(rowNumber)) {
         next.delete(rowNumber);
@@ -276,6 +345,10 @@ function ImportHubContent() {
             value={activePortfolioId ?? ''}
             onChange={(event) => {
               setPortfolioId(event.target.value === '' ? null : event.target.value);
+              setSkipRows(new Set());
+              setAssetOverrides({});
+              setAccountOverrides({});
+              setForceRows(new Set());
               previewMutation.reset();
               confirmMutation.reset();
             }}
@@ -373,6 +446,11 @@ function ImportHubContent() {
               ? ` · ${preview.summary.ambiguousAssets} com ativo ambíguo`
               : ''}
           </p>
+          <p style={{ fontSize: '0.875rem', fontWeight: 600 }} aria-live="polite">
+            {eligibility.importableCount} serão importadas · {eligibility.skippedCount} ignoradas
+            por você · {eligibility.autoSkippedCount} ignoradas automaticamente ·{' '}
+            {eligibility.blockedCount} aguardando decisão
+          </p>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', fontSize: '0.875rem', borderCollapse: 'collapse' }}>
               <thead>
@@ -395,101 +473,142 @@ function ImportHubContent() {
                 </tr>
               </thead>
               <tbody>
-                {preview.candidates.map((candidate) => (
-                  <tr key={candidate.rowNumber} style={{ borderTop: `1px solid ${colors.border}` }}>
-                    <td style={{ padding: 8 }}>{candidate.rowNumber}</td>
-                    <td style={{ padding: 8 }}>{formatCivilDateDisplay(candidate.tradeDate)}</td>
-                    <td style={{ padding: 8 }}>{candidate.ticker}</td>
-                    <td style={{ padding: 8 }}>
-                      {candidate.operation === 'BUY' ? 'Compra' : 'Venda'}
-                    </td>
-                    <td style={{ padding: 8 }}>{formatQuantity(candidate.quantity)}</td>
-                    <td style={{ padding: 8 }}>
-                      {formatCurrency(candidate.unitPrice, candidate.currency)}
-                    </td>
-                    <td style={{ padding: 8 }}>
-                      {formatCurrency(candidate.fees, candidate.currency)}
-                    </td>
-                    <td style={{ padding: 8 }}>
-                      <span>{STATUS_LABEL[candidate.status]}</span>
-                      {candidate.issues.map((issue) => (
-                        <div
-                          key={issue.code}
-                          style={{ color: colors.textSecondary, fontSize: '0.75rem' }}
-                        >
-                          {issue.message}
-                        </div>
-                      ))}
-                      {(candidate.status === 'AMBIGUOUS_ASSET' ||
-                        candidate.assetResolution !== 'RESOLVED') &&
-                        candidate.assetId === null && (
+                {effectiveRows.map(({ candidate, effective }) => {
+                  const rowNumber = candidate.rowNumber;
+                  const skipped = skipRows.has(rowNumber);
+                  const effectiveState = effective.state;
+                  const systemHandled =
+                    !skipped &&
+                    (candidate.status === 'DUPLICATE' || candidate.status === 'UNSUPPORTED');
+                  const needsAsset =
+                    (candidate.status === 'NEEDS_REVIEW' ||
+                      candidate.status === 'AMBIGUOUS_ASSET') &&
+                    candidate.assetId === null;
+                  const needsAccount =
+                    (candidate.status === 'NEEDS_REVIEW' ||
+                      candidate.status === 'AMBIGUOUS_ASSET') &&
+                    candidate.accountId === null;
+                  const sameTickerAssets = assets.filter(
+                    (asset) => asset.ticker === candidate.ticker,
+                  );
+                  const assetOptions = sameTickerAssets.length > 0 ? sameTickerAssets : assets;
+                  return (
+                    <tr key={rowNumber} style={{ borderTop: `1px solid ${colors.border}` }}>
+                      <td style={{ padding: 8 }}>{rowNumber}</td>
+                      <td style={{ padding: 8 }}>{formatCivilDateDisplay(candidate.tradeDate)}</td>
+                      <td style={{ padding: 8 }}>{candidate.ticker}</td>
+                      <td style={{ padding: 8 }}>
+                        {candidate.operation === 'BUY' ? 'Compra' : 'Venda'}
+                      </td>
+                      <td style={{ padding: 8 }}>{formatQuantity(candidate.quantity)}</td>
+                      <td style={{ padding: 8 }}>
+                        {formatCurrency(candidate.unitPrice, candidate.currency)}
+                      </td>
+                      <td style={{ padding: 8 }}>
+                        {formatCurrency(candidate.fees, candidate.currency)}
+                      </td>
+                      <td style={{ padding: 8 }}>
+                        <span>{STATUS_LABEL[candidate.status]}</span>
+                        <div style={{ fontWeight: 600 }}>{EFFECTIVE_LABEL[effectiveState]}</div>
+                        {candidate.issues.map((issue) => (
+                          <div
+                            key={issue.code}
+                            style={{ color: colors.textSecondary, fontSize: '0.75rem' }}
+                          >
+                            {issue.message}
+                          </div>
+                        ))}
+                        {needsAsset && (
                           <select
-                            aria-label={`Ativo da linha ${candidate.rowNumber}`}
-                            value={assetOverrides[candidate.rowNumber] ?? ''}
+                            aria-label={`Ativo da linha ${rowNumber}`}
+                            value={assetOverrides[rowNumber] ?? ''}
                             onChange={(event) =>
                               setAssetOverrides((previous) => ({
                                 ...previous,
-                                [candidate.rowNumber]: event.target.value,
+                                [rowNumber]: event.target.value,
                               }))
                             }
                             style={{ minHeight: 44, marginTop: 4 }}
                           >
                             <option value="">Selecionar ativo…</option>
-                            {assets
-                              .filter((asset) => asset.ticker === candidate.ticker)
-                              .map((asset) => (
-                                <option key={asset.id} value={asset.id}>
-                                  {asset.ticker} · {asset.exchange}
-                                </option>
-                              ))}
+                            {assetOptions.map((asset) => (
+                              <option key={asset.id} value={asset.id}>
+                                {asset.ticker} · {asset.exchange}
+                              </option>
+                            ))}
                           </select>
                         )}
-                      {candidate.accountId === null && candidate.status !== 'INVALID' && (
-                        <select
-                          aria-label={`Conta da linha ${candidate.rowNumber}`}
-                          value={accountOverrides[candidate.rowNumber] ?? ''}
-                          onChange={(event) =>
-                            setAccountOverrides((previous) => ({
-                              ...previous,
-                              [candidate.rowNumber]: event.target.value,
-                            }))
-                          }
-                          style={{ minHeight: 44, marginTop: 4 }}
-                        >
-                          <option value="">Selecionar conta…</option>
-                          {accounts.map((account) => (
-                            <option key={account.id} value={account.id}>
-                              {account.name}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </td>
-                    <td style={{ padding: 8 }}>
-                      <label
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 44 }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={skipRows.has(candidate.rowNumber)}
-                          onChange={() => toggleSkip(candidate.rowNumber)}
-                          aria-label={`Ignorar linha ${candidate.rowNumber}`}
-                        />
-                        Ignorar
-                      </label>
-                    </td>
-                  </tr>
-                ))}
+                        {needsAccount && (
+                          <select
+                            aria-label={`Conta da linha ${rowNumber}`}
+                            value={accountOverrides[rowNumber] ?? ''}
+                            onChange={(event) =>
+                              setAccountOverrides((previous) => ({
+                                ...previous,
+                                [rowNumber]: event.target.value,
+                              }))
+                            }
+                            style={{ minHeight: 44, marginTop: 4 }}
+                          >
+                            <option value="">Selecionar conta…</option>
+                            {accounts.map((account) => (
+                              <option key={account.id} value={account.id}>
+                                {account.name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        {candidate.duplicate === 'PROBABLE_DUPLICATE' && !skipped && (
+                          <label
+                            style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 44 }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={forceRows.has(rowNumber)}
+                              onChange={() => toggleForce(rowNumber)}
+                              aria-label={`Importar mesmo assim a linha ${rowNumber}`}
+                            />
+                            Importar mesmo assim
+                          </label>
+                        )}
+                      </td>
+                      <td style={{ padding: 8 }}>
+                        {systemHandled ? (
+                          <span style={{ fontSize: '0.875rem', color: colors.textSecondary }}>
+                            Automática
+                          </span>
+                        ) : (
+                          <label
+                            style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 44 }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={skipped}
+                              onChange={() => toggleSkip(rowNumber)}
+                              aria-label={`Ignorar linha ${rowNumber}`}
+                            />
+                            Ignorar
+                          </label>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
           <div style={{ marginTop: `${spacing.base}px` }}>
             <Button
               onClick={() => confirmMutation.mutate()}
-              disabled={confirmMutation.isPending || preview.summary.ready === 0}
+              disabled={confirmMutation.isPending || !eligibility.canConfirm}
             >
               {confirmMutation.isPending ? 'Importando…' : '4. Confirmar importação'}
             </Button>
+            {eligibility.hint && (
+              <p style={{ fontSize: '0.875rem', marginTop: `${spacing.sm}px` }} aria-live="polite">
+                {eligibility.hint}
+              </p>
+            )}
             {confirmMutation.isError && (
               <ErrorState
                 title="Não foi possível concluir a importação"
