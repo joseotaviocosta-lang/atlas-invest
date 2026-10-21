@@ -194,7 +194,8 @@ export function PortfolioValuationSection({
             <span style={{ fontSize: '1.25rem' }}>⚠️</span>
             <div>
               <strong style={{ color: '#D97706', fontSize: '0.9375rem' }}>
-                Valuation Parcial ({valuation.summary.valuationCoveragePercent}% Cobertura)
+                Valuation Parcial ({formatPercentage(valuation.summary.valuationCoveragePercent)} de
+                cobertura)
               </strong>
               <p style={{ margin: '4px 0 0 0', fontSize: '0.875rem', color: colors.textPrimary }}>
                 Parte da carteira ainda não possui cotação disponível. Os totais de mercado
@@ -505,7 +506,7 @@ export function PortfolioValuationSection({
                       valuation.summary.valuationCoveragePercent === '100' ? 'positive' : 'warning'
                     }
                   >
-                    {valuation.summary.valuationCoveragePercent}%
+                    {formatPercentage(valuation.summary.valuationCoveragePercent)}
                   </Badge>
                 </div>
                 <span

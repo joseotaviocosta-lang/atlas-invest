@@ -126,7 +126,7 @@ export default function TodayPage() {
   let coverageStatusText = 'Nenhuma posição ativa';
   if (totalPositions > 0) {
     if (unvaluedPositions === 0 && stalePositions === 0) {
-      coverageStatusText = `${valuedPositions} de ${totalPositions} com cotação atualizada (${coveragePercent}%)`;
+      coverageStatusText = `${valuedPositions} de ${totalPositions} com cotação atualizada (${formatPercentage(coveragePercent)})`;
     } else if (unvaluedPositions > 0 && valuedPositions > 0) {
       coverageStatusText = `${valuedPositions} de ${totalPositions} com cotação (${unvaluedPositions} sem cotação)`;
     } else if (stalePositions > 0) {

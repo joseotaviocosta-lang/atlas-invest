@@ -194,7 +194,8 @@ export function PortfolioAllocationSection({
             <span style={{ fontSize: '1.25rem' }}>⚠️</span>
             <div>
               <strong style={{ color: '#D97706', fontSize: '0.9375rem' }}>
-                Alocação Parcial ({allocation.valuationCoveragePercent}% Cobertura)
+                Alocação Parcial ({formatPercentage(allocation.valuationCoveragePercent)} de
+                cobertura)
               </strong>
               <p style={{ margin: '4px 0 0 0', fontSize: '0.875rem', color: colors.textPrimary }}>
                 Percentuais calculados apenas sobre os ativos com cotação disponível.

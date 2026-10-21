@@ -12,7 +12,7 @@ import {
   Skeleton,
   useToast,
 } from '@/components/ui';
-import { colors, spacing, formatCurrency } from '@atlas/ui';
+import { colors, spacing, formatCurrency, formatPercentage } from '@atlas/ui';
 import { apiClient, ApiError } from '@/api/client';
 import {
   PortfolioValuationResponse,
@@ -146,7 +146,7 @@ export default function MarketPage() {
               }
             >
               {summary.valuedPositions} de {summary.totalPositions} com cotação (
-              {summary.valuationCoveragePercent}%)
+              {formatPercentage(summary.valuationCoveragePercent)})
             </Badge>
           )}
         </div>

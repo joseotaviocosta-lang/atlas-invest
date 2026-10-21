@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, ApiError } from '@/api/client';
 import { Card, Badge, Skeleton, EmptyState, ErrorState, Button, useToast } from '@/components/ui';
-import { colors } from '@atlas/ui';
+import { colors, formatPercentage } from '@atlas/ui';
 import {
   PortfolioShell,
   IngestionReceiptDto,
@@ -969,7 +969,7 @@ function PerformancePageContent() {
                               >
                                 <span>{benchLabel}</span>
                                 <span data-testid={`benchmark-${cur.currency}`}>
-                                  {bench.return ? `${bench.return}%` : '—'}
+                                  {bench.return ? formatPercentage(bench.return) : '—'}
                                 </span>
                               </div>
                               {diff && (
