@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { DuplicateExternalTransactionError } from '@atlas/database';
 import type { ClassifiedCandidate } from '@atlas/import-engine';
 import { CreateTransactionUseCase, type CreateTransactionCommand } from '../transactions';
 import {
@@ -35,6 +36,18 @@ export interface PortfolioImportReceipt {
 
 @Injectable()
 export class ConfirmPortfolioImportUseCase {
+  /**
+   * Portfolio-scoped confirm serialization (Phase 5K-R1).
+   *
+   * The duplicate pre-check reads committed ledger state, so two concurrent
+   * confirms for the same portfolio must not interleave check-then-write.
+   * This in-process mutex serializes confirms per portfolioId; the
+   * (portfolioId, provider, externalId) unique constraint remains the
+   * backstop for external-id collisions across processes, and unique
+   * violations are recovered into idempotent receipts below.
+   */
+  private readonly confirmLocks = new Map<string, Promise<void>>();
+
   constructor(
     @Inject(PreviewPortfolioImportUseCase)
     private readonly preview: PreviewPortfolioImportUseCase,
@@ -43,6 +56,31 @@ export class ConfirmPortfolioImportUseCase {
   ) {}
 
   async execute(command: ConfirmPortfolioImportCommand): Promise<PortfolioImportReceipt> {
+    return this.withPortfolioLock(command.portfolioId, () => this.executeLocked(command));
+  }
+
+  private async withPortfolioLock<T>(portfolioId: string, fn: () => Promise<T>): Promise<T> {
+    const tail = this.confirmLocks.get(portfolioId) ?? Promise.resolve();
+    let release: () => void = () => {};
+    const head = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const chained = tail.then(() => head);
+    this.confirmLocks.set(portfolioId, chained);
+    await tail;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.confirmLocks.get(portfolioId) === chained) {
+        this.confirmLocks.delete(portfolioId);
+      }
+    }
+  }
+
+  private async executeLocked(
+    command: ConfirmPortfolioImportCommand,
+  ): Promise<PortfolioImportReceipt> {
     const overrides = new Map<number, ImportRowOverride>();
     for (const decision of command.decisions) {
       if (decision.assetId || decision.accountId) {
@@ -115,8 +153,16 @@ export class ConfirmPortfolioImportUseCase {
       });
     }
 
-    const created =
-      commands.length > 0 ? await this.createTransactionUseCase.executeMany(commands) : [];
+    let created: { id: string }[];
+    try {
+      created =
+        commands.length > 0 ? await this.createTransactionUseCase.executeMany(commands) : [];
+    } catch (error) {
+      if (error instanceof DuplicateExternalTransactionError) {
+        return this.recoverIdempotentReceipt(command);
+      }
+      throw error;
+    }
 
     return {
       receiptId: randomUUID(),
@@ -129,6 +175,59 @@ export class ConfirmPortfolioImportUseCase {
       skippedByUser,
       failed,
       transactionIds: created.map((transaction) => transaction.id),
+      confirmedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Cross-process backstop: if a concurrent confirm committed the same
+   * external id first, the unique constraint rejects this batch. Re-run
+   * the reconciliation against committed state and return the idempotent
+   * receipt instead of surfacing a conflict to the investor.
+   */
+  private async recoverIdempotentReceipt(
+    command: ConfirmPortfolioImportCommand,
+  ): Promise<PortfolioImportReceipt> {
+    const overrides = new Map<number, ImportRowOverride>();
+    for (const decision of command.decisions) {
+      if (decision.assetId || decision.accountId) {
+        overrides.set(decision.rowNumber, {
+          assetId: decision.assetId,
+          accountId: decision.accountId,
+        });
+      }
+    }
+    const preview = await this.preview.executeWithOverrides(command, overrides);
+    const decisions = new Map(command.decisions.map((decision) => [decision.rowNumber, decision]));
+    let skippedDuplicates = 0;
+    let skippedByUser = 0;
+    const failed: Array<{ rowNumber: number; message: string }> = [];
+    for (const candidate of preview.candidates) {
+      const decision = decisions.get(candidate.rowNumber);
+      if (decision?.action === 'skip') {
+        skippedByUser += 1;
+      } else if (candidate.status === 'DUPLICATE') {
+        skippedDuplicates += 1;
+      } else {
+        failed.push({
+          rowNumber: candidate.rowNumber,
+          message:
+            candidate.issues[0]?.message ??
+            'Linha não importada: outra confirmação simultânea escreveu o lançamento',
+        });
+      }
+    }
+    return {
+      receiptId: randomUUID(),
+      portfolioId: command.portfolioId,
+      provider: preview.provider,
+      fileName: command.fileName,
+      totalRows: preview.summary.totalRows,
+      created: 0,
+      skippedDuplicates,
+      skippedByUser,
+      failed,
+      transactionIds: [],
       confirmedAt: new Date().toISOString(),
     };
   }
