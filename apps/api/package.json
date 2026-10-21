@@ -23,6 +23,7 @@
     "@atlas/valuation-engine": "workspace:*",
     "@atlas/ai-engine": "workspace:*",
     "@atlas/tax-engine": "workspace:*",
+    "@atlas/import-engine": "workspace:*",
     "@atlas/validation": "workspace:*",
     "@nestjs/common": "^11.0.11",
     "@nestjs/core": "^11.0.11",

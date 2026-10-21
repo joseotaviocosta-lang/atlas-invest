@@ -115,6 +115,7 @@
     "test:equity-fiscal-web:e2e": "playwright test tests/web/e2e/equity-fiscal.spec.ts",
     "test:equity-fiscal-mobile": "vitest run --config vitest.mobile.config.ts tests/mobile/equity-fiscal.test.ts",
     "test:api": "vitest run --config vitest.api.config.ts",
+    "test:import-engine": "vitest run --config vitest.import-engine.config.ts",
     "test:auth": "vitest run --config vitest.auth.config.ts",
     "test:mobile": "vitest run --config vitest.mobile.config.ts",
     "test:web": "vitest run --config vitest.web.config.ts",

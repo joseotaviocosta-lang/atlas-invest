@@ -1533,6 +1533,21 @@ function PortfolioPageContent() {
                 <Button onClick={openOpModal} disabled={!activePortfolio}>
                   + Nova operação
                 </Button>
+                {activePortfolio && (
+                  <Link
+                    href={`/portfolio/import?portfolioId=${activePortfolio.id}`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      minHeight: 44,
+                      fontSize: '0.875rem',
+                      fontWeight: 600,
+                      color: colors.accent,
+                    }}
+                  >
+                    Importar carteira →
+                  </Link>
+                )}
               </div>
 
               {isTxLoading ? (

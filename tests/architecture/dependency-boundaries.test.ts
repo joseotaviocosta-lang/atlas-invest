@@ -61,6 +61,7 @@ describe('Architecture Gate: Layer Dependency Boundaries & Package Isolation', (
       'packages/ai-engine',
       'packages/market-data',
       'packages/news-data',
+      'packages/import-engine',
     ];
 
     for (const pkg of enginePackages) {

@@ -57,35 +57,69 @@ export class CreateTransactionUseCase {
   ) {}
 
   async execute(command: CreateTransactionCommand): Promise<Transaction> {
-    const portfolio = await this.portfolioRepository.findById(command.portfolioId);
+    const [transaction] = await this.executeMany([command]);
+    if (!transaction) {
+      throw new InvalidTransactionError('Transaction creation returned no result');
+    }
+    return transaction;
+  }
+
+  async executeMany(commands: readonly CreateTransactionCommand[]): Promise<Transaction[]> {
+    if (commands.length === 0) return [];
+
+    const portfolioIds = new Set(commands.map((command) => command.portfolioId));
+    if (portfolioIds.size !== 1) {
+      throw new InvalidTransactionError('A transaction batch must target one portfolio');
+    }
+
+    const portfolioId = commands[0]!.portfolioId;
+    const portfolio = await this.portfolioRepository.findById(portfolioId);
     if (!portfolio) {
-      throw new EntityNotFoundError('Portfolio', command.portfolioId);
+      throw new EntityNotFoundError('Portfolio', portfolioId);
     }
 
-    if (command.userId && portfolio.userId !== command.userId) {
-      throw new EntityNotFoundError('Portfolio', command.portfolioId);
+    if (commands.some((command) => command.userId && portfolio.userId !== command.userId)) {
+      throw new EntityNotFoundError('Portfolio', portfolioId);
     }
 
-    const account = await this.accountRepository.findById(command.accountId);
-    if (!account) {
-      throw new EntityNotFoundError('Account', command.accountId);
+    const accounts = await this.accountRepository.findByPortfolioId(portfolioId);
+    const accountsById = new Map<string, (typeof accounts)[number]>(
+      accounts.map((account) => [account.id, account]),
+    );
+    for (const command of commands) {
+      const account = accountsById.get(command.accountId);
+      if (!account) {
+        const existingAccount = await this.accountRepository.findById(command.accountId);
+        if (existingAccount) {
+          throw new CrossPortfolioIntegrityError(
+            `Account '${command.accountId}' belongs to portfolio '${existingAccount.portfolioId}', not '${portfolioId}'`,
+          );
+        }
+        throw new EntityNotFoundError('Account', command.accountId);
+      }
+
+      if (account.portfolioId !== portfolioId) {
+        throw new CrossPortfolioIntegrityError(
+          `Account '${command.accountId}' belongs to portfolio '${account.portfolioId}', not '${portfolioId}'`,
+        );
+      }
     }
 
-    if (account.portfolioId !== command.portfolioId) {
-      throw new CrossPortfolioIntegrityError(
-        `Account '${command.accountId}' belongs to portfolio '${account.portfolioId}', not '${command.portfolioId}'`,
-      );
-    }
-
-    if (command.assetId) {
-      const asset = await this.assetRepository.findById(command.assetId);
-      if (!asset) {
+    const assetIds = [
+      ...new Set(commands.flatMap((command) => (command.assetId ? [command.assetId] : []))),
+    ];
+    const assetsById = new Set<string>(
+      (await this.assetRepository.findByIds(assetIds)).map((asset) => asset.id),
+    );
+    for (const command of commands) {
+      if (command.assetId && !assetsById.has(command.assetId)) {
         throw new EntityNotFoundError('Asset', command.assetId);
       }
     }
 
-    const tx = this.buildTransaction(command);
-    return this.transactionRepository.create(tx);
+    return this.transactionRepository.createMany(
+      commands.map((command) => this.buildTransaction(command)),
+    );
   }
 
   private buildTransaction(command: CreateTransactionCommand): Transaction {

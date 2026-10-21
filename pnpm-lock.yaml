@@ -245,6 +245,9 @@ importers:
       '@atlas/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@atlas/import-engine':
+        specifier: workspace:*
+        version: link:../../packages/import-engine
       '@atlas/logger':
         specifier: workspace:*
         version: link:../../packages/logger
@@ -514,6 +517,16 @@ importers:
       decimal.js:
         specifier: ^10.5.0
         version: 10.6.0
+    devDependencies:
+      '@atlas/config':
+        specifier: workspace:*
+        version: link:../config
+
+  packages/import-engine:
+    dependencies:
+      '@atlas/domain':
+        specifier: workspace:*
+        version: link:../domain
     devDependencies:
       '@atlas/config':
         specifier: workspace:*
