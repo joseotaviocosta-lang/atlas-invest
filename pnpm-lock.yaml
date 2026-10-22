@@ -230,6 +230,9 @@ importers:
       vitest:
         specifier: ^3.0.7
         version: 3.2.7(@types/node@22.20.2)(jiti@2.7.0)(lightningcss@1.27.0)(supports-color@8.1.1)(terser@5.51.2)(tsx@4.23.13)
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
 
   apps/api:
     dependencies:
@@ -473,6 +476,22 @@ importers:
       '@atlas/portfolio-intelligence':
         specifier: workspace:*
         version: link:../portfolio-intelligence
+    devDependencies:
+      '@atlas/config':
+        specifier: workspace:*
+        version: link:../config
+
+  packages/b3-integration:
+    dependencies:
+      '@atlas/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@atlas/import-engine':
+        specifier: workspace:*
+        version: link:../import-engine
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
     devDependencies:
       '@atlas/config':
         specifier: workspace:*
