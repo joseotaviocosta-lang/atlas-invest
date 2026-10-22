@@ -59,7 +59,8 @@ describe('Web Import Hub boundaries (Phase 5K)', () => {
   it('exposes the hub from the portfolio operations tab without touching canonical nav', () => {
     const portfolio = readWeb('apps/web/src/app/(app)/portfolio/page.tsx');
     expect(portfolio).toContain('/portfolio/import?portfolioId=');
-    expect(portfolio).toContain('Importar carteira');
+    // Phase 5N: entry point renamed to the product surface "Importar / Conectar".
+    expect(portfolio).toContain('Importar / Conectar');
   });
 
   it('derives confirmation eligibility from effective user decisions, not server summary', () => {

@@ -1545,7 +1545,7 @@ function PortfolioPageContent() {
                       color: colors.accent,
                     }}
                   >
-                    Importar carteira →
+                    Importar / Conectar →
                   </Link>
                 )}
               </div>

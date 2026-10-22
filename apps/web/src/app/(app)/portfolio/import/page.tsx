@@ -13,6 +13,12 @@ import {
 } from '@/lib/import-review';
 import { colors, spacing, formatCurrency, formatQuantity, formatCivilDateDisplay } from '@atlas/ui';
 import {
+  B3_IMPORT_METHOD_CATALOG,
+  B3_EXPLANATION_SECTIONS,
+  B3_SIMULATION_NOTICE,
+  resolveB3IntegrationAvailability,
+} from '@atlas/ui';
+import {
   Card,
   Skeleton,
   ErrorState,
@@ -20,6 +26,8 @@ import {
   PageHeader,
   SectionHeader,
   Button,
+  Badge,
+  Modal,
 } from '@/components/ui';
 
 interface PortfolioOption {
@@ -134,6 +142,10 @@ function ImportHubContent() {
   const [accountOverrides, setAccountOverrides] = useState<Record<number, string>>({});
   const [forceRows, setForceRows] = useState<Set<number>>(new Set());
   const [fileError, setFileError] = useState<string | null>(null);
+  const [b3ModalOpen, setB3ModalOpen] = useState(false);
+  const b3Availability = resolveB3IntegrationAvailability({
+    realConnectionEnabled: process.env.NEXT_PUBLIC_B3_REAL_CONNECTION_ENABLED,
+  });
 
   const { data: portfoliosData } = useQuery({
     queryKey: ['portfolios'],
@@ -322,8 +334,8 @@ function ImportHubContent() {
     <div>
       <PageHeader
         title="Importar carteira"
-        subtitle="Envie um arquivo CSV, revise a análise e confirme para lançar as operações no livro-razão."
-        breadcrumb="Carteira / Importar"
+        subtitle="Escolha como colocar seus investimentos no Atlas: sincronização automática, arquivo ou lançamento manual."
+        breadcrumb="Carteira / Importar / Conectar"
         action={
           <Link
             href={activePortfolioId ? `/portfolio?portfolioId=${activePortfolioId}` : '/portfolio'}
@@ -335,6 +347,123 @@ function ImportHubContent() {
       />
 
       <Card style={{ padding: `${spacing.base}px`, marginBottom: `${spacing.base}px` }}>
+        <SectionHeader title="Como quer colocar seus investimentos no Atlas?" />
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))',
+            gap: `${spacing.sm}px`,
+            marginTop: `${spacing.sm}px`,
+          }}
+        >
+          {B3_IMPORT_METHOD_CATALOG.map((method) => (
+            <Card
+              key={method.id}
+              style={{
+                padding: `${spacing.base}px`,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: `${spacing.sm}px`,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: `${spacing.sm}px`,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span style={{ fontSize: '1rem', fontWeight: 700 }}>{method.title}</span>
+                {method.badge ? <Badge variant="neutral">{method.badge}</Badge> : null}
+              </div>
+              <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: colors.accent }}>
+                {method.subtitle}
+              </div>
+              <div style={{ fontSize: '0.875rem', color: colors.textSecondary }}>
+                {method.description}
+              </div>
+              <div style={{ marginTop: 'auto', paddingTop: `${spacing.sm}px` }}>
+                {method.action === 'b3-explain' ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => setB3ModalOpen(true)}
+                    aria-label="Saiba como funcionará a sincronização com a B3"
+                    style={{ minHeight: 44 }}
+                  >
+                    {b3Availability === 'AVAILABLE' ? 'Conectar (simulação)' : method.ctaLabel}
+                  </Button>
+                ) : method.action === 'csv-anchor' ? (
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      document
+                        .getElementById('importador-arquivo')
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                    }
+                    aria-label="Ir para o importador de arquivo CSV"
+                    style={{ minHeight: 44 }}
+                  >
+                    {method.ctaLabel}
+                  </Button>
+                ) : (
+                  <Link
+                    href={
+                      activePortfolioId
+                        ? `/portfolio?portfolioId=${activePortfolioId}&tab=operations`
+                        : '/portfolio'
+                    }
+                    aria-label="Adicionar operação manualmente na carteira"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      minHeight: 44,
+                      fontSize: '0.875rem',
+                      fontWeight: 600,
+                      color: colors.accent,
+                    }}
+                  >
+                    {method.ctaLabel} →
+                  </Link>
+                )}
+              </div>
+            </Card>
+          ))}
+        </div>
+      </Card>
+
+      <Modal
+        isOpen={b3ModalOpen}
+        onClose={() => setB3ModalOpen(false)}
+        title="Como funcionará a sincronização com a B3"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.base}px` }}>
+          <div>
+            <Badge variant="neutral">Em preparação</Badge>
+          </div>
+          {b3Availability === 'AVAILABLE' ? (
+            <p style={{ fontSize: '0.875rem', color: colors.warning }}>{B3_SIMULATION_NOTICE}</p>
+          ) : null}
+          {B3_EXPLANATION_SECTIONS.map((section) => (
+            <div key={section.title}>
+              <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, margin: '0 0 4px' }}>
+                {section.title}
+              </h3>
+              <p style={{ fontSize: '0.875rem', color: colors.textSecondary, margin: 0 }}>
+                {section.body}
+              </p>
+            </div>
+          ))}
+          <Button variant="outline" onClick={() => setB3ModalOpen(false)} style={{ minHeight: 44 }}>
+            Entendi
+          </Button>
+        </div>
+      </Modal>
+
+      <Card
+        id="importador-arquivo"
+        style={{ padding: `${spacing.base}px`, marginBottom: `${spacing.base}px` }}
+      >
         <SectionHeader title="1. Arquivo de origem" />
         <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.sm}px` }}>
           <label htmlFor="import-portfolio" style={{ fontSize: '0.875rem', fontWeight: 600 }}>
