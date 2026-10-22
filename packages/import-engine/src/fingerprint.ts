@@ -69,6 +69,37 @@ export function canonicalFingerprint(input: CanonicalFingerprintInput): string {
   return createHash('sha256').update(canonical, 'utf8').digest('hex');
 }
 
+export interface CanonicalIncomeFingerprintInput {
+  portfolioId: string;
+  accountId: string;
+  assetId: string;
+  type: string;
+  tradeDate: string;
+  amount: string | null;
+  currency: string;
+}
+
+/**
+ * Phase 5O-A — canonical identity of an income event.
+ *
+ * Unlike trades, income carries no quantity/price semantics at the ledger
+ * level (the canonical event is value-only: asset + account + type + date +
+ * amount + currency). Shares-held figures from source records are
+ * informational and must not split the identity of one payout.
+ */
+export function canonicalIncomeFingerprint(input: CanonicalIncomeFingerprintInput): string {
+  const canonical = [
+    input.portfolioId,
+    input.accountId,
+    input.assetId,
+    input.type,
+    input.tradeDate,
+    canonicalDecimal(input.amount),
+    input.currency,
+  ].join('|');
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
+}
+
 /**
  * Price-insensitive variant used for PROBABLE duplicate detection:
  * same economic event, possibly different execution price/fees.
@@ -83,6 +114,24 @@ export function probableMatchKey(
     input.type,
     input.tradeDate,
     canonicalDecimal(input.quantity),
+    input.currency,
+  ].join('|');
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
+}
+
+/**
+ * Phase 5O-A — amount-insensitive variant for income near-duplicate
+ * detection: same payout occasion, possibly a corrected value.
+ */
+export function probableIncomeMatchKey(
+  input: Omit<CanonicalIncomeFingerprintInput, 'amount'>,
+): string {
+  const canonical = [
+    input.portfolioId,
+    input.accountId,
+    input.assetId,
+    input.type,
+    input.tradeDate,
     input.currency,
   ].join('|');
   return createHash('sha256').update(canonical, 'utf8').digest('hex');

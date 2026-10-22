@@ -6,7 +6,8 @@ import type { ClassifiedCandidate } from '@atlas/import-engine';
 /**
  * Phase 5M — confirm-path wiring (5L pendency #1) against the REAL
  * `ConfirmPortfolioImportUseCase`: transfer legs keep `transferGroupId`,
- * B3 rows record source `B3`, duplicates stay skipped. Persistence is
+ * B3 rows record source `B3`, duplicates stay skipped. Phase 5O-A: income
+ * rows persist value-only through the canonical income path. Persistence is
  * stubbed; the decision loop and command builder under test are production
  * code (same path the HTTP confirm endpoint drives).
  */
@@ -158,6 +159,67 @@ describe('Phase 5M: confirm wiring for B3 transfers (real use-case, stubbed I/O)
       decisions: [command(2)],
     });
     expect((csvHarness.captured[0]![0] as Record<string, unknown>).source).toBe('CSV');
+  });
+
+  it('persists income events value-only through the canonical income path', async () => {
+    const dividend = candidate({
+      operation: 'DIVIDEND',
+      rawOperation: 'DIVIDENDO',
+      quantity: '100',
+      amount: '87.30',
+      externalId: 'B3-5M-0004',
+      transferGroupId: undefined,
+      tradeDate: '2026-04-15',
+    });
+    const { useCase, createTransaction, captured } = harness([dividend]);
+    const receipt = await useCase.execute({
+      portfolioId: PORTFOLIO,
+      userId: 'user-5m',
+      sourceType: 'GENERIC_CSV',
+      provider: 'B3',
+      fileName: 'b3-simulated.csv',
+      content: 'csv',
+      decisions: [command(2)],
+    });
+    expect(receipt.created).toBe(1);
+    expect(createTransaction.executeMany).toHaveBeenCalledTimes(1);
+    expect(captured[0]).toHaveLength(1);
+    const incomeCommand = captured[0]![0] as Record<string, unknown>;
+    expect(incomeCommand).toMatchObject({
+      type: 'DIVIDEND',
+      source: 'B3',
+      provider: 'B3',
+      externalId: 'B3-5M-0004',
+      amount: '87.30',
+    });
+    // Value-only: no quantity, no price, no fees, no invented withholding.
+    expect(incomeCommand).not.toHaveProperty('quantity');
+    expect(incomeCommand).not.toHaveProperty('unitPrice');
+    expect(incomeCommand).not.toHaveProperty('fees');
+    expect(incomeCommand).not.toHaveProperty('taxes');
+  });
+
+  it('income rows without an exact amount are never written', async () => {
+    const amountless = candidate({
+      operation: 'DIVIDEND',
+      rawOperation: 'DIVIDENDO',
+      amount: undefined,
+      externalId: 'B3-5M-0099',
+      transferGroupId: undefined,
+      tradeDate: '2026-04-15',
+    });
+    const { useCase, createTransaction } = harness([amountless]);
+    const receipt = await useCase.execute({
+      portfolioId: PORTFOLIO,
+      userId: 'user-5m',
+      sourceType: 'GENERIC_CSV',
+      provider: 'B3',
+      fileName: 'b3-simulated.csv',
+      content: 'csv',
+      decisions: [command(2)],
+    });
+    expect(receipt.created).toBe(0);
+    expect(createTransaction.executeMany).not.toHaveBeenCalled();
   });
 
   it('skips exact duplicates and requires explicit decisions for probable ones', async () => {

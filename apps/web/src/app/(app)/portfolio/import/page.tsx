@@ -633,7 +633,13 @@ function ImportHubContent() {
                             ? 'Venda'
                             : candidate.operation === 'TRANSFER_IN'
                               ? 'Transferência (entrada)'
-                              : 'Transferência (saída)'}
+                              : candidate.operation === 'TRANSFER_OUT'
+                                ? 'Transferência (saída)'
+                                : candidate.operation === 'DIVIDEND'
+                                  ? 'Dividendo'
+                                  : candidate.operation === 'JCP'
+                                    ? 'JCP'
+                                    : 'Rendimento FII'}
                       </td>
                       <td style={{ padding: 8 }}>{formatQuantity(candidate.quantity)}</td>
                       <td style={{ padding: 8 }}>

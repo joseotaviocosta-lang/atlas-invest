@@ -53,8 +53,9 @@ describe('Import Engine: template header mapping', () => {
     expect(mapOperation('VENDA')).toEqual({ kind: 'SELL' });
     expect(mapOperation('v')).toEqual({ kind: 'SELL' });
     expect(mapOperation('sell')).toEqual({ kind: 'SELL' });
-    expect(mapOperation('DIVIDENDO')).toEqual({ kind: 'DEFERRED', operation: 'DIVIDEND' });
-    expect(mapOperation('JCP')).toEqual({ kind: 'DEFERRED', operation: 'JCP' });
+    // Phase 5O-A: income natures map to canonical income kinds (never deferred).
+    expect(mapOperation('DIVIDENDO')).toEqual({ kind: 'DIVIDEND' });
+    expect(mapOperation('JCP')).toEqual({ kind: 'JCP' });
     expect(mapOperation('BONIFICAÇÃO')).toEqual({ kind: 'DEFERRED', operation: 'BONUS' });
     expect(mapOperation('ALIENAÇÃO')).toEqual({ kind: 'UNKNOWN', raw: 'ALIENAÇÃO' });
   });

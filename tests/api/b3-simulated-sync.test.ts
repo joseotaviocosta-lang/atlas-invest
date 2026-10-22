@@ -16,12 +16,15 @@ import {
   runSimulatedB3Sync,
   selectImportableCandidates,
   canonicalFingerprint,
+  canonicalIncomeFingerprint,
   reconcilePositions,
   type ExistingLedgerRow,
 } from '@atlas/import-engine';
 
 /**
  * Phase 5M — simulated B3 sync against the REAL ledger and REAL read models.
+ * Phase 5O-A — income events (DIVIDEND/JCP) persist through the same writer
+ * and surface in the same read models (state income summaries + history).
  *
  * No new endpoint, no network: the orchestrator (pure) classifies through
  * the canonical pipeline and confirms through the single canonical writer
@@ -53,29 +56,48 @@ describe('API Integration: Simulated B3 Sync (Phase 5M, no network, real ledger)
 
   async function loadExisting(): Promise<ExistingLedgerRow[]> {
     const transactions = await prisma.transaction.findMany({ where: { portfolioId } });
-    return transactions.map((transaction) => ({
-      provider: transaction.provider ?? null,
-      externalId: transaction.externalId ?? null,
-      assetId: transaction.assetId ?? '',
-      accountId: transaction.accountId,
-      type: transaction.type,
-      tradeDate: transaction.tradeDate.toISOString().slice(0, 10),
-      quantity: transaction.quantity.toString(),
-      unitPrice: transaction.unitPrice?.toString() ?? null,
-      fees: transaction.fees?.toString() ?? null,
-      currency: transaction.currency,
-      fingerprint: canonicalFingerprint({
-        portfolioId: transaction.portfolioId,
-        accountId: transaction.accountId,
+    return transactions.map((transaction) => {
+      const tradeDate = transaction.tradeDate.toISOString().slice(0, 10);
+      const amount = transaction.amount?.toString() ?? null;
+      const isIncome =
+        transaction.type === 'DIVIDEND' ||
+        transaction.type === 'JCP' ||
+        transaction.type === 'FII_INCOME';
+      return {
+        provider: transaction.provider ?? null,
+        externalId: transaction.externalId ?? null,
         assetId: transaction.assetId ?? '',
+        accountId: transaction.accountId,
         type: transaction.type,
-        tradeDate: transaction.tradeDate.toISOString().slice(0, 10),
-        quantity: transaction.quantity.toString(),
+        tradeDate,
+        quantity: transaction.quantity?.toString() ?? '',
         unitPrice: transaction.unitPrice?.toString() ?? null,
         fees: transaction.fees?.toString() ?? null,
+        amount,
         currency: transaction.currency,
-      }),
-    }));
+        fingerprint: isIncome
+          ? canonicalIncomeFingerprint({
+              portfolioId: transaction.portfolioId,
+              accountId: transaction.accountId,
+              assetId: transaction.assetId ?? '',
+              type: transaction.type,
+              tradeDate,
+              amount,
+              currency: transaction.currency,
+            })
+          : canonicalFingerprint({
+              portfolioId: transaction.portfolioId,
+              accountId: transaction.accountId,
+              assetId: transaction.assetId ?? '',
+              type: transaction.type,
+              tradeDate,
+              quantity: transaction.quantity?.toString() ?? '',
+              unitPrice: transaction.unitPrice?.toString() ?? null,
+              fees: transaction.fees?.toString() ?? null,
+              currency: transaction.currency,
+            }),
+      };
+    });
   }
 
   function toCommands(result: Parameters<typeof selectImportableCandidates>[0]) {
@@ -92,7 +114,12 @@ describe('API Integration: Simulated B3 Sync (Phase 5M, no network, real ledger)
       provider: candidate.provider,
       externalId: candidate.externalId,
       notes: `Sincronização B3 simulada (linha ${candidate.rowNumber})`,
-      quantity: candidate.quantity,
+      // Phase 5O-A: income events are value-only (amount, never quantity).
+      ...(candidate.operation === 'DIVIDEND' ||
+      candidate.operation === 'JCP' ||
+      candidate.operation === 'FII_INCOME'
+        ? { amount: candidate.amount! }
+        : { quantity: candidate.quantity }),
       ...(candidate.operation === 'BUY' || candidate.operation === 'SELL'
         ? {
             unitPrice: candidate.unitPrice,
@@ -187,16 +214,62 @@ describe('API Integration: Simulated B3 Sync (Phase 5M, no network, real ledger)
     accountBId = accountB.id;
   });
 
-  it('initial sync writes snapshot-1 trades through the real writer; /state derives 100/50/10', async () => {
+  it('initial sync writes snapshot-1 trades and income through the real writer', async () => {
     const { result, created } = await syncAndConfirm('SNAPSHOT_1');
-    expect(result.newCandidates).toBe(3);
-    expect(created).toHaveLength(3);
+    expect(result.newCandidates).toBe(5);
+    expect(created).toHaveLength(5);
     expect(created.every((tx) => tx.provider === 'B3')).toBe(true);
 
     const quantities = await stateQuantities();
     expect(quantities[assetIds.get('PETR4')!]).toBe('100');
     expect(quantities[assetIds.get('VALE3')!]).toBe('50');
     expect(quantities[assetIds.get('HGLG11')!]).toBe('10');
+  });
+
+  it('income events surface in state summaries and history without moving positions', async () => {
+    await syncAndConfirm('SNAPSHOT_1');
+
+    const incomeRows = await prisma.transaction.findMany({
+      where: { portfolioId, type: { in: ['DIVIDEND', 'JCP'] } },
+      orderBy: { type: 'asc' },
+    });
+    expect(incomeRows).toHaveLength(2);
+    const dividend = incomeRows.find((row) => row.type === 'DIVIDEND')!;
+    expect(dividend.amount?.toString()).toBe('87.3');
+    expect(dividend.externalId).toBe('B3-5M-0004');
+    expect(dividend.source).toBe('B3');
+    expect(dividend.provider).toBe('B3');
+    expect(dividend.assetId).toBe(assetIds.get('PETR4'));
+    expect(dividend.accountId).toBe(accountAId);
+    const jcp = incomeRows.find((row) => row.type === 'JCP')!;
+    expect(jcp.amount?.toString()).toBe('42.1');
+    expect(jcp.assetId).toBe(assetIds.get('VALE3'));
+
+    const state = await request(app.getHttpServer())
+      .get(`/api/v1/portfolios/${portfolioId}/state`)
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(state.status).toBe(200);
+    expect(state.body.data.incomeSummaries).toEqual([
+      {
+        currency: 'BRL',
+        totalDividends: { amount: '87.3', currency: 'BRL' },
+        totalJcp: { amount: '42.1', currency: 'BRL' },
+        totalFiiIncome: { amount: '0', currency: 'BRL' },
+        totalIncome: { amount: '129.4', currency: 'BRL' },
+      },
+    ]);
+    // Positions untouched by income: same quantities as the trade-only view.
+    const positions = state.body.data.positions as Array<{ quantity: string }>;
+    expect(positions.map((position) => position.quantity).sort()).toEqual(['10', '100', '50']);
+
+    const history = await request(app.getHttpServer())
+      .get(`/api/v1/portfolios/${portfolioId}/history`)
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(history.status).toBe(200);
+    const incomeItems = (history.body.data as Array<{ kind: string }>).filter(
+      (item) => item.kind === 'INCOME',
+    );
+    expect(incomeItems).toHaveLength(2);
   });
 
   it('second sync is idempotent, incremental sync adds only new events, third is silent', async () => {
@@ -220,7 +293,7 @@ describe('API Integration: Simulated B3 Sync (Phase 5M, no network, real ledger)
     expect(silent.created).toHaveLength(0);
 
     const total = await prisma.transaction.count({ where: { portfolioId } });
-    expect(total).toBe(7);
+    expect(total).toBe(9);
   });
 
   it('transfer legs persist with the shared transferGroupId and reconcile MATCHED', async () => {

@@ -122,25 +122,22 @@ const BUY_SYNONYMS = new Set(['COMPRA', 'C', 'BUY', 'B', 'PURCHASE']);
 const SELL_SYNONYMS = new Set(['VENDA', 'V', 'SELL', 'S', 'SALE']);
 const TRANSFER_IN_SYNONYMS = new Set(['TRANSFERENCIA', 'TRANSFER_IN', 'TRANSFERENCIA_ENTRADA']);
 const TRANSFER_OUT_SYNONYMS = new Set(['TRANSFERENCIA_SAIDA', 'TRANSFER_OUT']);
+const DIVIDEND_SYNONYMS = new Set(['DIVIDENDO', 'DIVIDENDOS', 'DIVIDEND']);
+const JCP_SYNONYMS = new Set(['JCP', 'JUROS SOBRE CAPITAL PROPRIO', 'JUROSSOBRECAPITALPROPRIO']);
+const FII_INCOME_SYNONYMS = new Set(['RENDIMENTO', 'RENDIMENTOS', 'RENDIMENTO_FII', 'FII_INCOME']);
 
 export type MappedOperation =
   | { kind: 'BUY' }
   | { kind: 'SELL' }
   | { kind: 'TRANSFER_IN' }
   | { kind: 'TRANSFER_OUT' }
+  | { kind: 'DIVIDEND' }
+  | { kind: 'JCP' }
+  | { kind: 'FII_INCOME' }
   | { kind: 'DEFERRED'; operation: string }
   | { kind: 'UNKNOWN'; raw: string };
 
 const DEFERRED_SYNONYMS: Record<string, string> = {
-  DIVIDENDO: 'DIVIDEND',
-  DIVIDENDOS: 'DIVIDEND',
-  DIVIDEND: 'DIVIDEND',
-  JCP: 'JCP',
-  'JUROS SOBRE CAPITAL PRÓPRIO': 'JCP',
-  RENDIMENTO: 'FII_INCOME',
-  RENDIMENTOS: 'FII_INCOME',
-  RENDIMENTO_FII: 'FII_INCOME',
-  FII_INCOME: 'FII_INCOME',
   DESDOBRAMENTO: 'SPLIT',
   SPLIT: 'SPLIT',
   GRUPAMENTO: 'REVERSE_SPLIT',
@@ -179,6 +176,9 @@ export function mapOperation(raw: string): MappedOperation {
   if (SELL_SYNONYMS.has(normalized)) return { kind: 'SELL' };
   if (TRANSFER_IN_SYNONYMS.has(normalized)) return { kind: 'TRANSFER_IN' };
   if (TRANSFER_OUT_SYNONYMS.has(normalized)) return { kind: 'TRANSFER_OUT' };
+  if (DIVIDEND_SYNONYMS.has(normalized)) return { kind: 'DIVIDEND' };
+  if (JCP_SYNONYMS.has(normalized)) return { kind: 'JCP' };
+  if (FII_INCOME_SYNONYMS.has(normalized)) return { kind: 'FII_INCOME' };
   const deferred = DEFERRED_SYNONYMS[normalized];
   if (deferred) return { kind: 'DEFERRED', operation: deferred };
   return { kind: 'UNKNOWN', raw: raw.trim() };

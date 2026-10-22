@@ -56,6 +56,17 @@ describe('Web Import Hub boundaries (Phase 5K)', () => {
     expect(page()).toContain('Baixar modelo CSV');
   });
 
+  it('renders PT operation labels for trades, custody moves and income', () => {
+    expect(page()).toContain('Compra');
+    expect(page()).toContain('Venda');
+    expect(page()).toContain('Transferência (entrada)');
+    expect(page()).toContain('Transferência (saída)');
+    // Phase 5O-A: importable income rows use canonical income vocabulary.
+    expect(page()).toContain('Dividendo');
+    expect(page()).toContain('JCP');
+    expect(page()).toContain('Rendimento FII');
+  });
+
   it('exposes the hub from the portfolio operations tab without touching canonical nav', () => {
     const portfolio = readWeb('apps/web/src/app/(app)/portfolio/page.tsx');
     expect(portfolio).toContain('/portfolio/import?portfolioId=');

@@ -6,7 +6,9 @@ import {
   SimulatedB3SyncBlockedError,
   SimulatedB3ProviderError,
   normalizeB3Movement,
+  classifyOne,
   canonicalFingerprint,
+  canonicalIncomeFingerprint,
   toLedgerSnapshotRow,
   transitionSyncState,
   InvalidSyncTransitionError,
@@ -86,6 +88,17 @@ function confirmIntoStub(
         quantity: candidate.quantity,
         unitPrice: candidate.unitPrice,
       });
+    } else if (
+      candidate.operation === 'DIVIDEND' ||
+      candidate.operation === 'JCP' ||
+      candidate.operation === 'FII_INCOME'
+    ) {
+      if (!candidate.amount) continue;
+      TransactionFactory.createIncome({
+        ...common,
+        type: candidate.operation,
+        amount: candidate.amount,
+      });
     } else {
       const tx = TransactionFactory.createTransfer({
         ...common,
@@ -105,6 +118,7 @@ function confirmIntoStub(
       quantity: candidate.quantity,
       unitPrice: candidate.unitPrice,
       fees: candidate.fees,
+      amount: candidate.amount ?? null,
       currency: candidate.currency,
       externalId: candidate.externalId ?? null,
       fingerprint: candidate.fingerprint,
@@ -164,9 +178,10 @@ describe('Phase 5M: simulated B3 sync end-to-end (real pipeline, mock source)', 
     expect(result.movementRecords).toBe(3);
     expect(result.provisionedRecords).toBe(2);
     expect(result.normalized).toBe(5);
-    expect(result.newCandidates).toBe(3);
+    // Phase 5O-A: 3 trades + 2 income events (DIVIDEND, JCP) all importable.
+    expect(result.newCandidates).toBe(5);
     expect(result.exactDuplicates).toBe(0);
-    expect(result.unsupported).toBe(2);
+    expect(result.unsupported).toBe(0);
     expect(result.invalid).toBe(0);
     expect(result.sourceAsOf).toBe('2026-04-30');
     expect(result.recommendedEvent).toBe('SYNC_SUCCEEDED');
@@ -189,29 +204,34 @@ describe('Phase 5M: simulated B3 sync end-to-end (real pipeline, mock source)', 
     expect(result.candidates).toHaveLength(5);
   });
 
-  it('5-6: confirm maps importable rows onto canonical domain transactions (3 events)', () => {
+  it('5-6: confirm maps importable rows onto canonical domain transactions (5 events)', () => {
     const result = runSimulatedB3Sync(syncInput());
     const importable = selectImportableCandidates(result);
-    expect(importable).toHaveLength(3);
+    expect(importable).toHaveLength(5);
     const stub: ExistingLedgerRow[] = [];
     const { created } = confirmIntoStub(importable, stub);
-    expect(created).toBe(3);
-    expect(stub).toHaveLength(3);
+    expect(created).toBe(5);
+    expect(stub).toHaveLength(5);
     for (const row of stub) {
       expect(row.provider).toBe('B3');
-      expect(row.externalId).toMatch(/^B3-5M-000[123]$/);
+      expect(row.externalId).toMatch(/^B3-5M-000[12345]$/);
       expect(row.fingerprint).toMatch(/^[0-9a-f]{64}$/);
     }
+    // Income rows persist the credited value; trades persist none.
+    const byExternal = Object.fromEntries(stub.map((row) => [row.externalId, row]));
+    expect(byExternal['B3-5M-0004']?.amount).toBe('87.30');
+    expect(byExternal['B3-5M-0005']?.amount).toBe('42.10');
+    expect(byExternal['B3-5M-0001']?.amount).toBeNull();
   });
 
   it('7: repeated sync over the same snapshot produces zero duplicate writes', () => {
     const first = runSimulatedB3Sync(syncInput());
     const stub: ExistingLedgerRow[] = [];
     const { created } = confirmIntoStub(selectImportableCandidates(first), stub);
-    expect(created).toBe(3);
+    expect(created).toBe(5);
     const second = runSimulatedB3Sync(syncInput({ existing: stub }));
     expect(second.newCandidates).toBe(0);
-    expect(second.exactDuplicates).toBe(3);
+    expect(second.exactDuplicates).toBe(5);
     expect(selectImportableCandidates(second)).toHaveLength(0);
   });
 
@@ -236,7 +256,7 @@ describe('Phase 5M: simulated B3 sync end-to-end (real pipeline, mock source)', 
     );
     expect(created).toBe(4);
     expect(transferGroupIds).toEqual(['B3-5M-TRF-001', 'B3-5M-TRF-001']);
-    expect(stub).toHaveLength(7);
+    expect(stub).toHaveLength(9);
   });
 
   it('9: third identical sync is fully idempotent (zero new candidates, zero writes)', () => {
@@ -311,6 +331,7 @@ describe('Phase 5M: simulated B3 sync end-to-end (real pipeline, mock source)', 
       quantity: '100',
       unitPrice: '30.00',
       fees: null,
+      amount: null,
       currency: 'BRL',
       fingerprint: canonicalFingerprint({
         portfolioId: PORTFOLIO_5M,
@@ -344,6 +365,7 @@ describe('Phase 5M: simulated B3 sync end-to-end (real pipeline, mock source)', 
       quantity: '100',
       unitPrice: '30.50',
       fees: null,
+      amount: null,
       currency: 'BRL',
       fingerprint: canonicalFingerprint({
         portfolioId: PORTFOLIO_5M,
@@ -366,6 +388,103 @@ describe('Phase 5M: simulated B3 sync end-to-end (real pipeline, mock source)', 
       false,
     );
     expect(result.probableDuplicates).toBe(1);
+  });
+
+  it('14b: manually-recorded dividend then identical B3 dividend → EXACT_DUPLICATE', () => {
+    const manualRow: ExistingLedgerRow = {
+      provider: 'MANUAL',
+      externalId: null,
+      assetId: ASSET_PETR4_5M,
+      accountId: ACCOUNT_A_5M,
+      type: 'DIVIDEND',
+      tradeDate: '2026-04-15',
+      quantity: '',
+      unitPrice: null,
+      fees: null,
+      amount: '87.30',
+      currency: 'BRL',
+      fingerprint: canonicalIncomeFingerprint({
+        portfolioId: PORTFOLIO_5M,
+        accountId: ACCOUNT_A_5M,
+        assetId: ASSET_PETR4_5M,
+        type: 'DIVIDEND',
+        tradeDate: '2026-04-15',
+        amount: '87.3',
+        currency: 'BRL',
+      }),
+    };
+    const result = runSimulatedB3Sync(syncInput({ existing: [manualRow] }));
+    const match = result.candidates.find((c) => c.externalId === 'B3-5M-0004');
+    expect(match?.duplicate).toBe('EXACT_DUPLICATE');
+    expect(match?.status).toBe('DUPLICATE');
+    expect(selectImportableCandidates(result).some((c) => c.externalId === 'B3-5M-0004')).toBe(
+      false,
+    );
+  });
+
+  it('14c: same dividend occasion with corrected value → PROBABLE, never auto-merged', () => {
+    const manualRow: ExistingLedgerRow = {
+      provider: 'MANUAL',
+      externalId: null,
+      assetId: ASSET_PETR4_5M,
+      accountId: ACCOUNT_A_5M,
+      type: 'DIVIDEND',
+      tradeDate: '2026-04-15',
+      quantity: '',
+      unitPrice: null,
+      fees: null,
+      amount: '80.00',
+      currency: 'BRL',
+      fingerprint: canonicalIncomeFingerprint({
+        portfolioId: PORTFOLIO_5M,
+        accountId: ACCOUNT_A_5M,
+        assetId: ASSET_PETR4_5M,
+        type: 'DIVIDEND',
+        tradeDate: '2026-04-15',
+        amount: '80.00',
+        currency: 'BRL',
+      }),
+    };
+    const result = runSimulatedB3Sync(syncInput({ existing: [manualRow] }));
+    const match = result.candidates.find((c) => c.externalId === 'B3-5M-0004');
+    expect(match?.duplicate).toBe('PROBABLE_DUPLICATE');
+    expect(match?.status).toBe('NEEDS_REVIEW');
+    expect(selectImportableCandidates(result).some((c) => c.externalId === 'B3-5M-0004')).toBe(
+      false,
+    );
+  });
+
+  it('14d: same externalId with divergent values → CONFLICT, explicit decision required', () => {
+    const conflictingRow: ExistingLedgerRow = {
+      provider: 'B3',
+      externalId: 'B3-5M-0004',
+      assetId: ASSET_PETR4_5M,
+      accountId: ACCOUNT_A_5M,
+      type: 'DIVIDEND',
+      tradeDate: '2026-04-15',
+      quantity: '100',
+      unitPrice: '0',
+      fees: '0',
+      amount: '70.00',
+      currency: 'BRL',
+      fingerprint: canonicalIncomeFingerprint({
+        portfolioId: PORTFOLIO_5M,
+        accountId: ACCOUNT_A_5M,
+        assetId: ASSET_PETR4_5M,
+        type: 'DIVIDEND',
+        tradeDate: '2026-04-15',
+        amount: '70.00',
+        currency: 'BRL',
+      }),
+    };
+    const result = runSimulatedB3Sync(syncInput({ existing: [conflictingRow] }));
+    const match = result.candidates.find((c) => c.externalId === 'B3-5M-0004');
+    expect(match?.duplicate).toBe('CONFLICT');
+    expect(match?.status).toBe('NEEDS_REVIEW');
+    expect(selectImportableCandidates(result).some((c) => c.externalId === 'B3-5M-0004')).toBe(
+      false,
+    );
+    expect(result.conflicts).toBe(1);
   });
 
   it('15-16: transfer pair preserves transferGroupId and never becomes an acquisition', () => {
@@ -392,20 +511,24 @@ describe('Phase 5M: simulated B3 sync end-to-end (real pipeline, mock source)', 
     expect(inn?.accountId).toBe(ACCOUNT_B_5M);
   });
 
-  it('17-18: dividend and JCP amounts are preserved exactly and never traded', () => {
+  it('17-18: dividend and JCP normalize to importable income with exact amounts', () => {
     const result = runSimulatedB3Sync(syncInput());
     const dividend = result.candidates.find((c) => c.externalId === 'B3-5M-0004');
     const jcp = result.candidates.find((c) => c.externalId === 'B3-5M-0005');
-    expect(dividend?.status).toBe('UNSUPPORTED');
+    expect(dividend?.status).toBe('READY');
+    expect(dividend?.operation).toBe('DIVIDEND');
     expect(dividend?.rawOperation).toBe('DIVIDENDO');
     expect(dividend?.amount).toBe('87.30');
-    expect(jcp?.status).toBe('UNSUPPORTED');
+    expect(jcp?.status).toBe('READY');
+    expect(jcp?.operation).toBe('JCP');
     expect(jcp?.rawOperation).toBe('JCP');
     expect(jcp?.amount).toBe('42.10');
-    // Fail-closed: income rows are never importable as trades.
-    expect(selectImportableCandidates(result)).not.toContain(dividend);
-    expect(selectImportableCandidates(result)).not.toContain(jcp);
-    // Domain ledger preserves the carried amounts when income is in scope.
+    // Income rows are first-class importable candidates — never trades.
+    expect([dividend?.operation, jcp?.operation]).not.toContain('BUY');
+    expect([dividend?.operation, jcp?.operation]).not.toContain('SELL');
+    expect(selectImportableCandidates(result)).toContain(dividend);
+    expect(selectImportableCandidates(result)).toContain(jcp);
+    // Domain ledger preserves the carried gross amounts exactly.
     // (Money canonicalizes '87.30' to '87.3': same exact value, zero floats.)
     const incomeTx = TransactionFactory.createIncome({
       portfolioId: PORTFOLIO_5M,
@@ -417,6 +540,96 @@ describe('Phase 5M: simulated B3 sync end-to-end (real pipeline, mock source)', 
       amount: dividend!.amount!,
     });
     expect(incomeTx.amount.amount).toBe('87.3');
+    expect(incomeTx.tradeDate.toString()).toBe('2026-04-15');
+  });
+
+  it('17b: JCP persists with no invented withholding and no tax fields', () => {
+    const result = runSimulatedB3Sync(syncInput());
+    const jcp = result.candidates.find((c) => c.externalId === 'B3-5M-0005');
+    expect(jcp?.status).toBe('READY');
+    const tx = TransactionFactory.createIncome({
+      portfolioId: PORTFOLIO_5M,
+      accountId: ACCOUNT_A_5M,
+      assetId: ASSET_VALE3_5M,
+      currency: 'BRL',
+      tradeDate: jcp!.tradeDate,
+      type: 'JCP',
+      amount: jcp!.amount!,
+    });
+    expect(tx.amount.amount).toBe('42.1');
+    // The canonical income event carries no tax/withholding representation:
+    // nothing is estimated, no 15% is applied.
+    expect('taxes' in tx).toBe(false);
+    expect('withholding' in tx).toBe(false);
+  });
+
+  it('17c: income identity is value-only — shares-held figures never split a payout', () => {
+    const base = {
+      portfolioId: PORTFOLIO_5M,
+      provider: 'B3',
+      assetMatch: {
+        resolution: 'RESOLVED' as const,
+        asset: { id: ASSET_PETR4_5M, ticker: 'PETR4', exchange: 'B3', status: 'ACTIVE' },
+        candidates: [],
+      },
+      accountMatch: {
+        resolution: 'RESOLVED' as const,
+        account: { id: ACCOUNT_A_5M, name: 'CONTA SINTETICA 5M-A' },
+        candidates: [],
+      },
+      defaultAccountId: ACCOUNT_A_5M,
+      existing: [],
+    };
+    const dividendA = normalizeB3Movement(
+      {
+        movementId: 'B3-5M-0101',
+        nature: 'DIVIDENDO',
+        ticker: 'PETR4',
+        tradeDate: '2026-04-15',
+        quantity: '100',
+        amount: '87,30',
+        currency: 'BRL',
+      },
+      2,
+      OPTIONS,
+    );
+    const dividendB = normalizeB3Movement(
+      {
+        movementId: 'B3-5M-0102',
+        nature: 'DIVIDENDO',
+        ticker: 'PETR4',
+        tradeDate: '2026-04-15',
+        quantity: '250',
+        amount: '87,30',
+        currency: 'BRL',
+      },
+      3,
+      OPTIONS,
+    );
+    const classifiedA = classifyOne({ ...base, candidate: dividendA });
+    const classifiedB = classifyOne({ ...base, candidate: dividendB });
+    expect(classifiedA.fingerprint).toBe(classifiedB.fingerprint);
+    // A corrected value on the same occasion is near — PROBABLE, never silent.
+    const dividendC = normalizeB3Movement(
+      {
+        movementId: 'B3-5M-0103',
+        nature: 'DIVIDENDO',
+        ticker: 'PETR4',
+        tradeDate: '2026-04-15',
+        quantity: '100',
+        amount: '87,31',
+        currency: 'BRL',
+      },
+      4,
+      OPTIONS,
+    );
+    const classifiedC = classifyOne({
+      ...base,
+      candidate: dividendC,
+      existing: [toLedgerSnapshotRow('B3', { ...classifiedA, externalId: 'B3-5M-0101' })!],
+    });
+    expect(classifiedC.duplicate).toBe('PROBABLE_DUPLICATE');
+    expect(classifiedC.status).toBe('NEEDS_REVIEW');
   });
 
   it('19: unknown movement natures fail closed (INVALID, never invented trades)', () => {
@@ -442,6 +655,95 @@ describe('Phase 5M: simulated B3 sync end-to-end (real pipeline, mock source)', 
     expect(result.invalid).toBe(1);
     expect(result.newCandidates).toBe(0);
     expect(selectImportableCandidates(result)).toHaveLength(0);
+  });
+
+  it('19b: corporate-action natures stay deferred — never coerced into income', () => {
+    const amortization: B3MovementRecord = {
+      movementId: 'B3-5M-0201',
+      nature: 'AMORTIZACAO',
+      ticker: 'HGLG11',
+      tradeDate: '2026-05-20',
+      quantity: '10',
+      amount: '50,00',
+      currency: 'BRL',
+    };
+    const candidate = normalizeB3Movement(amortization, 2, OPTIONS);
+    expect(candidate.operation).toBe('BUY');
+    expect(candidate.rawOperation).toBe('AMORTIZACAO');
+    expect(candidate.status).toBe('UNSUPPORTED');
+    expect(candidate.amount).toBeUndefined();
+  });
+
+  it('19c: income explicitly marked as not-yet-paid stays in review, never posts cash', () => {
+    const provisioned: B3MovementRecord = {
+      movementId: 'B3-5M-0202',
+      nature: 'DIVIDENDO',
+      ticker: 'PETR4',
+      tradeDate: '2026-06-10',
+      quantity: '100',
+      amount: '90,00',
+      currency: 'BRL',
+      lifecycle: 'PROVISIONED',
+    };
+    const candidate = normalizeB3Movement(provisioned, 2, OPTIONS);
+    expect(candidate.operation).toBe('DIVIDEND');
+    expect(candidate.amount).toBe('90.00');
+    expect(candidate.status).toBe('NEEDS_REVIEW');
+    expect(candidate.issues.map((i) => i.code)).toContain('PROVISIONED_INCOME_NEEDS_REVIEW');
+    expect(selectImportableCandidates({ candidates: [candidate] } as never)).toHaveLength(0);
+  });
+
+  it('19d: malformed income amounts fail closed — never zero, never partial', () => {
+    const candidate = normalizeB3Movement(
+      {
+        movementId: 'B3-5M-0203',
+        nature: 'JCP',
+        ticker: 'VALE3',
+        tradeDate: '2026-04-15',
+        quantity: '50',
+        amount: 'abc',
+        currency: 'BRL',
+      },
+      2,
+      OPTIONS,
+    );
+    expect(candidate.status).toBe('INVALID');
+    expect(candidate.issues.map((i) => i.code)).toContain('INVALID_AMOUNT');
+  });
+
+  it('19e: missing asset or account resolution keeps income out of the importable set', () => {
+    const result = runSimulatedB3Sync(
+      syncInput({
+        assets: [],
+        accounts: [],
+        defaultAccountId: null,
+      }),
+    );
+    const dividend = result.candidates.find((c) => c.externalId === 'B3-5M-0004');
+    expect(dividend?.status).toBe('NEEDS_REVIEW');
+    expect(selectImportableCandidates(result).some((c) => c.externalId === 'B3-5M-0004')).toBe(
+      false,
+    );
+    expect(result.newCandidates).toBe(0);
+  });
+
+  it('19f: RENDIMENTO_FII maps to the canonical FII income kind', () => {
+    const candidate = normalizeB3Movement(
+      {
+        movementId: 'B3-5M-0204',
+        nature: 'RENDIMENTO_FII',
+        ticker: 'HGLG11',
+        tradeDate: '2026-05-15',
+        quantity: '10',
+        amount: '12,40',
+        currency: 'BRL',
+      },
+      2,
+      OPTIONS,
+    );
+    expect(candidate.status).toBe('READY');
+    expect(candidate.operation).toBe('FII_INCOME');
+    expect(candidate.amount).toBe('12.40');
   });
 
   it('20: revoked source authorization blocks the sync with zero candidates', () => {

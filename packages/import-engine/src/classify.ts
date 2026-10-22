@@ -12,7 +12,9 @@
 
 import {
   canonicalFingerprint,
+  canonicalIncomeFingerprint,
   normalizeDecimalValue,
+  probableIncomeMatchKey,
   probableMatchKey,
   sourceIdentityKey,
 } from './fingerprint';
@@ -42,19 +44,29 @@ function sameCanonicalFields(
     quantity: string;
     unitPrice: string;
     fees: string;
+    amount?: string;
     currency: string;
   },
   row: ExistingLedgerRow,
 ): boolean {
   // Decimal comparison is canonical: the ledger persists NUMERIC(38,18),
   // which strips insignificant zeros (`38.50` -> `38.5`). Compare normalized.
+  if (
+    row.type !== candidate.operation ||
+    row.tradeDate !== candidate.tradeDate ||
+    row.currency !== candidate.currency
+  ) {
+    return false;
+  }
+  if (candidate.amount !== undefined) {
+    // Income identity is value-only: shares-held figures are informational
+    // and must not split the identity of one payout.
+    return normalizeDecimalValue(row.amount) === normalizeDecimalValue(candidate.amount);
+  }
   return (
-    row.type === candidate.operation &&
-    row.tradeDate === candidate.tradeDate &&
     normalizeDecimalValue(row.quantity) === normalizeDecimalValue(candidate.quantity) &&
     normalizeDecimalValue(row.unitPrice) === normalizeDecimalValue(candidate.unitPrice) &&
-    normalizeDecimalValue(row.fees) === normalizeDecimalValue(candidate.fees) &&
-    row.currency === candidate.currency
+    normalizeDecimalValue(row.fees) === normalizeDecimalValue(candidate.fees)
   );
 }
 
@@ -65,19 +77,32 @@ export function classifyOne(input: ClassifyInput): ClassifiedCandidate {
   const assetId = assetMatch.asset?.id ?? null;
   const accountId = accountMatch.account?.id ?? defaultAccountId;
 
+  // Income identity is value-only (amount), trades use the full economic key.
+  const isIncome = candidate.amount !== undefined;
+
   let fingerprint: string | null = null;
   if (assetId && accountId) {
-    fingerprint = canonicalFingerprint({
-      portfolioId,
-      accountId,
-      assetId,
-      type: candidate.operation,
-      tradeDate: candidate.tradeDate,
-      quantity: candidate.quantity,
-      unitPrice: candidate.unitPrice,
-      fees: candidate.fees,
-      currency: candidate.currency,
-    });
+    fingerprint = isIncome
+      ? canonicalIncomeFingerprint({
+          portfolioId,
+          accountId,
+          assetId,
+          type: candidate.operation,
+          tradeDate: candidate.tradeDate,
+          amount: candidate.amount ?? null,
+          currency: candidate.currency,
+        })
+      : canonicalFingerprint({
+          portfolioId,
+          accountId,
+          assetId,
+          type: candidate.operation,
+          tradeDate: candidate.tradeDate,
+          quantity: candidate.quantity,
+          unitPrice: candidate.unitPrice,
+          fees: candidate.fees,
+          currency: candidate.currency,
+        });
   }
 
   let duplicate: DuplicateClassification = 'NEW';
@@ -100,17 +125,40 @@ export function classifyOne(input: ClassifyInput): ClassifiedCandidate {
     }
   }
   if (duplicate === 'NEW' && assetId && accountId) {
-    const key = probableMatchKey({
-      portfolioId,
-      accountId,
-      assetId,
-      type: candidate.operation,
-      tradeDate: candidate.tradeDate,
-      quantity: candidate.quantity,
-      currency: candidate.currency,
-    });
+    const key = isIncome
+      ? probableIncomeMatchKey({
+          portfolioId,
+          accountId,
+          assetId,
+          type: candidate.operation,
+          tradeDate: candidate.tradeDate,
+          currency: candidate.currency,
+        })
+      : probableMatchKey({
+          portfolioId,
+          accountId,
+          assetId,
+          type: candidate.operation,
+          tradeDate: candidate.tradeDate,
+          quantity: candidate.quantity,
+          currency: candidate.currency,
+        });
     const hit = existing.find((row) => {
       if (row.assetId !== assetId || row.accountId !== accountId) return false;
+      // Ledger income rows always carry the value-only fingerprint; trade
+      // rows carry the full key. Recompute the candidate-side variant.
+      if (row.amount !== null && row.amount !== undefined) {
+        return (
+          probableIncomeMatchKey({
+            portfolioId,
+            accountId: row.accountId,
+            assetId: row.assetId,
+            type: row.type,
+            tradeDate: row.tradeDate,
+            currency: row.currency,
+          }) === key
+        );
+      }
       return (
         probableMatchKey({
           portfolioId,
@@ -262,6 +310,7 @@ export function toLedgerSnapshotRow(
     | 'quantity'
     | 'unitPrice'
     | 'fees'
+    | 'amount'
     | 'currency'
     | 'externalId'
     | 'fingerprint'
@@ -278,6 +327,7 @@ export function toLedgerSnapshotRow(
     quantity: classified.quantity,
     unitPrice: classified.unitPrice,
     fees: classified.fees,
+    amount: classified.amount ?? null,
     currency: classified.currency,
     fingerprint: classified.fingerprint,
   };

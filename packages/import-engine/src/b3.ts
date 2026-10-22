@@ -50,6 +50,15 @@ export const B3_MOVEMENT_NATURES = [
 export type B3MovementNature = (typeof B3_MOVEMENT_NATURES)[number];
 
 /**
+ * Lifecycle of a provisioned/credited event as reported by the source.
+ * Absent means "payable as stated" (the simulated-contract default, kept
+ * explicit in the 5O-A dataset). Any other value fails closed to review —
+ * the Atlas ledger has no provisioned-vs-paid distinction, so ambiguous
+ * lifecycle must never post cash silently.
+ */
+export type B3EventLifecycle = 'PAID' | 'CREDITED' | 'LIQUIDADO' | 'PAGO' | 'PROVISIONED';
+
+/**
  * Synthetic source record produced by the future B3 HTTP client after
  * parsing B3 payloads. All identifiers below are fictional in tests and
  * fixtures. A `pairKey` links mirrored custody-transfer legs.
@@ -68,6 +77,7 @@ export interface B3MovementRecord {
   custodianLabel?: string;
   accountLabel?: string;
   pairKey?: string;
+  lifecycle?: string;
   notes?: string;
 }
 
@@ -116,11 +126,12 @@ function b3Cells(movement: B3MovementRecord): string[] {
  * legs keep their `pairKey` as `transferGroupId` for mirrored-leg pairing
  * at confirm time; they never emit economic gain by themselves.
  *
- * Phase 5M — income value carriage: when the movement carries `amount`
- * (e.g. DIVIDENDO/JCP gross value), the exact decimal string is preserved
- * on the candidate. Income rows stay deferred (fail-closed, never coerced
- * into BUY/SELL); the amount is carried for a future income-scope phase.
- * An unparseable amount fails the row closed instead of being dropped.
+ * Phase 5O-A — income integration: DIVIDENDO/JCP (and RENDIMENTO_FII) rows
+ * carrying an exact `amount` normalize to importable income candidates
+ * (operation = income kind, nunca BUY/SELL). Rows without an amount stay
+ * deferred; unparseable amounts fail closed; rows explicitly marked with a
+ * non-payable lifecycle stay in review — the ledger has no
+ * provisioned-vs-paid distinction, so ambiguous lifecycle never posts cash.
  */
 export function normalizeB3Movement(
   movement: B3MovementRecord,
@@ -134,8 +145,36 @@ export function normalizeB3Movement(
   const candidate = normalizeRow(row, b3Mapping(), options);
   const withPair =
     movement.pairKey && movement.pairKey.trim() !== '' ? { transferGroupId: movement.pairKey } : {};
+
+  // Lifecycle gate: the ledger has no provisioned-vs-paid distinction, so an
+  // income row explicitly marked with a non-payable situation stays in review.
+  // Severity is respected: INVALID rows stay INVALID.
+  const lifecycleReviewIssue =
+    isIncomeKind(candidate.operation) &&
+    movement.lifecycle !== undefined &&
+    movement.lifecycle.trim() !== '' &&
+    !['PAID', 'CREDITED', 'LIQUIDADO', 'PAGO'].includes(movement.lifecycle.trim().toUpperCase())
+      ? {
+          code: 'PROVISIONED_INCOME_NEEDS_REVIEW',
+          field: 'operation',
+          message: `Evento "${movement.nature.trim()}" com situação "${movement.lifecycle.trim()}" precisa de confirmação de crédito antes de ser importado`,
+        }
+      : null;
+  const withLifecycleIssues = lifecycleReviewIssue
+    ? [...candidate.issues, lifecycleReviewIssue]
+    : candidate.issues;
+  const lifecycleCappedStatus =
+    lifecycleReviewIssue && (candidate.status === 'READY' || candidate.status === 'UNSUPPORTED')
+      ? ('NEEDS_REVIEW' as const)
+      : null;
+
   if (movement.amount === undefined || movement.amount.trim() === '') {
-    return Object.freeze({ ...candidate, ...withPair });
+    return Object.freeze({
+      ...candidate,
+      ...withPair,
+      ...(lifecycleCappedStatus ? { status: lifecycleCappedStatus } : {}),
+      ...(lifecycleReviewIssue ? { issues: withLifecycleIssues } : {}),
+    });
   }
   const amount = normalizeDecimalString(movement.amount);
   if (amount === null || !/^\d+(\.\d+)?$/.test(amount)) {
@@ -145,6 +184,7 @@ export function normalizeB3Movement(
       status: 'INVALID' as const,
       issues: [
         ...candidate.issues,
+        ...(lifecycleReviewIssue ? [lifecycleReviewIssue] : []),
         {
           code: 'INVALID_AMOUNT',
           field: 'amount',
@@ -153,5 +193,28 @@ export function normalizeB3Movement(
       ],
     });
   }
-  return Object.freeze({ ...candidate, ...withPair, amount });
+  if (!isIncomeKind(candidate.operation)) {
+    // Non-income rows never carry `amount`: the candidate has no amount
+    // semantics for trades, transfers or deferred events. (Malformed values
+    // still failed closed above.)
+    return Object.freeze({ ...candidate, ...withPair });
+  }
+  // Income with an exact amount: importable through the canonical writer —
+  // but only by upgrading the expected deferred state, never by overriding
+  // a failure. The operation is the income kind itself, never BUY/SELL.
+  const upgradable = candidate.status === 'UNSUPPORTED';
+  return Object.freeze({
+    ...candidate,
+    ...withPair,
+    amount,
+    ...(lifecycleCappedStatus
+      ? { status: lifecycleCappedStatus, issues: withLifecycleIssues }
+      : upgradable
+        ? { status: 'READY' as const }
+        : {}),
+  });
+}
+
+function isIncomeKind(operation: string): boolean {
+  return operation === 'DIVIDEND' || operation === 'JCP' || operation === 'FII_INCOME';
 }

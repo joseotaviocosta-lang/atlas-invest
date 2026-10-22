@@ -7,9 +7,11 @@
  * ```text
  * SimulatedB3Provider (this file: in-memory, deterministic)
  *   -> B3SyncSourceProvider contract (capabilities from Phase 5L)
- *   -> normalizeB3Movement (canonical 5K normalization)
+ *   -> normalizeB3Movement (canonical 5K normalization; trades, custody
+ *      legs and income events with exact amounts)
  *   -> resolveAsset / resolveAccount (AssetId identity, never ticker)
- *   -> classifyOne (source identity + canonical SHA-256 fingerprint)
+ *   -> classifyOne (source identity + canonical SHA-256 fingerprint,
+ *      value-only identity for income)
  *   -> reconcilePositions (ledger vs snapshot, never rewrites history)
  *   -> SimulatedB3SyncResult (pure read model: preview, zero writes)
  *   -> confirm via CreateTransactionUseCase.executeMany (real writer)

@@ -76,14 +76,22 @@ describe('Phase 5L: B3 adapter contract (no network, no secrets)', () => {
     expect(candidate.quantity).toBe('30');
   });
 
-  it('D/E: dividends and JCP map to deferred income, never to trades', () => {
+  it('D/E: dividends and JCP normalize to importable income with exact amounts', () => {
     const dividend = normalizeB3Movement(fixtureDividend(), 2, OPTIONS);
-    expect(dividend.status).toBe('UNSUPPORTED');
+    expect(dividend.status).toBe('READY');
+    expect(dividend.operation).toBe('DIVIDEND');
     expect(dividend.rawOperation).toBe('DIVIDENDO');
+    expect(dividend.amount).toBe('87.30');
 
     const jcp = normalizeB3Movement(fixtureJcp(), 2, OPTIONS);
-    expect(jcp.status).toBe('UNSUPPORTED');
+    expect(jcp.status).toBe('READY');
+    expect(jcp.operation).toBe('JCP');
     expect(jcp.rawOperation).toBe('JCP');
+    expect(jcp.amount).toBe('42.10');
+
+    // Income is value-only: never a trade, never priced.
+    expect([dividend.operation, jcp.operation]).not.toContain('BUY');
+    expect([dividend.operation, jcp.operation]).not.toContain('SELL');
   });
 
   it('F: custody transfer legs keep the pair key and never become trades', () => {
@@ -146,6 +154,7 @@ describe('Phase 5L: B3 adapter contract (no network, no secrets)', () => {
           quantity: '100',
           unitPrice: '38.50',
           fees: '4.90',
+          amount: null,
           currency: 'BRL',
           fingerprint: canonicalFingerprint({
             portfolioId: PORTFOLIO,

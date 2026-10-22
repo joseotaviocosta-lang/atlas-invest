@@ -271,6 +271,8 @@ export class PreviewPortfolioImportUseCase {
         quantity: json.quantity ?? '',
         unitPrice: json.unitPrice?.amount ?? null,
         fees: json.fees?.amount ?? null,
+        // Phase 5O-A: income rows carry the credited value; trades carry null.
+        amount: json.amount?.amount ?? null,
         currency: json.currency,
         fingerprint: canonicalFingerprint({
           portfolioId: json.portfolioId,

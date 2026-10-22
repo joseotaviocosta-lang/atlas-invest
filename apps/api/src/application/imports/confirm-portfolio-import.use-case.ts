@@ -253,9 +253,26 @@ export class ConfirmPortfolioImportUseCase {
       notes: this.buildNotes(command.fileName, candidate),
       assetId: candidate.assetId,
     };
+    // Phase 5O-A: income events persist through the canonical income path
+    // (value-only: amount, never quantity/price/fees). No withholding is
+    // ever inferred: the ledger carries the known credited value as-is.
+    if (
+      candidate.operation === 'DIVIDEND' ||
+      candidate.operation === 'JCP' ||
+      candidate.operation === 'FII_INCOME'
+    ) {
+      if (!candidate.amount) {
+        return null;
+      }
+      return {
+        ...base,
+        type: candidate.operation,
+        amount: candidate.amount,
+        userId: command.userId,
+      };
+    }
     // Phase 5M: mirrored custody-transfer legs persist with their shared
-    // transferGroupId (never as economic acquisitions). Income-family rows
-    // stay deferred: no amount write path exists in this confirm scope.
+    // transferGroupId (never as economic acquisitions).
     if (candidate.operation === 'TRANSFER_IN' || candidate.operation === 'TRANSFER_OUT') {
       return {
         ...base,

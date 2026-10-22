@@ -104,20 +104,33 @@ export function normalizeRow(
     issues.push({
       code: 'UNSUPPORTED_OPERATION',
       field: 'operation',
-      message: `Operação ${mapped.operation} ainda não é suportada na importação (somente compra, venda e transferência de custódia)`,
+      message: `Operação ${mapped.operation} ainda não é suportada na importação (somente compra, venda, transferência de custódia e rendimentos com valor informado)`,
     });
     status = 'UNSUPPORTED';
   }
 
+  const isTransfer = mapped.kind === 'TRANSFER_IN' || mapped.kind === 'TRANSFER_OUT';
+  const isIncome =
+    mapped.kind === 'DIVIDEND' || mapped.kind === 'JCP' || mapped.kind === 'FII_INCOME';
+
   const quantityRaw = cell(row, mapping, 'quantity');
   const quantity = normalizeDecimalString(quantityRaw);
-  if (quantity === null) {
+  if (isIncome) {
+    // Income rows carry no quantity semantics at the ledger level (the
+    // canonical income event is value-only). Shares-held figures are
+    // informational: validated when present, never required, never persisted.
+    if (quantityRaw.trim() !== '') {
+      if (quantity === null) {
+        fail('INVALID_QUANTITY', `Quantidade "${quantityRaw.trim()}" inválida`, 'quantity');
+      } else if (!isPositiveDecimal(quantity)) {
+        fail('INVALID_QUANTITY', 'Quantidade deve ser maior que zero', 'quantity');
+      }
+    }
+  } else if (quantity === null) {
     fail('INVALID_QUANTITY', `Quantidade "${quantityRaw.trim()}" inválida`, 'quantity');
   } else if (!isPositiveDecimal(quantity)) {
     fail('INVALID_QUANTITY', 'Quantidade deve ser maior que zero', 'quantity');
   }
-
-  const isTransfer = mapped.kind === 'TRANSFER_IN' || mapped.kind === 'TRANSFER_OUT';
 
   const unitPriceRaw = cell(row, mapping, 'unit_price');
   const unitPrice = normalizeDecimalString(unitPriceRaw);
@@ -127,15 +140,24 @@ export function normalizeRow(
     } else if (!isPositiveDecimal(unitPrice)) {
       fail('INVALID_UNIT_PRICE', 'Preço unitário deve ser maior que zero', 'unit_price');
     }
-  } else if (isTransfer && unitPrice !== null && !/^0+(\.0+)?$/.test(unitPrice)) {
-    // Custody moves carry no economic value. A priced "transfer" is
-    // ambiguous (sale? corporate action?) and must never auto-convert.
+  } else if ((isTransfer || isIncome) && unitPrice !== null && !/^0+(\.0+)?$/.test(unitPrice)) {
+    // Custody moves and income events carry no price. A priced "transfer" or
+    // "dividend" is ambiguous (sale? corporate action?) and must never
+    // auto-convert.
     status = 'NEEDS_REVIEW';
-    issues.push({
-      code: 'TRANSFER_WITH_PRICE',
-      field: 'unit_price',
-      message: 'Transferência de custódia com preço informado precisa de revisão',
-    });
+    issues.push(
+      isIncome
+        ? {
+            code: 'INCOME_WITH_PRICE',
+            field: 'unit_price',
+            message: 'Rendimento com preço informado precisa de revisão',
+          }
+        : {
+            code: 'TRANSFER_WITH_PRICE',
+            field: 'unit_price',
+            message: 'Transferência de custódia com preço informado precisa de revisão',
+          },
+    );
   }
 
   const feesRaw = cell(row, mapping, 'fees');
@@ -148,15 +170,24 @@ export function normalizeRow(
       fees = parsed;
     }
   }
-  if (isTransfer && !/^0+(\.0+)?$/.test(fees)) {
-    // A custody leg with fees attached is ambiguous: fees belong to the
-    // economic event, never to the custody move. Human review, no guessing.
+  if ((isTransfer || isIncome) && !/^0+(\.0+)?$/.test(fees)) {
+    // A custody leg or income row with fees attached is ambiguous: fees
+    // belong to the economic event, never to the custody move or the payout
+    // itself. Human review, no guessing.
     status = 'NEEDS_REVIEW';
-    issues.push({
-      code: 'TRANSFER_WITH_FEES',
-      field: 'fees',
-      message: 'Transferência de custódia com taxas informadas precisa de revisão',
-    });
+    issues.push(
+      isIncome
+        ? {
+            code: 'INCOME_WITH_FEES',
+            field: 'fees',
+            message: 'Rendimento com taxas informadas precisa de revisão',
+          }
+        : {
+            code: 'TRANSFER_WITH_FEES',
+            field: 'fees',
+            message: 'Transferência de custódia com taxas informadas precisa de revisão',
+          },
+    );
   }
 
   const currencyRaw = cell(row, mapping, 'currency').trim().toUpperCase();
@@ -182,9 +213,24 @@ export function normalizeRow(
     mapped.kind === 'BUY' ||
     mapped.kind === 'SELL' ||
     mapped.kind === 'TRANSFER_IN' ||
-    mapped.kind === 'TRANSFER_OUT'
+    mapped.kind === 'TRANSFER_OUT' ||
+    mapped.kind === 'DIVIDEND' ||
+    mapped.kind === 'JCP' ||
+    mapped.kind === 'FII_INCOME'
       ? mapped.kind
       : 'BUY';
+
+  if (isIncome && status === 'READY') {
+    // The generic template carries no income-value cell: only source adapters
+    // holding an exact amount (e.g. B3 `amount`) can complete the row. Without
+    // it the row stays deferred — never zero, never a trade.
+    status = 'UNSUPPORTED';
+    issues.push({
+      code: 'UNSUPPORTED_OPERATION',
+      field: 'operation',
+      message: `Operação ${mapped.kind} exige valor do rendimento informado pela fonte`,
+    });
+  }
 
   const candidate: NormalizedCandidate = {
     rowNumber: row.rowNumber,

@@ -27,24 +27,29 @@ export const DEFERRED_IMPORT_SOURCES = [
 export type DeferredImportSource = (typeof DEFERRED_IMPORT_SOURCES)[number];
 
 /**
- * MVP importable scope (5K trades + 5M custody transfers).
+ * Importable scope (5K trades + 5M custody transfers + 5O-A income events).
  * BUY/SELL flow into canonical positions as economic events; TRANSFER_IN /
  * TRANSFER_OUT flow as mirrored custody legs (never acquisitions, never
- * disposals). Every other operation stays deferred (fail-closed).
+ * disposals); DIVIDEND / JCP / FII_INCOME flow as income events carrying an
+ * exact `amount` (never quantities, never prices). Every other operation
+ * stays deferred (fail-closed).
  */
-export const SUPPORTED_IMPORT_OPERATIONS = ['BUY', 'SELL', 'TRANSFER_IN', 'TRANSFER_OUT'] as const;
-export type SupportedImportOperation = (typeof SUPPORTED_IMPORT_OPERATIONS)[number];
-
-/**
- * Operations recognized by the template but explicitly deferred in 5K/5M.
- * Rows with these operations parse successfully but are never written.
- * Income-family wiring (amount carriage) is candidate-level only; ledger
- * writes for income stay deferred pending an income-scope phase.
- */
-export const DEFERRED_IMPORT_OPERATIONS = [
+export const SUPPORTED_IMPORT_OPERATIONS = [
+  'BUY',
+  'SELL',
+  'TRANSFER_IN',
+  'TRANSFER_OUT',
   'DIVIDEND',
   'JCP',
   'FII_INCOME',
+] as const;
+export type SupportedImportOperation = (typeof SUPPORTED_IMPORT_OPERATIONS)[number];
+
+/**
+ * Operations recognized by the template but explicitly deferred.
+ * Rows with these operations parse successfully but are never written.
+ */
+export const DEFERRED_IMPORT_OPERATIONS = [
   'SPLIT',
   'REVERSE_SPLIT',
   'BONUS',
@@ -104,9 +109,8 @@ export interface NormalizedCandidate {
   /**
    * Phase 5M — income value carriage (exact decimal string, never float).
    * Populated by source adapters (e.g. B3 `amount`) for income-family rows.
-   * Trades and custody transfers never carry `amount`. Candidate-level only:
-   * confirm write-scope stays trades + custody transfers, income writes stay
-   * deferred (fail-closed) pending an income-scope phase.
+   * Trades and custody transfers never carry `amount`. Since 5O-A, income
+   * rows with a valid `amount` are importable through the canonical writer.
    */
   amount?: string;
   currency: string;
@@ -146,6 +150,12 @@ export interface ExistingLedgerRow {
   quantity: string;
   unitPrice: string | null;
   fees: string | null;
+  /**
+   * Phase 5O-A — income value (exact decimal string) carried by DIVIDEND /
+   * JCP / FII_INCOME ledger rows. Trades and custody legs persist `null`.
+   * Required (never silently omitted) so income dedupe stays fail-closed.
+   */
+  amount: string | null;
   currency: string;
   fingerprint: string;
 }

@@ -54,6 +54,7 @@ function ledgerRow(overrides: Partial<ExistingLedgerRow> = {}): ExistingLedgerRo
     quantity: '100',
     unitPrice: '38.50',
     fees: '4.90',
+    amount: null,
     currency: 'BRL',
     fingerprint: canonicalFingerprint({
       portfolioId: PORTFOLIO,
