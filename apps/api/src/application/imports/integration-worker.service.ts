@@ -1,0 +1,123 @@
+import { Inject, Injectable } from '@nestjs/common';
+import type { IIntegrationJobRepository, IIntegrationScheduleRepository } from '@atlas/database';
+import {
+  attemptsExhausted,
+  computeRetryNotBefore,
+  STALE_RUNNING_LEASE_MS,
+} from '@atlas/import-engine';
+import { INTEGRATION_JOB_REPOSITORY, INTEGRATION_SCHEDULE_REPOSITORY } from '../../database/tokens';
+import { SourceSyncExecutorRegistry } from './source-sync-executor';
+import { ScheduledSyncFailedError } from './integration-scheduling.tokens';
+
+export interface WorkerExecutionResult {
+  claimed: boolean;
+  jobId?: string;
+  scheduleId?: string;
+  runId?: string | null;
+  jobStatus?: string;
+}
+
+/**
+ * Phase 5P-A — job claimer + generic executor.
+ *
+ * The worker knows how to claim (atomic single-statement claim), resolve an
+ * executor by source/provider, fence completions by claim attempt, and bound
+ * retries with deterministic backoff. It knows nothing about B3 payloads,
+ * dedupe, tax or Transaction construction — all source specifics live in
+ * the registered executor. Cross-instance exclusivity comes from the atomic
+ * claim plus attempt fencing, never from in-memory mutexes.
+ */
+@Injectable()
+export class IntegrationWorkerService {
+  constructor(
+    @Inject(INTEGRATION_JOB_REPOSITORY)
+    private readonly jobs: IIntegrationJobRepository,
+    @Inject(INTEGRATION_SCHEDULE_REPOSITORY)
+    private readonly schedules: IIntegrationScheduleRepository,
+    @Inject(SourceSyncExecutorRegistry)
+    private readonly registry: SourceSyncExecutorRegistry,
+  ) {}
+
+  async executeNext(now: Date): Promise<WorkerExecutionResult> {
+    const job = await this.jobs.claimDue(now, STALE_RUNNING_LEASE_MS);
+    if (!job) {
+      return { claimed: false };
+    }
+    const attempt = job.attempt;
+    try {
+      const schedule = await this.schedules.findById(job.scheduleId, job.portfolioId);
+      if (!schedule) {
+        const failed = await this.jobs.markFailed({
+          id: job.id,
+          portfolioId: job.portfolioId,
+          attempt,
+          errorCode: 'INTEGRATION.SCHEDULE_NOT_FOUND',
+          errorMessage: 'Agenda de sincronização não encontrada',
+          attemptsExhausted: true,
+          notBeforeAt: null,
+        });
+        return {
+          claimed: true,
+          jobId: job.id,
+          scheduleId: job.scheduleId,
+          jobStatus: failed.status,
+        };
+      }
+      const executor = this.registry.resolve(schedule.source, schedule.provider);
+      const outcome = await executor.execute({
+        jobId: job.id,
+        attempt,
+        scheduleId: schedule.id,
+        portfolioId: job.portfolioId,
+        source: schedule.source,
+        timezone: schedule.timezone,
+        now,
+      });
+      const succeeded = await this.jobs.markSucceeded({
+        id: job.id,
+        portfolioId: job.portfolioId,
+        attempt,
+        runId: outcome.runId,
+      });
+      await this.schedules.touch({
+        id: schedule.id,
+        portfolioId: schedule.portfolioId,
+        nextRunAt: schedule.nextRunAt,
+        lastRunAt: now,
+        lastStatus: 'AWAITING_REVIEW',
+      });
+      return {
+        claimed: true,
+        jobId: job.id,
+        scheduleId: job.scheduleId,
+        runId: outcome.runId,
+        jobStatus: succeeded.status,
+      };
+    } catch (error: unknown) {
+      const code =
+        error instanceof ScheduledSyncFailedError
+          ? error.code
+          : 'INTEGRATION.SCHEDULED_SYNC_FAILED';
+      const message =
+        error instanceof ScheduledSyncFailedError
+          ? error.message
+          : 'Falha na sincronização agendada. Tente novamente.';
+      // Unknown executors are configuration errors: retrying cannot help,
+      // so the job fails fast instead of burning the retry budget.
+      const exhausted =
+        (error instanceof ScheduledSyncFailedError &&
+          error.code === 'INTEGRATION.UNSUPPORTED_SCHEDULED_SOURCE') ||
+        attemptsExhausted(attempt);
+      const failed = await this.jobs.markFailed({
+        id: job.id,
+        portfolioId: job.portfolioId,
+        attempt,
+        errorCode: code,
+        errorMessage: message,
+        attemptsExhausted: exhausted,
+        notBeforeAt: exhausted ? null : computeRetryNotBefore(now, attempt),
+      });
+      return { claimed: true, jobId: job.id, scheduleId: job.scheduleId, jobStatus: failed.status };
+    }
+  }
+}

@@ -133,6 +133,96 @@ export function describeImportRunSource(source: string, fileName: string | null)
   return 'Importação';
 }
 
+export type IntegrationRunTrigger = 'MANUAL' | 'SCHEDULED';
+
+export interface IntegrationRunTriggerPresentation {
+  label: string;
+  tone: ImportRunTone;
+  description: string;
+}
+
+/**
+ * Origin badge for a run. Pre-5P-A rows carry null and predate the
+ * scheduler, so they read as manual human flows.
+ */
+export function describeIntegrationRunTrigger(
+  trigger: string | null,
+): IntegrationRunTriggerPresentation {
+  if (trigger === 'SCHEDULED') {
+    return {
+      label: 'Agendada',
+      tone: 'info',
+      description: 'Coletada automaticamente. Revise antes de importar — nada foi gravado.',
+    };
+  }
+  return {
+    label: 'Manual',
+    tone: 'neutral',
+    description: 'Iniciada por uma ação sua.',
+  };
+}
+
+export const INTEGRATION_SCHEDULE_CADENCES = ['MANUAL_ONLY', 'DAILY', 'WEEKDAYS'] as const;
+
+/** Human cadence label. WEEKDAYS is Monday–Friday, never claimed as trading days. */
+export function describeScheduleCadence(cadence: string): string {
+  if (cadence === 'DAILY') return 'Diária';
+  if (cadence === 'WEEKDAYS') return 'Dias úteis';
+  if (cadence === 'MANUAL_ONLY') return 'Somente manual';
+  return 'Cadência desconhecida';
+}
+
+export interface IntegrationScheduleFrequencyInput {
+  cadence: string;
+  hourLocal: number | null;
+  minuteLocal: number | null;
+  timezone: string;
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+/**
+ * One-line frequency for schedule rows. Pure formatting of server strings —
+ * never financial math, never a market-calendar claim.
+ */
+export function describeScheduleFrequency(input: IntegrationScheduleFrequencyInput): string {
+  if (input.cadence === 'MANUAL_ONLY') return 'Sem execução automática';
+  if (input.cadence !== 'DAILY' && input.cadence !== 'WEEKDAYS') {
+    return 'Cadência desconhecida';
+  }
+  if (input.hourLocal === null || input.minuteLocal === null) return 'Horário não definido';
+  const when =
+    input.cadence === 'WEEKDAYS'
+      ? `Dias úteis às ${pad2(input.hourLocal)}:${pad2(input.minuteLocal)}`
+      : `Todo dia às ${pad2(input.hourLocal)}:${pad2(input.minuteLocal)}`;
+  return `${when} (${input.timezone})`;
+}
+
+/**
+ * Next-run line for schedule rows. Disabled schedules read as paused;
+ * schedules without a next slot read as unscheduled. The instant is
+ * formatted in the schedule timezone, never the device timezone.
+ */
+export function describeScheduleNextRun(
+  nextRunAt: string | null,
+  enabled: boolean,
+  timezone: string,
+): string {
+  if (!enabled) return 'Pausada';
+  if (!nextRunAt) return 'Sem próxima execução agendada';
+  const formatted = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: timezone,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(nextRunAt));
+  return `Próxima: ${formatted}`;
+}
+
 export interface ImportRunReconciliationCounts {
   matched: number;
   divergent: number;

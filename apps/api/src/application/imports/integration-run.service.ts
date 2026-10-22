@@ -15,6 +15,8 @@ export interface StartIntegrationRunCommand {
   provider?: string | null;
   environment?: string | null;
   fileName?: string | null;
+  /** Phase 5P-A: 'MANUAL' for human-driven runs, 'SCHEDULED' for background jobs. */
+  trigger?: string | null;
 }
 
 export interface RecordRunPreviewCommand {
@@ -29,6 +31,8 @@ export interface RecordRunPreviewCommand {
   conflicts: number;
   unsupported: number;
   invalid: number;
+  /** Phase 5P-A: source returned partial data (scheduled sync). Informational at preview. */
+  partial?: boolean;
   sourceAsOf?: string | null;
 }
 
@@ -87,6 +91,7 @@ export class IntegrationRunService {
       provider: command.provider ?? null,
       environment: command.environment ?? null,
       fileName: command.fileName ?? null,
+      trigger: command.trigger ?? null,
     });
   }
 
@@ -104,6 +109,7 @@ export class IntegrationRunService {
       conflicts: command.conflicts,
       unsupported: command.unsupported,
       invalid: command.invalid,
+      ...(command.partial !== undefined ? { partial: command.partial } : {}),
       ...(command.sourceAsOf !== undefined ? { sourceAsOf: command.sourceAsOf } : {}),
     });
   }

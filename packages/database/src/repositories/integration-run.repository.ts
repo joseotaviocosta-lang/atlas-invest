@@ -37,6 +37,8 @@ type PrismaRunRow = {
   reconciliationMissingSource: number | null;
   reconciliationUnresolved: number | null;
   partial: boolean;
+  /** Phase 5P-A run origin. Nullable: rows recorded before 5P-PRE follow-up. */
+  trigger: string | null;
   errorCode: string | null;
   errorMessage: string | null;
   startedAt: Date;
@@ -86,6 +88,7 @@ export class IntegrationRunRepository implements IIntegrationRunRepository {
       ignored: row.ignored,
       reconciliation,
       partial: row.partial,
+      trigger: row.trigger,
       errorCode: row.errorCode,
       errorMessage: row.errorMessage,
       startedAt: row.startedAt,
@@ -106,6 +109,7 @@ export class IntegrationRunRepository implements IIntegrationRunRepository {
           environment: input.environment ?? null,
           fileName: input.fileName ?? null,
           sourceAsOf: input.sourceAsOf ?? null,
+          trigger: input.trigger ?? null,
           status: 'STARTED',
         },
       });
@@ -163,6 +167,7 @@ export class IntegrationRunRepository implements IIntegrationRunRepository {
           conflicts: input.conflicts,
           unsupported: input.unsupported,
           invalid: input.invalid,
+          ...(input.partial !== undefined ? { partial: input.partial } : {}),
           ...(input.sourceAsOf !== undefined ? { sourceAsOf: input.sourceAsOf } : {}),
         },
       });

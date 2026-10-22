@@ -29,6 +29,8 @@ export interface IntegrationRunResponse {
     unresolved: number;
   } | null;
   partial: boolean;
+  /** Phase 5P-A run origin: 'MANUAL' | 'SCHEDULED' | null (pre-5P-A rows). */
+  trigger: string | null;
   error: { code: string; message: string } | null;
   startedAt: string;
   completedAt: string | null;
@@ -73,6 +75,7 @@ export function mapIntegrationRunToResponse(row: IntegrationRunRow): Integration
         }
       : null,
     partial: row.partial,
+    trigger: row.trigger,
     error:
       row.status === 'FAILED' && row.errorCode
         ? { code: row.errorCode, message: row.errorMessage ?? '' }

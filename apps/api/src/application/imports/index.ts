@@ -2,3 +2,8 @@ export * from './import-validation.error';
 export * from './preview-portfolio-import.use-case';
 export * from './confirm-portfolio-import.use-case';
 export * from './integration-run.service';
+export * from './integration-scheduling.tokens';
+export * from './integration-schedule.service';
+export * from './source-sync-executor';
+export * from './integration-scheduler.service';
+export * from './integration-worker.service';

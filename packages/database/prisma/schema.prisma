@@ -112,6 +112,7 @@ model Portfolio {
   accounts               Account[]
   transactions           Transaction[]
   integrationRuns        IntegrationRun[]
+  integrationSchedules   IntegrationSchedule[]
   aiConversations        AiConversation[]
   annualOpeningPositions AnnualOpeningPositionInputRecord[]
 
@@ -232,6 +233,7 @@ model IntegrationRun {
   partial                      Boolean   @default(false)
   errorCode                    String?   @map("error_code") @db.VarChar(100)
   errorMessage                 String?   @map("error_message") @db.VarChar(500)
+  trigger                      String?   @db.VarChar(20)
   startedAt                    DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
   completedAt                  DateTime? @map("completed_at") @db.Timestamptz(6)
   createdAt                    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -262,6 +264,73 @@ model IntegrationRunTransaction {
   @@index([portfolioId])
   @@index([transactionId])
   @@map("integration_run_transactions")
+}
+
+/**
+ * Phase 5P-A — scheduled sync foundation: future sync intent.
+ * One row per (portfolio, source): what to sync, on which cadence, in which
+ * timezone, whether enabled, and when the next occurrence is due. Runs are
+ * the executed history (IntegrationRun); schedules are the intent.
+ * Environment is CHECK-locked to SIMULATED: enabling CERT/PROD requires a
+ * deliberate future migration.
+ */
+model IntegrationSchedule {
+  id           String    @id @default(uuid()) @db.Uuid
+  portfolioId  String    @map("portfolio_id") @db.Uuid
+  source       String    @db.VarChar(50)
+  provider     String    @default("SIMULATED") @db.VarChar(100)
+  environment  String    @default("SIMULATED") @db.VarChar(50)
+  cadence      String    @db.VarChar(50)
+  hourLocal    Int?      @map("hour_local")
+  minuteLocal  Int?      @map("minute_local")
+  timezone     String    @default("America/Sao_Paulo") @db.VarChar(100)
+  enabled      Boolean   @default(false)
+  nextRunAt    DateTime? @map("next_run_at") @db.Timestamptz(6)
+  lastRunAt    DateTime? @map("last_run_at") @db.Timestamptz(6)
+  lastStatus   String?   @map("last_status") @db.VarChar(50)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  portfolio Portfolio          @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  jobs      IntegrationJob[]
+
+  @@unique([portfolioId, source])
+  @@index([enabled, nextRunAt])
+  @@map("integration_schedules")
+}
+
+/**
+ * Phase 5P-A — one row per scheduled occurrence (schedule + slot).
+ * Unique per (schedule, slot): duplicate ticks coalesce instead of
+ * duplicating. Terminal states are COMPLETED/PARTIAL/FAILED; cross-instance
+ * exclusivity comes from atomic claim updates plus PostgreSQL advisory
+ * locks held by executors (same pattern as the ingestion job lock).
+ */
+model IntegrationJob {
+  id           String    @id @default(uuid()) @db.Uuid
+  scheduleId   String    @map("schedule_id") @db.Uuid
+  portfolioId  String    @map("portfolio_id") @db.Uuid
+  source       String    @db.VarChar(50)
+  environment  String    @default("SIMULATED") @db.VarChar(50)
+  scheduledFor DateTime  @map("scheduled_for") @db.Timestamptz(6)
+  status       String    @db.VarChar(32)
+  attempt      Int       @default(1)
+  notBeforeAt  DateTime? @map("not_before_at") @db.Timestamptz(6)
+  runId        String?   @map("run_id") @db.Uuid
+  errorCode    String?   @map("error_code") @db.VarChar(100)
+  errorMessage String?   @map("error_message") @db.VarChar(500)
+  startedAt    DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt   DateTime? @map("finished_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  schedule IntegrationSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, scheduledFor])
+  @@index([status, scheduledFor])
+  @@index([runId])
+  @@index([portfolioId])
+  @@map("integration_jobs")
 }
 
 model AiConversation {

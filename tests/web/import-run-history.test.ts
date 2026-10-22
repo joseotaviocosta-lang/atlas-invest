@@ -5,6 +5,10 @@ import {
   buildImportRunSummaryLines,
   buildImportRunReconciliationLines,
   describeImportRunSource,
+  describeIntegrationRunTrigger,
+  describeScheduleCadence,
+  describeScheduleFrequency,
+  describeScheduleNextRun,
 } from '@atlas/ui';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -130,5 +134,73 @@ describe('Phase 5P-PRE: import run history UX', () => {
     expect(page).toContain('Fechar detalhes');
     expect(page).toContain('aria-expanded');
     expect(page).toContain('aria-label');
+  });
+
+  it('distinguishes scheduled from manual runs without inventing payload data', () => {
+    expect(describeIntegrationRunTrigger('SCHEDULED')).toMatchObject({
+      label: 'Agendada',
+      tone: 'info',
+    });
+    expect(describeIntegrationRunTrigger('MANUAL')).toMatchObject({
+      label: 'Manual',
+      tone: 'neutral',
+    });
+    // Pre-scheduler rows read as manual human flows, never as automatic.
+    expect(describeIntegrationRunTrigger(null).label).toBe('Manual');
+    expect(describeIntegrationRunTrigger('SCHEDULED').description).toContain('nada foi gravado');
+  });
+
+  it('describes schedule cadences in product language without market-calendar claims', () => {
+    expect(describeScheduleCadence('DAILY')).toBe('Diária');
+    expect(describeScheduleCadence('WEEKDAYS')).toBe('Dias úteis');
+    expect(describeScheduleCadence('MANUAL_ONLY')).toBe('Somente manual');
+    expect(
+      describeScheduleFrequency({
+        cadence: 'DAILY',
+        hourLocal: 8,
+        minuteLocal: 0,
+        timezone: 'America/Sao_Paulo',
+      }),
+    ).toBe('Todo dia às 08:00 (America/Sao_Paulo)');
+    expect(
+      describeScheduleFrequency({
+        cadence: 'WEEKDAYS',
+        hourLocal: 18,
+        minuteLocal: 30,
+        timezone: 'America/Sao_Paulo',
+      }),
+    ).toBe('Dias úteis às 18:30 (America/Sao_Paulo)');
+    expect(
+      describeScheduleFrequency({
+        cadence: 'MANUAL_ONLY',
+        hourLocal: null,
+        minuteLocal: null,
+        timezone: 'America/Sao_Paulo',
+      }),
+    ).toBe('Sem execução automática');
+    expect(describeScheduleNextRun(null, false, 'America/Sao_Paulo')).toBe('Pausada');
+    expect(describeScheduleNextRun(null, true, 'America/Sao_Paulo')).toBe(
+      'Sem próxima execução agendada',
+    );
+    expect(
+      describeScheduleNextRun('2026-06-16T11:00:00.000Z', true, 'America/Sao_Paulo'),
+    ).toContain('Próxima:');
+  });
+
+  it('schedule surface promises preparation only, never automatic import', () => {
+    const page = fs.readFileSync(
+      path.join(process.cwd(), 'apps/web/src/app/(app)/portfolio/import/page.tsx'),
+      'utf8',
+    );
+    expect(page).toContain('Sincronização automática');
+    expect(page).toContain('Disponível quando a integração B3 for ativada.');
+    expect(page).toContain('/imports/schedules');
+    expect(page).toContain('Agendar sincronização');
+    expect(page).toContain('Nova sincronização disponível');
+    expect(page).not.toMatch(/importado automaticamente/i);
+    // Zero client financial math: the page formats server strings, never
+    // derives cost, gain, performance or tax. (Hour/minute inputs are
+    // time-of-day parsing, not financial math, and re-validated server-side.)
+    expect(page).not.toMatch(/parseFloat|Math\.pow|Math\.sqrt/);
   });
 });

@@ -119,7 +119,14 @@ import {
   ConfirmPortfolioImportUseCase,
   PreviewPortfolioImportUseCase,
   IntegrationRunService,
+  IntegrationScheduleService,
+  IntegrationSchedulerService,
+  IntegrationWorkerService,
+  SimulatedB3SyncExecutor,
+  SourceSyncExecutorRegistry,
+  defaultSchedulingPolicy,
 } from './imports';
+import { INTEGRATION_SCHEDULING_POLICY } from './imports/integration-scheduling.tokens';
 
 const USE_CASES = [
   CreatePortfolioUseCase,
@@ -216,6 +223,10 @@ const USE_CASES = [
   PreviewPortfolioImportUseCase,
   ConfirmPortfolioImportUseCase,
   IntegrationRunService,
+  IntegrationScheduleService,
+  IntegrationSchedulerService,
+  IntegrationWorkerService,
+  SimulatedB3SyncExecutor,
 ];
 
 @Module({
@@ -226,9 +237,20 @@ const USE_CASES = [
     { provide: TAX_INPUT_PROVIDER, useClass: PersistedTaxInputProvider },
     { provide: TAX_INPUT_ADAPTER_REGISTRY, useValue: EMPTY_TAX_INPUT_ADAPTER_REGISTRY },
     { provide: FISCAL_CLOCK, useClass: SystemFiscalClock },
+    { provide: INTEGRATION_SCHEDULING_POLICY, useValue: defaultSchedulingPolicy() },
+    {
+      provide: SourceSyncExecutorRegistry,
+      useFactory: (simulated: SimulatedB3SyncExecutor) => {
+        const registry = new SourceSyncExecutorRegistry();
+        registry.register(simulated);
+        return registry;
+      },
+      inject: [SimulatedB3SyncExecutor],
+    },
   ],
   exports: [
     ...USE_CASES,
+    SourceSyncExecutorRegistry,
     TAX_RULE_REGISTRY,
     TAX_INPUT_PROVIDER,
     TAX_INPUT_ADAPTER_REGISTRY,

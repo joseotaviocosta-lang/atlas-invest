@@ -28,6 +28,10 @@ import {
   buildImportRunSummaryLines,
   buildImportRunReconciliationLines,
   describeImportRunSource,
+  describeIntegrationRunTrigger,
+  describeScheduleCadence,
+  describeScheduleFrequency,
+  describeScheduleNextRun,
   type ImportRunStatus,
 } from '@atlas/ui';
 import {
@@ -148,6 +152,7 @@ interface ImportRunItem {
     unresolved: number;
   } | null;
   partial: boolean;
+  trigger: string | null;
   error: { code: string; message: string } | null;
   startedAt: string;
   completedAt: string | null;
@@ -176,6 +181,291 @@ const EFFECTIVE_LABEL: Record<EffectiveRowState, string> = {
   auto_skipped: 'Ignorada automaticamente',
   blocked: 'Aguardando decisão',
 };
+
+interface IntegrationScheduleItem {
+  id: string;
+  portfolioId: string;
+  source: string;
+  provider: string;
+  environment: string;
+  cadence: string;
+  hourLocal: number | null;
+  minuteLocal: number | null;
+  timezone: string;
+  enabled: boolean;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  lastStatus: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function scheduleErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    const message = error.message ?? '';
+    if (message.trim().length > 0) return message;
+  }
+  return 'Não foi possível concluir a operação. Tente novamente.';
+}
+
+const SCHEDULE_HOURS = Array.from({ length: 24 }, (_, value) => String(value).padStart(2, '0'));
+const SCHEDULE_MINUTES = ['00', '15', '30', '45'];
+
+function IntegrationSchedulesSection({
+  portfolioId,
+  b3Availability,
+}: {
+  portfolioId: string | null;
+  b3Availability: string;
+}) {
+  const queryClient = useQueryClient();
+  const authReady = useAuthReady();
+  const [cadence, setCadence] = useState('DAILY');
+  const [hour, setHour] = useState('08');
+  const [minute, setMinute] = useState('00');
+  const [enableOnCreate, setEnableOnCreate] = useState(false);
+  const schedulesAvailable = b3Availability === 'AVAILABLE';
+
+  const schedulesQuery = useQuery({
+    queryKey: ['import-schedules', portfolioId],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: IntegrationScheduleItem[] }>(
+        `/api/v1/portfolios/${portfolioId}/imports/schedules`,
+      );
+      return res.data;
+    },
+    enabled: authReady && portfolioId !== null,
+    staleTime: 30_000,
+  });
+  const schedules = useMemo(() => schedulesQuery.data ?? [], [schedulesQuery.data]);
+  const b3Schedule = useMemo(
+    () => schedules.find((schedule) => schedule.source === 'B3') ?? null,
+    [schedules],
+  );
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      // Select-constrained time-of-day: index lookup, never float parsing.
+      // Financial math stays server-side; the API re-validates ranges.
+      const res = await apiClient.post<{ data: IntegrationScheduleItem }>(
+        `/api/v1/portfolios/${portfolioId}/imports/schedules`,
+        {
+          source: 'B3',
+          cadence,
+          hourLocal: SCHEDULE_HOURS.indexOf(hour),
+          minuteLocal: SCHEDULE_MINUTES.indexOf(minute) * 15,
+          enabled: enableOnCreate,
+        },
+      );
+      return res.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['import-schedules', portfolioId] });
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async (schedule: IntegrationScheduleItem) => {
+      const res = await apiClient.patch<{ data: IntegrationScheduleItem }>(
+        `/api/v1/portfolios/${portfolioId}/imports/schedules/${schedule.id}`,
+        { enabled: !schedule.enabled },
+      );
+      return res.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['import-schedules', portfolioId] });
+    },
+  });
+
+  const renderScheduleRow = (schedule: IntegrationScheduleItem, readOnly: boolean) => (
+    <div
+      key={schedule.id}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '4px',
+        padding: `${spacing.sm}px`,
+        backgroundColor: colors.surface,
+        border: `1px solid ${colors.border}`,
+        borderRadius: `${borderRadius.lg}px`,
+      }}
+    >
+      <span
+        style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px`, flexWrap: 'wrap' }}
+      >
+        <strong style={{ fontSize: '0.875rem' }}>
+          {schedule.source === 'B3' ? 'Sincronização B3' : schedule.source}
+        </strong>
+        <Badge variant={schedule.enabled ? 'success' : 'neutral'}>
+          {schedule.enabled ? 'Ativa' : 'Pausada'}
+        </Badge>
+        <Badge variant="neutral">{describeScheduleCadence(schedule.cadence)}</Badge>
+      </span>
+      <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+        {describeScheduleFrequency({
+          cadence: schedule.cadence,
+          hourLocal: schedule.hourLocal,
+          minuteLocal: schedule.minuteLocal,
+          timezone: schedule.timezone,
+        })}
+      </span>
+      <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+        {describeScheduleNextRun(schedule.nextRunAt, schedule.enabled, schedule.timezone)}
+      </span>
+      {readOnly ? null : (
+        <span>
+          <Button
+            variant="outline"
+            onClick={() => toggleMutation.mutate(schedule)}
+            disabled={toggleMutation.isPending}
+            aria-pressed={schedule.enabled}
+            aria-label={
+              schedule.enabled
+                ? 'Pausar sincronização automática'
+                : 'Ativar sincronização automática'
+            }
+            style={{ minHeight: 44 }}
+          >
+            {schedule.enabled ? 'Pausar' : 'Ativar'}
+          </Button>
+        </span>
+      )}
+    </div>
+  );
+
+  return (
+    <Card style={{ padding: `${spacing.base}px`, marginBottom: `${spacing.base}px` }}>
+      <SectionHeader title="Sincronização automática" />
+      <p style={{ fontSize: '0.875rem', color: colors.textSecondary, margin: `${spacing.sm}px 0` }}>
+        Sincronizações automáticas coletam e preparam os dados da fonte. A importação continua sendo
+        confirmada por você — nada é gravado no livro-razão sem revisão.
+      </p>
+      {!schedulesAvailable ? (
+        <p style={{ fontSize: '0.875rem', color: colors.textSecondary, margin: 0 }}>
+          Disponível quando a integração B3 for ativada.
+        </p>
+      ) : null}
+      {schedulesQuery.isLoading ? (
+        <Skeleton width="100%" height="96px" />
+      ) : schedulesQuery.isError ? (
+        <ErrorState
+          title="Não foi possível carregar as agendas"
+          message="Tente novamente. Se o problema persistir, verifique sua conexão."
+          onRetry={() => schedulesQuery.refetch()}
+        />
+      ) : schedules.length === 0 ? (
+        <EmptyState
+          title="Nenhuma sincronização agendada"
+          description={
+            schedulesAvailable
+              ? 'Crie uma agenda para coletar os dados da B3 automaticamente.'
+              : 'Quando a integração B3 for ativada, você poderá agendar coletas automáticas aqui.'
+          }
+        />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.sm}px` }}>
+          {schedules.map((schedule) => renderScheduleRow(schedule, !schedulesAvailable))}
+        </div>
+      )}
+      {schedulesAvailable && !b3Schedule ? (
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: `${spacing.sm}px`,
+            marginTop: `${spacing.sm}px`,
+            alignItems: 'flex-end',
+          }}
+        >
+          <label
+            style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8125rem' }}
+          >
+            Frequência
+            <select
+              value={cadence}
+              onChange={(event) => setCadence(event.target.value)}
+              aria-label="Frequência da sincronização"
+              style={{ minHeight: 44 }}
+            >
+              <option value="DAILY">Diária</option>
+              <option value="WEEKDAYS">Dias úteis</option>
+            </select>
+          </label>
+          <label
+            style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8125rem' }}
+          >
+            Hora
+            <select
+              value={hour}
+              onChange={(event) => setHour(event.target.value)}
+              aria-label="Hora local"
+              style={{ minHeight: 44 }}
+            >
+              {SCHEDULE_HOURS.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label
+            style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8125rem' }}
+          >
+            Minuto
+            <select
+              value={minute}
+              onChange={(event) => setMinute(event.target.value)}
+              aria-label="Minuto local"
+              style={{ minHeight: 44 }}
+            >
+              {SCHEDULE_MINUTES.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: '0.8125rem',
+              minHeight: 44,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={enableOnCreate}
+              onChange={(event) => setEnableOnCreate(event.target.checked)}
+              aria-label="Ativar agenda após criar"
+            />
+            Ativar após criar
+          </label>
+          <Button
+            variant="outline"
+            onClick={() => createMutation.mutate()}
+            disabled={createMutation.isPending}
+            aria-label="Criar sincronização automática da B3"
+            style={{ minHeight: 44 }}
+          >
+            Agendar sincronização
+          </Button>
+        </div>
+      ) : null}
+      {createMutation.isError ? (
+        <p style={{ fontSize: '0.875rem', color: colors.negative, margin: `${spacing.sm}px 0 0` }}>
+          {scheduleErrorMessage(createMutation.error)}
+        </p>
+      ) : null}
+      {toggleMutation.isError ? (
+        <p style={{ fontSize: '0.875rem', color: colors.negative, margin: `${spacing.sm}px 0 0` }}>
+          {scheduleErrorMessage(toggleMutation.error)}
+        </p>
+      ) : null}
+    </Card>
+  );
+}
 
 function ImportHubContent() {
   const searchParams = useSearchParams();
@@ -501,6 +791,11 @@ function ImportHubContent() {
         </div>
       </Card>
 
+      <IntegrationSchedulesSection
+        portfolioId={activePortfolioId}
+        b3Availability={b3Availability}
+      />
+
       <Modal
         isOpen={b3ModalOpen}
         onClose={() => setB3ModalOpen(false)}
@@ -599,6 +894,10 @@ function ImportHubContent() {
                       {describeImportRunSource(run.source, run.fileName)}
                     </strong>
                     <Badge variant={presentation.tone}>{presentation.label}</Badge>
+                    {(() => {
+                      const origin = describeIntegrationRunTrigger(run.trigger);
+                      return <Badge variant={origin.tone}>{origin.label}</Badge>;
+                    })()}
                     {run.partial ? <Badge variant="warning">Parcial</Badge> : null}
                   </span>
                   <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
@@ -677,6 +976,19 @@ function ImportHubContent() {
                   {selectedRun.error.message}
                 </p>
               </div>
+            ) : null}
+            {selectedRun.status === 'AWAITING_REVIEW' ? (
+              <p
+                style={{
+                  fontSize: '0.875rem',
+                  color: colors.textSecondary,
+                  margin: `${spacing.sm}px 0 0`,
+                }}
+              >
+                {selectedRun.trigger === 'SCHEDULED'
+                  ? 'Nova sincronização disponível: revise os registros acima. A importação continua sendo feita por você — nada foi gravado no livro-razão.'
+                  : 'Revise os registros acima antes de confirmar. Nada foi gravado no livro-razão.'}
+              </p>
             ) : null}
             <div style={{ marginTop: `${spacing.sm}px` }}>
               <Button

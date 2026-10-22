@@ -1856,6 +1856,8 @@ export interface IntegrationRunRow {
   ignored: number;
   reconciliation: IntegrationRunReconciliation | null;
   partial: boolean;
+  /** Phase 5P-A: 'MANUAL' for human-driven runs, 'SCHEDULED' for background jobs. Null for pre-5P-A rows. */
+  trigger: string | null;
   errorCode: string | null;
   errorMessage: string | null;
   startedAt: Date;
@@ -1872,6 +1874,7 @@ export interface IntegrationRunCreateInput {
   environment?: string | null;
   fileName?: string | null;
   sourceAsOf?: string | null;
+  trigger?: string | null;
 }
 
 export interface IntegrationRunPreviewInput {
@@ -1886,6 +1889,8 @@ export interface IntegrationRunPreviewInput {
   conflicts: number;
   unsupported: number;
   invalid: number;
+  /** Phase 5P-A: source returned partial data (scheduled sync). Informational at preview. */
+  partial?: boolean;
   sourceAsOf?: string | null;
 }
 
@@ -1912,6 +1917,140 @@ export interface IntegrationRunLinkInput {
   runId: string;
   portfolioId: string;
   transactionIds: string[];
+}
+
+export type IntegrationScheduleCadence = 'MANUAL_ONLY' | 'DAILY' | 'WEEKDAYS';
+
+export type IntegrationJobStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+
+export interface IntegrationScheduleRow {
+  id: string;
+  portfolioId: string;
+  source: string;
+  provider: string;
+  environment: string;
+  cadence: string;
+  hourLocal: number | null;
+  minuteLocal: number | null;
+  timezone: string;
+  enabled: boolean;
+  nextRunAt: Date | null;
+  lastRunAt: Date | null;
+  lastStatus: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IntegrationScheduleCreateInput {
+  id?: string;
+  portfolioId: string;
+  source: string;
+  provider?: string | null;
+  environment?: string | null;
+  cadence: string;
+  hourLocal?: number | null;
+  minuteLocal?: number | null;
+  timezone?: string | null;
+  enabled?: boolean;
+  nextRunAt?: Date | null;
+}
+
+export interface IntegrationScheduleUpdateInput {
+  id: string;
+  portfolioId: string;
+  enabled?: boolean;
+  cadence?: string;
+  hourLocal?: number | null;
+  minuteLocal?: number | null;
+  timezone?: string;
+  nextRunAt?: Date | null;
+}
+
+export interface IntegrationScheduleTouchInput {
+  id: string;
+  portfolioId: string;
+  nextRunAt: Date | null;
+  lastRunAt?: Date | null;
+  lastStatus?: string | null;
+}
+
+export interface IntegrationJobRow {
+  id: string;
+  scheduleId: string;
+  portfolioId: string;
+  source: string;
+  environment: string;
+  scheduledFor: Date;
+  status: string;
+  attempt: number;
+  notBeforeAt: Date | null;
+  runId: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IntegrationJobEnsureInput {
+  id?: string;
+  scheduleId: string;
+  portfolioId: string;
+  source: string;
+  environment?: string | null;
+  scheduledFor: Date;
+}
+
+export interface IIntegrationScheduleRepository {
+  create(input: IntegrationScheduleCreateInput): Promise<IntegrationScheduleRow>;
+  update(input: IntegrationScheduleUpdateInput): Promise<IntegrationScheduleRow>;
+  touch(input: IntegrationScheduleTouchInput): Promise<IntegrationScheduleRow>;
+  findById(id: string, portfolioId: string): Promise<IntegrationScheduleRow | null>;
+  listByPortfolio(portfolioId: string): Promise<IntegrationScheduleRow[]>;
+  listDue(now: Date, limit: number): Promise<IntegrationScheduleRow[]>;
+}
+
+export interface IIntegrationJobRepository {
+  ensure(input: IntegrationJobEnsureInput): Promise<{ row: IntegrationJobRow; created: boolean }>;
+  /**
+   * Atomically claims one due job: flips the selected row PENDING(or stale
+   * RUNNING past the lease) -> RUNNING with attempt+1. Returns null when
+   * another worker won the race. Single statement, no SELECT-then-write gap.
+   */
+  claimDue(now: Date, leaseMs: number): Promise<IntegrationJobRow | null>;
+  /**
+   * Completes the job only when the caller still holds the claim: the row
+   * must be RUNNING at the exact attempt the claim returned. A stale worker
+   * whose claim was superseded (re-claim bumped the attempt) loses
+   * explicitly instead of overwriting the new execution's terminal state.
+   */
+  markSucceeded(input: {
+    id: string;
+    portfolioId: string;
+    attempt: number;
+    runId: string | null;
+  }): Promise<IntegrationJobRow>;
+  markFailed(input: {
+    id: string;
+    portfolioId: string;
+    attempt: number;
+    errorCode: string;
+    errorMessage: string;
+    attemptsExhausted: boolean;
+    notBeforeAt: Date | null;
+  }): Promise<IntegrationJobRow>;
+  /**
+   * Newest non-terminal job for a schedule (overlap guard). A schedule with
+   * a PENDING/RUNNING job never receives a second concurrent execution for
+   * the same portfolio + integration.
+   */
+  findActiveBySchedule(scheduleId: string): Promise<IntegrationJobRow | null>;
+  findById(id: string, portfolioId: string): Promise<IntegrationJobRow | null>;
+  listByPortfolio(
+    portfolioId: string,
+    input: { limit: number; cursor?: string | null },
+  ): Promise<{ rows: IntegrationJobRow[]; hasMore: boolean }>;
 }
 
 export interface IIntegrationRunRepository {

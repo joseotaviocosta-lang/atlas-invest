@@ -11,4 +11,6 @@ export * from './b3-simulated';
 export * from './reconcile';
 export * from './run';
 export * from './sync';
+export * from './schedule';
+export * from './job';
 export { IMPORT_ENGINE_VERSION as VERSION } from './version';

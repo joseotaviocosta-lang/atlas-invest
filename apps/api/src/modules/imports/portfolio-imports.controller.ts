@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Inject,
   Param,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -22,18 +23,26 @@ import {
   ConfirmPortfolioImportUseCase,
   PreviewPortfolioImportUseCase,
   IntegrationRunService,
+  IntegrationScheduleService,
 } from '../../application/imports';
 import {
   ConfirmPortfolioImportBody,
   ConfirmPortfolioImportBodySchema,
   ConfirmPortfolioImportSwaggerDto,
+  CreateIntegrationScheduleBody,
+  CreateIntegrationScheduleBodySchema,
+  CreateIntegrationScheduleSwaggerDto,
   IntegrationRunListQuery,
   IntegrationRunListQuerySchema,
   PreviewPortfolioImportBody,
   PreviewPortfolioImportBodySchema,
   PreviewPortfolioImportSwaggerDto,
+  UpdateIntegrationScheduleBody,
+  UpdateIntegrationScheduleBodySchema,
+  UpdateIntegrationScheduleSwaggerDto,
 } from './dto/portfolio-import.dto';
 import { mapIntegrationRunToResponse } from './integration-run.mapper';
+import { mapIntegrationScheduleToResponse } from './integration-schedule.mapper';
 import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
 import { AuthenticatedPrincipal, CurrentPrincipal } from '../../auth';
 
@@ -48,6 +57,8 @@ export class PortfolioImportsController {
     private readonly confirmUseCase: ConfirmPortfolioImportUseCase,
     @Inject(IntegrationRunService)
     private readonly runService: IntegrationRunService,
+    @Inject(IntegrationScheduleService)
+    private readonly scheduleService: IntegrationScheduleService,
   ) {}
 
   @Post('preview')
@@ -162,5 +173,90 @@ export class PortfolioImportsController {
   ) {
     const run = await this.runService.getRun(portfolioId, runId, principal.userId);
     return { data: mapIntegrationRunToResponse(run) };
+  }
+
+  @Get('schedules')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'List scheduled syncs for a portfolio',
+    description:
+      'Sync intent per integration source: cadence, local time, timezone and enablement. Provider and environment are server-locked to SIMULATED.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the target portfolio' })
+  @ApiResponse({ status: 200, description: 'Schedules for the portfolio' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async listSchedules(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const rows = await this.scheduleService.listSchedules(portfolioId, principal.userId);
+    return { data: rows.map(mapIntegrationScheduleToResponse) };
+  }
+
+  @Post('schedules')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Create a scheduled sync for a portfolio',
+    description:
+      'Declares a future sync intent with a product-controlled cadence. New schedules default to disabled; enabling a simulated schedule in production is rejected.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the target portfolio' })
+  @ApiBody({ type: CreateIntegrationScheduleSwaggerDto })
+  @ApiResponse({ status: 201, description: 'Created schedule' })
+  @ApiResponse({
+    status: 400,
+    description: 'Unsupported source, cadence or environment restriction',
+  })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async createSchedule(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Body(new ZodValidationPipe(CreateIntegrationScheduleBodySchema))
+    body: CreateIntegrationScheduleBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const row = await this.scheduleService.createSchedule({
+      portfolioId,
+      userId: principal.userId,
+      source: body.source,
+      cadence: body.cadence,
+      hourLocal: body.hourLocal,
+      minuteLocal: body.minuteLocal,
+      timezone: body.timezone,
+      enabled: body.enabled,
+    });
+    return { data: mapIntegrationScheduleToResponse(row) };
+  }
+
+  @Patch('schedules/:scheduleId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Update a scheduled sync',
+    description:
+      'Enables, disables or retimes a schedule. Disabling cancels future execution; already-running jobs finish. CERT/PROD cannot be enabled.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the target portfolio' })
+  @ApiParam({ name: 'scheduleId', description: 'UUID of the schedule' })
+  @ApiBody({ type: UpdateIntegrationScheduleSwaggerDto })
+  @ApiResponse({ status: 200, description: 'Updated schedule' })
+  @ApiResponse({ status: 400, description: 'Unsupported cadence or environment restriction' })
+  @ApiResponse({ status: 404, description: 'Portfolio or schedule not found' })
+  async updateSchedule(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Param('scheduleId', UUIDParamPipe) scheduleId: string,
+    @Body(new ZodValidationPipe(UpdateIntegrationScheduleBodySchema))
+    body: UpdateIntegrationScheduleBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const row = await this.scheduleService.updateSchedule({
+      scheduleId,
+      portfolioId,
+      userId: principal.userId,
+      enabled: body.enabled,
+      cadence: body.cadence,
+      hourLocal: body.hourLocal,
+      minuteLocal: body.minuteLocal,
+      timezone: body.timezone,
+    });
+    return { data: mapIntegrationScheduleToResponse(row) };
   }
 }

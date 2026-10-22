@@ -110,6 +110,7 @@ export class PreviewPortfolioImportUseCase {
       source: 'CSV',
       provider: context.provider,
       fileName: command.fileName,
+      trigger: 'MANUAL',
     });
     await this.runService.recordPreview({
       runId: run.id,

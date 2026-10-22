@@ -85,3 +85,63 @@ export class IntegrationRunListQuerySwaggerDto {
   })
   cursor?: string;
 }
+
+const ScheduleTimeSchema = z.object({
+  cadence: z.enum(['MANUAL_ONLY', 'DAILY', 'WEEKDAYS']),
+  hourLocal: z.number().int().min(0).max(23).nullish(),
+  minuteLocal: z.number().int().min(0).max(59).nullish(),
+  timezone: z.string().trim().min(1).max(100).nullish(),
+});
+
+export const CreateIntegrationScheduleBodySchema = ScheduleTimeSchema.extend({
+  source: z.string().trim().min(1).max(50),
+  enabled: z.boolean().default(false),
+}).strict();
+
+export type CreateIntegrationScheduleBody = z.infer<typeof CreateIntegrationScheduleBodySchema>;
+
+export const UpdateIntegrationScheduleBodySchema = ScheduleTimeSchema.partial()
+  .extend({
+    enabled: z.boolean().optional(),
+  })
+  .strict()
+  .refine((body) => Object.keys(body).length > 0, { message: 'Nenhuma alteração informada' });
+
+export type UpdateIntegrationScheduleBody = z.infer<typeof UpdateIntegrationScheduleBodySchema>;
+
+export class CreateIntegrationScheduleSwaggerDto {
+  @ApiProperty({ type: String, enum: ['B3'], example: 'B3' })
+  source!: string;
+
+  @ApiProperty({ type: String, enum: ['MANUAL_ONLY', 'DAILY', 'WEEKDAYS'], example: 'DAILY' })
+  cadence!: string;
+
+  @ApiPropertyOptional({ type: Number, example: 8 })
+  hourLocal?: number;
+
+  @ApiPropertyOptional({ type: Number, example: 0 })
+  minuteLocal?: number;
+
+  @ApiPropertyOptional({ type: String, example: 'America/Sao_Paulo' })
+  timezone?: string;
+
+  @ApiPropertyOptional({ type: Boolean, default: false })
+  enabled?: boolean;
+}
+
+export class UpdateIntegrationScheduleSwaggerDto {
+  @ApiPropertyOptional({ type: String, enum: ['MANUAL_ONLY', 'DAILY', 'WEEKDAYS'] })
+  cadence?: string;
+
+  @ApiPropertyOptional({ type: Number })
+  hourLocal?: number;
+
+  @ApiPropertyOptional({ type: Number })
+  minuteLocal?: number;
+
+  @ApiPropertyOptional({ type: String })
+  timezone?: string;
+
+  @ApiPropertyOptional({ type: Boolean })
+  enabled?: boolean;
+}
