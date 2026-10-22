@@ -498,7 +498,13 @@ function ImportHubContent() {
                       <td style={{ padding: 8 }}>{formatCivilDateDisplay(candidate.tradeDate)}</td>
                       <td style={{ padding: 8 }}>{candidate.ticker}</td>
                       <td style={{ padding: 8 }}>
-                        {candidate.operation === 'BUY' ? 'Compra' : 'Venda'}
+                        {candidate.operation === 'BUY'
+                          ? 'Compra'
+                          : candidate.operation === 'SELL'
+                            ? 'Venda'
+                            : candidate.operation === 'TRANSFER_IN'
+                              ? 'Transferência (entrada)'
+                              : 'Transferência (saída)'}
                       </td>
                       <td style={{ padding: 8 }}>{formatQuantity(candidate.quantity)}</td>
                       <td style={{ padding: 8 }}>

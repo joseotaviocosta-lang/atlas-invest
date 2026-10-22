@@ -120,10 +120,14 @@ export function mapHeaders(headers: string[]): MappedHeaders {
 
 const BUY_SYNONYMS = new Set(['COMPRA', 'C', 'BUY', 'B', 'PURCHASE']);
 const SELL_SYNONYMS = new Set(['VENDA', 'V', 'SELL', 'S', 'SALE']);
+const TRANSFER_IN_SYNONYMS = new Set(['TRANSFERENCIA', 'TRANSFER_IN', 'TRANSFERENCIA_ENTRADA']);
+const TRANSFER_OUT_SYNONYMS = new Set(['TRANSFERENCIA_SAIDA', 'TRANSFER_OUT']);
 
 export type MappedOperation =
   | { kind: 'BUY' }
   | { kind: 'SELL' }
+  | { kind: 'TRANSFER_IN' }
+  | { kind: 'TRANSFER_OUT' }
   | { kind: 'DEFERRED'; operation: string }
   | { kind: 'UNKNOWN'; raw: string };
 
@@ -150,12 +154,6 @@ const DEFERRED_SYNONYMS: Record<string, string> = {
   AMORTIZACAO: 'AMORTIZATION',
   AMORTIZAÇÃO: 'AMORTIZATION',
   AMORTIZATION: 'AMORTIZATION',
-  TRANSFERENCIA: 'TRANSFER_IN',
-  TRANSFERÊNCIA: 'TRANSFER_IN',
-  TRANSFER_IN: 'TRANSFER_IN',
-  TRANSFERENCIA_ENTRADA: 'TRANSFER_IN',
-  TRANSFERENCIA_SAIDA: 'TRANSFER_OUT',
-  TRANSFER_OUT: 'TRANSFER_OUT',
   APORTE: 'DEPOSIT',
   DEPOSITO: 'DEPOSIT',
   DEPÓSITO: 'DEPOSIT',
@@ -179,6 +177,8 @@ export function mapOperation(raw: string): MappedOperation {
     .replace(/[\u0300-\u036f]/g, '');
   if (BUY_SYNONYMS.has(normalized)) return { kind: 'BUY' };
   if (SELL_SYNONYMS.has(normalized)) return { kind: 'SELL' };
+  if (TRANSFER_IN_SYNONYMS.has(normalized)) return { kind: 'TRANSFER_IN' };
+  if (TRANSFER_OUT_SYNONYMS.has(normalized)) return { kind: 'TRANSFER_OUT' };
   const deferred = DEFERRED_SYNONYMS[normalized];
   if (deferred) return { kind: 'DEFERRED', operation: deferred };
   return { kind: 'UNKNOWN', raw: raw.trim() };

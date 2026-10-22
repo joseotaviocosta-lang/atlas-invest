@@ -104,7 +104,7 @@ export function normalizeRow(
     issues.push({
       code: 'UNSUPPORTED_OPERATION',
       field: 'operation',
-      message: `Operação ${mapped.operation} ainda não é suportada na importação (somente compra e venda)`,
+      message: `Operação ${mapped.operation} ainda não é suportada na importação (somente compra, venda e transferência de custódia)`,
     });
     status = 'UNSUPPORTED';
   }
@@ -117,6 +117,8 @@ export function normalizeRow(
     fail('INVALID_QUANTITY', 'Quantidade deve ser maior que zero', 'quantity');
   }
 
+  const isTransfer = mapped.kind === 'TRANSFER_IN' || mapped.kind === 'TRANSFER_OUT';
+
   const unitPriceRaw = cell(row, mapping, 'unit_price');
   const unitPrice = normalizeDecimalString(unitPriceRaw);
   if (mapped.kind === 'BUY' || mapped.kind === 'SELL') {
@@ -125,6 +127,15 @@ export function normalizeRow(
     } else if (!isPositiveDecimal(unitPrice)) {
       fail('INVALID_UNIT_PRICE', 'Preço unitário deve ser maior que zero', 'unit_price');
     }
+  } else if (isTransfer && unitPrice !== null && !/^0+(\.0+)?$/.test(unitPrice)) {
+    // Custody moves carry no economic value. A priced "transfer" is
+    // ambiguous (sale? corporate action?) and must never auto-convert.
+    status = 'NEEDS_REVIEW';
+    issues.push({
+      code: 'TRANSFER_WITH_PRICE',
+      field: 'unit_price',
+      message: 'Transferência de custódia com preço informado precisa de revisão',
+    });
   }
 
   const feesRaw = cell(row, mapping, 'fees');
@@ -136,6 +147,16 @@ export function normalizeRow(
     } else {
       fees = parsed;
     }
+  }
+  if (isTransfer && !/^0+(\.0+)?$/.test(fees)) {
+    // A custody leg with fees attached is ambiguous: fees belong to the
+    // economic event, never to the custody move. Human review, no guessing.
+    status = 'NEEDS_REVIEW';
+    issues.push({
+      code: 'TRANSFER_WITH_FEES',
+      field: 'fees',
+      message: 'Transferência de custódia com taxas informadas precisa de revisão',
+    });
   }
 
   const currencyRaw = cell(row, mapping, 'currency').trim().toUpperCase();
@@ -157,7 +178,13 @@ export function normalizeRow(
     }
   }
 
-  const operation = mapped.kind === 'BUY' || mapped.kind === 'SELL' ? mapped.kind : 'BUY';
+  const operation =
+    mapped.kind === 'BUY' ||
+    mapped.kind === 'SELL' ||
+    mapped.kind === 'TRANSFER_IN' ||
+    mapped.kind === 'TRANSFER_OUT'
+      ? mapped.kind
+      : 'BUY';
 
   const candidate: NormalizedCandidate = {
     rowNumber: row.rowNumber,

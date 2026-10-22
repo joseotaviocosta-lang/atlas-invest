@@ -239,21 +239,39 @@ export class ConfirmPortfolioImportUseCase {
     if (!candidate.assetId || !candidate.accountId) {
       return null;
     }
-    return {
+    const base = {
       portfolioId: command.portfolioId,
       accountId: candidate.accountId,
-      type: candidate.operation,
       currency: candidate.currency,
       tradeDate: candidate.tradeDate,
       settlementDate: candidate.settlementDate,
-      source: 'CSV',
+      // Phase 5M: the ledger source mirrors the originating provider.
+      // CSV flows keep 'CSV'; simulated (and future) B3 flows record 'B3'.
+      source: (candidate.provider === 'B3' ? 'B3' : 'CSV') as CreateTransactionCommand['source'],
       provider: candidate.provider,
       externalId: candidate.externalId,
       notes: this.buildNotes(command.fileName, candidate),
       assetId: candidate.assetId,
+    };
+    // Phase 5M: mirrored custody-transfer legs persist with their shared
+    // transferGroupId (never as economic acquisitions). Income-family rows
+    // stay deferred: no amount write path exists in this confirm scope.
+    if (candidate.operation === 'TRANSFER_IN' || candidate.operation === 'TRANSFER_OUT') {
+      return {
+        ...base,
+        type: candidate.operation,
+        quantity: candidate.quantity,
+        ...(candidate.transferGroupId ? { transferGroupId: candidate.transferGroupId } : {}),
+        userId: command.userId,
+      };
+    }
+    return {
+      ...base,
+      type: candidate.operation,
       quantity: candidate.quantity,
       unitPrice: candidate.unitPrice,
       fees: candidate.fees !== '0' ? candidate.fees : undefined,
+      ...(candidate.transferGroupId ? { transferGroupId: candidate.transferGroupId } : {}),
       userId: command.userId,
     };
   }

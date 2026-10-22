@@ -27,6 +27,7 @@ export default defineConfig({
       ),
       '@atlas/ai-engine': path.resolve(__dirname, 'packages/ai-engine/src/index.ts'),
       '@atlas/tax-engine': path.resolve(__dirname, 'packages/tax-engine/src/index.ts'),
+      '@atlas/import-engine': path.resolve(__dirname, 'packages/import-engine/src/index.ts'),
       '@prisma/client': path.resolve(__dirname, 'packages/database/node_modules/@prisma/client'),
     },
   },

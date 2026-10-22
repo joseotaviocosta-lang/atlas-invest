@@ -13,7 +13,7 @@
  * tokens, CPFs or real account identifiers.
  */
 
-import { normalizeRow, type NormalizeOptions } from './normalize';
+import { normalizeDecimalString, normalizeRow, type NormalizeOptions } from './normalize';
 import type { MappedHeaders } from './template';
 import type { NormalizedCandidate, RawImportRow } from './types';
 
@@ -113,8 +113,14 @@ function b3Cells(movement: B3MovementRecord): string[] {
 
 /**
  * Normalizes one B3 movement through the canonical pipeline. TRANSFERENCIA
- * legs keep their `pairKey` as `transferGroupId` for future mirrored-leg
- * pairing at confirm time (5M); they never emit economic gain by themselves.
+ * legs keep their `pairKey` as `transferGroupId` for mirrored-leg pairing
+ * at confirm time; they never emit economic gain by themselves.
+ *
+ * Phase 5M — income value carriage: when the movement carries `amount`
+ * (e.g. DIVIDENDO/JCP gross value), the exact decimal string is preserved
+ * on the candidate. Income rows stay deferred (fail-closed, never coerced
+ * into BUY/SELL); the amount is carried for a future income-scope phase.
+ * An unparseable amount fails the row closed instead of being dropped.
  */
 export function normalizeB3Movement(
   movement: B3MovementRecord,
@@ -126,8 +132,26 @@ export function normalizeB3Movement(
     cells: Object.fromEntries(b3Cells(movement).map((value, index) => [String(index), value])),
   };
   const candidate = normalizeRow(row, b3Mapping(), options);
-  if (!movement.pairKey) {
-    return candidate;
+  const withPair =
+    movement.pairKey && movement.pairKey.trim() !== '' ? { transferGroupId: movement.pairKey } : {};
+  if (movement.amount === undefined || movement.amount.trim() === '') {
+    return Object.freeze({ ...candidate, ...withPair });
   }
-  return Object.freeze({ ...candidate, transferGroupId: movement.pairKey });
+  const amount = normalizeDecimalString(movement.amount);
+  if (amount === null || !/^\d+(\.\d+)?$/.test(amount)) {
+    return Object.freeze({
+      ...candidate,
+      ...withPair,
+      status: 'INVALID' as const,
+      issues: [
+        ...candidate.issues,
+        {
+          code: 'INVALID_AMOUNT',
+          field: 'amount',
+          message: `Valor "${movement.amount.trim()}" inválido para a natureza "${movement.nature.trim()}"`,
+        },
+      ],
+    });
+  }
+  return Object.freeze({ ...candidate, ...withPair, amount });
 }

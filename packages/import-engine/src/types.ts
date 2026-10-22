@@ -26,13 +26,20 @@ export const DEFERRED_IMPORT_SOURCES = [
 ] as const;
 export type DeferredImportSource = (typeof DEFERRED_IMPORT_SOURCES)[number];
 
-/** MVP trade scope: only BUY/SELL flow into canonical positions in 5K. */
-export const SUPPORTED_IMPORT_OPERATIONS = ['BUY', 'SELL'] as const;
+/**
+ * MVP importable scope (5K trades + 5M custody transfers).
+ * BUY/SELL flow into canonical positions as economic events; TRANSFER_IN /
+ * TRANSFER_OUT flow as mirrored custody legs (never acquisitions, never
+ * disposals). Every other operation stays deferred (fail-closed).
+ */
+export const SUPPORTED_IMPORT_OPERATIONS = ['BUY', 'SELL', 'TRANSFER_IN', 'TRANSFER_OUT'] as const;
 export type SupportedImportOperation = (typeof SUPPORTED_IMPORT_OPERATIONS)[number];
 
 /**
- * Operations recognized by the template but explicitly deferred in 5K.
+ * Operations recognized by the template but explicitly deferred in 5K/5M.
  * Rows with these operations parse successfully but are never written.
+ * Income-family wiring (amount carriage) is candidate-level only; ledger
+ * writes for income stay deferred pending an income-scope phase.
  */
 export const DEFERRED_IMPORT_OPERATIONS = [
   'DIVIDEND',
@@ -43,8 +50,6 @@ export const DEFERRED_IMPORT_OPERATIONS = [
   'BONUS',
   'SUBSCRIPTION',
   'AMORTIZATION',
-  'TRANSFER_IN',
-  'TRANSFER_OUT',
   'DEPOSIT',
   'WITHDRAWAL',
   'FEE',
@@ -96,6 +101,14 @@ export interface NormalizedCandidate {
   quantity: string;
   unitPrice: string;
   fees: string;
+  /**
+   * Phase 5M — income value carriage (exact decimal string, never float).
+   * Populated by source adapters (e.g. B3 `amount`) for income-family rows.
+   * Trades and custody transfers never carry `amount`. Candidate-level only:
+   * confirm write-scope stays trades + custody transfers, income writes stay
+   * deferred (fail-closed) pending an income-scope phase.
+   */
+  amount?: string;
   currency: string;
   brokerLabel?: string;
   accountLabel?: string;

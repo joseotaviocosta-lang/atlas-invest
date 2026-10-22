@@ -86,14 +86,20 @@ describe('Phase 5L: B3 adapter contract (no network, no secrets)', () => {
     expect(jcp.rawOperation).toBe('JCP');
   });
 
-  it('F: custody transfer legs keep the pair key and emit no disposal semantics', () => {
+  it('F: custody transfer legs keep the pair key and never become trades', () => {
     const [outLeg, inLeg] = fixtureTransferPair();
     const out = normalizeB3Movement(outLeg, 2, OPTIONS);
     const inn = normalizeB3Movement(inLeg, 3, OPTIONS);
+    // Phase 5M: mirrored legs are importable as custody moves (not trades).
+    expect(out.status).toBe('READY');
+    expect(inn.status).toBe('READY');
+    expect(out.operation).toBe('TRANSFER_OUT');
+    expect(inn.operation).toBe('TRANSFER_IN');
+    expect([out.operation, inn.operation]).not.toContain('BUY');
+    expect([out.operation, inn.operation]).not.toContain('SELL');
     expect(out.transferGroupId).toBe('B3-SIM-TRF-001');
     expect(inn.transferGroupId).toBe('B3-SIM-TRF-001');
     expect(out.transferGroupId).toBe(inn.transferGroupId);
-    expect([out.status, inn.status]).not.toContain('READY');
   });
 
   it('G: the same movement normalized twice yields the same fingerprint', () => {
