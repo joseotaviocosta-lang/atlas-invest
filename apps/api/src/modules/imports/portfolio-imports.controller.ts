@@ -1,24 +1,39 @@
-import { Body, Controller, HttpCode, HttpStatus, Inject, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBody,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import {
   ConfirmPortfolioImportUseCase,
   PreviewPortfolioImportUseCase,
+  IntegrationRunService,
 } from '../../application/imports';
 import {
   ConfirmPortfolioImportBody,
   ConfirmPortfolioImportBodySchema,
   ConfirmPortfolioImportSwaggerDto,
+  IntegrationRunListQuery,
+  IntegrationRunListQuerySchema,
   PreviewPortfolioImportBody,
   PreviewPortfolioImportBodySchema,
   PreviewPortfolioImportSwaggerDto,
 } from './dto/portfolio-import.dto';
+import { mapIntegrationRunToResponse } from './integration-run.mapper';
 import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
 import { AuthenticatedPrincipal, CurrentPrincipal } from '../../auth';
 
@@ -31,6 +46,8 @@ export class PortfolioImportsController {
     private readonly previewUseCase: PreviewPortfolioImportUseCase,
     @Inject(ConfirmPortfolioImportUseCase)
     private readonly confirmUseCase: ConfirmPortfolioImportUseCase,
+    @Inject(IntegrationRunService)
+    private readonly runService: IntegrationRunService,
   ) {}
 
   @Post('preview')
@@ -89,7 +106,61 @@ export class PortfolioImportsController {
       content: body.content,
       defaultAccountId: body.defaultAccountId,
       decisions: body.decisions,
+      runId: body.runId,
     });
     return { data: receipt };
+  }
+
+  @Get('runs')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'List import/sync run history for a portfolio',
+    description:
+      'Operational history of CSV imports and source syncs: counts, duplicates, confirmations and reconciliation summaries. Ledger data itself stays in the Transaction ledger.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the target portfolio' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Page size (1-200)' })
+  @ApiQuery({ name: 'cursor', required: false, description: 'Opaque cursor (run id)' })
+  @ApiResponse({ status: 200, description: 'Cursor-paginated run history' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async listRuns(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Query(new ZodValidationPipe(IntegrationRunListQuerySchema)) query: IntegrationRunListQuery,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const { rows, hasMore } = await this.runService.listRuns(portfolioId, principal.userId, {
+      limit: query.limit,
+      cursor: query.cursor ?? null,
+    });
+    const data = rows.map(mapIntegrationRunToResponse);
+    return {
+      data,
+      meta: {
+        limit: query.limit,
+        cursor: query.cursor ?? null,
+        nextCursor: hasMore && data.length > 0 ? (data[data.length - 1]?.id ?? null) : null,
+        hasMore,
+      },
+    };
+  }
+
+  @Get('runs/:runId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get a single import/sync run with its operational summary',
+    description:
+      'Run detail: source, status, candidate counts, confirmation outcome and reconciliation summary.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the target portfolio' })
+  @ApiParam({ name: 'runId', description: 'UUID of the integration run' })
+  @ApiResponse({ status: 200, description: 'Run detail' })
+  @ApiResponse({ status: 404, description: 'Portfolio or run not found' })
+  async getRun(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Param('runId', UUIDParamPipe) runId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const run = await this.runService.getRun(portfolioId, runId, principal.userId);
+    return { data: mapIntegrationRunToResponse(run) };
   }
 }

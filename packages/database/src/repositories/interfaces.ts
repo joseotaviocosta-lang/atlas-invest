@@ -1810,3 +1810,126 @@ export interface IMacroRepository {
   }>;
   listRevisions(macroObservationId: string): Promise<MacroObservationRevisionRecordRow[]>;
 }
+
+/**
+ * Phase 5P-PRE — operational history of import/sync executions.
+ *
+ * One row per run; canonical events stay in `transactions` (linked via the
+ * loose `integration_run_id` provenance column). Runs are append-mostly and
+ * immutable once terminal (COMPLETED/PARTIAL/FAILED). No per-item table:
+ * per-row detail is reconstructible from the ledger (provider/externalId/
+ * fingerprint) plus read models.
+ */
+export type IntegrationRunSource = 'B3' | 'CSV' | 'MANUAL';
+
+export type IntegrationRunStatus =
+  'STARTED' | 'AWAITING_REVIEW' | 'CONFIRMING' | 'COMPLETED' | 'PARTIAL' | 'FAILED';
+
+export type IntegrationRunEnvironment = 'SIMULATED' | 'CERT' | 'PROD';
+
+export interface IntegrationRunReconciliation {
+  matched: number;
+  divergent: number;
+  missingLocal: number;
+  missingSource: number;
+  unresolved: number;
+}
+
+export interface IntegrationRunRow {
+  id: string;
+  portfolioId: string;
+  source: string;
+  provider: string | null;
+  environment: string | null;
+  fileName: string | null;
+  sourceAsOf: string | null;
+  status: string;
+  recordsFetched: number;
+  recordsNormalized: number;
+  newCandidates: number;
+  exactDuplicates: number;
+  probableDuplicates: number;
+  conflicts: number;
+  unsupported: number;
+  invalid: number;
+  confirmed: number;
+  ignored: number;
+  reconciliation: IntegrationRunReconciliation | null;
+  partial: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+  startedAt: Date;
+  completedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IntegrationRunCreateInput {
+  id?: string;
+  portfolioId: string;
+  source: string;
+  provider?: string | null;
+  environment?: string | null;
+  fileName?: string | null;
+  sourceAsOf?: string | null;
+}
+
+export interface IntegrationRunPreviewInput {
+  id: string;
+  portfolioId: string;
+  status: 'AWAITING_REVIEW';
+  recordsFetched: number;
+  recordsNormalized: number;
+  newCandidates: number;
+  exactDuplicates: number;
+  probableDuplicates: number;
+  conflicts: number;
+  unsupported: number;
+  invalid: number;
+  sourceAsOf?: string | null;
+}
+
+export interface IntegrationRunConfirmationInput {
+  id: string;
+  portfolioId: string;
+  status: 'COMPLETED' | 'PARTIAL';
+  confirmed: number;
+  ignored: number;
+  reconciliation?: IntegrationRunReconciliation | null;
+  partial: boolean;
+  sourceAsOf?: string | null;
+}
+
+export interface IntegrationRunFailureInput {
+  id: string;
+  portfolioId: string;
+  errorCode: string;
+  /** Safe user-facing message. Never raw payloads, stacks, tokens or PII. */
+  errorMessage: string;
+}
+
+export interface IntegrationRunLinkInput {
+  runId: string;
+  portfolioId: string;
+  transactionIds: string[];
+}
+
+export interface IIntegrationRunRepository {
+  create(input: IntegrationRunCreateInput): Promise<IntegrationRunRow>;
+  /** Preview snapshot; only from STARTED. Terminal or confirmed runs reject. */
+  recordPreview(input: IntegrationRunPreviewInput): Promise<IntegrationRunRow>;
+  /** Confirmation outcome; only from AWAITING_REVIEW or CONFIRMING. */
+  recordConfirmation(input: IntegrationRunConfirmationInput): Promise<IntegrationRunRow>;
+  /** Failure outcome; only from non-terminal runs. */
+  recordFailure(input: IntegrationRunFailureInput): Promise<IntegrationRunRow>;
+  /** Idempotent linkage of confirmed canonical transactions to a run. */
+  linkTransactions(input: IntegrationRunLinkInput): Promise<number>;
+  /** Transaction ids confirmed by a run, in linkage order. */
+  listTransactionIdsByRun(runId: string, portfolioId: string): Promise<string[]>;
+  findById(id: string, portfolioId: string): Promise<IntegrationRunRow | null>;
+  listByPortfolio(
+    portfolioId: string,
+    input: { limit: number; cursor?: string | null },
+  ): Promise<{ rows: IntegrationRunRow[]; hasMore: boolean }>;
+  countByPortfolio(portfolioId: string): Promise<number>;
+}

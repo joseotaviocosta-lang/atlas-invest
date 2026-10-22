@@ -35,6 +35,7 @@ import {
   PrismaFxObservationRepository,
   PrismaCalendarRepository,
   PrismaMacroRepository,
+  IntegrationRunRepository,
 } from '@atlas/database';
 import {
   PRISMA_CLIENT,
@@ -67,6 +68,7 @@ import {
   TAX_NOTIFICATION_EVENT_REPOSITORY,
   TAX_REMINDER_PREFERENCES_REPOSITORY,
   TAX_PERIOD_CLOSE_REPOSITORY,
+  INTEGRATION_RUN_REPOSITORY,
   MARKET_QUOTE_REPOSITORY,
   BENCHMARK_OBSERVATION_REPOSITORY,
   FX_OBSERVATION_REPOSITORY,
@@ -106,6 +108,11 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     {
       provide: TRANSACTION_REPOSITORY,
       useFactory: (prisma: AtlasPrismaClient) => new TransactionRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
+    {
+      provide: INTEGRATION_RUN_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new IntegrationRunRepository(prisma),
       inject: [PRISMA_CLIENT],
     },
     {
@@ -261,6 +268,7 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     ACCOUNT_REPOSITORY,
     ASSET_REPOSITORY,
     TRANSACTION_REPOSITORY,
+    INTEGRATION_RUN_REPOSITORY,
     USER_REPOSITORY,
     SESSION_REPOSITORY,
     PASSWORD_RESET_TOKEN_REPOSITORY,

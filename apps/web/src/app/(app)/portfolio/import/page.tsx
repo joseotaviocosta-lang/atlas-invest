@@ -11,12 +11,24 @@ import {
   getEffectiveRowState,
   type EffectiveRowState,
 } from '@/lib/import-review';
-import { colors, spacing, formatCurrency, formatQuantity, formatCivilDateDisplay } from '@atlas/ui';
+import {
+  colors,
+  spacing,
+  borderRadius,
+  formatCurrency,
+  formatQuantity,
+  formatCivilDateDisplay,
+} from '@atlas/ui';
 import {
   B3_IMPORT_METHOD_CATALOG,
   B3_EXPLANATION_SECTIONS,
   B3_SIMULATION_NOTICE,
   resolveB3IntegrationAvailability,
+  IMPORT_RUN_STATUS_PRESENTATION,
+  buildImportRunSummaryLines,
+  buildImportRunReconciliationLines,
+  describeImportRunSource,
+  type ImportRunStatus,
 } from '@atlas/ui';
 import {
   Card,
@@ -105,6 +117,44 @@ interface ImportReceipt {
   confirmedAt: string;
 }
 
+interface ImportRunCounts {
+  fetched: number;
+  normalized: number;
+  new: number;
+  exactDuplicates: number;
+  probableDuplicates: number;
+  conflicts: number;
+  unsupported: number;
+  invalid: number;
+  confirmed: number;
+  ignored: number;
+}
+
+interface ImportRunItem {
+  id: string;
+  portfolioId: string;
+  source: string;
+  provider: string | null;
+  environment: string | null;
+  fileName: string | null;
+  sourceAsOf: string | null;
+  status: ImportRunStatus;
+  counts: ImportRunCounts;
+  reconciliation: {
+    matched: number;
+    divergent: number;
+    missingLocal: number;
+    missingSource: number;
+    unresolved: number;
+  } | null;
+  partial: boolean;
+  error: { code: string; message: string } | null;
+  startedAt: string;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 const CSV_TEMPLATE = [
   'data;ticker;operacao;quantidade;preco_unitario;taxas;moeda;corretora;conta;external_id',
   '15/01/2026;PETR4;COMPRA;100;38,50;4,90;BRL;XP;Principal;NEG-1',
@@ -143,6 +193,7 @@ function ImportHubContent() {
   const [forceRows, setForceRows] = useState<Set<number>>(new Set());
   const [fileError, setFileError] = useState<string | null>(null);
   const [b3ModalOpen, setB3ModalOpen] = useState(false);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const b3Availability = resolveB3IntegrationAvailability({
     realConnectionEnabled: process.env.NEXT_PUBLIC_B3_REAL_CONNECTION_ENABLED,
   });
@@ -182,6 +233,23 @@ function ImportHubContent() {
     staleTime: 300_000,
   });
   const assets = useMemo(() => assetsData ?? [], [assetsData]);
+
+  const runsQuery = useQuery({
+    queryKey: ['import-runs', activePortfolioId],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: ImportRunItem[] }>(
+        `/api/v1/portfolios/${activePortfolioId}/imports/runs?limit=50`,
+      );
+      return res.data;
+    },
+    enabled: authReady && activePortfolioId !== null,
+    staleTime: 30_000,
+  });
+  const runs = useMemo(() => runsQuery.data ?? [], [runsQuery.data]);
+  const selectedRun = useMemo(
+    () => runs.find((run) => run.id === selectedRunId) ?? null,
+    [runs, selectedRunId],
+  );
 
   const previewMutation = useMutation({
     mutationFn: async () => {
@@ -272,6 +340,7 @@ function ImportHubContent() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['portfolio-state', activePortfolioId] });
       await queryClient.invalidateQueries({ queryKey: ['portfolio-positions', activePortfolioId] });
+      await queryClient.invalidateQueries({ queryKey: ['import-runs', activePortfolioId] });
     },
   });
 
@@ -459,6 +528,168 @@ function ImportHubContent() {
           </Button>
         </div>
       </Modal>
+
+      <Card style={{ padding: `${spacing.base}px`, marginBottom: `${spacing.base}px` }}>
+        <SectionHeader title="Histórico de importações" />
+        {runsQuery.isLoading ? (
+          <Skeleton width="100%" height="120px" />
+        ) : runsQuery.isError ? (
+          <ErrorState
+            title="Não foi possível carregar o histórico"
+            message="Tente novamente. Se o problema persistir, verifique sua conexão."
+            onRetry={() => runsQuery.refetch()}
+          />
+        ) : runs.length === 0 ? (
+          <EmptyState
+            title="Nenhuma importação registrada ainda"
+            description="Quando você importar um arquivo ou sincronizar uma fonte, o resumo aparecerá aqui."
+          />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.sm}px` }}>
+            {runs.map((run) => {
+              const presentation = IMPORT_RUN_STATUS_PRESENTATION[run.status] ?? {
+                label: run.status,
+                tone: 'neutral' as const,
+                description: '',
+              };
+              const summary = buildImportRunSummaryLines({
+                fetched: run.counts.fetched,
+                normalized: run.counts.normalized,
+                added: run.counts.new,
+                exactDuplicates: run.counts.exactDuplicates,
+                probableDuplicates: run.counts.probableDuplicates,
+                conflicts: run.counts.conflicts,
+                unsupported: run.counts.unsupported,
+                invalid: run.counts.invalid,
+                confirmed: run.counts.confirmed,
+                ignored: run.counts.ignored,
+                divergent: run.reconciliation?.divergent ?? 0,
+              });
+              const isSelected = selectedRunId === run.id;
+              return (
+                <button
+                  key={run.id}
+                  type="button"
+                  onClick={() => setSelectedRunId(isSelected ? null : run.id)}
+                  aria-expanded={isSelected}
+                  aria-label={`Ver detalhes da execução ${describeImportRunSource(run.source, run.fileName)} de ${formatCivilDateDisplay(run.createdAt.slice(0, 10))}`}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                    padding: `${spacing.sm}px`,
+                    minHeight: 44,
+                    textAlign: 'left',
+                    backgroundColor: isSelected ? colors.surfaceElevated : colors.surface,
+                    border: `1px solid ${isSelected ? colors.accent : colors.border}`,
+                    borderRadius: `${borderRadius.lg}px`,
+                    cursor: 'pointer',
+                    width: '100%',
+                  }}
+                >
+                  <span
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: `${spacing.sm}px`,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <strong style={{ fontSize: '0.875rem' }}>
+                      {describeImportRunSource(run.source, run.fileName)}
+                    </strong>
+                    <Badge variant={presentation.tone}>{presentation.label}</Badge>
+                    {run.partial ? <Badge variant="warning">Parcial</Badge> : null}
+                  </span>
+                  <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                    {formatCivilDateDisplay(run.createdAt.slice(0, 10))}
+                    {run.sourceAsOf ? ` · dados de ${formatCivilDateDisplay(run.sourceAsOf)}` : ''}
+                  </span>
+                  <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                    {summary.map((line) => line.text).join(' · ')}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {selectedRun ? (
+          <Card
+            style={{
+              padding: `${spacing.base}px`,
+              marginTop: `${spacing.base}px`,
+              border: `1px solid ${colors.border}`,
+            }}
+          >
+            <SectionHeader
+              title={`Detalhes · ${describeImportRunSource(selectedRun.source, selectedRun.fileName)}`}
+            />
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))',
+                gap: `${spacing.sm}px`,
+                marginTop: `${spacing.sm}px`,
+              }}
+            >
+              {[
+                { label: 'Encontrados', value: selectedRun.counts.fetched },
+                { label: 'Novos', value: selectedRun.counts.new },
+                { label: 'Já conhecidos', value: selectedRun.counts.exactDuplicates },
+                {
+                  label: 'Revisão necessária',
+                  value:
+                    selectedRun.counts.probableDuplicates +
+                    selectedRun.counts.conflicts +
+                    selectedRun.counts.unsupported +
+                    selectedRun.counts.invalid,
+                },
+                { label: 'Importados', value: selectedRun.counts.confirmed },
+                { label: 'Ignorados', value: selectedRun.counts.ignored },
+              ].map((stat) => (
+                <div key={stat.label}>
+                  <div style={{ fontSize: '1.125rem', fontWeight: 700 }}>{stat.value}</div>
+                  <div style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+                    {stat.label}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {selectedRun.reconciliation ? (
+              <div style={{ marginTop: `${spacing.sm}px` }}>
+                <div style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 4 }}>
+                  Posições
+                </div>
+                {buildImportRunReconciliationLines(selectedRun.reconciliation).map((line) => (
+                  <div
+                    key={line.text}
+                    style={{ fontSize: '0.875rem', color: colors.textSecondary }}
+                  >
+                    {line.text}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {selectedRun.error ? (
+              <div style={{ marginTop: `${spacing.sm}px` }}>
+                <Badge variant="danger">{selectedRun.error.code}</Badge>
+                <p style={{ fontSize: '0.875rem', color: colors.textSecondary, margin: '4px 0 0' }}>
+                  {selectedRun.error.message}
+                </p>
+              </div>
+            ) : null}
+            <div style={{ marginTop: `${spacing.sm}px` }}>
+              <Button
+                variant="outline"
+                onClick={() => setSelectedRunId(null)}
+                style={{ minHeight: 44 }}
+              >
+                Fechar detalhes
+              </Button>
+            </div>
+          </Card>
+        ) : null}
+      </Card>
 
       <Card
         id="importador-arquivo"

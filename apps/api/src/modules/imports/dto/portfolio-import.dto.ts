@@ -26,6 +26,7 @@ export const ConfirmPortfolioImportBodySchema = PreviewPortfolioImportBodySchema
     )
     .max(2000)
     .default([]),
+  runId: UUIDSchema.optional(),
 });
 
 export type ConfirmPortfolioImportBody = z.infer<typeof ConfirmPortfolioImportBodySchema>;
@@ -59,4 +60,28 @@ export class ConfirmPortfolioImportSwaggerDto extends PreviewPortfolioImportSwag
     assetId?: string;
     accountId?: string;
   }>;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Operational run opened by preview; links confirmed rows to run history',
+  })
+  runId?: string;
+}
+
+export const IntegrationRunListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  cursor: UUIDSchema.optional(),
+});
+
+export type IntegrationRunListQuery = z.infer<typeof IntegrationRunListQuerySchema>;
+
+export class IntegrationRunListQuerySwaggerDto {
+  @ApiPropertyOptional({ type: Number, description: 'Page size (1-200)', default: 50 })
+  limit?: number;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Opaque cursor (run id of the last seen page)',
+  })
+  cursor?: string;
 }

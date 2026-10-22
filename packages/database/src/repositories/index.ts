@@ -4,6 +4,7 @@ export * from './institution.repository';
 export * from './portfolio.repository';
 export * from './account.repository';
 export * from './transaction.repository';
+export * from './integration-run.repository';
 export * from './user.repository';
 export * from './session.repository';
 export * from './password-reset-token.repository';

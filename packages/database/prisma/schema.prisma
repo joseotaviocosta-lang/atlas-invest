@@ -111,6 +111,7 @@ model Portfolio {
   user                   User                               @relation(fields: [userId], references: [id], onDelete: Cascade)
   accounts               Account[]
   transactions           Transaction[]
+  integrationRuns        IntegrationRun[]
   aiConversations        AiConversation[]
   annualOpeningPositions AnnualOpeningPositionInputRecord[]
 
@@ -194,6 +195,73 @@ model Transaction {
   @@index([portfolioId, transferGroupId])
   @@index([assetId])
   @@map("transactions")
+}
+
+/**
+ * Phase 5P-PRE — operational history of import/sync executions.
+ * One row per run; canonical events stay in `transactions`, linked via the
+ * `integration_run_transactions` link table (the ledger table itself stays
+ * byte-identical). Runs are append-mostly and immutable once terminal
+ * (COMPLETED/PARTIAL/FAILED). Portfolio deletion cascades (runs are scoped
+ * evidence of that portfolio).
+ */
+model IntegrationRun {
+  id                           String    @id @default(uuid()) @db.Uuid
+  portfolioId                  String    @map("portfolio_id") @db.Uuid
+  source                       String    @db.VarChar(50)
+  provider                     String?   @db.VarChar(100)
+  environment                  String?   @db.VarChar(50)
+  fileName                     String?   @map("file_name") @db.VarChar(255)
+  sourceAsOf                   String?   @map("source_as_of") @db.VarChar(10)
+  status                       String    @db.VarChar(50)
+  recordsFetched               Int       @default(0) @map("records_fetched")
+  recordsNormalized            Int       @default(0) @map("records_normalized")
+  newCandidates                Int       @default(0) @map("new_candidates")
+  exactDuplicates              Int       @default(0) @map("exact_duplicates")
+  probableDuplicates           Int       @default(0) @map("probable_duplicates")
+  conflicts                    Int       @default(0)
+  unsupported                  Int       @default(0)
+  invalid                      Int       @default(0)
+  confirmed                    Int       @default(0)
+  ignored                      Int       @default(0)
+  reconciliationMatched        Int?      @map("reconciliation_matched")
+  reconciliationDivergent      Int?      @map("reconciliation_divergent")
+  reconciliationMissingLocal   Int?      @map("reconciliation_missing_local")
+  reconciliationMissingSource  Int?      @map("reconciliation_missing_source")
+  reconciliationUnresolved     Int?      @map("reconciliation_unresolved")
+  partial                      Boolean   @default(false)
+  errorCode                    String?   @map("error_code") @db.VarChar(100)
+  errorMessage                 String?   @map("error_message") @db.VarChar(500)
+  startedAt                    DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt                  DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt                    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  links     IntegrationRunTransaction[]
+
+  @@index([portfolioId])
+  @@map("integration_runs")
+}
+
+/**
+ * Phase 5P-PRE — which canonical transactions a run confirmed.
+ * Link rows only (run_id, portfolio_id, transaction_id); the ledger stays
+ * untouched. Run deletion cascades links; transactions are append-only and
+ * never deleted through runs.
+ */
+model IntegrationRunTransaction {
+  runId         String   @map("run_id") @db.Uuid
+  portfolioId   String   @map("portfolio_id") @db.Uuid
+  transactionId String   @map("transaction_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  run IntegrationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@id([runId, transactionId])
+  @@index([portfolioId])
+  @@index([transactionId])
+  @@map("integration_run_transactions")
 }
 
 model AiConversation {

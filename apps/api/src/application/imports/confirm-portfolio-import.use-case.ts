@@ -3,11 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { DuplicateExternalTransactionError } from '@atlas/database';
 import type { ClassifiedCandidate } from '@atlas/import-engine';
 import { CreateTransactionUseCase, type CreateTransactionCommand } from '../transactions';
+import { ImportValidationError } from './import-validation.error';
 import {
   PreviewPortfolioImportUseCase,
   type ImportRowOverride,
   type PreviewPortfolioImportCommand,
 } from './preview-portfolio-import.use-case';
+import { IntegrationRunService } from './integration-run.service';
 
 export interface ConfirmRowDecision {
   rowNumber: number;
@@ -18,6 +20,12 @@ export interface ConfirmRowDecision {
 
 export interface ConfirmPortfolioImportCommand extends PreviewPortfolioImportCommand {
   decisions: ConfirmRowDecision[];
+  /**
+   * Phase 5P-PRE: operational run opened by preview. When present, confirmed
+   * rows are stamped with the run id and the run records the outcome.
+   * Absent preserves the legacy unlink behavior.
+   */
+  runId?: string;
 }
 
 export interface PortfolioImportReceipt {
@@ -53,6 +61,8 @@ export class ConfirmPortfolioImportUseCase {
     private readonly preview: PreviewPortfolioImportUseCase,
     @Inject(CreateTransactionUseCase)
     private readonly createTransactionUseCase: CreateTransactionUseCase,
+    @Inject(IntegrationRunService)
+    private readonly runService: IntegrationRunService,
   ) {}
 
   async execute(command: ConfirmPortfolioImportCommand): Promise<PortfolioImportReceipt> {
@@ -81,6 +91,16 @@ export class ConfirmPortfolioImportUseCase {
   private async executeLocked(
     command: ConfirmPortfolioImportCommand,
   ): Promise<PortfolioImportReceipt> {
+    // Fail fast on spent or foreign runs: only AWAITING_REVIEW runs accept
+    // confirmation. Unknown/forged ids resolve to 404 via ownership check.
+    if (command.runId) {
+      const run = await this.runService.getRun(command.portfolioId, command.runId, command.userId);
+      if (run.status !== 'AWAITING_REVIEW') {
+        throw new ImportValidationError(
+          'Esta execução já foi concluída e não aceita nova confirmação',
+        );
+      }
+    }
     const overrides = new Map<number, ImportRowOverride>();
     for (const decision of command.decisions) {
       if (decision.assetId || decision.accountId) {
@@ -161,10 +181,11 @@ export class ConfirmPortfolioImportUseCase {
       if (error instanceof DuplicateExternalTransactionError) {
         return this.recoverIdempotentReceipt(command);
       }
+      await this.recordConfirmFailure(command, error);
       throw error;
     }
 
-    return {
+    const receipt: PortfolioImportReceipt = {
       receiptId: randomUUID(),
       portfolioId: command.portfolioId,
       provider: preview.provider,
@@ -177,6 +198,52 @@ export class ConfirmPortfolioImportUseCase {
       transactionIds: created.map((transaction) => transaction.id),
       confirmedAt: new Date().toISOString(),
     };
+    // Phase 5P-PRE: the run records what the ledger actually received —
+    // never what was merely previewed. CSV has no source snapshot, so no
+    // reconciliation summary is stored here.
+    if (command.runId) {
+      await this.runService.linkTransactions(
+        command.runId,
+        command.portfolioId,
+        command.userId,
+        created.map((transaction) => transaction.id),
+      );
+      await this.runService.recordConfirmation({
+        runId: command.runId,
+        portfolioId: command.portfolioId,
+        userId: command.userId,
+        status: 'COMPLETED',
+        confirmed: created.length,
+        // Rejected rows (invalid, unsupported, undecided) count as ignored:
+        // confirmed + ignored always reconciles to the previewed total.
+        ignored: skippedDuplicates + skippedByUser + failed.length,
+        partial: false,
+      });
+    }
+    return receipt;
+  }
+
+  /**
+   * Records an operational failure on the run (safe code + message only)
+   * before surfacing the original error. No raw payloads, no stacks.
+   */
+  private async recordConfirmFailure(
+    command: ConfirmPortfolioImportCommand,
+    error: unknown,
+  ): Promise<void> {
+    if (!command.runId) return;
+    const message = error instanceof Error ? error.message : 'Falha ao confirmar a importação';
+    try {
+      await this.runService.recordFailure({
+        runId: command.runId,
+        portfolioId: command.portfolioId,
+        userId: command.userId,
+        errorCode: 'IMPORT.CONFIRM_FAILED',
+        errorMessage: message.slice(0, 500),
+      });
+    } catch {
+      // Run bookkeeping must never mask the original confirm failure.
+    }
   }
 
   /**
@@ -217,7 +284,7 @@ export class ConfirmPortfolioImportUseCase {
         });
       }
     }
-    return {
+    const receipt: PortfolioImportReceipt = {
       receiptId: randomUUID(),
       portfolioId: command.portfolioId,
       provider: preview.provider,
@@ -230,6 +297,18 @@ export class ConfirmPortfolioImportUseCase {
       transactionIds: [],
       confirmedAt: new Date().toISOString(),
     };
+    if (command.runId) {
+      await this.runService.recordConfirmation({
+        runId: command.runId,
+        portfolioId: command.portfolioId,
+        userId: command.userId,
+        status: 'COMPLETED',
+        confirmed: 0,
+        ignored: skippedDuplicates + skippedByUser + failed.length,
+        partial: false,
+      });
+    }
+    return receipt;
   }
 
   private buildCommand(

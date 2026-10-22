@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import * as fs from 'fs';
 import {
   normalizeB3Movement,
   canonicalFingerprint,
@@ -34,7 +35,7 @@ function accountMatch() {
 }
 
 describe('Phase 5L: B3 adapter contract (no network, no secrets)', () => {
-  it('exposes the B3 capability surface without any HTTP client', async () => {
+  it('exposes the B3 capability surface without any HTTP client', () => {
     expect(B3_CAPABILITIES).toEqual([
       'POSITIONS',
       'MOVEMENTS',
@@ -44,7 +45,6 @@ describe('Phase 5L: B3 adapter contract (no network, no secrets)', () => {
       'GUIDE',
       'LAST_AVAILABLE_DATA',
     ]);
-    const fs = await import('fs');
     const source: string = fs.readFileSync('packages/import-engine/src/b3.ts', 'utf8');
     const importLines = source.split('\n').filter((line) => line.trim().startsWith('import '));
     for (const line of importLines) {
@@ -174,8 +174,7 @@ describe('Phase 5L: B3 adapter contract (no network, no secrets)', () => {
     expect(classified.status).toBe('DUPLICATE');
   });
 
-  it('fixtures carry zero PII, secrets or credentials', async () => {
-    const fs = await import('fs');
+  it('fixtures carry zero PII, secrets or credentials', () => {
     const content: string = fs.readFileSync('tests/import-engine/fixtures/b3-movements.ts', 'utf8');
     expect(content).not.toMatch(/\d{3}\.\d{3}\.\d{3}-\d{2}/);
     expect(content).not.toMatch(/\b\d{11}\b/);

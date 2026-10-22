@@ -115,7 +115,11 @@ import {
   ListTransactionsUseCase,
   RectifyPortfolioTransactionUseCase,
 } from './transactions';
-import { ConfirmPortfolioImportUseCase, PreviewPortfolioImportUseCase } from './imports';
+import {
+  ConfirmPortfolioImportUseCase,
+  PreviewPortfolioImportUseCase,
+  IntegrationRunService,
+} from './imports';
 
 const USE_CASES = [
   CreatePortfolioUseCase,
@@ -211,6 +215,7 @@ const USE_CASES = [
   RectifyPortfolioTransactionUseCase,
   PreviewPortfolioImportUseCase,
   ConfirmPortfolioImportUseCase,
+  IntegrationRunService,
 ];
 
 @Module({

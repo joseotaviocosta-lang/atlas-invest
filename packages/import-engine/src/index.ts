@@ -9,5 +9,6 @@ export * from './classify';
 export * from './b3';
 export * from './b3-simulated';
 export * from './reconcile';
+export * from './run';
 export * from './sync';
 export { IMPORT_ENGINE_VERSION as VERSION } from './version';

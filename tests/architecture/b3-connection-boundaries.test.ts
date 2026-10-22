@@ -103,4 +103,16 @@ describe('Architecture Gate: B3 connection client boundary (Phase 5N)', () => {
     const fromLines = source.split('\n').filter((line) => line.includes("from '"));
     expect(fromLines).toEqual([]);
   });
+
+  it('the database layer never depends on the import engine (run direction)', () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(rootDir, 'packages/database/package.json'), 'utf8'),
+    ) as { dependencies?: Record<string, string> };
+    expect(pkg.dependencies ?? {}).not.toHaveProperty('@atlas/import-engine');
+    const sources = listSourceFiles(path.join(rootDir, 'packages/database/src'));
+    for (const file of sources) {
+      const content = fs.readFileSync(file, 'utf8');
+      expect(content, file).not.toMatch(/@atlas\/import-engine/);
+    }
+  });
 });

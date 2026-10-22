@@ -38,6 +38,7 @@ import {
   type RawImportRow,
 } from '@atlas/import-engine';
 import { ImportValidationError } from './import-validation.error';
+import { IntegrationRunService } from './integration-run.service';
 
 export interface PreviewPortfolioImportCommand {
   portfolioId: string;
@@ -58,6 +59,8 @@ export interface PortfolioImportPreview {
   sourceType: string;
   provider: string;
   fileName: string;
+  /** Operational run tracking this preview. Null on internal re-previews. */
+  runId: string | null;
   candidates: ClassifiedCandidate[];
   summary: ImportSummary;
 }
@@ -86,11 +89,42 @@ export class PreviewPortfolioImportUseCase {
     private readonly transactionRepository: ITransactionRepository,
     @Inject(FISCAL_CLOCK)
     private readonly clock: FiscalClock,
+    @Inject(IntegrationRunService)
+    private readonly runService: IntegrationRunService,
   ) {}
 
   async execute(command: PreviewPortfolioImportCommand): Promise<PortfolioImportPreview> {
     const context = await this.runPipeline(command);
-    return this.toPreview(command, context, new Map());
+    const preview = this.toPreview(command, context, new Map());
+    // Phase 5P-PRE: every user-facing preview opens an operational run.
+    // Run metadata only — the canonical Transaction ledger is untouched here.
+    const probable = preview.candidates.filter(
+      (candidate) => candidate.duplicate === 'PROBABLE_DUPLICATE',
+    ).length;
+    const conflicts = preview.candidates.filter(
+      (candidate) => candidate.duplicate === 'CONFLICT',
+    ).length;
+    const run = await this.runService.startRun({
+      portfolioId: command.portfolioId,
+      userId: command.userId,
+      source: 'CSV',
+      provider: context.provider,
+      fileName: command.fileName,
+    });
+    await this.runService.recordPreview({
+      runId: run.id,
+      portfolioId: command.portfolioId,
+      userId: command.userId,
+      recordsFetched: context.normalized.length,
+      recordsNormalized: preview.summary.totalRows,
+      newCandidates: preview.summary.ready,
+      exactDuplicates: preview.summary.duplicates,
+      probableDuplicates: probable,
+      conflicts,
+      unsupported: preview.summary.unsupported,
+      invalid: preview.summary.invalid,
+    });
+    return { ...preview, runId: run.id };
   }
 
   async executeWithOverrides(
@@ -98,7 +132,9 @@ export class PreviewPortfolioImportUseCase {
     overrides: Map<number, ImportRowOverride>,
   ): Promise<PortfolioImportPreview> {
     const context = await this.runPipeline(command);
-    return this.toPreview(command, context, overrides);
+    const preview = this.toPreview(command, context, overrides);
+    // Internal re-preview (confirm path): no new run, no ledger writes.
+    return { ...preview, runId: null };
   }
 
   private async runPipeline(command: PreviewPortfolioImportCommand): Promise<PipelineContext> {
@@ -244,6 +280,9 @@ export class PreviewPortfolioImportUseCase {
       sourceType: 'GENERIC_CSV',
       provider: context.provider,
       fileName: command.fileName,
+      // Run linkage is set by execute() (user-facing preview); internal
+      // re-previews resolve it to null.
+      runId: null,
       candidates,
       summary: summarize(candidates),
     };

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import * as fs from 'fs';
 import {
   SimulatedB3Provider,
   runSimulatedB3Sync,
@@ -790,8 +791,7 @@ describe('Phase 5M: simulated B3 sync end-to-end (real pipeline, mock source)', 
     }
   });
 
-  it('24: fixtures and provider carry zero PII, secrets or credentials', async () => {
-    const fs = await import('fs');
+  it('24: fixtures and provider carry zero PII, secrets or credentials', () => {
     for (const file of [
       'tests/import-engine/fixtures/b3-simulated-sync.ts',
       'packages/import-engine/src/b3-simulated.ts',
@@ -809,8 +809,7 @@ describe('Phase 5M: simulated B3 sync end-to-end (real pipeline, mock source)', 
     );
   });
 
-  it('25: simulated provider performs zero network access', async () => {
-    const fs = await import('fs');
+  it('25: simulated provider performs zero network access', () => {
     const source: string = fs.readFileSync('packages/import-engine/src/b3-simulated.ts', 'utf8');
     const fromLines = source.split('\n').filter((line) => line.includes("from '"));
     expect(fromLines.length).toBeGreaterThan(0);
