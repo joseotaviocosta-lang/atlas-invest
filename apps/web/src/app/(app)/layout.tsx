@@ -3,10 +3,52 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHydrated } from '@/lib/use-hydrated';
-import { OfflineBanner, Avatar } from '@/components/ui';
+import { OfflineBanner, Avatar, Badge } from '@/components/ui';
+import { apiClient } from '@/api/client';
 import { colors, borderRadius, spacing, CANONICAL_NAV_ITEMS } from '@atlas/ui';
+
+function PendingReviewsLink() {
+  const { data } = useQuery({
+    queryKey: ['integration-reviews', 'count'],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: { pendingCount: number; truncated: boolean } }>(
+        '/api/v1/integration-reviews/count',
+      );
+      return res.data;
+    },
+    staleTime: 60 * 1000,
+  });
+  const pendingCount = data?.pendingCount ?? 0;
+  return (
+    <Link
+      href="/reviews"
+      aria-label={
+        pendingCount > 0
+          ? `Pendências: ${pendingCount} ${pendingCount === 1 ? 'item precisa' : 'itens precisam'} da sua atenção`
+          : 'Pendências: nenhum item no momento'
+      }
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: `${spacing.sm}px`,
+        fontSize: '0.8125rem',
+        color: colors.textSecondary,
+        padding: '0.375rem 0.75rem',
+        borderRadius: `${borderRadius.md}px`,
+        backgroundColor: colors.surfaceElevated,
+        border: `1px solid ${colors.border}`,
+        minHeight: 44,
+      }}
+    >
+      <span aria-hidden="true">🔔</span>
+      <span className="profile-label">Pendências</span>
+      {pendingCount > 0 ? <Badge variant="info">{String(pendingCount)}</Badge> : null}
+    </Link>
+  );
+}
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -228,13 +270,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               )?.label ||
                 (pathname === '/onboarding'
                   ? 'Boas-vindas'
-                  : pathname.startsWith('/admin')
-                    ? 'Operações'
-                    : 'Perfil')}
+                  : pathname.startsWith('/reviews')
+                    ? 'Pendências'
+                    : pathname.startsWith('/admin')
+                      ? 'Operações'
+                      : 'Perfil')}
             </span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.base}px` }}>
+            <PendingReviewsLink />
             <Link
               href="/profile"
               aria-label="Perfil do usuário"

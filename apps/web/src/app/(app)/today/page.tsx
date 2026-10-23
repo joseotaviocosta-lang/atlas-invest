@@ -46,6 +46,19 @@ export default function TodayPage() {
   const firstPortfolio = portfolios[0];
   const firstPortfolioId = firstPortfolio?.id;
 
+  // Pending review inbox count (derived, badge feed — no list load).
+  const { data: pendingData } = useQuery({
+    queryKey: ['integration-reviews', 'count'],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: { pendingCount: number; truncated: boolean } }>(
+        '/api/v1/integration-reviews/count',
+      );
+      return res.data;
+    },
+    staleTime: 60 * 1000,
+  });
+  const pendingCount = pendingData?.pendingCount ?? 0;
+
   // 1. Ledger state query (Source of truth for cost basis & proventos)
   const { data: stateData } = useQuery<{
     data: {
@@ -183,6 +196,48 @@ export default function TodayPage() {
           </div>
           <Link href="/onboarding">
             <Button size="sm">Iniciar Onboarding</Button>
+          </Link>
+        </div>
+      )}
+
+      {/* Pending review inbox callout (discreet, only when actionable items exist) */}
+      {pendingCount > 0 && (
+        <div
+          style={{
+            padding: `${spacing.base}px ${spacing.xl}px`,
+            borderRadius: `${borderRadius.lg}px`,
+            backgroundColor: colors.surface,
+            border: `1px solid ${colors.border}`,
+            marginBottom: `${spacing.xl}px`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: `${spacing.base}px`,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontWeight: 600,
+                color: colors.textPrimary,
+                fontSize: '0.9375rem',
+                marginBottom: '2px',
+              }}
+            >
+              {pendingCount === 1
+                ? '1 item precisa da sua atenção'
+                : `${pendingCount} itens precisam da sua atenção`}
+            </div>
+            <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+              Revise importações e sincronizações pendentes. Nada é importado sem a sua confirmação.
+            </div>
+          </div>
+          <Link
+            href="/reviews"
+            aria-label={`Ver ${pendingCount === 1 ? 'a pendência' : 'as pendências'}`}
+          >
+            <Button size="sm">Ver pendências</Button>
           </Link>
         </div>
       )}

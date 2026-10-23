@@ -483,7 +483,9 @@ function ImportHubContent() {
   const [forceRows, setForceRows] = useState<Set<number>>(new Set());
   const [fileError, setFileError] = useState<string | null>(null);
   const [b3ModalOpen, setB3ModalOpen] = useState(false);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(() =>
+    searchParams.get('runId'),
+  );
   const b3Availability = resolveB3IntegrationAvailability({
     realConnectionEnabled: process.env.NEXT_PUBLIC_B3_REAL_CONNECTION_ENABLED,
   });
@@ -631,6 +633,7 @@ function ImportHubContent() {
       await queryClient.invalidateQueries({ queryKey: ['portfolio-state', activePortfolioId] });
       await queryClient.invalidateQueries({ queryKey: ['portfolio-positions', activePortfolioId] });
       await queryClient.invalidateQueries({ queryKey: ['import-runs', activePortfolioId] });
+      await queryClient.invalidateQueries({ queryKey: ['integration-reviews'] });
     },
   });
 

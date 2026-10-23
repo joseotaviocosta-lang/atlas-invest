@@ -2066,6 +2066,26 @@ export interface IIntegrationRunRepository {
   /** Transaction ids confirmed by a run, in linkage order. */
   listTransactionIdsByRun(runId: string, portfolioId: string): Promise<string[]>;
   findById(id: string, portfolioId: string): Promise<IntegrationRunRow | null>;
+  /**
+   * Phase 5P-B: ownership-scoped lookup across a user's portfolios.
+   * Returns null when the run does not belong to any of them (the service
+   * maps null to 404 anti-enumeration, never 403).
+   */
+  findByIdInPortfolios(id: string, portfolioIds: string[]): Promise<IntegrationRunRow | null>;
+  /**
+   * Phase 5P-B: newest-first listing across portfolios for the derived
+   * review inbox. The cursor is a resolved anchor row (already
+   * ownership-checked by the service); forged ids never reach this layer.
+   */
+  listByPortfolioIds(
+    portfolioIds: string[],
+    input: { limit: number; cursor?: IntegrationRunRow | null },
+  ): Promise<{ rows: IntegrationRunRow[]; hasMore: boolean }>;
+  /**
+   * Phase 5P-B: bounded newest-first window across portfolios for the
+   * pending-count badge. Never a full-history scan.
+   */
+  listRecentByPortfolioIds(portfolioIds: string[], limit: number): Promise<IntegrationRunRow[]>;
   listByPortfolio(
     portfolioId: string,
     input: { limit: number; cursor?: string | null },

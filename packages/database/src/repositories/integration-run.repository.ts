@@ -239,6 +239,72 @@ export class IntegrationRunRepository implements IIntegrationRunRepository {
     }
   }
 
+  async findByIdInPortfolios(
+    id: string,
+    portfolioIds: string[],
+  ): Promise<IntegrationRunRow | null> {
+    if (portfolioIds.length === 0) return null;
+    try {
+      const row = await this.prisma.integrationRun.findFirst({
+        where: { id, portfolioId: { in: portfolioIds } },
+      });
+      return row ? this.map(row) : null;
+    } catch {
+      throw new PersistenceError(`Failed to find integration run ${id}`);
+    }
+  }
+
+  async listByPortfolioIds(
+    portfolioIds: string[],
+    input: { limit: number; cursor?: IntegrationRunRow | null },
+  ): Promise<{ rows: IntegrationRunRow[]; hasMore: boolean }> {
+    const limit = Math.min(200, Math.max(1, Math.floor(input.limit)));
+    if (portfolioIds.length === 0) return { rows: [], hasMore: false };
+    try {
+      const anchor = input.cursor ?? null;
+      const rows = await this.prisma.integrationRun.findMany({
+        where: {
+          portfolioId: { in: portfolioIds },
+          ...(anchor
+            ? {
+                OR: [
+                  { createdAt: { lt: anchor.createdAt } },
+                  { createdAt: anchor.createdAt, id: { lt: anchor.id } },
+                ],
+              }
+            : {}),
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: limit + 1,
+      });
+      return {
+        rows: rows.slice(0, limit).map((row) => this.map(row)),
+        hasMore: rows.length > limit,
+      };
+    } catch (error: unknown) {
+      if (error instanceof PersistenceError) throw error;
+      throw new PersistenceError('Failed to list integration runs across portfolios');
+    }
+  }
+
+  async listRecentByPortfolioIds(
+    portfolioIds: string[],
+    limit: number,
+  ): Promise<IntegrationRunRow[]> {
+    const take = Math.min(200, Math.max(1, Math.floor(limit)));
+    if (portfolioIds.length === 0) return [];
+    try {
+      const rows = await this.prisma.integrationRun.findMany({
+        where: { portfolioId: { in: portfolioIds } },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take,
+      });
+      return rows.map((row) => this.map(row));
+    } catch {
+      throw new PersistenceError('Failed to list recent integration runs across portfolios');
+    }
+  }
+
   /**
    * Links confirmed canonical transactions to a run. Idempotent: the
    * (runId, transactionId) identity makes retries safe. Run-scoped for

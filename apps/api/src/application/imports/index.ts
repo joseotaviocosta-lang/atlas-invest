@@ -7,3 +7,4 @@ export * from './integration-schedule.service';
 export * from './source-sync-executor';
 export * from './integration-scheduler.service';
 export * from './integration-worker.service';
+export * from './integration-review.service';
