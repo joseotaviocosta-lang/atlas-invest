@@ -11,6 +11,7 @@ import { AssetsModule } from './modules/assets/assets.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { PortfolioImportsModule } from './modules/imports/imports.module';
 import { IntegrationReviewsModule } from './modules/reviews/reviews.module';
+import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { PerformanceModule } from './modules/performance/performance.module';
 import { FiscalModule } from './modules/fiscal/fiscal.module';
 import { AiModule } from './modules/ai/ai.module';
@@ -43,6 +44,7 @@ import {
     TransactionsModule,
     PortfolioImportsModule,
     IntegrationReviewsModule,
+    IntegrationsModule,
     PerformanceModule,
     FiscalModule,
     AiModule,

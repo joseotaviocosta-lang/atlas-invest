@@ -249,6 +249,17 @@ export class IntegrationJobRepository implements IIntegrationJobRepository {
     }
   }
 
+  async hasRunningJob(scheduleId: string): Promise<boolean> {
+    try {
+      const count = await this.prisma.integrationJob.count({
+        where: { scheduleId, status: 'RUNNING' },
+      });
+      return count > 0;
+    } catch {
+      throw new PersistenceError(`Failed to check running integration job for schedule ${scheduleId}`);
+    }
+  }
+
   async listByPortfolio(
     portfolioId: string,
     input: { limit: number; cursor?: string | null },

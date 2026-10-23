@@ -14,4 +14,6 @@ export * from './sync';
 export * from './schedule';
 export * from './job';
 export * from './review-inbox';
+export * from './integration-availability';
+export * from './integration-status';
 export { IMPORT_ENGINE_VERSION as VERSION } from './version';

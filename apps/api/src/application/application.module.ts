@@ -123,6 +123,7 @@ import {
   IntegrationSchedulerService,
   IntegrationWorkerService,
   IntegrationReviewService,
+  IntegrationSettingsService,
   SimulatedB3SyncExecutor,
   SourceSyncExecutorRegistry,
   defaultSchedulingPolicy,
@@ -228,6 +229,7 @@ const USE_CASES = [
   IntegrationSchedulerService,
   IntegrationWorkerService,
   IntegrationReviewService,
+  IntegrationSettingsService,
   SimulatedB3SyncExecutor,
 ];
 

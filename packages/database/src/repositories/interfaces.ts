@@ -2046,6 +2046,11 @@ export interface IIntegrationJobRepository {
    * the same portfolio + integration.
    */
   findActiveBySchedule(scheduleId: string): Promise<IntegrationJobRow | null>;
+  /**
+   * Phase 5P-C: whether any job for the schedule is executing right now.
+   * Read-only status signal; claiming still goes through claimDue.
+   */
+  hasRunningJob(scheduleId: string): Promise<boolean>;
   findById(id: string, portfolioId: string): Promise<IntegrationJobRow | null>;
   listByPortfolio(
     portfolioId: string,
