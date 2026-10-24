@@ -33,9 +33,10 @@ import {
   describeScheduleFrequency,
   describeScheduleNextRun,
   describeIntegrationStatus,
+  describeIntegrationConnection,
+  describeIntegrationConnectionState,
   describeIntegrationTimezone,
   describeIntegrationAvailability,
-  describeIntegrationConnection,
   type ImportRunStatus,
 } from '@atlas/ui';
 import {
@@ -224,7 +225,12 @@ interface IntegrationSourceSettings {
   provider: string;
   environment: string;
   availability: string;
-  connection: { state: string };
+  connection: {
+    state: string;
+    authorizedAt: string | null;
+    lastCheckedAt: string | null;
+    lifecycle: string | null;
+  };
   canEnable: boolean;
   canDisable: boolean;
   canEditSchedule: boolean;
@@ -369,6 +375,25 @@ function IntegrationSchedulesSection({
       await queryClient.invalidateQueries({ queryKey: ['import-schedules', portfolioId] });
       await queryClient.invalidateQueries({ queryKey: ['portfolio-integrations', portfolioId] });
       setConfirmingDisable(false);
+    },
+  });
+
+  // Phase 5P-D — connection actions. Server owns source/provider/
+  // environment; the client sends an empty strict body and never chooses
+  // CERT/PROD. Buttons render only where the simulated flow is available.
+  const connectionAction = async (action: string) => {
+    const res = await apiClient.post<{ data: { status: string } }>(
+      `/api/v1/portfolios/${portfolioId}/integrations/B3/${action}`,
+      {},
+    );
+    return res.data;
+  };
+
+  const connectionMutation = useMutation({
+    mutationFn: connectionAction,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['import-schedules', portfolioId] });
+      await queryClient.invalidateQueries({ queryKey: ['portfolio-integrations', portfolioId] });
     },
   });
 
@@ -628,6 +653,110 @@ function IntegrationSchedulesSection({
             ? ' — Disponível quando a integração B3 for ativada.'
             : ` — ${describeIntegrationStatus(b3Settings.status).description}`}
         </p>
+      ) : null}
+      {b3Settings !== null && !settingsQuery.isLoading ? (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+            padding: `${spacing.sm}px`,
+            backgroundColor: colors.surface,
+            border: `1px solid ${colors.border}`,
+            borderRadius: `${borderRadius.lg}px`,
+            marginBottom: `${spacing.sm}px`,
+          }}
+        >
+          <span
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: `${spacing.sm}px`,
+              flexWrap: 'wrap',
+            }}
+          >
+            <strong style={{ fontSize: '0.875rem' }}>Conexão B3</strong>
+            <Badge variant={describeIntegrationConnectionState(b3Settings.connection.state).tone}>
+              {b3Settings.connection.lifecycle === 'REVOKED'
+                ? 'Acesso revogado'
+                : describeIntegrationConnectionState(b3Settings.connection.state).label}
+            </Badge>
+          </span>
+          <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+            {b3Settings.connection.lifecycle === 'REVOKED'
+              ? 'Seus dados já importados e o histórico permanecem no Atlas. Novas sincronizações param até nova autorização.'
+              : describeIntegrationConnectionState(b3Settings.connection.state).description}
+          </span>
+          {b3Settings.connection.authorizedAt ? (
+            <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+              Autorizada em{' '}
+              {formatSettingsInstant(
+                b3Settings.connection.authorizedAt,
+                b3Schedule?.timezone ?? 'America/Sao_Paulo',
+              )}
+            </span>
+          ) : null}
+          {schedulesAvailable ? (
+            <span style={{ display: 'flex', gap: `${spacing.sm}px`, flexWrap: 'wrap' }}>
+              {b3Settings.connection.state === 'NOT_CONNECTED' ? (
+                <Button
+                  variant="outline"
+                  onClick={() => connectionMutation.mutate('authorize')}
+                  disabled={connectionMutation.isPending}
+                  aria-label="Conectar fonte B3 (simulação)"
+                  style={{ minHeight: 44 }}
+                >
+                  {connectionMutation.isPending ? 'Conectando…' : 'Conectar'}
+                </Button>
+              ) : null}
+              {b3Settings.connection.state === 'AWAITING_AUTHORIZATION' ? (
+                <Button
+                  variant="outline"
+                  onClick={() => connectionMutation.mutate('complete-authorization')}
+                  disabled={connectionMutation.isPending}
+                  aria-label="Continuar autorização da fonte B3"
+                  style={{ minHeight: 44 }}
+                >
+                  {connectionMutation.isPending ? 'Concluindo…' : 'Continuar autorização'}
+                </Button>
+              ) : null}
+              {b3Settings.connection.state === 'NEEDS_REAUTH' ? (
+                <Button
+                  variant="outline"
+                  onClick={() => connectionMutation.mutate('authorize')}
+                  disabled={connectionMutation.isPending}
+                  aria-label="Autorizar novamente a fonte B3"
+                  style={{ minHeight: 44 }}
+                >
+                  {connectionMutation.isPending ? 'Autorizando…' : 'Autorizar novamente'}
+                </Button>
+              ) : null}
+              {b3Settings.connection.state === 'AUTHORIZED' ? (
+                <Button
+                  variant="outline"
+                  onClick={() => connectionMutation.mutate('revoke')}
+                  disabled={connectionMutation.isPending}
+                  aria-label="Desconectar fonte B3"
+                  style={{ minHeight: 44 }}
+                >
+                  {connectionMutation.isPending ? 'Desconectando…' : 'Desconectar'}
+                </Button>
+              ) : null}
+            </span>
+          ) : null}
+          {connectionMutation.isError ? (
+            <p
+              role="alert"
+              style={{
+                fontSize: '0.875rem',
+                color: colors.negative,
+                margin: `${spacing.sm}px 0 0`,
+              }}
+            >
+              {scheduleErrorMessage(connectionMutation.error)}
+            </p>
+          ) : null}
+        </div>
       ) : null}
       {!schedulesAvailable ? (
         <p style={{ fontSize: '0.875rem', color: colors.textSecondary, margin: 0 }}>

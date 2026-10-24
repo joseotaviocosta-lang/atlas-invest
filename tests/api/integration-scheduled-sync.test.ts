@@ -12,6 +12,7 @@ import {
   seedBaseFixtures,
 } from './setup';
 import {
+  IntegrationConnectionService,
   IntegrationScheduleService,
   IntegrationSchedulerService,
   IntegrationWorkerService,
@@ -73,6 +74,15 @@ describe('API Integration: scheduled background sync (Phase 5P-A)', () => {
     expect(detail.status).toBe(200);
     expect(detail.body.data.status).toBe('AWAITING_REVIEW');
     return detail.body.data.counts.new as number;
+  }
+
+  async function authorizeConnection(): Promise<void> {
+    // Phase 5P-D: background execution requires a persisted AUTHORIZED
+    // connection. Tests that drive tick/worker establish one explicitly.
+    const connections = app.get(IntegrationConnectionService);
+    const now = new Date('2026-06-15T12:00:00Z');
+    await connections.beginAuthorization({ portfolioId, userId, source: 'B3' }, now);
+    await connections.completeAuthorization({ portfolioId, userId, source: 'B3' }, now);
   }
 
   beforeAll(async () => {
@@ -151,6 +161,7 @@ describe('API Integration: scheduled background sync (Phase 5P-A)', () => {
   });
 
   it('enables a schedule, ticks once, and executes a background B3 sync with zero ledger writes', async () => {
+    await authorizeConnection();
     const created = await request(app.getHttpServer())
       .post(schedulesUrl())
       .set('Authorization', `Bearer ${authToken}`)
@@ -205,6 +216,7 @@ describe('API Integration: scheduled background sync (Phase 5P-A)', () => {
   });
 
   it('review stays human: scheduled run is confirmable later and dedupes on repeat', async () => {
+    await authorizeConnection();
     const service = app.get(IntegrationScheduleService);
     const scheduler = app.get(IntegrationSchedulerService);
     const worker = app.get(IntegrationWorkerService);
@@ -263,6 +275,7 @@ describe('API Integration: scheduled background sync (Phase 5P-A)', () => {
   });
 
   it('failed provider attempts stay bounded and the run records the failure', async () => {
+    await authorizeConnection();
     const service = app.get(IntegrationScheduleService);
     const scheduler = app.get(IntegrationSchedulerService);
     const worker = app.get(IntegrationWorkerService);
@@ -300,6 +313,7 @@ describe('API Integration: scheduled background sync (Phase 5P-A)', () => {
   });
 
   it('missed schedules coalesce: one job for a three-day outage, overlap skipped while running', async () => {
+    await authorizeConnection();
     const service = app.get(IntegrationScheduleService);
     const scheduler = app.get(IntegrationSchedulerService);
     const worker = app.get(IntegrationWorkerService);
@@ -330,6 +344,7 @@ describe('API Integration: scheduled background sync (Phase 5P-A)', () => {
   });
 
   it('stale RUNNING jobs recover and superseded claims lose explicitly', async () => {
+    await authorizeConnection();
     const service = app.get(IntegrationScheduleService);
     const scheduler = app.get(IntegrationSchedulerService);
     const worker = app.get(IntegrationWorkerService);

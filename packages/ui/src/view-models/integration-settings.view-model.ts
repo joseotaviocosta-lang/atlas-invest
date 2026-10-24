@@ -71,6 +71,11 @@ const STATUS_COPY: Record<string, IntegrationSettingsStatusPresentation> = {
     tone: 'neutral',
     description: 'Conecte a fonte antes de agendar sincronizações.',
   },
+  AWAITING_AUTHORIZATION: {
+    label: 'Aguardando autorização',
+    tone: 'info',
+    description: 'Conclua a autorização para ativar a sincronização.',
+  },
 };
 
 export function describeIntegrationStatus(status: string): IntegrationSettingsStatusPresentation {
@@ -101,5 +106,62 @@ export function describeIntegrationAvailability(availability: string): string {
 export function describeIntegrationConnection(connection: string): string {
   if (connection === 'AUTHORIZED') return 'Conectada (simulação)';
   if (connection === 'NEEDS_REAUTH') return 'Autorização necessária';
+  if (connection === 'AWAITING_AUTHORIZATION') return 'Aguardando autorização';
   return 'Não conectada';
+}
+
+/**
+ * Phase 5P-D — shared connection contract for product surfaces (STEP 39).
+ *
+ * Label/tone/description plus the single primary action the surface should
+ * offer. Timestamps travel separately (server ISO strings); no tokens or
+ * external ids ever enter this contract.
+ */
+export type IntegrationConnectionAction = 'CONNECT' | 'CONTINUE_AUTHORIZATION' | 'RECONNECT';
+
+export interface IntegrationConnectionPresentation {
+  label: string;
+  tone: IntegrationSettingsTone;
+  description: string;
+  primaryAction: IntegrationConnectionAction | null;
+}
+
+const CONNECTION_COPY: Record<string, IntegrationConnectionPresentation> = {
+  NOT_CONNECTED: {
+    label: 'Não conectado',
+    tone: 'neutral',
+    description: 'Conecte a fonte antes de agendar sincronizações.',
+    primaryAction: 'CONNECT',
+  },
+  AWAITING_AUTHORIZATION: {
+    label: 'Aguardando autorização',
+    tone: 'info',
+    description: 'Um fluxo de autorização está aberto. Conclua para ativar a sincronização.',
+    primaryAction: 'CONTINUE_AUTHORIZATION',
+  },
+  AUTHORIZED: {
+    label: 'Conectada (simulação)',
+    tone: 'success',
+    description: 'A fonte está autorizada. Agendas ativadas podem sincronizar.',
+    primaryAction: null,
+  },
+  NEEDS_REAUTH: {
+    label: 'Nova autorização necessária',
+    tone: 'warning',
+    description: 'A autorização expirou ou foi revogada. Autorize novamente para continuar.',
+    primaryAction: 'RECONNECT',
+  },
+};
+
+export function describeIntegrationConnectionState(
+  connection: string,
+): IntegrationConnectionPresentation {
+  return (
+    CONNECTION_COPY[connection] ?? {
+      label: 'Conexão desconhecida',
+      tone: 'neutral' as const,
+      description: 'Não foi possível determinar o estado da conexão.',
+      primaryAction: null,
+    }
+  );
 }

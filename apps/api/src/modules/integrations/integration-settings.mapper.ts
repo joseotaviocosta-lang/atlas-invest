@@ -29,7 +29,12 @@ export interface IntegrationSourceSettingsResponse {
   provider: string;
   environment: string;
   availability: IntegrationAvailability;
-  connection: { state: IntegrationConnectionState };
+  connection: {
+    state: IntegrationConnectionState;
+    authorizedAt: string | null;
+    lastCheckedAt: string | null;
+    lifecycle: string | null;
+  };
   canEnable: boolean;
   canDisable: boolean;
   canEditSchedule: boolean;
@@ -83,7 +88,12 @@ export function mapIntegrationSettingsToResponse(
       provider: source.provider,
       environment: source.environment,
       availability: source.availability,
-      connection: { state: source.connection.state },
+      connection: {
+        state: source.connection.state,
+        authorizedAt: source.connection.authorizedAt,
+        lastCheckedAt: source.connection.lastCheckedAt,
+        lifecycle: source.connection.lifecycle,
+      },
       canEnable: source.canEnable,
       canDisable: source.canDisable,
       canEditSchedule: source.canEditSchedule,

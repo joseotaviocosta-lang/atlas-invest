@@ -8,6 +8,7 @@ import {
 import { INTEGRATION_JOB_REPOSITORY, INTEGRATION_SCHEDULE_REPOSITORY } from '../../database/tokens';
 import { SourceSyncExecutorRegistry } from './source-sync-executor';
 import { ScheduledSyncFailedError } from './integration-scheduling.tokens';
+import { IntegrationConnectionService } from './integration-connection.service';
 
 export interface WorkerExecutionResult {
   claimed: boolean;
@@ -36,6 +37,8 @@ export class IntegrationWorkerService {
     private readonly schedules: IIntegrationScheduleRepository,
     @Inject(SourceSyncExecutorRegistry)
     private readonly registry: SourceSyncExecutorRegistry,
+    @Inject(IntegrationConnectionService)
+    private readonly connections: IntegrationConnectionService,
   ) {}
 
   async executeNext(now: Date): Promise<WorkerExecutionResult> {
@@ -44,6 +47,22 @@ export class IntegrationWorkerService {
       return { claimed: false };
     }
     const attempt = job.attempt;
+    // Phase 5P-D: the connection may have been revoked between enqueue and
+    // claim. Cancel without opening a run: no ledger write, no fake
+    // failure, schedule preference untouched.
+    if (!(await this.connections.isEligible(job.portfolioId, job.source))) {
+      const cancelled = await this.jobs.markCancelled({
+        id: job.id,
+        portfolioId: job.portfolioId,
+        attempt,
+      });
+      return {
+        claimed: true,
+        jobId: job.id,
+        scheduleId: job.scheduleId,
+        jobStatus: cancelled.status,
+      };
+    }
     try {
       const schedule = await this.schedules.findById(job.scheduleId, job.portfolioId);
       if (!schedule) {

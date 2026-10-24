@@ -2,12 +2,14 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { IIntegrationJobRepository, IIntegrationScheduleRepository } from '@atlas/database';
 import { computeNextRunAt, resolveDueSlot } from '@atlas/import-engine';
 import { INTEGRATION_JOB_REPOSITORY, INTEGRATION_SCHEDULE_REPOSITORY } from '../../database/tokens';
+import { IntegrationConnectionService } from './integration-connection.service';
 
 export interface SchedulerTickResult {
   due: number;
   enqueued: number;
   alreadyEnqueued: number;
   skippedOverlap: number;
+  skippedIneligible: number;
 }
 
 /**
@@ -26,6 +28,8 @@ export class IntegrationSchedulerService {
     private readonly schedules: IIntegrationScheduleRepository,
     @Inject(INTEGRATION_JOB_REPOSITORY)
     private readonly jobs: IIntegrationJobRepository,
+    @Inject(IntegrationConnectionService)
+    private readonly connections: IntegrationConnectionService,
   ) {}
 
   async tick(now: Date): Promise<SchedulerTickResult> {
@@ -35,6 +39,7 @@ export class IntegrationSchedulerService {
       enqueued: 0,
       alreadyEnqueued: 0,
       skippedOverlap: 0,
+      skippedIneligible: 0,
     };
     for (const schedule of due) {
       try {
@@ -75,6 +80,13 @@ export class IntegrationSchedulerService {
     };
     const slot = resolveDueSlot(cadence, schedule.nextRunAt, now);
     if (!slot) return;
+    // Phase 5P-D: no eligible connection → no job. The enabled schedule
+    // keeps representing user preference; nothing is enqueued, nothing
+    // executes, and the run history stays clean (no fake failure).
+    if (!(await this.connections.isEligible(schedule.portfolioId, schedule.source))) {
+      result.skippedIneligible += 1;
+      return;
+    }
     const active = await this.jobs.findActiveBySchedule(schedule.id);
     if (active) {
       result.skippedOverlap += 1;

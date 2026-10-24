@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   describeIntegrationAvailability,
   describeIntegrationConnection,
+  describeIntegrationConnectionState,
   describeIntegrationStatus,
   describeIntegrationTimezone,
 } from '@atlas/ui';
@@ -18,9 +19,17 @@ import * as path from 'path';
 describe('Phase 5P-C (mobile): settings contract compatibility', () => {
   it('status, availability, connection and timezone copy resolve natively', () => {
     expect(describeIntegrationStatus('PREPARING').label).toBe('Em preparação');
+    expect(describeIntegrationStatus('AWAITING_AUTHORIZATION').label).toBe(
+      'Aguardando autorização',
+    );
     expect(describeIntegrationStatus('PENDING_REVIEW').tone).toBe('warning');
     expect(describeIntegrationAvailability('AVAILABLE')).toBe('Disponível');
     expect(describeIntegrationConnection('AUTHORIZED').length).toBeGreaterThan(0);
+    expect(describeIntegrationConnection('AWAITING_AUTHORIZATION')).toBe('Aguardando autorização');
+    expect(describeIntegrationConnectionState('REVOKED' as never).label).toBe(
+      'Conexão desconhecida',
+    );
+    expect(describeIntegrationConnectionState('NOT_CONNECTED').primaryAction).toBe('CONNECT');
     expect(describeIntegrationTimezone('America/Sao_Paulo')).toBe('Horário de Brasília');
   });
 

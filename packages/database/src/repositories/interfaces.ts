@@ -1974,6 +1974,51 @@ export interface IntegrationScheduleTouchInput {
   lastStatus?: string | null;
 }
 
+export interface IntegrationConnectionRow {
+  id: string;
+  portfolioId: string;
+  source: string;
+  provider: string;
+  environment: string;
+  status: string;
+  authorizedAt: Date | null;
+  revokedAt: Date | null;
+  lastCheckedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IntegrationConnectionEnsureInput {
+  portfolioId: string;
+  source: string;
+  provider?: string | null;
+  environment?: string | null;
+}
+
+export interface IntegrationConnectionUpdateInput {
+  id: string;
+  portfolioId: string;
+  status: string;
+  authorizedAt?: Date | null;
+  revokedAt?: Date | null;
+  lastCheckedAt?: Date | null;
+}
+
+/**
+ * Phase 5P-D: portfolio↔source connection rows. One row per
+ * (portfolio, source); `ensure` is idempotent for concurrent begins and
+ * `update` is ownership-scoped (id + portfolioId). No secrets ever reach
+ * this table (see STEP 21 guard).
+ */
+export interface IIntegrationConnectionRepository {
+  findByPortfolioAndSource(
+    portfolioId: string,
+    source: string,
+  ): Promise<IntegrationConnectionRow | null>;
+  ensure(input: IntegrationConnectionEnsureInput): Promise<IntegrationConnectionRow>;
+  update(input: IntegrationConnectionUpdateInput): Promise<IntegrationConnectionRow>;
+}
+
 export interface IntegrationJobRow {
   id: string;
   scheduleId: string;
@@ -2039,6 +2084,15 @@ export interface IIntegrationJobRepository {
     errorMessage: string;
     attemptsExhausted: boolean;
     notBeforeAt: Date | null;
+  }): Promise<IntegrationJobRow>;
+  /**
+   * Phase 5P-D: cancels a claimed job without executing it. No run opens,
+   * no ledger write, no failure recorded. Same claim fencing as completions.
+   */
+  markCancelled(input: {
+    id: string;
+    portfolioId: string;
+    attempt: number;
   }): Promise<IntegrationJobRow>;
   /**
    * Newest non-terminal job for a schedule (overlap guard). A schedule with

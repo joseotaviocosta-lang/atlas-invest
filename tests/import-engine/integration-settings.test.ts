@@ -81,6 +81,39 @@ describe('Phase 5P-C: integration status precedence', () => {
     ).toBe('NEEDS_REAUTH');
   });
 
+  it('AWAITING_AUTHORIZATION surfaces its own status above execution state', () => {
+    expect(resolveIntegrationStatus({ ...base, connection: 'AWAITING_AUTHORIZATION' })).toBe(
+      'AWAITING_AUTHORIZATION',
+    );
+    expect(
+      resolveIntegrationStatus({
+        ...base,
+        connection: 'AWAITING_AUTHORIZATION',
+        hasSyncingJob: true,
+        lastRunOutcome: 'FAILED',
+        pendingReviewCount: 2,
+      }),
+    ).toBe('AWAITING_AUTHORIZATION');
+  });
+
+  it('NOT_CONNECTED outranks quiet schedules but not run outcomes', () => {
+    expect(resolveIntegrationStatus({ ...base, connection: 'NOT_CONNECTED' })).toBe(
+      'NOT_CONNECTED',
+    );
+    expect(
+      resolveIntegrationStatus({ ...base, connection: 'NOT_CONNECTED', scheduleEnabled: false }),
+    ).toBe('NOT_CONNECTED');
+    expect(
+      resolveIntegrationStatus({
+        ...base,
+        connection: 'NOT_CONNECTED',
+        lastRunOutcome: 'FAILED',
+      }),
+    ).toBe('SYNC_ERROR');
+    expect(
+      resolveIntegrationStatus({ ...base, connection: 'NOT_CONNECTED', pendingReviewCount: 1 }),
+    ).toBe('PENDING_REVIEW');
+  });
   it('SYNCING wins over a failed or partial last run', () => {
     expect(resolveIntegrationStatus({ ...base, hasSyncingJob: true })).toBe('SYNCING');
     expect(
@@ -120,10 +153,11 @@ describe('Phase 5P-C: integration status precedence', () => {
 
   it('exposes closed connection and status vocabularies', () => {
     expect([...INTEGRATION_CONNECTION_STATES].sort()).toEqual(
-      ['AUTHORIZED', 'NEEDS_REAUTH', 'NOT_CONNECTED'].sort(),
+      ['AUTHORIZED', 'AWAITING_AUTHORIZATION', 'NEEDS_REAUTH', 'NOT_CONNECTED'].sort(),
     );
     expect([...INTEGRATION_STATUSES].sort()).toEqual(
       [
+        'AWAITING_AUTHORIZATION',
         'NEEDS_REAUTH',
         'NOT_CONNECTED',
         'PENDING_REVIEW',

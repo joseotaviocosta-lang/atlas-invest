@@ -11,6 +11,7 @@ import {
   createAuthenticatedUserSession,
   seedBaseFixtures,
 } from './setup';
+import { IntegrationConnectionService } from '../../apps/api/src/application/imports';
 
 /**
  * Phase 5P-C — integration settings read model end-to-end (real DB, real API).
@@ -100,7 +101,16 @@ describe('API Integration: integration settings (Phase 5P-C)', () => {
     authToken = session.token;
   });
 
-  it('reads an empty settings model: available in test env, ready, nothing scheduled', async () => {
+  async function authorizeConnection(): Promise<void> {
+    // Phase 5P-D: settings read the persisted connection; schedules-only
+    // assertions need an explicit AUTHORIZED connection first.
+    const connections = app.get(IntegrationConnectionService);
+    const now = new Date('2026-06-15T12:00:00Z');
+    await connections.beginAuthorization({ portfolioId, userId, source: 'B3' }, now);
+    await connections.completeAuthorization({ portfolioId, userId, source: 'B3' }, now);
+  }
+
+  it('reads an empty settings model: available in test env, not connected, nothing scheduled', async () => {
     const res = await request(app.getHttpServer())
       .get(settingsUrl())
       .set('Authorization', `Bearer ${authToken}`);
@@ -113,7 +123,7 @@ describe('API Integration: integration settings (Phase 5P-C)', () => {
       provider: 'SIMULATED',
       environment: 'SIMULATED',
       availability: 'AVAILABLE',
-      status: 'READY',
+      status: 'NOT_CONNECTED',
       schedule: null,
       lastRun: null,
       lastSuccessfulRun: null,
@@ -122,7 +132,24 @@ describe('API Integration: integration settings (Phase 5P-C)', () => {
       canDisable: false,
       canEditSchedule: false,
     });
-    expect(b3.connection).toEqual({ state: 'AUTHORIZED' });
+    expect(b3.connection).toEqual({
+      state: 'NOT_CONNECTED',
+      authorizedAt: null,
+      lastCheckedAt: null,
+      lifecycle: null,
+    });
+  });
+
+  it('shows READY once the simulated connection is authorized', async () => {
+    await authorizeConnection();
+    const res = await request(app.getHttpServer())
+      .get(settingsUrl())
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(res.status).toBe(200);
+    const [b3] = res.body.data.sources;
+    expect(b3.status).toBe('READY');
+    expect(b3.connection.state).toBe('AUTHORIZED');
+    expect(b3.connection.authorizedAt).not.toBeNull();
   });
 
   it('rejects unknown source schedules and cross-user portfolios', async () => {
@@ -160,6 +187,7 @@ describe('API Integration: integration settings (Phase 5P-C)', () => {
       .send({ source: 'B3', cadence: 'DAILY', hourLocal: 8, minuteLocal: 0 });
     expect(created.status).toBe(201);
     expect(created.body.data.enabled).toBe(false);
+    await authorizeConnection();
 
     const paused = await request(app.getHttpServer())
       .get(settingsUrl())
@@ -224,6 +252,7 @@ describe('API Integration: integration settings (Phase 5P-C)', () => {
       .set('Authorization', `Bearer ${authToken}`)
       .send({ source: 'B3', cadence: 'MANUAL_ONLY', enabled: true });
     expect(created.status).toBe(201);
+    await authorizeConnection();
     const res = await request(app.getHttpServer())
       .get(settingsUrl())
       .set('Authorization', `Bearer ${authToken}`);
@@ -314,6 +343,7 @@ describe('API Integration: integration settings (Phase 5P-C)', () => {
   });
 
   it('confirming a B3 run clears pending and keeps last run visible', async () => {
+    await authorizeConnection();
     const { IntegrationRunService: RunService } =
       await import('../../apps/api/src/application/imports/integration-run.service');
     const runService = app.get(RunService);
@@ -372,6 +402,7 @@ describe('API Integration: integration settings (Phase 5P-C)', () => {
       .set('Authorization', `Bearer ${authToken}`)
       .send({ source: 'B3', cadence: 'WEEKDAYS', hourLocal: 9, minuteLocal: 30 });
     expect(created.status).toBe(201);
+    await authorizeConnection();
     const scheduleId = created.body.data.id as string;
 
     const updated = await request(app.getHttpServer())
@@ -413,6 +444,7 @@ describe('API Integration: integration settings (Phase 5P-C)', () => {
       .send({ source: 'B3', cadence: 'DAILY', hourLocal: 8, minuteLocal: 0, enabled: true });
     expect(created.status).toBe(201);
     const scheduleId = created.body.data.id as string;
+    await authorizeConnection();
 
     const disabled = await request(app.getHttpServer())
       .patch(`${schedulesUrl()}/${scheduleId}`)

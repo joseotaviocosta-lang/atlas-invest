@@ -27,14 +27,15 @@ describe('Phase 5P-C: integration settings UX', () => {
       'PREPARING',
       'UNAVAILABLE',
       'NEEDS_REAUTH',
+      'AWAITING_AUTHORIZATION',
       'SYNCING',
       'SYNC_ERROR',
       'SYNC_PARTIAL',
       'PENDING_REVIEW',
+      'NOT_CONNECTED',
       'SCHEDULED_ACTIVE',
       'SCHEDULED_PAUSED',
       'READY',
-      'NOT_CONNECTED',
     ];
     for (const status of statuses) {
       const presentation = describeIntegrationStatus(status);

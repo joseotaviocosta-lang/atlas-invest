@@ -226,6 +226,42 @@ export class IntegrationJobRepository implements IIntegrationJobRepository {
     }
   }
 
+  /**
+   * Phase 5P-D: cancels a claimed job without executing it. Used when the
+   * worker wins the claim but the connection is no longer eligible
+   * (revoked/disconnected between enqueue and claim). No run opens, no
+   * ledger write, no failure recorded — CANCELLED is terminal and
+   * self-explanatory in history. Same claim fencing as completions.
+   */
+  async markCancelled(input: {
+    id: string;
+    portfolioId: string;
+    attempt: number;
+  }): Promise<IntegrationJobRow> {
+    await this.requireClaim(input.id, input.portfolioId, input.attempt);
+    try {
+      const result = await this.prisma.integrationJob.updateMany({
+        where: {
+          id: input.id,
+          portfolioId: input.portfolioId,
+          status: 'RUNNING',
+          attempt: input.attempt,
+        },
+        data: { status: 'CANCELLED', finishedAt: new Date() },
+      });
+      if (result.count === 0) {
+        throw new PersistenceError(
+          `Integration job ${input.id} is no longer running and rejects cancellation`,
+        );
+      }
+      const row = await this.prisma.integrationJob.findFirstOrThrow({ where: { id: input.id } });
+      return this.map(row);
+    } catch (error: unknown) {
+      if (error instanceof PersistenceError) throw error;
+      throw new PersistenceError(`Failed to cancel integration job ${input.id}`);
+    }
+  }
+
   async findById(id: string, portfolioId: string): Promise<IntegrationJobRow | null> {
     try {
       const row = await this.prisma.integrationJob.findFirst({ where: { id, portfolioId } });
@@ -256,7 +292,9 @@ export class IntegrationJobRepository implements IIntegrationJobRepository {
       });
       return count > 0;
     } catch {
-      throw new PersistenceError(`Failed to check running integration job for schedule ${scheduleId}`);
+      throw new PersistenceError(
+        `Failed to check running integration job for schedule ${scheduleId}`,
+      );
     }
   }
 

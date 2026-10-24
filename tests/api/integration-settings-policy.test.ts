@@ -16,6 +16,8 @@ describe('Phase 5P-C: settings policy', () => {
       schedule?: Record<string, unknown> | null;
       runs?: Array<Record<string, unknown>>;
       hasRunning?: boolean;
+      /** Persisted connection status; null = no connection row. Defaults to AUTHORIZED. */
+      connection?: string | null;
     } = {},
   ) {
     const schedule =
@@ -42,14 +44,36 @@ describe('Phase 5P-C: settings policy', () => {
     };
     const jobs = { hasRunningJob: vi.fn(async () => overrides.hasRunning ?? false) };
     const runs = { listRecentByPortfolioIds: vi.fn(async () => overrides.runs ?? []) };
+    const persistedStatus =
+      overrides.connection === undefined ? 'AUTHORIZED' : overrides.connection;
+    const connections = {
+      findByPortfolioAndSource: vi.fn(async () =>
+        persistedStatus === null
+          ? null
+          : {
+              id: 'conn-1',
+              portfolioId: 'p1',
+              source: 'B3',
+              provider: 'SIMULATED',
+              environment: 'SIMULATED',
+              status: persistedStatus,
+              authorizedAt: new Date('2026-06-15T12:00:00Z'),
+              revokedAt: null,
+              lastCheckedAt: new Date('2026-06-15T12:00:00Z'),
+              createdAt: new Date('2026-06-15T12:00:00Z'),
+              updatedAt: new Date('2026-06-16T11:00:00Z'),
+            },
+      ),
+    };
     const svc = new IntegrationSettingsService(
       portfolios as never,
       schedules as never,
       jobs as never,
       runs as never,
+      connections as never,
       policy,
     );
-    return { svc, schedules, jobs, runs };
+    return { svc, schedules, jobs, runs, connections };
   }
 
   const run = (overrides: Record<string, unknown> = {}) => ({
@@ -164,5 +188,25 @@ describe('Phase 5P-C: settings policy', () => {
     const model = await svc.getSettings('u1', 'p1');
     expect(model.sources[0].pendingReviewCount).toBe(1);
     expect(model.sources[0].status).toBe('PENDING_REVIEW');
+  });
+
+  it('reads the persisted connection instead of assuming authorization', async () => {
+    const { svc } = service({ allowSimulatedSchedules: true }, { connection: null });
+    const model = await svc.getSettings('u1', 'p1');
+    expect(model.sources[0].connection.state).toBe('NOT_CONNECTED');
+    expect(model.sources[0].status).toBe('NOT_CONNECTED');
+
+    const { svc: revoked } = service({ allowSimulatedSchedules: true }, { connection: 'REVOKED' });
+    const revokedModel = await revoked.getSettings('u1', 'p1');
+    expect(revokedModel.sources[0].connection.state).toBe('NEEDS_REAUTH');
+    expect(revokedModel.sources[0].status).toBe('NEEDS_REAUTH');
+
+    const { svc: awaiting } = service(
+      { allowSimulatedSchedules: true },
+      { connection: 'AWAITING_AUTHORIZATION' },
+    );
+    const awaitingModel = await awaiting.getSettings('u1', 'p1');
+    expect(awaitingModel.sources[0].connection.state).toBe('AWAITING_AUTHORIZATION');
+    expect(awaitingModel.sources[0].status).toBe('AWAITING_AUTHORIZATION');
   });
 });

@@ -16,4 +16,5 @@ export * from './job';
 export * from './review-inbox';
 export * from './integration-availability';
 export * from './integration-status';
+export * from './integration-connection';
 export { IMPORT_ENGINE_VERSION as VERSION } from './version';

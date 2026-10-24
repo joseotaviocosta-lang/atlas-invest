@@ -7,6 +7,7 @@ export * from './transaction.repository';
 export * from './integration-run.repository';
 export * from './integration-schedule.repository';
 export * from './integration-job.repository';
+export * from './integration-connection.repository';
 export * from './user.repository';
 export * from './session.repository';
 export * from './password-reset-token.repository';

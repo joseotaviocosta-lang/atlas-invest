@@ -10,9 +10,11 @@ function readSource(relativePath: string): string {
 
 /**
  * Phase 5P-C — integration settings architecture boundaries.
+ * Phase 5P-D — the settings surface keeps its read model, plus exactly
+ * four POST connection actions (strict empty bodies, server-owned fields).
  *
  * Settings are a derived read model over existing rows: pure availability
- * and status in the engine, a read-only aggregating service, no new
+ * and status in the engine, an aggregating service, no new
  * tables, no notification transport, no B3 transport in the presentation
  * path, and no scheduler internals leaking into UI.
  */
@@ -76,13 +78,18 @@ describe('Phase 5P-C: integration settings architecture boundaries', () => {
     expect(schema).not.toMatch(/model\s+(IntegrationSetting|IntegrationAvailability)\b/);
   });
 
-  it('settings API stays ownership-guarded and read-only', () => {
+  it('settings API stays ownership-guarded; writes are connection actions only', () => {
     const controller = readSource(
       'apps/api/src/modules/integrations/integration-settings.controller.ts',
     );
     expect(controller).toContain('CurrentPrincipal');
     expect(controller).toContain('UUIDParamPipe');
-    expect(controller).not.toMatch(/@Post|@Patch|@Delete|@Put/);
+    // Phase 5P-D adds exactly four POST connection actions (no PATCH/PUT/DELETE).
+    // Every one validates against the strict empty DTO: no client-controlled fields.
+    const posts = controller.match(/@Post\(/g);
+    expect(posts).toHaveLength(4);
+    expect(controller).not.toMatch(/@Patch|@Delete|@Put/);
+    expect(controller).toMatch(/IntegrationConnectionActionBodySchema/g);
     const service = readSource('apps/api/src/application/imports/integration-settings.service.ts');
     expect(service).toContain('EntityNotFoundError');
     expect(service).not.toMatch(/\.create\(|\.update\(|\.upsert\(|\.delete\(/);

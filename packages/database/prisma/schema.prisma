@@ -113,6 +113,7 @@ model Portfolio {
   transactions           Transaction[]
   integrationRuns        IntegrationRun[]
   integrationSchedules   IntegrationSchedule[]
+  integrationConnections IntegrationConnection[]
   aiConversations        AiConversation[]
   annualOpeningPositions AnnualOpeningPositionInputRecord[]
 
@@ -331,6 +332,37 @@ model IntegrationJob {
   @@index([runId])
   @@index([portfolioId])
   @@map("integration_jobs")
+}
+
+/**
+ * Phase 5P-D — persistent integration connection lifecycle: whether a
+ * portfolio is connected to a source. One row per (portfolio, source):
+ * connection state plus authorization timestamps. Schedules keep
+ * representing user preference (independent); runs keep being execution
+ * history. Environment is CHECK-locked to SIMULATED like schedules:
+ * CERT/PROD requires a deliberate future migration. Status is CHECK-locked
+ * to the lifecycle vocabulary: execution states (SYNCING/SYNCED/PARTIAL)
+ * never live here. No tokens, secrets, certificates, CPF or raw consent
+ * payload columns — by design, guarded by tests.
+ */
+model IntegrationConnection {
+  id            String    @id @default(uuid()) @db.Uuid
+  portfolioId   String    @map("portfolio_id") @db.Uuid
+  source        String    @db.VarChar(50)
+  provider      String    @default("SIMULATED") @db.VarChar(100)
+  environment   String    @default("SIMULATED") @db.VarChar(50)
+  status        String    @db.VarChar(50)
+  authorizedAt  DateTime? @map("authorized_at") @db.Timestamptz(6)
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6)
+  lastCheckedAt DateTime? @map("last_checked_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@unique([portfolioId, source])
+  @@index([portfolioId])
+  @@map("integration_connections")
 }
 
 model AiConversation {

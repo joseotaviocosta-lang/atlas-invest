@@ -273,11 +273,11 @@ describe('Phase 4L.1V-C3-R2: Final Security Runtime & Production-Smoke Closure',
   // =========================================================================
   describe('Section 16 & 17: Production-Like End-to-End Smoke Sequence (21 Steps) & CSV Validation', () => {
     it('executes full 21-step smoke sequence against isolated database without errors', async () => {
-      // 1. apply migrations: verified (33 migrations)
+      // 1. apply migrations: verified (35 migrations, incl. 5P-D integration_connections)
       const migrations = await prisma.$queryRawUnsafe<Array<unknown>>(
         'SELECT 1 FROM _prisma_migrations',
       );
-      expect(migrations.length).toBe(34);
+      expect(migrations.length).toBe(35);
 
       // 2. bootstrap owner: create test owner
       const ownerEmail = `smoke-owner-${Date.now()}@atlas.local`;

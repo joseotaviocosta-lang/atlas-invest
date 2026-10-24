@@ -2,29 +2,34 @@ import type { IntegrationAvailability } from './integration-availability';
 
 /**
  * Phase 5P-C — integration status precedence (pure, zero I/O).
+ * Phase 5P-D — connection states are now read from the persisted
+ * IntegrationConnection row (null = never connected). REVOKED and
+ * REQUIRES_REAUTHORIZATION both surface as NEEDS_REAUTH; only
+ * AWAITING_AUTHORIZATION has its own status.
  *
  * A single user-facing status derived deterministically from availability,
  * connection, schedule intent and execution outcome. Highest match wins:
  *
  * 1. PREPARING — product not launched here; trumps everything.
  * 2. UNAVAILABLE — capability explicitly off.
- * 3. NEEDS_REAUTH — authorization expired or revoked. Unreachable while
- *    all executors are simulated-and-implicitly-authorized; asserted so
- *    no future caller can fall through silently.
- * 4. SYNCING — a job for this schedule is executing right now.
- * 5. SYNC_ERROR / SYNC_PARTIAL — the newest run ended failed / partial.
- * 6. PENDING_REVIEW — actionable items waiting on the human.
- * 7. SCHEDULED_ACTIVE — enabled, quiet, nothing demanding attention.
- * 8. SCHEDULED_PAUSED — a schedule exists but is disabled.
- * 9. READY — authorized, no schedule yet: user can create one.
- * 10. NOT_CONNECTED — a source that requires an explicit connection the
- *     user has not established. Unreachable while SIMULATED is the only
- *     environment; asserted for the same reason as NEEDS_REAUTH.
+ * 3. NEEDS_REAUTH — authorization expired or revoked (persisted
+ *    REQUIRES_REAUTHORIZATION or REVOKED).
+ * 4. AWAITING_AUTHORIZATION — a connection flow is open but unfinished.
+ * 5. SYNCING — a job for this schedule is executing right now.
+ * 6. SYNC_ERROR / SYNC_PARTIAL — the newest run ended failed / partial.
+ * 7. PENDING_REVIEW — actionable items waiting on the human.
+ * 8. NOT_CONNECTED — no connection row exists (or explicit disconnect);
+ *    placed above schedule states so an enabled schedule never claims
+ *    automatic collection while nothing can execute.
+ * 9. SCHEDULED_ACTIVE — enabled, quiet, nothing demanding attention.
+ * 10. SCHEDULED_PAUSED — a schedule exists but is disabled.
+ * 11. READY — authorized, no schedule yet: user can create one.
  */
 export const INTEGRATION_CONNECTION_STATES = [
   'AUTHORIZED',
   'NOT_CONNECTED',
   'NEEDS_REAUTH',
+  'AWAITING_AUTHORIZATION',
 ] as const;
 export type IntegrationConnectionState = (typeof INTEGRATION_CONNECTION_STATES)[number];
 
@@ -32,14 +37,15 @@ export const INTEGRATION_STATUSES = [
   'PREPARING',
   'UNAVAILABLE',
   'NEEDS_REAUTH',
+  'AWAITING_AUTHORIZATION',
   'SYNCING',
   'SYNC_ERROR',
   'SYNC_PARTIAL',
   'PENDING_REVIEW',
+  'NOT_CONNECTED',
   'SCHEDULED_ACTIVE',
   'SCHEDULED_PAUSED',
   'READY',
-  'NOT_CONNECTED',
 ] as const;
 export type IntegrationStatus = (typeof INTEGRATION_STATUSES)[number];
 
@@ -75,6 +81,9 @@ export function resolveIntegrationStatus(input: IntegrationStatusInput): Integra
   if (input.connection === 'NEEDS_REAUTH') {
     return 'NEEDS_REAUTH';
   }
+  if (input.connection === 'AWAITING_AUTHORIZATION') {
+    return 'AWAITING_AUTHORIZATION';
+  }
   if (input.hasSyncingJob) {
     return 'SYNCING';
   }
@@ -86,6 +95,9 @@ export function resolveIntegrationStatus(input: IntegrationStatusInput): Integra
   }
   if (input.pendingReviewCount > 0) {
     return 'PENDING_REVIEW';
+  }
+  if (input.connection === 'NOT_CONNECTED') {
+    return 'NOT_CONNECTED';
   }
   if (input.hasSchedule) {
     return input.scheduleEnabled ? 'SCHEDULED_ACTIVE' : 'SCHEDULED_PAUSED';

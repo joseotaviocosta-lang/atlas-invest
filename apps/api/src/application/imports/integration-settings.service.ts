@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { EntityNotFoundError } from '@atlas/database';
 import type {
+  IIntegrationConnectionRepository,
   IIntegrationJobRepository,
   IIntegrationRunRepository,
   IIntegrationScheduleRepository,
@@ -14,10 +15,12 @@ import {
   resolveIntegrationStatus,
   type IntegrationAvailability,
   type IntegrationConnectionState,
+  type IntegrationConnectionStatus,
   type IntegrationLastRunOutcome,
   type IntegrationStatus,
 } from '@atlas/import-engine';
 import {
+  INTEGRATION_CONNECTION_REPOSITORY,
   INTEGRATION_JOB_REPOSITORY,
   INTEGRATION_RUN_REPOSITORY,
   INTEGRATION_SCHEDULE_REPOSITORY,
@@ -34,7 +37,13 @@ export interface IntegrationSourceSettings {
   provider: string;
   environment: string;
   availability: IntegrationAvailability;
-  connection: { state: IntegrationConnectionState };
+  connection: {
+    state: IntegrationConnectionState;
+    authorizedAt: string | null;
+    lastCheckedAt: string | null;
+    /** Raw persisted lifecycle (REVOKED vs REQUIRES_REAUTHORIZATION need distinct UX copy). */
+    lifecycle: IntegrationConnectionStatus | null;
+  };
   canEnable: boolean;
   canDisable: boolean;
   canEditSchedule: boolean;
@@ -71,6 +80,8 @@ export class IntegrationSettingsService {
     private readonly jobs: IIntegrationJobRepository,
     @Inject(INTEGRATION_RUN_REPOSITORY)
     private readonly runs: IIntegrationRunRepository,
+    @Inject(INTEGRATION_CONNECTION_REPOSITORY)
+    private readonly connections: IIntegrationConnectionRepository,
     @Optional()
     @Inject(INTEGRATION_SCHEDULING_POLICY)
     private readonly policy?: IntegrationSchedulingPolicy | null,
@@ -106,6 +117,30 @@ export class IntegrationSettingsService {
     return null;
   }
 
+  /**
+   * Phase 5P-D — persisted connection mapped onto the 5P-C presentation
+   * vocabulary. A missing row is NOT_CONNECTED (nothing was ever
+   * connected — no implicit authorization). Both REVOKED and
+   * REQUIRES_REAUTHORIZATION surface as NEEDS_REAUTH; only
+   * AWAITING_AUTHORIZATION keeps its own status.
+   */
+  private toConnectionState(status: string | null): {
+    state: IntegrationConnectionState;
+    persisted: IntegrationConnectionStatus | null;
+  } {
+    if (status === 'AUTHORIZED') return { state: 'AUTHORIZED', persisted: 'AUTHORIZED' };
+    if (status === 'AWAITING_AUTHORIZATION') {
+      return { state: 'AWAITING_AUTHORIZATION', persisted: 'AWAITING_AUTHORIZATION' };
+    }
+    if (status === 'REQUIRES_REAUTHORIZATION' || status === 'REVOKED') {
+      return {
+        state: 'NEEDS_REAUTH',
+        persisted: status as IntegrationConnectionStatus,
+      };
+    }
+    return { state: 'NOT_CONNECTED', persisted: null };
+  }
+
   async getSettings(userId: string, portfolioId: string): Promise<IntegrationSettingsReadModel> {
     const portfolio = await this.portfolios.findByIdAndUserId(portfolioId, userId);
     if (!portfolio) {
@@ -126,11 +161,11 @@ export class IntegrationSettingsService {
         source,
         allowSimulated: this.allowSimulated(),
       });
-      // Simulated executors are implicitly authorized (the executor always
-      // runs with an authorized simulated source). Real sources require an
-      // explicit connection, owned by the future 5P-D connection layer.
-      const connection: IntegrationConnectionState =
-        source === 'B3' ? 'AUTHORIZED' : 'NOT_CONNECTED';
+      // Phase 5P-D: connection comes from the persisted row. No implicit
+      // authorization — a missing row is NOT_CONNECTED even for SIMULATED.
+      const connectionRow = await this.connections.findByPortfolioAndSource(portfolioId, source);
+      const mapped = this.toConnectionState(connectionRow?.status ?? null);
+      const connection: IntegrationConnectionState = mapped.state;
 
       const sourceRuns = recentRuns
         .filter((row) => row.source === source)
@@ -164,7 +199,16 @@ export class IntegrationSettingsService {
         provider: IntegrationScheduleService.SCHEDULED_PROVIDER,
         environment: IntegrationScheduleService.SCHEDULED_ENVIRONMENT,
         availability,
-        connection: { state: connection },
+        connection: {
+          state: connection,
+          authorizedAt: connectionRow?.authorizedAt
+            ? connectionRow.authorizedAt.toISOString()
+            : null,
+          lastCheckedAt: connectionRow?.lastCheckedAt
+            ? connectionRow.lastCheckedAt.toISOString()
+            : null,
+          lifecycle: mapped.persisted,
+        },
         canEnable: controlsEnabled && schedule !== null && !schedule.enabled,
         canDisable: schedule !== null && schedule.enabled,
         canEditSchedule: controlsEnabled && schedule !== null,
