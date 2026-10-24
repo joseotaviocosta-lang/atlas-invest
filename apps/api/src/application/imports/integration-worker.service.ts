@@ -50,19 +50,13 @@ export class IntegrationWorkerService {
     // Phase 5P-D: the connection may have been revoked between enqueue and
     // claim. Cancel without opening a run: no ledger write, no fake
     // failure, schedule preference untouched.
-    if (!(await this.connections.isEligible(job.portfolioId, job.source))) {
-      const cancelled = await this.jobs.markCancelled({
-        id: job.id,
-        portfolioId: job.portfolioId,
-        attempt,
-      });
-      return {
-        claimed: true,
-        jobId: job.id,
-        scheduleId: job.scheduleId,
-        jobStatus: cancelled.status,
-      };
-    }
+    const ineligible = await this.cancelIfIneligible(job.portfolioId, job.source, {
+      id: job.id,
+      portfolioId: job.portfolioId,
+      attempt,
+      scheduleId: job.scheduleId,
+    });
+    if (ineligible) return ineligible;
     try {
       const schedule = await this.schedules.findById(job.scheduleId, job.portfolioId);
       if (!schedule) {
@@ -83,6 +77,16 @@ export class IntegrationWorkerService {
         };
       }
       const executor = this.registry.resolve(schedule.source, schedule.provider);
+      // Phase 5P-E: revalidate immediately before the source call. The
+      // connection may have been revoked after the post-claim check; the
+      // source must never be consulted without a live authorization.
+      const revokedBeforeExecute = await this.cancelIfIneligible(job.portfolioId, job.source, {
+        id: job.id,
+        portfolioId: job.portfolioId,
+        attempt,
+        scheduleId: job.scheduleId,
+      });
+      if (revokedBeforeExecute) return revokedBeforeExecute;
       const outcome = await executor.execute({
         jobId: job.id,
         attempt,
@@ -138,5 +142,31 @@ export class IntegrationWorkerService {
       });
       return { claimed: true, jobId: job.id, scheduleId: job.scheduleId, jobStatus: failed.status };
     }
+  }
+
+  /**
+   * Phase 5P-D/5P-E: cancels a claimed job when the connection is not
+   * eligible. No run opens, no ledger write, no failure recorded.
+   * Returns null when eligible (caller continues).
+   */
+  private async cancelIfIneligible(
+    portfolioId: string,
+    source: string,
+    claim: { id: string; portfolioId: string; attempt: number; scheduleId: string },
+  ): Promise<WorkerExecutionResult | null> {
+    if (await this.connections.isEligible(portfolioId, source)) {
+      return null;
+    }
+    const cancelled = await this.jobs.markCancelled({
+      id: claim.id,
+      portfolioId: claim.portfolioId,
+      attempt: claim.attempt,
+    });
+    return {
+      claimed: true,
+      jobId: claim.id,
+      scheduleId: claim.scheduleId,
+      jobStatus: cancelled.status,
+    };
   }
 }

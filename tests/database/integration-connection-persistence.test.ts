@@ -126,6 +126,42 @@ describe('Phase 5P-D: integration connection persistence', () => {
     expect(await jobs.claimDue(new Date('2026-06-16T12:00:00Z'), 60 * 60 * 1000)).toBeNull();
   });
 
+  it('portfolio deletion cascades to connections, schedules, jobs, runs and links', async () => {
+    const { IntegrationRunRepository } = await import('@atlas/database');
+    const runs = new IntegrationRunRepository(prisma);
+    await connections.ensure({ portfolioId: PORTFOLIO, source: 'B3' });
+    const schedule = await prisma.integrationSchedule.create({
+      data: {
+        portfolioId: PORTFOLIO,
+        source: 'B3',
+        cadence: 'MANUAL_ONLY',
+        updatedAt: new Date(),
+      },
+    });
+    const ensured = await jobs.ensure({
+      scheduleId: schedule.id,
+      portfolioId: PORTFOLIO,
+      source: 'B3',
+      scheduledFor: new Date('2026-06-16T11:00:00Z'),
+    });
+    const run = await runs.create({ portfolioId: PORTFOLIO, source: 'B3' });
+    await runs.linkTransactions({
+      runId: run.id,
+      portfolioId: PORTFOLIO,
+      transactionIds: ['aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa'],
+    });
+    expect(ensured.created).toBe(true);
+
+    await prisma.portfolio.delete({ where: { id: PORTFOLIO } });
+    expect(await prisma.integrationConnection.count({ where: { portfolioId: PORTFOLIO } })).toBe(0);
+    expect(await prisma.integrationSchedule.count({ where: { portfolioId: PORTFOLIO } })).toBe(0);
+    expect(await prisma.integrationJob.count({ where: { portfolioId: PORTFOLIO } })).toBe(0);
+    expect(await prisma.integrationRun.count({ where: { portfolioId: PORTFOLIO } })).toBe(0);
+    expect(
+      await prisma.integrationRunTransaction.count({ where: { portfolioId: PORTFOLIO } }),
+    ).toBe(0);
+  });
+
   it('stores no tokens, secrets, certificates, CPF or payloads (schema guard)', async () => {
     const schema = fs.readFileSync(
       path.join(process.cwd(), 'packages/database/prisma/schema.prisma'),

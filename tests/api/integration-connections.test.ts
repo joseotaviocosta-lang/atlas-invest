@@ -495,4 +495,100 @@ describe('API Integration: integration connection lifecycle (Phase 5P-D)', () =>
       .send({});
     expect(JSON.stringify(check.body)).not.toMatch(/token|secret|private|cert|password|cpf/i);
   });
+
+  it('concurrent authorize/revoke races keep a single coherent row', async () => {
+    const connections = app.get(IntegrationConnectionService);
+    await connections.beginAuthorization({ portfolioId, userId, source: 'B3' });
+    await connections.completeAuthorization({ portfolioId, userId, source: 'B3' });
+
+    const outcomes = await Promise.allSettled([
+      connections.beginAuthorization({ portfolioId, userId, source: 'B3' }),
+      connections.revoke({ portfolioId, userId, source: 'B3' }),
+      connections.checkAuthorization({ portfolioId, userId, source: 'B3' }),
+      connections.revoke({ portfolioId, userId, source: 'B3' }),
+    ]);
+    for (const outcome of outcomes) {
+      expect(outcome.status).toBe('fulfilled');
+    }
+    const rows = await prisma.integrationConnection.findMany({ where: { portfolioId } });
+    expect(rows).toHaveLength(1);
+    expect([
+      'NOT_CONNECTED',
+      'AWAITING_AUTHORIZATION',
+      'AUTHORIZED',
+      'REQUIRES_REAUTHORIZATION',
+      'REVOKED',
+    ]).toContain(rows[0]!.status);
+    // Coherence: a revoked row always carries revokedAt; an authorized row never does.
+    if (rows[0]!.status === 'REVOKED') expect(rows[0]!.revokedAt).not.toBeNull();
+    if (rows[0]!.status === 'AUTHORIZED') expect(rows[0]!.revokedAt).toBeNull();
+  });
+
+  it('revoke preserves runs, schedule and ledger; review stays readable', async () => {
+    await authorizeConnection();
+    const created = await request(app.getHttpServer())
+      .post(schedulesUrl())
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ source: 'B3', cadence: 'DAILY', hourLocal: 8, minuteLocal: 0, enabled: true });
+    expect(created.status).toBe(201);
+
+    const scheduler = app.get(IntegrationSchedulerService);
+    const worker = app.get(IntegrationWorkerService);
+    const slot = new Date(created.body.data.nextRunAt as string);
+    await scheduler.tick(slot);
+    const outcome = await worker.executeNext(new Date(slot.getTime() + 60 * 1000));
+    expect(outcome.jobStatus).toBe('SUCCEEDED');
+    const runId = outcome.runId as string;
+    const ledgerBefore = await ledgerCount();
+
+    await request(app.getHttpServer())
+      .post(connectionsUrl('B3', '/revoke'))
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({});
+
+    // History, schedule and ledger untouched.
+    expect(await prisma.integrationRun.count({ where: { portfolioId } })).toBe(1);
+    expect(await prisma.integrationSchedule.count({ where: { portfolioId } })).toBe(1);
+    expect(await ledgerCount()).toBe(ledgerBefore);
+
+    // The already-previewed run stays reviewable: run detail returns the
+    // stored preview snapshot, no source re-fetch, no authorization gate.
+    const detail = await request(app.getHttpServer())
+      .get(`/api/v1/portfolios/${portfolioId}/imports/runs/${runId}`)
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.data).toMatchObject({ status: 'AWAITING_REVIEW', source: 'B3' });
+  });
+
+  it('failures record only static safe error copy (canary-free)', async () => {
+    await authorizeConnection();
+    // No accounts: the executor precondition fails with a static message.
+    await prisma.account.deleteMany({ where: { portfolioId } });
+    const created = await request(app.getHttpServer())
+      .post(schedulesUrl())
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ source: 'B3', cadence: 'DAILY', hourLocal: 8, minuteLocal: 0, enabled: true });
+    expect(created.status).toBe(201);
+    const scheduler = app.get(IntegrationSchedulerService);
+    const worker = app.get(IntegrationWorkerService);
+    const slot = new Date(created.body.data.nextRunAt as string);
+    await scheduler.tick(slot);
+    const outcome = await worker.executeNext(new Date(slot.getTime() + 60 * 1000));
+    // Bounded retry: back to PENDING, no run opened, no ledger write.
+    expect(outcome.jobStatus).toBe('PENDING');
+
+    const jobs = await prisma.integrationJob.findMany({ where: { portfolioId } });
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]!.errorCode).toBe('INTEGRATION.SCHEDULED_NO_ACCOUNT');
+    // Exact static copy: failure paths never interpolate dynamic content,
+    // so no secret can flow into persisted errors or API responses.
+    expect(jobs[0]!.errorMessage).toBe(
+      'Sincronização agendada exige ao menos uma conta na carteira',
+    );
+    expect(JSON.stringify(jobs[0])).not.toMatch(
+      /CLIENT_SECRET_CANARY|TOKEN_CANARY|CERT_PASSWORD_CANARY|CPF_CANARY|private_key|BEGIN CERTIFICATE/i,
+    );
+    expect(await prisma.integrationRun.count({ where: { portfolioId } })).toBe(0);
+    expect(await ledgerCount()).toBe(0);
+  });
 });
