@@ -88,9 +88,22 @@ describe('Phase 5Q-B (web): review drill-down', () => {
     expect(page).toContain('Histórico indisponível para este indicador');
   });
 
+  it('renders the strategy comparison table with an explicit no-history limitation', () => {
+    expect(page).toContain('TABLE_COMPARISON');
+    expect(page).toContain('Categoria');
+    expect(page).toContain('Desvio');
+    expect(page).toContain('Comparação com o snapshot atual');
+  });
+
   it('keeps copy advice-free on the detail surface', () => {
-    expect(page).not.toMatch(
-      /você deve (comprar|vender)|recomendamos|boa carteira|carteira ruim|vai subir|vai cair|garantid[oa]|saudável|tudo perfeito/i,
+    const section = fs.readFileSync(
+      path.join(process.cwd(), 'apps/web/src/components/portfolio/PortfolioReviewSection.tsx'),
+      'utf8',
     );
+    for (const content of [page, section]) {
+      expect(content).not.toMatch(
+        /você deve (comprar|vender)|recomendamos|rebalanceie|boa carteira|carteira ruim|vai subir|vai cair|garantid[oa]|saudável|tudo perfeito|recomendação de investimento|Gerar ordens|Comprar|Vender/i,
+      );
+    }
   });
 });

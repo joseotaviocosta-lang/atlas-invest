@@ -6,5 +6,6 @@ export * from './get-portfolio-positions.use-case';
 export * from './get-portfolio-history.use-case';
 export * from './get-portfolio-review.use-case';
 export * from './get-portfolio-review-signal-detail.use-case';
+export * from './get-portfolio-allocation-strategy.use-case';
 export * from './read-models';
 export * from './mappers/portfolio-read-model.mapper';

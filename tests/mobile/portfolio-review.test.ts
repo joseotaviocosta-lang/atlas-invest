@@ -54,6 +54,8 @@ describe('Phase 5Q-A (mobile): review contract compatibility', () => {
     expect(detail).toContain('Dados usados');
     expect(detail).toContain('Limitações');
     expect(detail).toContain('Histórico indisponível para este indicador');
+    expect(detail).toContain('TABLE_COMPARISON');
+    expect(detail).toContain('Comparação com o snapshot atual');
     for (const preset of ['1M', '3M', '6M', 'YTD', '1A', 'INCEPTION']) {
       expect(detail).toContain(`id: '${preset}'`);
     }
@@ -63,5 +65,16 @@ describe('Phase 5Q-A (mobile): review contract compatibility', () => {
     );
     expect(section).toContain('Ver detalhes');
     expect(section).toContain('/(app)/portfolio/review-detail?');
+  });
+
+  it('renders a read-only strategy card without dead CTAs or advice', () => {
+    const card = fs.readFileSync(
+      path.join(process.cwd(), 'apps/mobile/src/components/portfolio/MobileStrategySection.tsx'),
+      'utf8',
+    );
+    expect(card).toContain('Metas de alocação');
+    expect(card).toContain('versão web');
+    expect(card).not.toMatch(/Rebalancear|Comprar|Vender|Gerar ordens/i);
+    expect(card).not.toContain('onPress={() => {}}');
   });
 });

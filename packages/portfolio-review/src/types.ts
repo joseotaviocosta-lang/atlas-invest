@@ -37,6 +37,7 @@ export const REVIEW_SIGNAL_CODES = [
   'DATA_RECONCILIATION_DIVERGENCE',
   'INTEGRATION_PENDING_REVIEW',
   'ALLOCATION_SINGLE_ASSET_CONCENTRATION',
+  'STRATEGY_ALLOCATION_DEVIATION',
   'PERFORMANCE_BENCHMARK_GAP',
   'PERFORMANCE_BENCHMARK_UNAVAILABLE',
   'INCOME_RECEIVED',
@@ -209,4 +210,16 @@ export interface BuildReviewInput {
   state: ReviewStateInput;
   intelligence: ReviewIntelligenceInput;
   runs: ReviewRunsInput;
+  /**
+   * Declared strategy comparison (optional). Omitted/null when the user
+   * never declared targets. Only aggregated counts cross this boundary —
+   * never the full target table.
+   */
+  strategy?: {
+    hasStrategy: boolean;
+    categoriesOutsideTolerance: number;
+    worstDeviationBp: number | null;
+    worstCategory: string | null;
+    coverageBp: string | null;
+  } | null;
 }

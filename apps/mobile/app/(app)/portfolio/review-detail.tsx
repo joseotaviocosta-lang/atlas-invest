@@ -92,6 +92,17 @@ type DetailDto = {
         firstDivergenceAt: string | null;
         trend: string;
       }
+    | {
+        kind: 'TABLE_COMPARISON';
+        rows: Array<{
+          category: string;
+          targetBp: number | null;
+          currentBp: number | null;
+          deviationBp: number | null;
+          state: string;
+        }>;
+        trend: string;
+      }
     | { kind: 'UNAVAILABLE'; reason: string };
   limitations: string[];
   action: { kind: 'ROUTE' | 'NONE'; href?: string; label?: string };
@@ -110,6 +121,20 @@ function formatDatePtBr(iso: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   if (!match) return iso;
   return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
+function formatBp(value: number | null): string {
+  if (value === null || !Number.isSafeInteger(value)) return '—';
+  const negative = value < 0;
+  const abs = Math.abs(value);
+  return `${negative ? '-' : ''}${Math.floor(abs / 100)},${String(abs % 100).padStart(2, '0')}%`;
+}
+
+function formatDiff(value: number | null): string {
+  if (value === null || !Number.isSafeInteger(value)) return '—';
+  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
+  const abs = Math.abs(value);
+  return `${sign}${Math.floor(abs / 100)},${String(abs % 100).padStart(2, '0')} p.p.`;
 }
 
 /**
@@ -359,6 +384,19 @@ function HistoryBlock({ history }: { history: DetailDto['history'] }) {
             Divergência nesta janela desde {formatDatePtBr(history.firstDivergenceAt)}.
           </Text>
         ) : null}
+      </View>
+    );
+  }
+  if (history.kind === 'TABLE_COMPARISON') {
+    return (
+      <View>
+        {history.rows.map((row) => (
+          <Text key={row.category} style={styles.muted}>
+            {row.category}: meta {formatBp(row.targetBp)} · atual {formatBp(row.currentBp)} ·{' '}
+            {formatDiff(row.deviationBp)}
+          </Text>
+        ))}
+        <Text style={styles.muted}>Comparação com o snapshot atual. Sem histórico de metas.</Text>
       </View>
     );
   }

@@ -114,6 +114,7 @@ model Portfolio {
   integrationRuns        IntegrationRun[]
   integrationSchedules   IntegrationSchedule[]
   integrationConnections IntegrationConnection[]
+  allocationStrategyTargets PortfolioAllocationStrategyTarget[]
   aiConversations        AiConversation[]
   annualOpeningPositions AnnualOpeningPositionInputRecord[]
 
@@ -363,6 +364,29 @@ model IntegrationConnection {
   @@unique([portfolioId, source])
   @@index([portfolioId])
   @@map("integration_connections")
+}
+
+/**
+ * Phase 5Q-C — user-defined allocation strategy targets: one row per
+ * (portfolio, asset-class category). targetBp is integer basis points
+ * (4000 = 40%); the 100%-total invariant is enforced by the application
+ * service inside a single replace transaction (cross-row sums cannot be
+ * CHECK-constrained). Zero targets are normalized away on write
+ * (0 == absent, documented). Portfolio deletion cascades.
+ */
+model PortfolioAllocationStrategyTarget {
+  id          String   @id @default(uuid()) @db.Uuid
+  portfolioId String   @map("portfolio_id") @db.Uuid
+  category    String   @db.VarChar(50)
+  targetBp    Int      @map("target_bp")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@unique([portfolioId, category])
+  @@index([portfolioId])
+  @@map("portfolio_allocation_strategy_targets")
 }
 
 model AiConversation {

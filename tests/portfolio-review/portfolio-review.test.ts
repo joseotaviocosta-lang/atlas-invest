@@ -456,6 +456,110 @@ describe('Phase 5Q-A: review derivation', () => {
     expect(none.signals.map((item) => item.code)).not.toContain('INCOME_RECEIVED');
   });
 
+  it('strategy deviation fires only with a declared, breached strategy', () => {
+    const base = baseInput({
+      allocation: {
+        status: 'COMPLETE',
+        valuationCoveragePercent: '100',
+        currencies: {
+          BRL: {
+            byAsset: [
+              { assetId: 'a1', ticker: 'PETR4', allocationPercent: '100', currency: 'BRL' },
+            ],
+          },
+        },
+        translatedAllocation: null,
+      },
+    });
+    // No strategy → no signal.
+    expect(buildPortfolioReview(base).signals.map((item) => item.code)).not.toContain(
+      'STRATEGY_ALLOCATION_DEVIATION',
+    );
+
+    // On-target strategy → no signal.
+    const onTarget = buildPortfolioReview({
+      ...base,
+      strategy: {
+        hasStrategy: true,
+        categoriesOutsideTolerance: 0,
+        worstDeviationBp: null,
+        worstCategory: null,
+        coverageBp: '100',
+      },
+    });
+    expect(onTarget.signals.map((item) => item.code)).not.toContain(
+      'STRATEGY_ALLOCATION_DEVIATION',
+    );
+
+    // Breached strategy → single REVIEW signal with counts and worst gap.
+    const breached = buildPortfolioReview({
+      ...base,
+      strategy: {
+        hasStrategy: true,
+        categoriesOutsideTolerance: 2,
+        worstDeviationBp: -800,
+        worstCategory: 'CASH',
+        coverageBp: '100',
+      },
+    });
+    const signal = breached.signals.find((item) => item.code === 'STRATEGY_ALLOCATION_DEVIATION');
+    expect(signal).toBeDefined();
+    expect(signal!.severity).toBe('REVIEW');
+    expect(signal!.category).toBe('ALLOCATION');
+    expect(signal!.evidence).toMatchObject({
+      categoriesOutsideTarget: 2,
+      worstDeviationBp: -800,
+      worstCategory: 'CASH',
+    });
+    expect(signal!.action).toMatchObject({ kind: 'ROUTE', label: 'Ver estratégia' });
+    expect(signal!.id).toBe('STRATEGY_ALLOCATION_DEVIATION');
+  });
+
+  it('strategy signal ranks after concentration and before performance signals', () => {
+    const review = buildPortfolioReview(
+      baseInput({
+        allocation: {
+          status: 'COMPLETE',
+          valuationCoveragePercent: '100',
+          currencies: {
+            BRL: {
+              byAsset: [
+                { assetId: 'a1', ticker: 'PETR4', allocationPercent: '100', currency: 'BRL' },
+              ],
+            },
+          },
+          translatedAllocation: null,
+        },
+        strategy: {
+          hasStrategy: true,
+          categoriesOutsideTolerance: 1,
+          worstDeviationBp: 5000,
+          worstCategory: 'STOCK',
+          coverageBp: '100',
+        },
+        intelligence: {
+          period: { startDate: '2025-06-16', endDate: '2026-06-16' },
+          benchmarks: [
+            {
+              id: 'IBOV',
+              currency: 'BRL',
+              differencePercentagePoints: '-3.00',
+              status: 'AVAILABLE',
+            },
+          ],
+        },
+      }),
+    );
+    const ids = review.signals.map((item) => item.id);
+    expect(ids).toContain('STRATEGY_ALLOCATION_DEVIATION');
+    expect(ids.indexOf('STRATEGY_ALLOCATION_DEVIATION')).toBeGreaterThan(
+      ids.indexOf('ALLOCATION_SINGLE_ASSET_CONCENTRATION'),
+    );
+    expect(ids.indexOf('STRATEGY_ALLOCATION_DEVIATION')).toBeLessThan(
+      ids.indexOf('PERFORMANCE_BENCHMARK_GAP'),
+    );
+  });
+
   it('never emits tax signals and never fabricates tax intelligence', () => {
     const kitchenSink = baseInput({
       runs: {

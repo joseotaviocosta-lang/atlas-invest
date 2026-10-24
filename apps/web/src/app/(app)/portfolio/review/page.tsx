@@ -110,6 +110,17 @@ interface ReviewDetailDto {
         firstDivergenceAt: string | null;
         trend: string;
       }
+    | {
+        kind: 'TABLE_COMPARISON';
+        rows: Array<{
+          category: string;
+          targetBp: number | null;
+          currentBp: number | null;
+          deviationBp: number | null;
+          state: string;
+        }>;
+        trend: string;
+      }
     | { kind: 'UNAVAILABLE'; reason: string };
   limitations: string[];
   action: { kind: 'ROUTE' | 'NONE'; href?: string; label?: string };
@@ -120,6 +131,34 @@ function formatDatePtBr(iso: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   if (!match) return iso;
   return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  STOCK: 'Ações',
+  FII: 'Fundos Imobiliários (FIIs)',
+  ETF: 'ETFs',
+  BDR: 'BDRs',
+  FIXED_INCOME: 'Renda Fixa',
+  TREASURY: 'Tesouro Direto',
+  FUND: 'Fundos',
+  CASH: 'Caixa',
+  OTHER: 'Outros',
+};
+
+/** Integer basis points -> '25,00%'. Display only. */
+function formatPercentBp(value: number | null): string {
+  if (value === null || !Number.isSafeInteger(value)) return '—';
+  const negative = value < 0;
+  const abs = Math.abs(value);
+  return `${negative ? '-' : ''}${Math.floor(abs / 100)},${String(abs % 100).padStart(2, '0')}%`;
+}
+
+/** Integer basis-point deviation -> '+7,00 p.p.'. Display only. */
+function formatDeviationBp(value: number | null): string {
+  if (value === null || !Number.isSafeInteger(value)) return '—';
+  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
+  const abs = Math.abs(value);
+  return `${sign}${Math.floor(abs / 100)},${String(abs % 100).padStart(2, '0')} p.p.`;
 }
 
 function SeverityBadge({ code }: { code: string }) {
@@ -396,6 +435,47 @@ function ReviewDetailContent() {
                     {formatDatePtBr(detail.history.firstDivergenceAt)}
                   </p>
                 ) : null}
+              </div>
+            ) : detail.history.kind === 'TABLE_COMPARISON' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: `${spacing.sm}px`,
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    color: colors.textSecondary,
+                    padding: '6px 0',
+                    borderBottom: `1px solid ${colors.border}`,
+                  }}
+                >
+                  <span>Categoria</span>
+                  <span>Meta · Atual · Desvio</span>
+                </div>
+                {detail.history.rows.map((row) => (
+                  <div
+                    key={row.category}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: `${spacing.sm}px`,
+                      fontSize: '0.8125rem',
+                      padding: '6px 0',
+                      borderBottom: `1px solid ${colors.border}`,
+                    }}
+                  >
+                    <span>{CATEGORY_LABELS[row.category] ?? row.category}</span>
+                    <span>
+                      Meta {formatPercentBp(row.targetBp)} · Atual{' '}
+                      {row.currentBp === null ? '—' : formatPercentBp(row.currentBp)} ·{' '}
+                      {formatDeviationBp(row.deviationBp)}
+                    </span>
+                  </div>
+                ))}
+                <p style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                  Comparação com o snapshot atual. Sem histórico de metas.
+                </p>
               </div>
             ) : (
               <EmptyState

@@ -76,13 +76,38 @@ export interface RunsHistory {
   trend: ReviewTrend;
 }
 
+export interface ComparisonHistoryRow {
+  category: string;
+  targetBp: number;
+  currentBp: number | null;
+  deviationBp: number | null;
+  state: 'ABOVE_TARGET' | 'BELOW_TARGET' | 'ON_TARGET' | 'UNAVAILABLE';
+}
+
+/**
+ * Current-vs-target table for a declared strategy. Deliberately NOT a
+ * history: strategy targets have no versioning in v1, so projecting the
+ * current comparison backwards would invent history. The limitation list
+ * always carries SINGLE_SNAPSHOT_ONLY alongside this kind.
+ */
+export interface ComparisonHistory {
+  kind: 'TABLE_COMPARISON';
+  rows: ComparisonHistoryRow[];
+  trend: ReviewTrend;
+}
+
 export interface UnavailableHistory {
   kind: 'UNAVAILABLE';
   reason: 'NO_HISTORICAL_SOURCE' | 'BENCHMARK_UNAVAILABLE' | 'NO_RUNS_IN_WINDOW';
 }
 
 export type ReviewSignalHistory =
-  GapHistory | IncomeHistory | IncomeHistoriesGroup | RunsHistory | UnavailableHistory;
+  | GapHistory
+  | IncomeHistory
+  | IncomeHistoriesGroup
+  | RunsHistory
+  | ComparisonHistory
+  | UnavailableHistory;
 
 /**
  * Decimal string subtraction (a − b), same scale, no floats. Returns null

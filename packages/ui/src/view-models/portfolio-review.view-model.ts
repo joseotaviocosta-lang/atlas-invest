@@ -36,6 +36,11 @@ const SIGNAL_COPY: Record<string, ReviewSignalPresentation> = {
     tone: 'warning',
     description: 'Uma parcela relevante do patrimônio depende de um único ativo.',
   },
+  STRATEGY_ALLOCATION_DEVIATION: {
+    label: 'Fora das metas definidas',
+    tone: 'warning',
+    description: 'A alocação atual difere das metas que você definiu.',
+  },
   PERFORMANCE_BENCHMARK_GAP: {
     label: 'Abaixo do benchmark no período',
     tone: 'warning',
@@ -66,6 +71,8 @@ const REVIEW_RULE_COPY: Record<string, string> = {
     'Importações e sincronizações aguardando sua confirmação aparecem aqui. Nada é importado sem a sua revisão.',
   ALLOCATION_SINGLE_ASSET_CONCENTRATION:
     'O Atlas destaca posições individuais a partir de 25% do valor conhecido da carteira. Abaixo disso, a posição aparece apenas na alocação.',
+  STRATEGY_ALLOCATION_DEVIATION:
+    'Você definiu metas de alocação por classe de ativo. Este item aparece quando uma ou mais categorias estão fora da tolerância de 1 ponto percentual em relação à sua meta.',
   PERFORMANCE_BENCHMARK_GAP:
     'O Atlas compara a rentabilidade da carteira com o benchmark no período. Diferenças a partir de 2 pontos percentuais abaixo aparecem aqui.',
   PERFORMANCE_BENCHMARK_UNAVAILABLE:
@@ -182,6 +189,12 @@ export function buildReviewSignalTitle(signal: ReviewSignalInput): string {
       }
       return `Concentração elevada em ${ticker}`;
     }
+    case 'STRATEGY_ALLOCATION_DEVIATION': {
+      const count = toCount(evidence.categoriesOutsideTarget);
+      if (count === 1) return '1 categoria fora das metas definidas';
+      if (count > 1) return `${count} categorias fora das metas definidas`;
+      return 'Alocação fora das metas definidas';
+    }
     case 'PERFORMANCE_BENCHMARK_GAP': {
       const benchmark =
         typeof evidence.worstBenchmark === 'string' ? evidence.worstBenchmark : 'o benchmark';
@@ -274,6 +287,27 @@ export function buildReviewSignalLines(signal: ReviewSignalInput): ReviewSignalL
       }
       return lines;
     }
+    case 'STRATEGY_ALLOCATION_DEVIATION': {
+      const worstCategory =
+        typeof evidence.worstCategory === 'string' ? evidence.worstCategory : null;
+      const worst =
+        typeof evidence.worstDeviationBp === 'number' ? evidence.worstDeviationBp : null;
+      if (worstCategory !== null && worst !== null) {
+        lines.push({
+          text: `Maior desvio: ${formatDeviationBp(worst)} em ${worstCategory}.`,
+          tone: 'info',
+        });
+      }
+      const coverage =
+        typeof evidence.coveragePercent === 'string' ? evidence.coveragePercent : null;
+      if (coverage !== null && coverage !== '100') {
+        lines.push({
+          text: `Cálculo sobre ${formatPercentString(coverage)} com preço disponível.`,
+          tone: 'info',
+        });
+      }
+      return lines;
+    }
     case 'PERFORMANCE_BENCHMARK_GAP': {
       const periodStart = typeof evidence.periodStart === 'string' ? evidence.periodStart : null;
       const periodEnd = typeof evidence.periodEnd === 'string' ? evidence.periodEnd : null;
@@ -320,6 +354,16 @@ function formatPointsString(value: string): string {
   const negative = value.trim().startsWith('-');
   const abs = negative ? value.trim().slice(1) : value.trim();
   return `${negative ? '-' : '+'}${formatPercentString(abs).replace('%', '')} p.p.`;
+}
+
+/** -420 -> '-4,20 p.p.'. Display only; input is integer basis points. */
+function formatDeviationBp(value: number): string {
+  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
+  const abs = Math.abs(Math.trunc(value));
+  const intPart = Math.floor(abs / 100).toString();
+  const frac = String(abs % 100).padStart(2, '0');
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${sign}${grouped},${frac} p.p.`;
 }
 
 /** '2026-06-16' -> '16/06/2026'. Display only. */

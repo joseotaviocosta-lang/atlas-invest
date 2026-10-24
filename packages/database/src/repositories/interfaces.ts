@@ -2019,6 +2019,35 @@ export interface IIntegrationConnectionRepository {
   update(input: IntegrationConnectionUpdateInput): Promise<IntegrationConnectionRow>;
 }
 
+export interface PortfolioAllocationStrategyTargetRow {
+  id: string;
+  portfolioId: string;
+  category: string;
+  targetBp: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PortfolioAllocationStrategyTargetInput {
+  category: string;
+  targetBp: number;
+}
+
+/**
+ * Phase 5Q-C: user-defined allocation strategy targets. One row per
+ * (portfolio, category); replace() swaps the whole set atomically so a
+ * strategy can never persist half-written (total invariant holds or the
+ * whole write fails).
+ */
+export interface IAllocationStrategyRepository {
+  listByPortfolio(portfolioId: string): Promise<PortfolioAllocationStrategyTargetRow[]>;
+  replace(
+    portfolioId: string,
+    targets: readonly PortfolioAllocationStrategyTargetInput[],
+  ): Promise<PortfolioAllocationStrategyTargetRow[]>;
+  clear(portfolioId: string): Promise<void>;
+}
+
 export interface IntegrationJobRow {
   id: string;
   scheduleId: string;

@@ -77,6 +77,23 @@ export default function TodayPage() {
   });
   const reviewAttentionCount = reviewData?.data?.summary.attentionCount ?? 0;
 
+  // Allocation strategy compact summary (declared targets vs current).
+  const { data: strategyData } = useQuery<{
+    data: {
+      strategy: { targets: Array<{ category: string; targetBp: number }> } | null;
+      comparison: { outsideTolerance: string[] } | null;
+    };
+  }>({
+    queryKey: ['portfolio-allocation-strategy', firstPortfolioId],
+    queryFn: async () => {
+      if (!firstPortfolioId) return { data: { strategy: null, comparison: null } };
+      return apiClient.get(`/api/v1/portfolios/${firstPortfolioId}/allocation-strategy`);
+    },
+    enabled: Boolean(firstPortfolioId),
+    staleTime: 60 * 1000,
+  });
+  const strategyOutsideCount = strategyData?.data?.comparison?.outsideTolerance.length ?? 0;
+
   // 1. Ledger state query (Source of truth for cost basis & proventos)
   const { data: stateData } = useQuery<{
     data: {
@@ -298,6 +315,48 @@ export default function TodayPage() {
             aria-label="Ver revisão da carteira"
           >
             <Button size="sm">Ver revisão</Button>
+          </Link>
+        </div>
+      ) : null}
+
+      {/* Allocation strategy compact summary (only with declared strategy off-target) */}
+      {strategyOutsideCount > 0 && firstPortfolioId ? (
+        <div
+          style={{
+            padding: `${spacing.base}px ${spacing.xl}px`,
+            borderRadius: `${borderRadius.lg}px`,
+            backgroundColor: colors.surface,
+            border: `1px solid ${colors.border}`,
+            marginBottom: `${spacing.xl}px`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: `${spacing.base}px`,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontWeight: 600,
+                color: colors.textPrimary,
+                fontSize: '0.9375rem',
+                marginBottom: '2px',
+              }}
+            >
+              Metas de alocação
+            </div>
+            <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+              {strategyOutsideCount === 1
+                ? 'Sua carteira está fora das metas definidas em 1 categoria.'
+                : `Sua carteira está fora das metas definidas em ${strategyOutsideCount} categorias.`}
+            </div>
+          </div>
+          <Link
+            href={`/portfolio?tab=allocation&portfolioId=${firstPortfolioId}`}
+            aria-label="Ver estratégia de alocação"
+          >
+            <Button size="sm">Ver estratégia</Button>
           </Link>
         </div>
       ) : null}

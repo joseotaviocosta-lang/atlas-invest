@@ -44,6 +44,7 @@ import {
   PortfolioValuationSection,
   PortfolioAllocationSection,
   PortfolioReviewSection,
+  PortfolioStrategySection,
   PortfolioShell,
   valuationQueryKey,
   allocationQueryKey,
@@ -1513,10 +1514,15 @@ function PortfolioPageContent() {
 
           {/* TAB 5: ALOCAÇÃO */}
           {activeTab === 'allocation' && (
-            <PortfolioAllocationSection
-              portfolioId={activePortfolio?.id ?? null}
-              isHistorical={isHistorical}
-            />
+            <>
+              {!isHistorical ? (
+                <PortfolioStrategySection portfolioId={activePortfolio?.id ?? null} />
+              ) : null}
+              <PortfolioAllocationSection
+                portfolioId={activePortfolio?.id ?? null}
+                isHistorical={isHistorical}
+              />
+            </>
           )}
 
           {/* TAB 6: OPERAÇÕES */}

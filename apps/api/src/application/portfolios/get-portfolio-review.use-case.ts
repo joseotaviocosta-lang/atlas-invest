@@ -16,6 +16,7 @@ import { GetPortfolioStateUseCase } from './get-portfolio-state.use-case';
 import { GetPortfolioValuationUseCase } from '../valuation/get-portfolio-valuation.use-case';
 import { GetPortfolioAllocationUseCase } from '../valuation/get-portfolio-allocation.use-case';
 import { GetPortfolioIntelligenceSummaryUseCase } from '../performance/get-portfolio-intelligence-summary.use-case';
+import { GetPortfolioAllocationStrategyUseCase } from './get-portfolio-allocation-strategy.use-case';
 
 /**
  * Phase 5Q-A — portfolio review read model.
@@ -41,6 +42,8 @@ export class GetPortfolioReviewUseCase {
     private readonly allocation: GetPortfolioAllocationUseCase,
     @Inject(GetPortfolioIntelligenceSummaryUseCase)
     private readonly intelligence: GetPortfolioIntelligenceSummaryUseCase,
+    @Inject(GetPortfolioAllocationStrategyUseCase)
+    private readonly strategies: GetPortfolioAllocationStrategyUseCase,
   ) {}
 
   private toDerivationInput(row: IntegrationRunRow) {
@@ -75,19 +78,21 @@ export class GetPortfolioReviewUseCase {
     }
     const now = params.now ?? new Date();
 
-    const [state, valuation, allocation, intelligence, recentRuns] = await Promise.all([
-      this.state.execute({ portfolioId: params.portfolioId, userId: params.userId }),
-      this.valuation.execute({ portfolioId: params.portfolioId, userId: params.userId }),
-      this.allocation.execute({ portfolioId: params.portfolioId, userId: params.userId }),
-      this.intelligence.execute({
-        portfolioId: params.portfolioId,
-        userId: params.userId,
-        ...(params.period
-          ? { startDate: params.period.startDate, endDate: params.period.endDate }
-          : {}),
-      }),
-      this.runs.listRecentByPortfolioIds([params.portfolioId], 200),
-    ]);
+    const [state, valuation, allocation, intelligence, recentRuns, strategyComparison] =
+      await Promise.all([
+        this.state.execute({ portfolioId: params.portfolioId, userId: params.userId }),
+        this.valuation.execute({ portfolioId: params.portfolioId, userId: params.userId }),
+        this.allocation.execute({ portfolioId: params.portfolioId, userId: params.userId }),
+        this.intelligence.execute({
+          portfolioId: params.portfolioId,
+          userId: params.userId,
+          ...(params.period
+            ? { startDate: params.period.startDate, endDate: params.period.endDate }
+            : {}),
+        }),
+        this.runs.listRecentByPortfolioIds([params.portfolioId], 200),
+        this.strategies.compareStrategy(params.portfolioId, params.userId),
+      ]);
 
     const pendingReviewCount = deriveReviewItems(
       recentRuns.map((row) => this.toDerivationInput(row)),
@@ -181,6 +186,15 @@ export class GetPortfolioReviewUseCase {
         ),
       },
       runs: { pendingReviewCount, partialRuns, reconciliation },
+      strategy: strategyComparison
+        ? {
+            hasStrategy: true,
+            categoriesOutsideTolerance: strategyComparison.outsideTolerance.length,
+            worstDeviationBp: strategyComparison.worstGap?.deviationBp ?? null,
+            worstCategory: strategyComparison.worstGap?.category ?? null,
+            coverageBp: strategyComparison.coveragePercent,
+          }
+        : { hasStrategy: false, categoriesOutsideTolerance: 0, worstDeviationBp: null, worstCategory: null, coverageBp: null },
     };
     return buildPortfolioReview(input);
   }

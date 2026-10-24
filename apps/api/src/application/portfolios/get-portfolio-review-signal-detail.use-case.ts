@@ -19,6 +19,7 @@ import { INTEGRATION_RUN_REPOSITORY, PORTFOLIO_REPOSITORY } from '../../database
 import { GetPortfolioReviewUseCase } from './get-portfolio-review.use-case';
 import { GetPortfolioPerformanceSeriesUseCase } from '../performance/get-portfolio-performance-series.use-case';
 import { GetPortfolioHistoryUseCase } from './get-portfolio-history.use-case';
+import { GetPortfolioAllocationStrategyUseCase } from './get-portfolio-allocation-strategy.use-case';
 
 /**
  * Phase 5Q-B — signal drill-down read model (derived, never persisted).
@@ -44,6 +45,8 @@ export class GetPortfolioReviewSignalDetailUseCase {
     private readonly series: GetPortfolioPerformanceSeriesUseCase,
     @Inject(GetPortfolioHistoryUseCase)
     private readonly history: GetPortfolioHistoryUseCase,
+    @Inject(GetPortfolioAllocationStrategyUseCase)
+    private readonly strategies: GetPortfolioAllocationStrategyUseCase,
   ) {}
 
   async execute(params: {
@@ -124,6 +127,17 @@ export class GetPortfolioReviewSignalDetailUseCase {
           limitations: [...limitations, 'NO_HISTORICAL_SOURCE' as const],
           action: base.action,
         };
+      case 'STRATEGY_ALLOCATION_DEVIATION':
+        return {
+          ...base,
+          history: await this.strategyComparisonHistory(params),
+          limitations: [...limitations, 'SINGLE_SNAPSHOT_ONLY' as const],
+          action: {
+            kind: 'ROUTE' as const,
+            href: `/portfolio?tab=allocation&portfolioId=${params.portfolioId}`,
+            label: 'Ver estratégia',
+          },
+        };
       case 'INCOME_RECEIVED':
         return {
           ...base,
@@ -148,6 +162,24 @@ export class GetPortfolioReviewSignalDetailUseCase {
           },
         };
     }
+  }
+
+  private async strategyComparisonHistory(params: { portfolioId: string; userId: string }) {
+    const comparison = await this.strategies.compareStrategy(params.portfolioId, params.userId);
+    if (!comparison) {
+      return { kind: 'UNAVAILABLE', reason: 'NO_HISTORICAL_SOURCE' } as const;
+    }
+    return {
+      kind: 'TABLE_COMPARISON' as const,
+      rows: comparison.rows.map((row) => ({
+        category: row.category,
+        targetBp: row.targetBp,
+        currentBp: row.currentBp,
+        deviationBp: row.deviationBp,
+        state: row.state,
+      })),
+      trend: 'INSUFFICIENT_DATA' as const,
+    };
   }
 
   private async gapHistory(

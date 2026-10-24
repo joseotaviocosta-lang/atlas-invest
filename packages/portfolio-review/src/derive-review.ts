@@ -18,9 +18,10 @@ const SIGNAL_RANK: Record<ReviewSignalCode, number> = {
   DATA_VALUATION_COVERAGE: 1,
   INTEGRATION_PENDING_REVIEW: 2,
   ALLOCATION_SINGLE_ASSET_CONCENTRATION: 3,
-  PERFORMANCE_BENCHMARK_GAP: 4,
-  PERFORMANCE_BENCHMARK_UNAVAILABLE: 5,
-  INCOME_RECEIVED: 6,
+  STRATEGY_ALLOCATION_DEVIATION: 4,
+  PERFORMANCE_BENCHMARK_GAP: 5,
+  PERFORMANCE_BENCHMARK_UNAVAILABLE: 6,
+  INCOME_RECEIVED: 7,
 };
 
 function route(href: string, label: string): PortfolioReviewSignal['action'] {
@@ -68,6 +69,9 @@ export function buildPortfolioReview(input: BuildReviewInput): PortfolioReview {
   if (!isEmpty) {
     const concentrationSignal = concentrationSignalFor(input);
     if (concentrationSignal) signals.push(concentrationSignal);
+
+    const strategySignal = strategyDeviationSignalFor(input);
+    if (strategySignal) signals.push(strategySignal);
 
     for (const signal of performanceSignalsFor(input)) {
       signals.push(signal);
@@ -206,6 +210,32 @@ function concentrationSignalFor(input: BuildReviewInput): PortfolioReviewSignal 
       coveragePercent: input.allocation.valuationCoveragePercent,
     },
     action: route(`/portfolio?tab=allocation&portfolioId=${input.portfolioId}`, 'Ver alocação'),
+  };
+}
+
+/**
+ * Phase 5Q-C — strategy deviation signal. Fires only when the user
+ * declared targets AND at least one category sits outside tolerance.
+ * Always REVIEW (never WARNING): deviation from a self-declared target
+ * is attention, not danger. Aggregated: one card no matter how many
+ * categories deviate.
+ */
+function strategyDeviationSignalFor(input: BuildReviewInput): PortfolioReviewSignal | null {
+  const strategy = input.strategy;
+  if (!strategy || !strategy.hasStrategy) return null;
+  if (strategy.categoriesOutsideTolerance <= 0) return null;
+  return {
+    id: 'STRATEGY_ALLOCATION_DEVIATION',
+    code: 'STRATEGY_ALLOCATION_DEVIATION',
+    category: 'ALLOCATION',
+    severity: 'REVIEW',
+    evidence: {
+      categoriesOutsideTarget: strategy.categoriesOutsideTolerance,
+      worstDeviationBp: strategy.worstDeviationBp,
+      worstCategory: strategy.worstCategory,
+      coveragePercent: strategy.coverageBp,
+    },
+    action: route(`/portfolio?tab=allocation&portfolioId=${input.portfolioId}`, 'Ver estratégia'),
   };
 }
 

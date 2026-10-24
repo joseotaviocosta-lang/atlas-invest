@@ -69,6 +69,7 @@
     "test:darf-handoff:scale": "vitest run --config vitest.fiscal-api.config.ts tests/fiscal-api/darf-handoff-scale.test.ts",
     "test:portfolio-intelligence": "vitest run --config vitest.portfolio-intelligence.config.ts",
     "test:portfolio-review": "vitest run --config vitest.portfolio-review.config.ts",
+    "test:portfolio-strategy": "vitest run --config vitest.portfolio-strategy.config.ts",
     "test:ai-grounding": "vitest run --config vitest.ai-grounding.config.ts",
     "test:ai-explanation": "vitest run --config vitest.ai-explanation.config.ts",
     "test:ai-conversation": "vitest run --config vitest.ai-conversation.config.ts",

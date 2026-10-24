@@ -30,6 +30,7 @@ describe('Phase 5Q-A: review presentation', () => {
       'DATA_RECONCILIATION_DIVERGENCE',
       'INTEGRATION_PENDING_REVIEW',
       'ALLOCATION_SINGLE_ASSET_CONCENTRATION',
+      'STRATEGY_ALLOCATION_DEVIATION',
       'PERFORMANCE_BENCHMARK_GAP',
       'PERFORMANCE_BENCHMARK_UNAVAILABLE',
       'INCOME_RECEIVED',
@@ -42,6 +43,10 @@ describe('Phase 5Q-A: review presentation', () => {
     }
     expect(describeReviewSignal('ALLOCATION_SINGLE_ASSET_CONCENTRATION')).toMatchObject({
       label: 'Concentração elevada',
+      tone: 'warning',
+    });
+    expect(describeReviewSignal('STRATEGY_ALLOCATION_DEVIATION')).toMatchObject({
+      label: 'Fora das metas definidas',
       tone: 'warning',
     });
     expect(describeReviewSignal('NOPE').label).toBe('Ponto de atenção');
@@ -83,6 +88,23 @@ describe('Phase 5Q-A: review presentation', () => {
         evidence: {},
       }),
     ).toBe('Um ponto da carteira merece revisão');
+  });
+
+  it('builds titles for every signal family without advice', () => {
+    expect(
+      buildReviewSignalTitle({
+        code: 'STRATEGY_ALLOCATION_DEVIATION',
+        severity: 'REVIEW',
+        evidence: { categoriesOutsideTarget: 3, worstDeviationBp: -800, worstCategory: 'CASH' },
+      }),
+    ).toBe('3 categorias fora das metas definidas');
+    expect(
+      buildReviewSignalTitle({
+        code: 'STRATEGY_ALLOCATION_DEVIATION',
+        severity: 'REVIEW',
+        evidence: { categoriesOutsideTarget: 1, worstDeviationBp: 500, worstCategory: 'STOCK' },
+      }),
+    ).toBe('1 categoria fora das metas definidas');
   });
 
   it('builds evidence lines with counts and qualifiers, never prose conclusions', () => {
@@ -149,6 +171,50 @@ describe('Phase 5Q-A: review presentation', () => {
     expect(section).toContain('minHeight: 44');
     expect(section).toContain('aria-label');
     expect(today).toContain('aria-label="Ver revisão da carteira"');
+  });
+
+  it('renders the strategy section inside the allocation tab', () => {
+    expect(page).toContain('PortfolioStrategySection');
+    expect(page).toContain("activeTab === 'allocation'");
+    expect(page).not.toMatch(/tab\s*=\s*['"]strategy['"]/);
+  });
+
+  it('shows a compact strategy summary on Today only when off-target', () => {
+    expect(today).toContain('Metas de alocação');
+    expect(today).toContain('fora das metas definidas');
+    expect(today).toContain('/portfolio?tab=allocation');
+    expect(today).toContain('strategyOutsideCount > 0');
+  });
+
+  it('renders the strategy section with table, qualifier banner and no trade CTAs', () => {
+    const section = fs.readFileSync(
+      path.join(process.cwd(), 'apps/web/src/components/portfolio/PortfolioStrategySection.tsx'),
+      'utf8',
+    );
+    const labels = [
+      'Ações',
+      'Fundos Imobiliários (FIIs)',
+      'ETFs',
+      'BDRs',
+      'Renda Fixa',
+      'Tesouro Direto',
+      'Fundos',
+      'Caixa',
+      'Outros',
+    ];
+    for (const label of labels) {
+      expect(section).toContain(label);
+    }
+    expect(section).toContain('Definir metas');
+    expect(section).toContain('As metas precisam totalizar 100%');
+    expect(section).toContain('Remover metas');
+    expect(section).toContain('Editar metas');
+    expect(section).toContain('Salvar metas');
+    expect(section).toContain('Desvios de até ±1 p.p. são considerados dentro da meta');
+    expect(section).toContain('não realiza recomendações automáticas de investimento');
+    expect(section).not.toMatch(/Rebalancear agora|Gerar ordens|Comprar|Vender/i);
+    expect(section).toContain('parseLocalePercent');
+    expect(section).not.toMatch(/parseFloat/);
   });
 
   it('links every signal card to a stable drill-down URL', () => {
