@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Inject,
   Param,
+  Post,
   Put,
 } from '@nestjs/common';
 import {
@@ -22,6 +23,9 @@ import {
   PutAllocationStrategyBody,
   PutAllocationStrategyBodySchema,
   PutAllocationStrategySwaggerDto,
+  SimulateAllocationScenarioBody,
+  SimulateAllocationScenarioBodySchema,
+  SimulateAllocationScenarioSwaggerDto,
 } from './dto/portfolio-allocation-strategy.dto';
 import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
 import { AuthenticatedPrincipal, CurrentPrincipal } from '../../auth';
@@ -140,5 +144,39 @@ export class PortfolioAllocationStrategyController {
   ) {
     await this.strategies.clearStrategy(portfolioId, principal.userId);
     return { data: { cleared: true } };
+  }
+
+  @Post('simulate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Simulate a hypothetical contribution (no persistence, no execution)',
+    description:
+      'Computes the projected allocation for a user-declared hypothetical contribution. Ephemeral: persists nothing, executes nothing, generates no orders. Current allocation and strategy are loaded server-side; the client supplies only hypothetical changes.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiBody({ type: SimulateAllocationScenarioSwaggerDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Projected allocation, current vs projected deviations, limitations',
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Invalid scenario shape, unknown category, bad amount, no strategy, or insufficient data',
+  })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async simulateScenario(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Body(new ZodValidationPipe(SimulateAllocationScenarioBodySchema))
+    body: SimulateAllocationScenarioBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.strategies.simulateScenario({
+      portfolioId,
+      userId: principal.userId,
+      type: body.type,
+      changes: body.changes,
+    });
+    return { data: result };
   }
 }

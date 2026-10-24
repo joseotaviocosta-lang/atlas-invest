@@ -19,7 +19,11 @@ export interface MobileStrategyComparisonRow {
 }
 
 export interface MobileStrategyState {
-  strategy: { portfolioId: string; targets: MobileStrategyTarget[]; updatedAt: string | null } | null;
+  strategy: {
+    portfolioId: string;
+    targets: MobileStrategyTarget[];
+    updatedAt: string | null;
+  } | null;
   comparison: {
     rows: MobileStrategyComparisonRow[];
     outsideTolerance: string[];
@@ -100,8 +104,8 @@ export function MobileStrategySection({ portfolioId }: { portfolioId: string | n
       <Card style={styles.card}>
         <Text style={styles.title}>Metas de alocação</Text>
         <Text style={styles.body}>
-          Você ainda não definiu metas de alocação para esta carteira. Defina suas metas na
-          versão web.
+          Você ainda não definiu metas de alocação para esta carteira. Defina suas metas na versão
+          web.
         </Text>
       </Card>
     );
@@ -130,9 +134,10 @@ export function MobileStrategySection({ portfolioId }: { portfolioId: string | n
         </View>
       ))}
       <Text style={styles.note}>
-        Metas definidas por você. Para ajustar, use a versão web. O Atlas não faz recomendações
-        de investimento.
+        Metas definidas por você. Para ajustar, use a versão web. O Atlas não faz recomendações de
+        investimento.
       </Text>
+      <Text style={styles.note}>Simulações de aporte hipotético disponíveis na versão web.</Text>
     </Card>
   );
 }

@@ -15,4 +15,5 @@ export * from './PortfolioValuation';
 export * from './PortfolioAllocationSection';
 export * from './PortfolioReviewSection';
 export * from './PortfolioStrategySection';
+export * from './PortfolioScenarioSimulator';
 export * from './PortfolioShell';

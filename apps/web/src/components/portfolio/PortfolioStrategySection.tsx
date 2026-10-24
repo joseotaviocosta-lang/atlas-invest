@@ -14,6 +14,7 @@ import {
   Badge,
 } from '@/components/ui';
 import { colors, spacing, borderRadius } from '@atlas/ui';
+import { PortfolioScenarioSimulator } from './PortfolioScenarioSimulator';
 
 const STRATEGY_CATEGORIES = [
   'STOCK',
@@ -460,6 +461,7 @@ export function PortfolioStrategySection({ portfolioId }: { portfolioId: string 
               {strategyErrorMessage(clearMutation.error)}
             </p>
           ) : null}
+          {portfolioId ? <PortfolioScenarioSimulator portfolioId={portfolioId} /> : null}
         </>
       )}
     </Card>

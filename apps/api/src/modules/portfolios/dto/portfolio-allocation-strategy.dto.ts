@@ -39,3 +39,45 @@ export class AllocationStrategyComparisonSwaggerDto {
   @ApiPropertyOptional({ type: String })
   portfolioId?: string;
 }
+
+/**
+ * Phase 5Q-D — scenario simulate model. Strict: the user supplies ONLY
+ * hypothetical changes (category + locale money string). Current values,
+ * projected values, targets, currency, provider, source and portfolioId
+ * are never accepted from the client — the server is the authority.
+ */
+export const AllocationScenarioChangeSchema = z
+  .object({
+    category: z.enum(STRATEGY_CATEGORIES as unknown as [string, ...string[]]),
+    amount: z.string().min(1).max(32),
+  })
+  .strict();
+
+export const SimulateAllocationScenarioBodySchema = z
+  .object({
+    type: z.literal('CONTRIBUTION'),
+    changes: z.array(AllocationScenarioChangeSchema).min(1).max(20),
+  })
+  .strict();
+
+export type SimulateAllocationScenarioBody = z.infer<typeof SimulateAllocationScenarioBodySchema>;
+
+export class AllocationScenarioChangeSwaggerDto {
+  @ApiProperty({ type: String, enum: [...STRATEGY_CATEGORIES], example: 'FIXED_INCOME' })
+  category!: string;
+
+  @ApiProperty({
+    type: String,
+    example: '10.000,50',
+    description: 'Hypothetical amount in pt-BR or plain form',
+  })
+  amount!: string;
+}
+
+export class SimulateAllocationScenarioSwaggerDto {
+  @ApiProperty({ type: String, enum: ['CONTRIBUTION'], example: 'CONTRIBUTION' })
+  type!: string;
+
+  @ApiProperty({ type: [AllocationScenarioChangeSwaggerDto] })
+  changes!: AllocationScenarioChangeSwaggerDto[];
+}

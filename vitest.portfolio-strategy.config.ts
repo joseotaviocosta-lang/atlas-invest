@@ -15,6 +15,7 @@ export default defineConfig({
         __dirname,
         'packages/portfolio-strategy/src/index.ts',
       ),
+      '@atlas/domain': path.resolve(__dirname, 'packages/domain/src/index.ts'),
     },
   },
 });
