@@ -28,6 +28,7 @@ import {
   MobileHistoricalBanner,
 } from '../../../src/components/portfolio';
 import { MobileValuationSection } from '../../../src/components/portfolio/MobileValuation';
+import { MobileReviewSection } from '../../../src/components/portfolio/MobileReviewSection';
 import { portfoliosApi } from '../../../src/api/portfolios';
 import { ApiError } from '../../../src/api/client';
 import { PortfolioDto } from '../../../src/api/types';
@@ -361,6 +362,10 @@ export default function PortfolioScreen() {
                   portfolioId={activePortfolio?.id ?? null}
                   isHistorical={isHistorical}
                 />
+
+                {!isHistorical && activePortfolio ? (
+                  <MobileReviewSection portfolioId={activePortfolio.id} />
+                ) : null}
 
                 {/* Positions List Section */}
                 <View style={styles.sectionHeaderRow}>

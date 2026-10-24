@@ -43,6 +43,7 @@ import {
   PortfolioHistoricalBanner,
   PortfolioValuationSection,
   PortfolioAllocationSection,
+  PortfolioReviewSection,
   PortfolioShell,
   valuationQueryKey,
   allocationQueryKey,
@@ -1088,6 +1089,13 @@ function PortfolioPageContent() {
                           isHistorical={isHistorical}
                         />
                       </div>
+
+                      {/* Portfolio Review (current-only; hidden in historical mode) */}
+                      {!isHistorical ? (
+                        <div style={{ marginBottom: `${spacing.xl}px` }}>
+                          <PortfolioReviewSection portfolioId={activePortfolio.id} />
+                        </div>
+                      ) : null}
 
                       {/* Positions Section */}
                       {isHistorical && overviewViewModel.positions.length === 0 ? (

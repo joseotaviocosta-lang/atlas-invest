@@ -51,6 +51,7 @@ export * from './view-models/tax-compliance-period-close.view-model';
 export * from './view-models/b3-connection.view-model';
 export * from './view-models/import-run-history.view-model';
 export * from './view-models/review-inbox.view-model';
+export * from './view-models/portfolio-review.view-model';
 export * from './view-models/integration-settings.view-model';
 
 import { colors } from './tokens/colors';

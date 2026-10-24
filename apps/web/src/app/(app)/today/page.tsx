@@ -59,6 +59,24 @@ export default function TodayPage() {
   });
   const pendingCount = pendingData?.pendingCount ?? 0;
 
+  // Portfolio review summary (derived decision support — compact on Today).
+  const { data: reviewData } = useQuery<{
+    data: {
+      portfolioId: string;
+      summary: { attentionCount: number; dataNote: string | null };
+      isEmpty: boolean;
+    };
+  }>({
+    queryKey: ['portfolio-review', firstPortfolioId],
+    queryFn: async () => {
+      if (!firstPortfolioId) return { data: null } as never;
+      return apiClient.get(`/api/v1/portfolios/${firstPortfolioId}/review`);
+    },
+    enabled: Boolean(firstPortfolioId),
+    staleTime: 60 * 1000,
+  });
+  const reviewAttentionCount = reviewData?.data?.summary.attentionCount ?? 0;
+
   // 1. Ledger state query (Source of truth for cost basis & proventos)
   const { data: stateData } = useQuery<{
     data: {
@@ -241,6 +259,48 @@ export default function TodayPage() {
           </Link>
         </div>
       )}
+
+      {/* Portfolio review compact summary (only when attention items exist) */}
+      {reviewAttentionCount > 0 && firstPortfolioId ? (
+        <div
+          style={{
+            padding: `${spacing.base}px ${spacing.xl}px`,
+            borderRadius: `${borderRadius.lg}px`,
+            backgroundColor: colors.surface,
+            border: `1px solid ${colors.border}`,
+            marginBottom: `${spacing.xl}px`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: `${spacing.base}px`,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontWeight: 600,
+                color: colors.textPrimary,
+                fontSize: '0.9375rem',
+                marginBottom: '2px',
+              }}
+            >
+              Revisão da carteira
+            </div>
+            <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+              {reviewAttentionCount === 1
+                ? '1 ponto precisa da sua atenção.'
+                : `${reviewAttentionCount} pontos precisam da sua atenção.`}
+            </div>
+          </div>
+          <Link
+            href={`/portfolio?portfolioId=${firstPortfolioId}`}
+            aria-label="Ver revisão da carteira"
+          >
+            <Button size="sm">Ver revisão</Button>
+          </Link>
+        </div>
+      ) : null}
 
       {/* Financial Overview StatCards (Real Persisted Market Valuation Overlay) */}
       <div style={{ marginBottom: `${spacing.xl}px` }}>

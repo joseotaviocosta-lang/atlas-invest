@@ -8,6 +8,7 @@ import {
   GetPortfolioStateUseCase,
   GetPortfolioPositionsUseCase,
   GetPortfolioHistoryUseCase,
+  GetPortfolioReviewUseCase,
 } from './portfolios';
 import {
   GetPortfolioValuationUseCase,
@@ -138,6 +139,7 @@ const USE_CASES = [
   GetPortfolioStateUseCase,
   GetPortfolioPositionsUseCase,
   GetPortfolioHistoryUseCase,
+  GetPortfolioReviewUseCase,
   GetPortfolioValuationUseCase,
   GetPortfolioAllocationUseCase,
   UpdatePortfolioMarketDataUseCase,

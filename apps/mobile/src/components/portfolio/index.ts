@@ -11,3 +11,4 @@ export * from './MobileHistoryFilters';
 export * from './MobileHistoryTimeline';
 export * from './MobileDateSelector';
 export * from './MobileHistoricalBanner';
+export * from './MobileReviewSection';

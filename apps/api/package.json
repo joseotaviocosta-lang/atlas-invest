@@ -19,6 +19,7 @@
     "@atlas/risk-engine": "workspace:*",
     "@atlas/scenario-engine": "workspace:*",
     "@atlas/portfolio-intelligence": "workspace:*",
+    "@atlas/portfolio-review": "workspace:*",
     "@atlas/portfolio-engine": "workspace:*",
     "@atlas/valuation-engine": "workspace:*",
     "@atlas/ai-engine": "workspace:*",

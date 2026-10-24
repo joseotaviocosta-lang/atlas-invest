@@ -266,6 +266,9 @@ importers:
       '@atlas/portfolio-intelligence':
         specifier: workspace:*
         version: link:../../packages/portfolio-intelligence
+      '@atlas/portfolio-review':
+        specifier: workspace:*
+        version: link:../../packages/portfolio-review
       '@atlas/risk-engine':
         specifier: workspace:*
         version: link:../../packages/risk-engine
@@ -601,6 +604,12 @@ importers:
         version: link:../config
 
   packages/portfolio-intelligence:
+    devDependencies:
+      '@atlas/config':
+        specifier: workspace:*
+        version: link:../config
+
+  packages/portfolio-review:
     devDependencies:
       '@atlas/config':
         specifier: workspace:*
