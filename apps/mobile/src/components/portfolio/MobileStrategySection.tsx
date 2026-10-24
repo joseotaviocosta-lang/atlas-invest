@@ -1,8 +1,16 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, Pressable } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 import { themeTokens } from '@atlas/ui';
+import {
+  describeScenarioLimitation,
+  formatAggregatePp,
+  formatCentsBr,
+  formatScenarioBp,
+  parseScenarioMoneyToCents,
+  scenarioCategoryLabel,
+} from '@atlas/ui';
 import { Card } from '@/components/ui';
 
 export interface MobileStrategyTarget {
@@ -73,6 +81,138 @@ function stateLabel(state: string): string {
 }
 
 /**
+ * Phase 5Q-E (mobile) — saved scenarios list + read-only live detail.
+ * Creating and editing stay web-only (forms are web-only in v1); opening
+ * a scenario shows the live recomputation read-only. No dead actions,
+ * no execution, no advice.
+ */
+interface SavedScenarioSummary {
+  id: string;
+  name: string;
+  hypotheticalTotal: string;
+  updatedAt: string;
+}
+
+interface SavedScenarioDetail {
+  saved: SavedScenarioSummary & {
+    changes: Array<{ category: string; amount: string }>;
+  };
+  live: {
+    totals: { projected: string; currency: string };
+    rows: Array<{
+      category: string;
+      targetBp: number;
+      currentBp: number | null;
+      projectedBp: number;
+      currentDeviationBp: number | null;
+      projectedDeviationBp: number;
+    }>;
+    beforeOutsideCount: number;
+    afterOutsideCount: number;
+    beforeTotalAbsDeviationBp: number;
+    afterTotalAbsDeviationBp: number;
+  } | null;
+  limitations: string[];
+}
+
+function SavedScenarios({ portfolioId }: { portfolioId: string }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const list = useQuery({
+    queryKey: ['portfolio-allocation-scenarios', portfolioId],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: { scenarios: SavedScenarioSummary[] } }>(
+        `/api/v1/portfolios/${portfolioId}/allocation-scenarios`,
+      );
+      return res.data;
+    },
+    enabled: !!portfolioId,
+    staleTime: 30000,
+  });
+  const detail = useQuery({
+    queryKey: ['portfolio-allocation-scenarios', portfolioId, 'detail', openId],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: SavedScenarioDetail }>(
+        `/api/v1/portfolios/${portfolioId}/allocation-scenarios/${openId}`,
+      );
+      return res.data;
+    },
+    enabled: !!portfolioId && openId !== null,
+    staleTime: 30000,
+  });
+
+  if (list.isLoading || list.isError || !list.data || list.data.scenarios.length === 0) {
+    return null;
+  }
+
+  const opened = detail.data && detail.data.saved.id === openId ? detail.data : null;
+
+  return (
+    <View style={{ marginTop: 12 }} testID="saved-scenarios">
+      <Text style={styles.title}>Cenários salvos</Text>
+      {list.data.scenarios.map((scenario) => (
+        <View key={scenario.id} style={styles.row}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.category}>{scenario.name}</Text>
+            <Text style={styles.muted}>
+              {formatCentsBr(parseScenarioMoneyToCents(scenario.hypotheticalTotal) ?? BigInt(0))}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => setOpenId(openId === scenario.id ? null : scenario.id)}
+            accessibilityRole="button"
+            accessibilityLabel={
+              openId === scenario.id ? `Fechar ${scenario.name}` : `Abrir ${scenario.name}`
+            }
+          >
+            <Text style={styles.link}>{openId === scenario.id ? 'Fechar' : 'Abrir'}</Text>
+          </Pressable>
+        </View>
+      ))}
+      {opened?.live ? (
+        <View style={{ marginTop: 8 }} testID="saved-scenario-detail">
+          <Text style={styles.muted}>
+            Antes: {opened.live.beforeOutsideCount} fora da meta. Após a hipótese:{' '}
+            {opened.live.afterOutsideCount} fora da meta. Desvio agregado{' '}
+            {formatAggregatePp(opened.live.afterTotalAbsDeviationBp)}.
+          </Text>
+          {opened.live.rows.map((row) => (
+            <View key={row.category} style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.category}>{scenarioCategoryLabel(row.category)}</Text>
+                <Text style={styles.muted}>
+                  {formatScenarioBp(row.currentBp)} → {formatScenarioBp(row.projectedBp)}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={styles.value}>{formatScenarioBp(row.targetBp)}</Text>
+                <Text style={styles.muted}>meta</Text>
+              </View>
+            </View>
+          ))}
+          {opened.limitations.map((limitation) => (
+            <Text key={limitation} style={styles.note}>
+              {describeScenarioLimitation(limitation)}
+            </Text>
+          ))}
+        </View>
+      ) : opened && opened.live === null ? (
+        <View style={{ marginTop: 8 }} testID="saved-scenario-detail">
+          {opened.limitations.map((limitation) => (
+            <Text key={limitation} style={styles.note}>
+              {describeScenarioLimitation(limitation)}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+      <Text style={styles.note}>
+        Criar e editar cenários estão disponíveis na versão web. O resultado acima é recalculado com
+        a carteira e as metas atuais.
+      </Text>
+    </View>
+  );
+}
+
+/**
  * Phase 5Q-C (mobile) — read-only strategy view.
  * Editing stays web-only for now (explicit note); the card never
  * offers a dead-end action.
@@ -138,6 +278,7 @@ export function MobileStrategySection({ portfolioId }: { portfolioId: string | n
         investimento.
       </Text>
       <Text style={styles.note}>Simulações de aporte hipotético disponíveis na versão web.</Text>
+      <SavedScenarios portfolioId={portfolioId} />
     </Card>
   );
 }
@@ -157,5 +298,6 @@ const styles = {
   },
   category: { fontSize: 14, fontWeight: '600' as const },
   value: { fontSize: 14, fontWeight: '600' as const },
+  link: { fontSize: 14, fontWeight: '600' as const, color: themeTokens.colors.primary },
   note: { fontSize: 12, color: themeTokens.colors.textMuted, marginTop: 8 },
 };

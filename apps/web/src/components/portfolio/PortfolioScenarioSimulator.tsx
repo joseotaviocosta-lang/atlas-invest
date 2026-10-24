@@ -1,15 +1,17 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, ApiError } from '@/api/client';
 import { Button, Badge } from '@/components/ui';
 import { colors, spacing } from '@atlas/ui';
 import {
   describeScenarioState,
+  formatCentsBr,
   formatScenarioBp,
   formatScenarioDeviationTransition,
   formatScenarioMoney,
+  parseScenarioMoneyToCents,
   scenarioCategoryLabel,
   type AllocationScenarioRowView,
 } from '@atlas/ui';
@@ -44,41 +46,9 @@ interface SimulateResponse {
   };
 }
 
-/** Parses pt-BR money to integer cents exactly (no floats). Null when invalid. */
-function parseMoneyToCents(raw: string): bigint | null {
-  const cleaned = raw.trim().replace(/\s/g, '');
-  if (cleaned === '') return null;
-  if (/^-|\+/.test(cleaned)) return null;
-  if (!/^[\d.,]+$/.test(cleaned)) return null;
-  let canonical: string;
-  const hasDot = cleaned.includes('.');
-  const hasComma = cleaned.includes(',');
-  if (hasDot && hasComma) {
-    const lastDot = cleaned.lastIndexOf('.');
-    const lastComma = cleaned.lastIndexOf(',');
-    if (lastDot > lastComma) return null;
-    canonical = cleaned.replace(/\./g, '').replace(',', '.');
-  } else if (hasComma) {
-    canonical = cleaned.replace(',', '.');
-  } else if (hasDot) {
-    if (/^\d{1,3}(\.\d{3})+$/.test(cleaned)) canonical = cleaned.replace(/\./g, '');
-    else canonical = cleaned;
-  } else {
-    canonical = cleaned;
-  }
-  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(canonical);
-  if (!match) return null;
-  const cents = BigInt(match[1]!) * BigInt(100) + BigInt(((match[2] ?? '') + '00').slice(0, 2));
-  return cents;
-}
-
-function formatCents(cents: bigint): string {
-  const negative = cents < BigInt(0);
-  const abs = negative ? -cents : cents;
-  const intPart = (abs / BigInt(100)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  const frac = (abs % BigInt(100)).toString().padStart(2, '0');
-  return `R$ ${negative ? '-' : ''}${intPart},${frac}`;
-}
+/** Local aliases: edge parsing/formatting live in the shared view-model. */
+const parseMoneyToCents = parseScenarioMoneyToCents;
+const formatCents = formatCentsBr;
 
 function scenarioErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -366,7 +336,113 @@ export function PortfolioScenarioSimulator({ portfolioId }: { portfolioId: strin
             {formatScenarioMoney(scenario.totals.projected, scenario.totals.currency)}. Pesos
             calculados pelo servidor; exibição arredondada pode somar 99,99% ou 100,01%.
           </p>
+          <SaveCurrentSimulation portfolioId={portfolioId} entries={parsed.entries} />
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Phase 5Q-E — persists the current hypothetical inputs (never the
+ * projected result). The saved scenario recomputes live on open.
+ */
+export function allocationScenariosQueryKey(portfolioId: string) {
+  return ['portfolio-allocation-scenarios', portfolioId];
+}
+
+function SaveCurrentSimulation({
+  portfolioId,
+  entries,
+}: {
+  portfolioId: string;
+  entries: Array<{ category: string; amount: string }>;
+}) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState('');
+  const [saved, setSaved] = useState(false);
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post<{ data: unknown }>(
+        `/api/v1/portfolios/${portfolioId}/allocation-scenarios`,
+        { name: name.trim(), type: 'CONTRIBUTION', changes: entries },
+      );
+      return res.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: allocationScenariosQueryKey(portfolioId),
+      });
+      setSaved(true);
+    },
+    onError: () => {
+      setSaved(false);
+    },
+  });
+  return (
+    <div
+      style={{
+        marginTop: `${spacing.sm}px`,
+        borderTop: `1px solid ${colors.border}`,
+        paddingTop: `${spacing.sm}px`,
+      }}
+      data-testid="scenario-save"
+    >
+      <label
+        style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: 8 }}
+        htmlFor="scenario-save-name"
+      >
+        Salvar cenário
+      </label>
+      <p style={{ fontSize: '0.8125rem', color: colors.textSecondary, margin: '0 0 8px' }}>
+        O Atlas salvará os valores hipotéticos informados. O resultado será recalculado com a
+        carteira e as metas atuais sempre que você abrir este cenário.
+      </p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input
+          id="scenario-save-name"
+          value={name}
+          onChange={(event) => {
+            setName(event.target.value);
+            setSaved(false);
+            saveMutation.reset();
+          }}
+          placeholder="Aporte de novembro"
+          maxLength={80}
+          aria-label="Nome do cenário hipotético"
+          data-testid="scenario-save-name"
+          style={{
+            flex: 1,
+            minWidth: 200,
+            minHeight: 44,
+            padding: '8px 12px',
+            borderRadius: 8,
+            border: `1px solid ${colors.border}`,
+            backgroundColor: colors.surface,
+            color: colors.textPrimary,
+            fontSize: '0.875rem',
+          }}
+        />
+        <Button
+          variant="outline"
+          onClick={() => saveMutation.mutate()}
+          disabled={name.trim() === '' || saveMutation.isPending}
+          aria-label="Salvar cenário hipotético"
+          data-testid="scenario-save-button"
+          style={{ minHeight: 44 }}
+        >
+          {saveMutation.isPending ? 'Salvando…' : 'Salvar cenário'}
+        </Button>
+      </div>
+      {saveMutation.isError ? (
+        <p role="alert" style={{ fontSize: '0.875rem', color: colors.negative }}>
+          {scenarioErrorMessage(saveMutation.error)}
+        </p>
+      ) : null}
+      {saved ? (
+        <p role="status" style={{ fontSize: '0.875rem', color: colors.positive }}>
+          Cenário salvo. Veja em Cenários salvos.
+        </p>
       ) : null}
     </div>
   );

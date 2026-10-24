@@ -93,5 +93,62 @@ export function describeScenarioLimitation(code: string): string {
     return 'A simulação considera apenas o valor conhecido da carteira.';
   if (code === 'INSUFFICIENT_DATA')
     return 'Dados insuficientes para simular: cobertura abaixo do mínimo ou carteira sem valor conhecido.';
+  if (code === 'NO_STRATEGY')
+    return 'Defina metas de alocação antes de simular: sem estratégia, não há comparação.';
+  if (code === 'NEEDS_REVIEW')
+    return 'Este cenário usa uma categoria que o Atlas não reconhece mais. Revise os valores.';
   return 'Limitação indisponível.';
+}
+
+/** Aggregate absolute deviation in bp -> '5,20 p.p.'. Neutral magnitude, no sign, no judgment. */
+export function formatAggregatePp(basisPoints: number): string {
+  if (!Number.isSafeInteger(basisPoints)) return '—';
+  const abs = Math.abs(basisPoints);
+  const intPart = Math.floor(abs / 100).toString();
+  const frac = String(abs % 100).padStart(2, '0');
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${grouped},${frac} p.p.`;
+}
+
+/**
+ * Parses a pt-BR/neutral money input to integer cents exactly (no floats).
+ * Accepts '10000', '10.000', '10.000,50', '10000,50'. Null when invalid.
+ * Display/edge parsing only — validation still happens server-side.
+ */
+export function parseScenarioMoneyToCents(raw: string): bigint | null {
+  const cleaned = raw.trim().replace(/\s/g, '');
+  if (cleaned === '' || /^(-|\+)/.test(cleaned)) return null;
+  if (!/^[\d.,]+$/.test(cleaned)) return null;
+  let canonical: string;
+  const hasDot = cleaned.includes('.');
+  const hasComma = cleaned.includes(',');
+  if (hasDot && hasComma) {
+    const lastDot = cleaned.lastIndexOf('.');
+    const lastComma = cleaned.lastIndexOf(',');
+    if (lastDot > lastComma) return null;
+    canonical = cleaned.replace(/\./g, '').replace(',', '.');
+  } else if (hasComma) {
+    canonical = cleaned.replace(',', '.');
+  } else if (hasDot) {
+    if (/^\d{1,3}(\.\d{3})+$/.test(cleaned)) canonical = cleaned.replace(/\./g, '');
+    else canonical = cleaned;
+  } else {
+    canonical = cleaned;
+  }
+  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(canonical);
+  if (!match) return null;
+  try {
+    return BigInt(match[1]!) * BigInt(100) + BigInt(((match[2] ?? '') + '00').slice(0, 2));
+  } catch {
+    return null;
+  }
+}
+
+/** Integer cents -> 'R$ 10.000,50'. Display only. */
+export function formatCentsBr(cents: bigint): string {
+  const negative = cents < BigInt(0);
+  const abs = negative ? -cents : cents;
+  const intPart = (abs / BigInt(100)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const frac = (abs % BigInt(100)).toString().padStart(2, '0');
+  return `R$ ${negative ? '-' : ''}${intPart},${frac}`;
 }

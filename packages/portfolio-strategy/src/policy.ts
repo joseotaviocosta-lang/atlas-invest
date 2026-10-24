@@ -17,6 +17,17 @@ export const STRATEGY_TOLERANCE_BP = 100;
 export const STRATEGY_MIN_COVERAGE_BP = 8000;
 
 /**
+ * Phase 5Q-E — cap on saved hypothetical scenarios per portfolio.
+ * Abuse guard only (small list, no pagination in v1); hitting it never
+ * deletes anything — the API fails closed with a clear message.
+ */
+export const MAX_SAVED_SCENARIOS_PER_PORTFOLIO = 50;
+
+/** Saved scenario names: plain text, trimmed, 1..80 chars, no markup. */
+export const SCENARIO_NAME_MIN_LENGTH = 1;
+export const SCENARIO_NAME_MAX_LENGTH = 80;
+
+/**
  * Parses a decimal percent string ('25', '25.5', '25,50', '87.456') into
  * integer basis points using decimal-string math only (locale commas
  * handled explicitly: '25,5' becomes 2550, never 25; binary floats never

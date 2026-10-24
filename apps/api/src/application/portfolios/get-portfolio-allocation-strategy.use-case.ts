@@ -13,6 +13,7 @@ import {
   validateScenarioInput,
   validateStrategyTargets,
   type ComparisonState,
+  type SimulatedScenario,
 } from '@atlas/portfolio-strategy';
 import { ALLOCATION_STRATEGY_REPOSITORY, PORTFOLIO_REPOSITORY } from '../../database/tokens';
 import { GetPortfolioAllocationUseCase } from '../valuation/get-portfolio-allocation.use-case';
@@ -373,6 +374,93 @@ export class GetPortfolioAllocationStrategyUseCase {
         asOf: basis.asOf,
       },
       limitations,
+    };
+  }
+
+  /**
+   * Phase 5Q-E — simulates N pre-validated change-sets against ONE shared
+   * basis (same strategy, same current allocation, same coverage).
+   * Structural same-basis guarantee for saved-scenario detail/compare:
+   * the basis loads once here, never once per scenario. Changes must
+   * already be canonical decimals (DB/locales are parsed by the caller).
+   * Throws InvalidAllocationScenarioError on invalid sets (fail-closed);
+   * returns reason NO_STRATEGY/INSUFFICIENT_DATA instead of throwing when
+   * the live state cannot support a simulation — saved inputs stay stored.
+   */
+  async simulateMany(command: {
+    portfolioId: string;
+    userId?: string;
+    changesList: Array<Array<{ category: string; amount: string }>>;
+  }): Promise<{
+    strategy: AllocationStrategyReadModel | null;
+    reason: 'OK' | 'NO_STRATEGY' | 'INSUFFICIENT_DATA';
+    currency: string | null;
+    qualified: boolean;
+    denominator: string;
+    asOf: string | null;
+    coverage: string | null;
+    results: Array<SimulatedScenario | null>;
+    comparison: AllocationStrategyComparison | null;
+  }> {
+    await this.verifyOwnership(command.portfolioId, command.userId);
+    for (const changes of command.changesList) {
+      const validation = validateScenarioInput({ type: 'CONTRIBUTION', changes });
+      if (!validation.valid) {
+        throw new InvalidAllocationScenarioError(
+          `Invalid scenario: ${validation.errors.map((error) => error.code).join(',')}`,
+        );
+      }
+    }
+    const strategy = await this.getStrategy(command.portfolioId, command.userId);
+    if (!strategy) {
+      return {
+        strategy: null,
+        reason: 'NO_STRATEGY',
+        currency: null,
+        qualified: false,
+        denominator: 'KNOWN_VALUE',
+        asOf: null,
+        coverage: null,
+        results: command.changesList.map(() => null),
+        comparison: null,
+      };
+    }
+    const basis = await this.loadComparisonBasis(command.portfolioId, command.userId);
+    if (!basis) {
+      const allocation = await this.allocation.execute({
+        portfolioId: command.portfolioId,
+        userId: command.userId ?? '',
+      });
+      return {
+        strategy,
+        reason: 'INSUFFICIENT_DATA',
+        currency: null,
+        qualified: false,
+        denominator: 'KNOWN_VALUE',
+        coverage: allocation.valuationCoveragePercent,
+        asOf: allocation.asOf,
+        results: command.changesList.map(() => null),
+        comparison: await this.compareStrategy(command.portfolioId, command.userId),
+      };
+    }
+    const currency = basis.denominator.replace(/^KNOWN_VALUE_/, '') || 'BRL';
+    const current = basis.weights.map((weight) => ({
+      category: weight.category,
+      value: weight.value,
+    }));
+    const results = command.changesList.map((changes) =>
+      simulateAllocationScenario({ changes, currency, current, targets: strategy.targets }),
+    );
+    return {
+      strategy,
+      reason: 'OK',
+      currency,
+      qualified: basis.qualified,
+      denominator: basis.denominator,
+      asOf: basis.asOf,
+      coverage: basis.coverage,
+      results,
+      comparison: await this.compareStrategy(command.portfolioId, command.userId),
     };
   }
 }

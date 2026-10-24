@@ -40,6 +40,7 @@ import {
   IntegrationJobRepository,
   IntegrationConnectionRepository,
   AllocationStrategyRepository,
+  AllocationScenarioRepository,
 } from '@atlas/database';
 import {
   PRISMA_CLIENT,
@@ -77,6 +78,7 @@ import {
   INTEGRATION_JOB_REPOSITORY,
   INTEGRATION_CONNECTION_REPOSITORY,
   ALLOCATION_STRATEGY_REPOSITORY,
+  ALLOCATION_SCENARIO_REPOSITORY,
   MARKET_QUOTE_REPOSITORY,
   BENCHMARK_OBSERVATION_REPOSITORY,
   FX_OBSERVATION_REPOSITORY,
@@ -141,6 +143,11 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     {
       provide: ALLOCATION_STRATEGY_REPOSITORY,
       useFactory: (prisma: AtlasPrismaClient) => new AllocationStrategyRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
+    {
+      provide: ALLOCATION_SCENARIO_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new AllocationScenarioRepository(prisma),
       inject: [PRISMA_CLIENT],
     },
     {
@@ -301,6 +308,7 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     INTEGRATION_JOB_REPOSITORY,
     INTEGRATION_CONNECTION_REPOSITORY,
     ALLOCATION_STRATEGY_REPOSITORY,
+    ALLOCATION_SCENARIO_REPOSITORY,
     USER_REPOSITORY,
     SESSION_REPOSITORY,
     PASSWORD_RESET_TOKEN_REPOSITORY,

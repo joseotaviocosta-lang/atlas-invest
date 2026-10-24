@@ -1,7 +1,11 @@
 import { DomainError } from '@atlas/domain';
 import { compareAllocationToStrategy } from './strategy';
 import type { ComparisonState } from './types';
-import { STRATEGY_TOLERANCE_BP } from './policy';
+import {
+  SCENARIO_NAME_MAX_LENGTH,
+  SCENARIO_NAME_MIN_LENGTH,
+  STRATEGY_TOLERANCE_BP,
+} from './policy';
 import { STRATEGY_CATEGORIES } from './types';
 
 export const SCENARIO_TYPES = ['CONTRIBUTION'] as const;
@@ -369,5 +373,112 @@ export function simulateAllocationScenario(input: {
     beforeTotalAbsDeviationBp: beforeAbs,
     afterTotalAbsDeviationBp: afterAbs,
     worstGap: worst ? { category: worst.category, deviationBp: worst.projectedDeviationBp } : null,
+  };
+}
+
+export type ScenarioNameValidationCode = 'EMPTY_NAME' | 'NAME_TOO_LONG' | 'NAME_HAS_MARKUP';
+
+export interface ScenarioNameValidationError {
+  code: ScenarioNameValidationCode;
+}
+
+/**
+ * Phase 5Q-E — saved scenario name rules (pure). Plain text only:
+ * trimmed, 1..80 chars, no angle brackets (never rendered as HTML
+ * anywhere, but rejected at the boundary anyway).
+ */
+export function validateScenarioName(raw: unknown):
+  | {
+      valid: true;
+      name: string;
+    }
+  | { valid: false; errors: ScenarioNameValidationError[] } {
+  if (typeof raw !== 'string') {
+    return { valid: false, errors: [{ code: 'EMPTY_NAME' }] };
+  }
+  const name = raw.trim();
+  if (name.length < SCENARIO_NAME_MIN_LENGTH) {
+    return { valid: false, errors: [{ code: 'EMPTY_NAME' }] };
+  }
+  if (name.length > SCENARIO_NAME_MAX_LENGTH) {
+    return { valid: false, errors: [{ code: 'NAME_TOO_LONG' }] };
+  }
+  if (name.includes('<') || name.includes('>')) {
+    return { valid: false, errors: [{ code: 'NAME_HAS_MARKUP' }] };
+  }
+  return { valid: true, name };
+}
+
+/**
+ * Default copy name for duplication ('Aporte mensal' -> 'Aporte mensal — cópia').
+ * Truncated to the name limit; the caller may let the user edit afterwards.
+ */
+export function buildScenarioCopyName(name: string): string {
+  const trimmed = name.trim();
+  const suffix = ' — cópia';
+  const combined = `${trimmed}${suffix}`;
+  if (combined.length <= SCENARIO_NAME_MAX_LENGTH) return combined;
+  return `${trimmed.slice(0, SCENARIO_NAME_MAX_LENGTH - suffix.length).trimEnd()}${suffix}`;
+}
+
+export interface ComparedScenarioSide {
+  scenarioId: string;
+  name: string;
+  scenarioTotal: string;
+  projectedTotal: string;
+  outsideCount: number;
+  totalAbsDeviationBp: number;
+  projectedWeights: Array<{ category: string; projectedBp: number; projectedDeviationBp: number }>;
+}
+
+export interface ScenarioComparison {
+  sides: [ComparedScenarioSide, ComparedScenarioSide];
+  currency: string;
+  sameScenarioTotal: boolean;
+}
+
+/**
+ * Phase 5Q-E — factual comparison of two live simulation results.
+ * Both results MUST share the same current basis (same currentTotal,
+ * same currency, same strategy): the caller guarantees it by simulating
+ * both change-sets against one loaded basis — this function re-checks
+ * and throws instead of comparing across different bases. Facts only:
+ * no choosing between scenarios, no scoring, no ranking, no advice.
+ */
+export function compareScenarioResults(input: {
+  left: { scenarioId: string; name: string; result: SimulatedScenario };
+  right: { scenarioId: string; name: string; result: SimulatedScenario };
+}): ScenarioComparison {
+  const { left, right } = input;
+  if (left.result.totals.currency !== right.result.totals.currency) {
+    throw new InvalidAllocationScenarioError('Cannot compare scenarios across currencies');
+  }
+  if (left.result.totals.current !== right.result.totals.current) {
+    throw new InvalidAllocationScenarioError(
+      'Cannot compare scenarios computed on different portfolio states',
+    );
+  }
+  const toSide = (side: {
+    scenarioId: string;
+    name: string;
+    result: SimulatedScenario;
+  }): ComparedScenarioSide => ({
+    scenarioId: side.scenarioId,
+    name: side.name,
+    scenarioTotal: side.result.totals.scenario,
+    projectedTotal: side.result.totals.projected,
+    outsideCount: side.result.afterOutsideCount,
+    totalAbsDeviationBp: side.result.afterTotalAbsDeviationBp,
+    projectedWeights: side.result.rows.map((row) => ({
+      category: row.category,
+      projectedBp: row.projectedBp,
+      projectedDeviationBp: row.projectedDeviationBp,
+    })),
+  });
+  const sides: [ComparedScenarioSide, ComparedScenarioSide] = [toSide(left), toSide(right)];
+  return {
+    sides,
+    currency: left.result.totals.currency,
+    sameScenarioTotal: left.result.totals.scenario === right.result.totals.scenario,
   };
 }

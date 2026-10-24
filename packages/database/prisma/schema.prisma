@@ -115,6 +115,7 @@ model Portfolio {
   integrationSchedules   IntegrationSchedule[]
   integrationConnections IntegrationConnection[]
   allocationStrategyTargets PortfolioAllocationStrategyTarget[]
+  allocationScenarios         PortfolioAllocationScenario[]
   aiConversations        AiConversation[]
   annualOpeningPositions AnnualOpeningPositionInputRecord[]
 
@@ -387,6 +388,46 @@ model PortfolioAllocationStrategyTarget {
   @@unique([portfolioId, category])
   @@index([portfolioId])
   @@map("portfolio_allocation_strategy_targets")
+}
+
+/// Phase 5Q-E — saved hypothetical allocation scenarios (input only).
+///
+/// `portfolio_allocation_scenarios` stores the user's declared hypothesis
+/// (name + type); `portfolio_allocation_scenario_changes` stores the
+/// manually-split hypothetical contribution per asset class as exact
+/// Decimal amounts (canonical form, ≤2 decimals, > 0 enforced by CHECK).
+/// Duplicate names are allowed (identity is the id). No projected values,
+/// weights, deviations, coverage or recommendations are ever persisted:
+/// results are always recomputed live against the current portfolio and
+/// strategy. Portfolio/scenario deletion cascades.
+model PortfolioAllocationScenario {
+  id          String   @id @default(uuid()) @db.Uuid
+  portfolioId String   @map("portfolio_id") @db.Uuid
+  name        String   @db.VarChar(80)
+  type        String   @default("CONTRIBUTION") @db.VarChar(20)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  portfolio Portfolio                           @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  changes   PortfolioAllocationScenarioChange[]
+
+  @@index([portfolioId])
+  @@map("portfolio_allocation_scenarios")
+}
+
+model PortfolioAllocationScenarioChange {
+  id         String   @id @default(uuid()) @db.Uuid
+  scenarioId String   @map("scenario_id") @db.Uuid
+  category   String   @db.VarChar(50)
+  amount     Decimal  @db.Decimal(38, 18)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  scenario PortfolioAllocationScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+
+  @@unique([scenarioId, category])
+  @@index([scenarioId])
+  @@map("portfolio_allocation_scenario_changes")
 }
 
 model AiConversation {

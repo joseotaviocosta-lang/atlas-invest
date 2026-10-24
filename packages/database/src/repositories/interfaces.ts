@@ -2048,6 +2048,65 @@ export interface IAllocationStrategyRepository {
   clear(portfolioId: string): Promise<void>;
 }
 
+export interface PortfolioAllocationScenarioChangeRow {
+  id: string;
+  scenarioId: string;
+  category: string;
+  /** Canonical decimal money string (exact, never float). */
+  amount: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PortfolioAllocationScenarioRow {
+  id: string;
+  portfolioId: string;
+  name: string;
+  type: string;
+  createdAt: Date;
+  updatedAt: Date;
+  changes: PortfolioAllocationScenarioChangeRow[];
+}
+
+export interface PortfolioAllocationScenarioChangeInput {
+  category: string;
+  /** Canonical decimal money string (exact, never float). */
+  amount: string;
+}
+
+export interface PortfolioAllocationScenarioWriteInput {
+  name: string;
+  type: string;
+  changes: readonly PortfolioAllocationScenarioChangeInput[];
+}
+
+/**
+ * Phase 5Q-E: saved hypothetical allocation scenarios (input only).
+ * Persists the user's declared hypothesis — name, type, per-category
+ * hypothetical amounts. Never projected weights, deviations, coverage
+ * or recommendations: results are recomputed live. Writes are atomic
+ * (scenario + full change set in one transaction); replace() returns
+ * null and remove() returns false when the scoped scenario is absent.
+ */
+export interface IAllocationScenarioRepository {
+  countByPortfolio(portfolioId: string): Promise<number>;
+  listByPortfolio(portfolioId: string): Promise<PortfolioAllocationScenarioRow[]>;
+  findByIdAndPortfolio(
+    scenarioId: string,
+    portfolioId: string,
+  ): Promise<PortfolioAllocationScenarioRow | null>;
+  create(
+    portfolioId: string,
+    input: PortfolioAllocationScenarioWriteInput,
+  ): Promise<PortfolioAllocationScenarioRow>;
+  replace(
+    scenarioId: string,
+    portfolioId: string,
+    input: PortfolioAllocationScenarioWriteInput,
+  ): Promise<PortfolioAllocationScenarioRow | null>;
+  remove(scenarioId: string, portfolioId: string): Promise<boolean>;
+}
+
 export interface IntegrationJobRow {
   id: string;
   scheduleId: string;

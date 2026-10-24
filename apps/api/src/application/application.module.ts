@@ -11,6 +11,7 @@ import {
   GetPortfolioReviewUseCase,
   GetPortfolioReviewSignalDetailUseCase,
   GetPortfolioAllocationStrategyUseCase,
+  PortfolioAllocationScenariosUseCase,
 } from './portfolios';
 import {
   GetPortfolioValuationUseCase,
@@ -144,6 +145,7 @@ const USE_CASES = [
   GetPortfolioReviewUseCase,
   GetPortfolioReviewSignalDetailUseCase,
   GetPortfolioAllocationStrategyUseCase,
+  PortfolioAllocationScenariosUseCase,
   GetPortfolioValuationUseCase,
   GetPortfolioAllocationUseCase,
   UpdatePortfolioMarketDataUseCase,
