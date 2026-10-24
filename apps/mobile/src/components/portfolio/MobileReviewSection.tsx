@@ -90,17 +90,28 @@ export function MobileReviewSection({ portfolioId }: { portfolioId: string | nul
             <Text style={{ fontSize: 13, fontWeight: '700' }}>
               {presentation.label} · {title}
             </Text>
-            {target !== null ? (
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+              {target !== null ? (
+                <Button
+                  title={
+                    signal.action.kind === 'ROUTE' && signal.action.label
+                      ? signal.action.label
+                      : 'Abrir'
+                  }
+                  onPress={() => router.push(target as never)}
+                  variant="ghost"
+                />
+              ) : null}
               <Button
-                title={
-                  signal.action.kind === 'ROUTE' && signal.action.label
-                    ? signal.action.label
-                    : 'Abrir'
+                title="Ver detalhes"
+                onPress={() =>
+                  router.push(
+                    `/(app)/portfolio/review-detail?portfolioId=${review.portfolioId}&code=${signal.code}&period=1A` as never,
+                  )
                 }
-                onPress={() => router.push(target as never)}
                 variant="ghost"
               />
-            ) : null}
+            </View>
           </View>
         );
       })}

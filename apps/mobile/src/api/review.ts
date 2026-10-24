@@ -37,4 +37,14 @@ export const reviewApi = {
   async getReview(portfolioId: string): Promise<{ data: MobilePortfolioReview }> {
     return apiClient.get(`/api/v1/portfolios/${portfolioId}/review`);
   },
+
+  async getSignalDetail(
+    portfolioId: string,
+    code: string,
+    period: string,
+  ): Promise<{ data: Record<string, unknown> }> {
+    return apiClient.get(
+      `/api/v1/portfolios/${portfolioId}/review/signals/${code}?period=${period}`,
+    );
+  },
 };

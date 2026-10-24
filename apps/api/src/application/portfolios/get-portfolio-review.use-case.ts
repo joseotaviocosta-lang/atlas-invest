@@ -66,6 +66,8 @@ export class GetPortfolioReviewUseCase {
     portfolioId: string;
     userId: string;
     now?: Date;
+    /** Explicit analysis window. Omitted → composed use-cases apply their defaults. */
+    period?: { startDate: string; endDate: string };
   }): Promise<PortfolioReview> {
     const portfolio = await this.portfolios.findById(params.portfolioId);
     if (!portfolio || portfolio.userId !== params.userId) {
@@ -77,7 +79,13 @@ export class GetPortfolioReviewUseCase {
       this.state.execute({ portfolioId: params.portfolioId, userId: params.userId }),
       this.valuation.execute({ portfolioId: params.portfolioId, userId: params.userId }),
       this.allocation.execute({ portfolioId: params.portfolioId, userId: params.userId }),
-      this.intelligence.execute({ portfolioId: params.portfolioId, userId: params.userId }),
+      this.intelligence.execute({
+        portfolioId: params.portfolioId,
+        userId: params.userId,
+        ...(params.period
+          ? { startDate: params.period.startDate, endDate: params.period.endDate }
+          : {}),
+      }),
       this.runs.listRecentByPortfolioIds([params.portfolioId], 200),
     ]);
 

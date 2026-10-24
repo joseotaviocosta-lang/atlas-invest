@@ -40,6 +40,7 @@ describe('Phase 5Q-A: portfolio review architecture boundaries', () => {
   it('review use-case and controller never touch ledger writers, live B3 or fiscal engines', () => {
     for (const file of [
       'apps/api/src/application/portfolios/get-portfolio-review.use-case.ts',
+      'apps/api/src/application/portfolios/get-portfolio-review-signal-detail.use-case.ts',
       'apps/api/src/modules/portfolios/portfolio-review.controller.ts',
       'apps/api/src/modules/portfolios/portfolio-review.mapper.ts',
     ]) {

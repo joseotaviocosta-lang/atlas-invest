@@ -53,6 +53,74 @@ const SIGNAL_COPY: Record<string, ReviewSignalPresentation> = {
   },
 };
 
+/**
+ * Phase 5Q-B — "why am I seeing this" explanations (STEP 30).
+ * Heuristic documentation only: states the rule, never advises.
+ */
+const REVIEW_RULE_COPY: Record<string, string> = {
+  DATA_VALUATION_COVERAGE:
+    'O Atlas mostra este ponto quando menos de 100% das posições têm cotação disponível. Abaixo de 80%, a cobertura é considerada insuficiente para conclusões e o item pede revisão.',
+  DATA_RECONCILIATION_DIVERGENCE:
+    'O Atlas compara o livro-razão com os dados da fonte a cada sincronização. Qualquer posição divergente, ausente de um dos lados ou sem resolução aparece aqui.',
+  INTEGRATION_PENDING_REVIEW:
+    'Importações e sincronizações aguardando sua confirmação aparecem aqui. Nada é importado sem a sua revisão.',
+  ALLOCATION_SINGLE_ASSET_CONCENTRATION:
+    'O Atlas destaca posições individuais a partir de 25% do valor conhecido da carteira. Abaixo disso, a posição aparece apenas na alocação.',
+  PERFORMANCE_BENCHMARK_GAP:
+    'O Atlas compara a rentabilidade da carteira com o benchmark no período. Diferenças a partir de 2 pontos percentuais abaixo aparecem aqui.',
+  PERFORMANCE_BENCHMARK_UNAVAILABLE:
+    'Sem dados do benchmark no período não há como comparar. Este item apenas registra a ausência.',
+  INCOME_RECEIVED:
+    'O Atlas soma proventos registrados no livro-razão (dividendos, JCP e rendimentos de FII). Não há projeção de proventos futuros.',
+};
+
+export function describeReviewRule(code: string): string {
+  return (
+    REVIEW_RULE_COPY[code] ??
+    'Este ponto é derivado dos dados atuais da carteira com regras determinísticas.'
+  );
+}
+
+const REVIEW_LIMITATION_COPY: Record<string, string> = {
+  NO_HISTORICAL_SOURCE:
+    'Histórico indisponível para este indicador. A análise considera o snapshot atual.',
+  NO_BENCHMARK_IN_PERIOD: 'Sem dados do benchmark no período para comparação.',
+  WINDOW_TRUNCATED: 'O histórico mostra as execuções mais recentes dentro do limite da janela.',
+  MULTI_CURRENCY_NO_TRANSLATION:
+    'Sem conversão para moeda única, a análise por ativo fica restrita a cada moeda.',
+  NO_INCOME_IN_PERIOD: 'Sem proventos registrados no período.',
+  SINGLE_SNAPSHOT_ONLY: 'Apenas o snapshot atual está disponível para este indicador.',
+};
+
+export function describeReviewLimitation(code: string): string {
+  return REVIEW_LIMITATION_COPY[code] ?? 'Informação adicional indisponível.';
+}
+
+export type ReviewTrendTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
+
+export interface ReviewTrendPresentation {
+  label: string;
+  tone: ReviewTrendTone;
+}
+
+/**
+ * Neutral direction vocabulary (STEP 21): movement only, never judgment.
+ * No "improved/worsened/good/bad" — except coverage direction, which is
+ * itself the data-quality statement.
+ */
+export function describeReviewTrend(trend: string): ReviewTrendPresentation {
+  switch (trend) {
+    case 'INCREASED':
+      return { label: 'Em alta', tone: 'info' };
+    case 'DECREASED':
+      return { label: 'Em queda', tone: 'info' };
+    case 'STABLE':
+      return { label: 'Estável', tone: 'neutral' };
+    default:
+      return { label: 'Sem dados suficientes', tone: 'neutral' };
+  }
+}
+
 export function describeReviewSignal(code: string): ReviewSignalPresentation {
   return (
     SIGNAL_COPY[code] ?? {

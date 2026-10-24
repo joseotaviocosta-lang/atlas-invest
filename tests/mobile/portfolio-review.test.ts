@@ -43,4 +43,25 @@ describe('Phase 5Q-A (mobile): review contract compatibility', () => {
     expect(section).toContain('target !== null');
     expect(section).not.toContain('onPress={() => {}}');
   });
+
+  it('opens a read-only detail with period selector, history fallback and limitations', () => {
+    const detail = fs.readFileSync(
+      path.join(process.cwd(), 'apps/mobile/app/(app)/portfolio/review-detail.tsx'),
+      'utf8',
+    );
+    expect(detail).toContain('Por que estou vendo isso?');
+    expect(detail).toContain('Como evoluiu');
+    expect(detail).toContain('Dados usados');
+    expect(detail).toContain('Limitações');
+    expect(detail).toContain('Histórico indisponível para este indicador');
+    for (const preset of ['1M', '3M', '6M', 'YTD', '1A', 'INCEPTION']) {
+      expect(detail).toContain(`id: '${preset}'`);
+    }
+    const section = fs.readFileSync(
+      path.join(process.cwd(), 'apps/mobile/src/components/portfolio/MobileReviewSection.tsx'),
+      'utf8',
+    );
+    expect(section).toContain('Ver detalhes');
+    expect(section).toContain('/(app)/portfolio/review-detail?');
+  });
 });

@@ -221,7 +221,7 @@ export function PortfolioReviewSection({ portfolioId }: { portfolioId: string })
                   </span>
                 ))}
                 {signal.action.kind === 'ROUTE' && signal.action.href ? (
-                  <span>
+                  <span style={{ display: 'flex', gap: `${spacing.sm}px`, flexWrap: 'wrap' }}>
                     <Link
                       href={signal.action.href}
                       aria-label={signal.action.label ?? 'Abrir detalhes'}
@@ -230,8 +230,27 @@ export function PortfolioReviewSection({ portfolioId }: { portfolioId: string })
                         {signal.action.label ?? 'Abrir detalhes'}
                       </Button>
                     </Link>
+                    <Link
+                      href={`/portfolio/review?portfolioId=${portfolioId}&signal=${signal.id}&period=1A`}
+                      aria-label={`Ver detalhes de ${describeReviewSignal(signal.code).label}`}
+                    >
+                      <Button size="sm" variant="outline" style={{ minHeight: 44 }}>
+                        Ver detalhes
+                      </Button>
+                    </Link>
                   </span>
-                ) : null}
+                ) : (
+                  <span>
+                    <Link
+                      href={`/portfolio/review?portfolioId=${portfolioId}&signal=${signal.id}&period=1A`}
+                      aria-label={`Ver detalhes de ${describeReviewSignal(signal.code).label}`}
+                    >
+                      <Button size="sm" variant="outline" style={{ minHeight: 44 }}>
+                        Ver detalhes
+                      </Button>
+                    </Link>
+                  </span>
+                )}
               </div>
             );
           })}

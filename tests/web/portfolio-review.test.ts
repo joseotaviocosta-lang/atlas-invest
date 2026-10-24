@@ -151,6 +151,12 @@ describe('Phase 5Q-A: review presentation', () => {
     expect(today).toContain('aria-label="Ver revisão da carteira"');
   });
 
+  it('links every signal card to a stable drill-down URL', () => {
+    expect(section).toContain('/portfolio/review?portfolioId=');
+    expect(section).toContain('signal=${signal.id}');
+    expect(section).toContain('Ver detalhes');
+  });
+
   it('contains no advice, predictions or guarantees in UI copy', () => {
     for (const content of [page, today, section]) {
       expect(content).not.toMatch(

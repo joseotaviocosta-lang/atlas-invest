@@ -9,6 +9,8 @@
  * boundary).
  */
 
+import type { ReviewSignalHistory } from './history';
+
 export const REVIEW_SIGNAL_CATEGORIES = [
   'DATA_QUALITY',
   'ALLOCATION',
@@ -89,6 +91,32 @@ export interface PortfolioReview {
   signals: PortfolioReviewSignal[];
   /** True when the portfolio has no positions to review. */
   isEmpty: boolean;
+}
+
+/** Limitation keys surfaced by drill-down (client maps each to pt-BR copy). */
+export const REVIEW_LIMITATIONS = [
+  'NO_HISTORICAL_SOURCE',
+  'NO_BENCHMARK_IN_PERIOD',
+  'WINDOW_TRUNCATED',
+  'MULTI_CURRENCY_NO_TRANSLATION',
+  'NO_INCOME_IN_PERIOD',
+  'SINGLE_SNAPSHOT_ONLY',
+] as const;
+export type ReviewLimitation = (typeof REVIEW_LIMITATIONS)[number];
+
+/** Detail read model for one signal (STEP 6). Derived, never persisted. */
+export interface PortfolioReviewSignalDetail {
+  code: ReviewSignalCode;
+  /** ACTIVE when the signal fires in the current review for the same period. */
+  state: 'ACTIVE' | 'NOT_ACTIVE';
+  period: { preset: string; startDate: string; endDate: string };
+  generatedAt: string;
+  marketDataAsOf: string | null;
+  /** Current evidence — identical to the overview signal when ACTIVE. */
+  evidence: Record<string, string | number | boolean | null> | null;
+  history: ReviewSignalHistory;
+  limitations: ReviewLimitation[];
+  action: PortfolioReviewSignal['action'];
 }
 
 /** Minimal valuation slice the review needs. */
