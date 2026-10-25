@@ -74,6 +74,12 @@ export const portfoliosApi = {
     return apiClient.get<{ data: AssetMeta }>(`/api/v1/assets/${assetId}`);
   },
 
+  async getPositionIntelligence(portfolioId: string, assetId: string): Promise<{ data: unknown }> {
+    return apiClient.get<{ data: unknown }>(
+      `/api/v1/portfolios/${portfolioId}/positions/${assetId}/intelligence`,
+    );
+  },
+
   async listAccounts(portfolioId: string): Promise<{ data: AccountDto[] }> {
     return apiClient.get<{ data: AccountDto[] }>(`/api/v1/portfolios/${portfolioId}/accounts`);
   },

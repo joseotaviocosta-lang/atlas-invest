@@ -9,6 +9,7 @@ import { PortfolioContributionPlansController } from './portfolio-contribution-p
 import { PortfolioContributionInsightsController } from './portfolio-contribution-insights.controller';
 import { PortfolioContributionGoalsController } from './portfolio-contribution-goals.controller';
 import { PortfolioContributionCalendarController } from './portfolio-contribution-calendar.controller';
+import { PortfolioPositionIntelligenceController } from './portfolio-position-intelligence.controller';
 
 @Module({
   imports: [ApplicationModule],
@@ -22,6 +23,7 @@ import { PortfolioContributionCalendarController } from './portfolio-contributio
     PortfolioContributionInsightsController,
     PortfolioContributionGoalsController,
     PortfolioContributionCalendarController,
+    PortfolioPositionIntelligenceController,
   ],
 })
 export class PortfoliosModule {}

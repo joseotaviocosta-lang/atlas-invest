@@ -162,6 +162,50 @@ const CORPORATE_ACTION_LABELS: Record<string, string> = {
   AMORTIZATION: 'Amortização',
 };
 
+const POSITION_TRANSACTION_TYPE_LABELS: Record<string, string> = {
+  BUY: 'Compra',
+  SELL: 'Venda / Alienação',
+  DIVIDEND: 'Dividendo',
+  JCP: 'Juros sobre Capital Próprio',
+  FII_INCOME: 'Rendimento FII',
+  SPLIT: 'Desdobramento',
+  REVERSE_SPLIT: 'Grupamento',
+  BONUS: 'Bonificação',
+  AMORTIZATION: 'Amortização',
+  SUBSCRIPTION: 'Subscrição',
+  TRANSFER_IN: 'Transferência de Entrada',
+  TRANSFER_OUT: 'Transferência de Saída',
+  FEE: 'Taxa',
+  TAX: 'Imposto',
+};
+
+/** Raw ledger transaction type -> neutral pt-BR label. Display only; unknown types pass through. */
+export function describePositionTransactionType(type: string): string {
+  return POSITION_TRANSACTION_TYPE_LABELS[type] ?? type;
+}
+
+/**
+ * Phase 5R-A — position intelligence limitation copy (facts only).
+ * Neutral and specific; never judgment, scores or advice.
+ */
+export function describePositionLimitation(code: string): string {
+  if (code === 'MISSING_PRICE')
+    return 'O preço desta posição não está disponível. O valor atual não pode ser calculado.';
+  if (code === 'STALE_PRICE')
+    return 'O preço exibido não é da data atual. Os valores usam a última cotação disponível.';
+  if (code === 'NO_FX_TRANSLATION')
+    return 'Não há conversão para a moeda do relatório. Os valores aparecem na moeda da posição, sem conversão.';
+  if (code === 'PARTIAL_PORTFOLIO_VALUATION')
+    return 'Parte da carteira não pôde ser avaliada. O peso usa apenas o valor conhecido.';
+  if (code === 'POSITION_PERFORMANCE_NOT_AVAILABLE')
+    return 'O resultado detalhado por posição ainda não está disponível.';
+  if (code === 'COST_BASIS_NOT_AVAILABLE')
+    return 'O custo desta posição é desconhecido. Valores de custo aparecem como indisponíveis, nunca zerados.';
+  if (code === 'NO_INCOME_HISTORY')
+    return 'Nenhum rendimento registrado para esta posição no histórico.';
+  return code;
+}
+
 export function formatDatePtBr(dateStr: string): string {
   if (!dateStr || !/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
     return dateStr || '—';

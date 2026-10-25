@@ -29,6 +29,7 @@ import {
   AssetIncomeSection,
   AssetHistorySection,
   PortfolioHistoricalBanner,
+  PositionIntelligenceSection,
 } from '@/components/portfolio';
 import { Card, Button, Skeleton, ErrorState } from '@/components/ui';
 
@@ -353,6 +354,12 @@ function AssetPositionDetailContent() {
 
       {/* 3. Custody Breakdown by Account (historical snapshot when asOf) */}
       <AssetCustodyBreakdown accounts={viewModel.accountsBreakdown} />
+
+      {/* 3.5 Position Intelligence (valuation, weight, income, activity — current mode only).
+          Valuation and allocation are current-mode concepts, like realized/income aggregates. */}
+      {!isHistorical && activePortfolioId ? (
+        <PositionIntelligenceSection portfolioId={activePortfolioId} assetId={assetId} />
+      ) : null}
 
       {/* 4-5. Realized Results & Income (lifetime aggregates: current mode only).
           In historical mode they would mix lifetime totals with snapshot

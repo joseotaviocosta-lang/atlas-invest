@@ -29,6 +29,7 @@ import {
   MobileIncomeSection,
   MobileHistorySection,
   MobileHistoricalBanner,
+  MobilePositionIntelligenceSection,
 } from '../../../src/components/portfolio';
 import { portfoliosApi } from '../../../src/api/portfolios';
 import { ApiError } from '../../../src/api/client';
@@ -310,6 +311,14 @@ export default function MobileAssetDetailPage() {
 
             {/* Custody Breakdown by Account (historical snapshot when asOf) */}
             <MobileCustodyBreakdown accounts={viewModel.accountsBreakdown} />
+
+            {/* Position Intelligence (valuation, weight, income, activity — current mode only) */}
+            {!isHistorical && activePortfolioId ? (
+              <MobilePositionIntelligenceSection
+                portfolioId={activePortfolioId}
+                assetId={assetId}
+              />
+            ) : null}
 
             {/* Realized & Income are lifetime aggregates: current mode only.
                 In historical mode they would mix lifetime totals with snapshot
