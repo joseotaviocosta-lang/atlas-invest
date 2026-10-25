@@ -7,6 +7,7 @@ import { PortfolioAllocationStrategyController } from './portfolio-allocation-st
 import { PortfolioAllocationScenariosController } from './portfolio-allocation-scenarios.controller';
 import { PortfolioContributionPlansController } from './portfolio-contribution-plans.controller';
 import { PortfolioContributionInsightsController } from './portfolio-contribution-insights.controller';
+import { PortfolioContributionGoalsController } from './portfolio-contribution-goals.controller';
 
 @Module({
   imports: [ApplicationModule],
@@ -18,6 +19,7 @@ import { PortfolioContributionInsightsController } from './portfolio-contributio
     PortfolioAllocationScenariosController,
     PortfolioContributionPlansController,
     PortfolioContributionInsightsController,
+    PortfolioContributionGoalsController,
   ],
 })
 export class PortfoliosModule {}

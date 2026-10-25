@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { Skeleton, ErrorState, EmptyState, SectionHeader, Button, Badge } from '@/components/ui';
-import { colors, spacing } from '@atlas/ui';
+import { colors, spacing, getTodayCivilDateString } from '@atlas/ui';
 import {
   describeInsightsLimitation,
   formatPlanDate,
@@ -29,6 +29,13 @@ interface InsightsMonth {
   difference: string;
   plannedCount: number;
   completedCount: number;
+  goalAmount: string | null;
+}
+
+interface InsightsGoal {
+  amount: string;
+  currency: string;
+  effectiveFromMonth: string;
 }
 
 interface InsightsData {
@@ -68,6 +75,18 @@ interface InsightsData {
     difference: string;
     confirmedCount: number;
   }>;
+  goal: InsightsGoal | null;
+  goalProgress: {
+    periodGoalTotal: string;
+    plannedTotal: string;
+    confirmedTotal: string;
+    plannedDifference: string | null;
+    confirmedDifference: string | null;
+    completionBp: number | null;
+    status: 'NO_GOAL' | 'BELOW' | 'AT' | 'ABOVE';
+    monthsWithGoal: number;
+    monthsWithoutGoal: number;
+  } | null;
   limitations: string[];
 }
 
@@ -198,6 +217,7 @@ export function PortfolioContributionInsights({
   });
 
   const data = insightsQuery.data ?? null;
+  const currentMonth = getTodayCivilDateString().slice(0, 7);
   const summary = data?.summary ?? null;
 
   return (
@@ -280,6 +300,38 @@ export function PortfolioContributionInsights({
                   foram identificados em operações confirmadas.
                 </p>
               ) : null}
+              {data.goal && data.goalProgress ? (
+                <div
+                  style={{
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 8,
+                    padding: 12,
+                    margin: '8px 0',
+                    backgroundColor: colors.surface,
+                  }}
+                  data-testid="insights-goal"
+                >
+                  <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                    Meta definida por você
+                  </div>
+                  <div style={{ fontSize: '1.125rem', fontWeight: 700 }}>
+                    {formatScenarioMoney(data.goal.amount, data.goal.currency)}{' '}
+                    <span style={{ fontSize: '0.875rem', fontWeight: 400 }}>por mês</span>
+                  </div>
+                  <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                    No período: meta acumulada{' '}
+                    {formatScenarioMoney(data.goalProgress.periodGoalTotal, data.goal.currency)}.
+                    Planejado{' '}
+                    {formatScenarioMoney(data.goalProgress.plannedTotal, data.goal.currency)},
+                    confirmado{' '}
+                    {formatScenarioMoney(data.goalProgress.confirmedTotal, data.goal.currency)}.
+                    {data.goalProgress.status === 'BELOW' &&
+                    data.goalProgress.confirmedDifference !== null
+                      ? ` Faltam ${formatScenarioMoney(data.goalProgress.confirmedDifference.slice(1), data.goal.currency)} para alcançar o valor que você definiu.`
+                      : null}
+                  </div>
+                </div>
+              ) : null}
               <div
                 style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '8px 0' }}
                 data-testid="insights-status"
@@ -332,6 +384,14 @@ export function PortfolioContributionInsights({
                           >
                             Confirmado
                           </th>
+                          {data.timeline.some((row) => row.goalAmount !== null) ? (
+                            <th
+                              scope="col"
+                              style={{ padding: '6px 8px', fontWeight: 600, textAlign: 'right' }}
+                            >
+                              Meta
+                            </th>
+                          ) : null}
                           <th
                             scope="col"
                             style={{
@@ -349,6 +409,7 @@ export function PortfolioContributionInsights({
                           <tr key={row.month} style={{ borderTop: `1px solid ${colors.border}` }}>
                             <td style={{ padding: '8px 8px 8px 0' }}>
                               {formatPlanMonth(row.month)}
+                              {row.month === currentMonth ? ' (mês atual)' : null}
                             </td>
                             <td style={{ padding: 8, textAlign: 'right' }}>
                               {formatScenarioMoney(row.planned, data.currency ?? 'BRL')}
@@ -356,6 +417,11 @@ export function PortfolioContributionInsights({
                             <td style={{ padding: 8, textAlign: 'right' }}>
                               {formatScenarioMoney(row.confirmed, data.currency ?? 'BRL')}
                             </td>
+                            {row.goalAmount !== null ? (
+                              <td style={{ padding: '8px 8px 8px 0', textAlign: 'right' }}>
+                                {formatScenarioMoney(row.goalAmount, data.currency ?? 'BRL')}
+                              </td>
+                            ) : null}
                             <td style={{ padding: '8px 0 8px 8px', textAlign: 'right' }}>
                               {formatSignedMoney(row.difference, data.currency ?? 'BRL')}
                             </td>

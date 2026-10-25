@@ -13,7 +13,15 @@ import {
   Button,
   Badge,
 } from '@/components/ui';
-import { colors, spacing, borderRadius, formatCurrency, formatPercentage, formatPlanDate, getTodayCivilDateString } from '@atlas/ui';
+import {
+  colors,
+  spacing,
+  borderRadius,
+  formatCurrency,
+  formatPercentage,
+  formatPlanDate,
+  getTodayCivilDateString,
+} from '@atlas/ui';
 import { apiClient } from '@/api/client';
 import {
   PortfolioValuationResponse,
@@ -116,6 +124,29 @@ export default function TodayPage() {
     staleTime: 60 * 1000,
   });
   const nextPlan = nextPlanData?.data?.plan ?? null;
+
+  // Monthly contribution goal + current-month confirmed total (facts only).
+  const { data: goalInsightsData } = useQuery<{
+    data: {
+      currency: string | null;
+      goal: { amount: string; currency: string; effectiveFromMonth: string } | null;
+      timeline: Array<{ month: string; confirmed: string }>;
+    };
+  }>({
+    queryKey: ['portfolio-contribution-insights', firstPortfolioId, '1A'],
+    queryFn: async () => {
+      if (!firstPortfolioId) return { data: { currency: null, goal: null, timeline: [] } };
+      return apiClient.get(
+        `/api/v1/portfolios/${firstPortfolioId}/contribution-insights?period=1A`,
+      );
+    },
+    enabled: Boolean(firstPortfolioId),
+    staleTime: 60 * 1000,
+  });
+  const currentMonthKey = today.slice(0, 7);
+  const currentMonthRow =
+    goalInsightsData?.data?.timeline.find((row) => row.month === currentMonthKey) ?? null;
+  const currentGoal = goalInsightsData?.data?.goal ?? null;
 
   // 1. Ledger state query (Source of truth for cost basis & proventos)
   const { data: stateData } = useQuery<{
@@ -424,6 +455,51 @@ export default function TodayPage() {
             aria-label="Ver plano de aporte"
           >
             <Button size="sm">Ver plano</Button>
+          </Link>
+        </div>
+      ) : null}
+
+      {/* Monthly contribution goal + current-month confirmed facts (user-defined only) */}
+      {currentGoal && firstPortfolioId ? (
+        <div
+          style={{
+            padding: `${spacing.base}px ${spacing.xl}px`,
+            borderRadius: `${borderRadius.lg}px`,
+            backgroundColor: colors.surface,
+            border: `1px solid ${colors.border}`,
+            marginBottom: `${spacing.xl}px`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: `${spacing.base}px`,
+            flexWrap: 'wrap',
+          }}
+          data-testid="today-contribution-goal"
+        >
+          <div>
+            <div
+              style={{
+                fontWeight: 600,
+                color: colors.textPrimary,
+                fontSize: '0.9375rem',
+                marginBottom: '2px',
+              }}
+            >
+              Meta de aporte deste mês
+            </div>
+            <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+              {formatCurrency(currentGoal.amount, currentGoal.currency)} definidos por você
+              {currentMonthRow
+                ? ` • ${formatCurrency(currentMonthRow.confirmed, currentGoal.currency)} identificados até agora`
+                : ''}
+              .
+            </div>
+          </div>
+          <Link
+            href={`/portfolio?tab=allocation&portfolioId=${firstPortfolioId}`}
+            aria-label="Ver planejamento de aportes"
+          >
+            <Button size="sm">Ver planejamento</Button>
           </Link>
         </div>
       ) : null}

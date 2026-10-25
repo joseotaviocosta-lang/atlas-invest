@@ -10,5 +10,6 @@ export * from './get-portfolio-allocation-strategy.use-case';
 export * from './portfolio-allocation-scenarios.use-case';
 export * from './portfolio-contribution-plans.use-case';
 export * from './portfolio-contribution-insights.use-case';
+export * from './portfolio-contribution-goals.use-case';
 export * from './read-models';
 export * from './mappers/portfolio-read-model.mapper';

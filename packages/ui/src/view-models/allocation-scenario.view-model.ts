@@ -251,5 +251,7 @@ export function describeInsightsLimitation(code: string): string {
     return 'Parte do valor confirmado não pôde ser classificada por categoria e aparece como não classificada.';
   if (code === 'CASH_ACTUAL_SEMANTICS')
     return 'Operações confirmadas representam entradas de caixa. Elas não provam em qual categoria o valor foi aplicado depois.';
+  if (code === 'GOAL_CURRENCY_MISMATCH')
+    return 'A meta usa outra moeda e não entra neste total; os valores são mostrados por moeda, sem conversão.';
   return describeScenarioLimitation(code);
 }

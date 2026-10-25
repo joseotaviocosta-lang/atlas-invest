@@ -117,6 +117,7 @@ model Portfolio {
   allocationStrategyTargets PortfolioAllocationStrategyTarget[]
   allocationScenarios         PortfolioAllocationScenario[]
   contributionPlans           PortfolioContributionPlan[]
+  contributionGoals           PortfolioContributionGoal[]
   aiConversations        AiConversation[]
   annualOpeningPositions AnnualOpeningPositionInputRecord[]
 
@@ -472,6 +473,31 @@ model ContributionPlanTransactionLink {
   @@index([planId])
   @@index([planId, status])
   @@map("contribution_plan_transaction_links")
+}
+
+/// Phase 5Q-J — user-defined monthly contribution goals (versioned intent).
+///
+/// One row per effective version: [effectiveFromMonth, effectiveToMonth)
+/// with NULL end meaning open-ended. Only one open version per portfolio
+/// (partial unique index); closing + creating happens atomically in the
+/// repository. Past months are never rewritten: edits close the open
+/// version at the chosen month and open a new one. No targets, no scores,
+/// no forecasts, no recommendations — just the user's declared number.
+model PortfolioContributionGoal {
+  id               String    @id @default(uuid()) @db.Uuid
+  portfolioId      String    @map("portfolio_id") @db.Uuid
+  amount           Decimal   @db.Decimal(38, 18)
+  currency         String    @db.VarChar(3)
+  effectiveFrom    DateTime  @map("effective_from") @db.Date
+  effectiveTo      DateTime? @map("effective_to") @db.Date
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@index([portfolioId])
+  @@index([portfolioId, effectiveFrom])
+  @@map("portfolio_contribution_goals")
 }
 
 /// Phase 5Q-E — saved hypothetical allocation scenarios (input only).

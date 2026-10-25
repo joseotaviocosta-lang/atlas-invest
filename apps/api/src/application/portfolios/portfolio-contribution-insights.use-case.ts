@@ -3,12 +3,19 @@ import { EntityNotFoundError } from '@atlas/database';
 import type { Transaction } from '@atlas/domain';
 import type {
   IAssetRepository,
+  IContributionGoalRepository,
   IContributionPlanLinkRepository,
   IContributionPlanRepository,
   IPortfolioRepository,
   ITransactionRepository,
 } from '@atlas/database';
-import { addDecimals } from '@atlas/portfolio-strategy';
+import {
+  addDecimals,
+  compareMonthKeys,
+  deriveGoalProgress,
+  enumerateGoalMonths,
+  goalForMonth,
+} from '@atlas/portfolio-strategy';
 import {
   deriveContributionInsights,
   INSIGHT_DEFAULT_PERIOD,
@@ -19,6 +26,7 @@ import {
 } from '@atlas/portfolio-strategy';
 import {
   ASSET_REPOSITORY,
+  CONTRIBUTION_GOAL_REPOSITORY,
   CONTRIBUTION_PLAN_LINK_REPOSITORY,
   CONTRIBUTION_PLAN_REPOSITORY,
   PORTFOLIO_REPOSITORY,
@@ -63,6 +71,8 @@ export class PortfolioContributionInsightsUseCase {
     private readonly transactions: ITransactionRepository,
     @Inject(ASSET_REPOSITORY)
     private readonly assets: IAssetRepository,
+    @Inject(CONTRIBUTION_GOAL_REPOSITORY)
+    private readonly goals: IContributionGoalRepository,
   ) {}
 
   private async verifyOwnership(portfolioId: string, userId?: string) {
@@ -85,10 +95,22 @@ export class PortfolioContributionInsightsUseCase {
     currency: string | null;
     summary: ContributionInsights | null;
     summariesByCurrency: Array<ContributionInsights & { currency: string }>;
-    timeline: ContributionInsights['timeline'];
+    timeline: Array<ContributionInsights['timeline'][number] & { goalAmount: string | null }>;
     statusBreakdown: ContributionInsights['statusBreakdown'];
     byCategory: ContributionInsights['byCategory'];
     recentPlans: ContributionInsights['recentPlans'];
+    goal: { amount: string; currency: string; effectiveFromMonth: string } | null;
+    goalProgress: {
+      periodGoalTotal: string;
+      plannedTotal: string;
+      confirmedTotal: string;
+      plannedDifference: string | null;
+      confirmedDifference: string | null;
+      completionBp: number | null;
+      status: 'NO_GOAL' | 'BELOW' | 'AT' | 'ABOVE';
+      monthsWithGoal: number;
+      monthsWithoutGoal: number;
+    } | null;
     limitations: string[];
   }> {
     await this.verifyOwnership(command.portfolioId, command.userId);
@@ -123,6 +145,8 @@ export class PortfolioContributionInsightsUseCase {
         statusBreakdown: [],
         byCategory: [],
         recentPlans: [],
+        goal: null,
+        goalProgress: null,
         limitations: ['NO_PLANS_IN_PERIOD'],
       };
     }
@@ -207,6 +231,8 @@ export class PortfolioContributionInsightsUseCase {
         statusBreakdown: [],
         byCategory: [],
         recentPlans: [],
+        goal: null,
+        goalProgress: null,
         limitations: ['MIXED_CURRENCIES'],
       };
     }
@@ -217,6 +243,97 @@ export class PortfolioContributionInsightsUseCase {
       currency: currencies[0] as string,
       range,
     });
+
+    // Goal overlay: versioned user-defined monthly target, same currency
+    // only. Never mixed across currencies; history is never rewritten.
+    const goalRows = await this.goals.listByPortfolio(command.portfolioId);
+    const goalVersions = goalRows
+      .filter((goal) => goal.currency === currencies[0])
+      .map((goal) => ({
+        amount: goal.amount,
+        currency: goal.currency,
+        effectiveFromMonth: goal.effectiveFrom.slice(0, 7),
+        effectiveToMonth: goal.effectiveTo ? goal.effectiveTo.slice(0, 7) : null,
+      }));
+    if (goalRows.length > 0 && goalVersions.length === 0) {
+      const limitations: string[] = [];
+      if (confirmedRows.length === 0) limitations.push('NO_CONFIRMED_ACTUALS');
+      limitations.push('GOAL_CURRENCY_MISMATCH');
+      return {
+        period,
+        generatedAt: new Date().toISOString(),
+        currency: currencies[0] as string,
+        summary,
+        summariesByCurrency: [],
+        timeline: summary.timeline.map((row) => ({ ...row, goalAmount: null })),
+        statusBreakdown: summary.statusBreakdown,
+        byCategory: summary.byCategory,
+        recentPlans: summary.recentPlans,
+        goal: null,
+        goalProgress: null,
+        limitations,
+      };
+    }
+    const goalMonths = enumerateGoalMonths(
+      range,
+      summary.timeline.map((row) => row.month),
+    );
+    let periodGoalTotal = '0';
+    let monthsWithGoal = 0;
+    for (const month of goalMonths) {
+      const amount = goalForMonth(goalVersions, month);
+      if (amount !== null) {
+        monthsWithGoal += 1;
+        periodGoalTotal = addDecimals(periodGoalTotal, amount);
+      }
+    }
+    const endMonth = range.end.slice(0, 7);
+    const currentGoalAmount = goalForMonth(goalVersions, endMonth);
+    let currentGoalVersion: (typeof goalVersions)[number] | null = null;
+    for (const version of goalVersions) {
+      if (
+        compareMonthKeys(version.effectiveFromMonth, endMonth) <= 0 &&
+        (currentGoalVersion === null ||
+          compareMonthKeys(version.effectiveFromMonth, currentGoalVersion.effectiveFromMonth) > 0)
+      ) {
+        currentGoalVersion = version;
+      }
+    }
+    const goal =
+      currentGoalAmount === null || currentGoalVersion === null
+        ? null
+        : {
+            amount: currentGoalAmount,
+            currency: currentGoalVersion.currency,
+            effectiveFromMonth: currentGoalVersion.effectiveFromMonth,
+          };
+    const progress =
+      monthsWithGoal === 0
+        ? null
+        : deriveGoalProgress({
+            goalAmount: periodGoalTotal,
+            plannedAmount: summary.plannedTotal,
+            confirmedAmount: summary.confirmedTotal,
+          });
+    const goalProgress =
+      progress === null
+        ? null
+        : {
+            periodGoalTotal,
+            plannedTotal: progress.plannedAmount,
+            confirmedTotal: progress.confirmedAmount,
+            plannedDifference: progress.plannedDifference,
+            confirmedDifference: progress.confirmedDifference,
+            completionBp: progress.completionBp,
+            status: progress.status,
+            monthsWithGoal,
+            monthsWithoutGoal: goalMonths.length - monthsWithGoal,
+          };
+    const timeline = summary.timeline.map((row) => ({
+      ...row,
+      goalAmount: goalForMonth(goalVersions, row.month),
+    }));
+
     const limitations: string[] = [];
     if (confirmedRows.length === 0) limitations.push('NO_CONFIRMED_ACTUALS');
     if (summary.byCategory.some((row) => row.category === 'OTHER' && row.confirmed !== '0')) {
@@ -237,10 +354,12 @@ export class PortfolioContributionInsightsUseCase {
       currency: currencies[0] as string,
       summary,
       summariesByCurrency: [],
-      timeline: summary.timeline,
+      timeline,
       statusBreakdown: summary.statusBreakdown,
       byCategory: summary.byCategory,
       recentPlans: summary.recentPlans,
+      goal,
+      goalProgress,
       limitations,
     };
   }

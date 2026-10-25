@@ -21,6 +21,7 @@ import {
 } from '@atlas/ui';
 import { LiveResultTable } from './PortfolioSavedScenarios';
 import { PortfolioContributionInsights } from './PortfolioContributionInsights';
+import { PortfolioContributionGoalSection } from './PortfolioContributionGoal';
 
 const PLAN_CATEGORIES = [
   'STOCK',
@@ -1186,6 +1187,7 @@ export function PortfolioContributionPlans({ portfolioId }: { portfolioId: strin
         title="Planejamento de aportes"
         description="O que você pretende aportar. Planos não executam nada: marcar como realizado apenas atualiza o status."
       />
+      {portfolioId ? <PortfolioContributionGoalSection portfolioId={portfolioId} /> : null}
       <div
         aria-live="polite"
         style={{

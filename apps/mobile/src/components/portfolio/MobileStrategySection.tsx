@@ -288,6 +288,7 @@ export function MobileStrategySection({ portfolioId }: { portfolioId: string | n
         openPlanId={openPlanId}
         onOpenPlanChange={setOpenPlanId}
       />
+      <ContributionGoal portfolioId={portfolioId} />
       <ContributionInsights portfolioId={portfolioId} onOpenPlan={setOpenPlanId} />
     </Card>
   );
@@ -332,7 +333,13 @@ interface InsightsData {
     plansWithConfirmed: number;
     completedWithoutConfirmedCount: number;
   } | null;
-  timeline: Array<{ month: string; planned: string; confirmed: string; difference: string }>;
+  timeline: Array<{
+    month: string;
+    planned: string;
+    confirmed: string;
+    difference: string;
+    goalAmount: string | null;
+  }>;
   statusBreakdown: Array<{ status: string; count: number; plannedTotal: string }>;
   byCategory: Array<{ category: string; planned: string; confirmed: string; difference: string }>;
   recentPlans: Array<{
@@ -344,6 +351,18 @@ interface InsightsData {
     confirmedTotal: string;
     difference: string;
   }>;
+  goal: { amount: string; currency: string; effectiveFromMonth: string } | null;
+  goalProgress: {
+    periodGoalTotal: string;
+    plannedTotal: string;
+    confirmedTotal: string;
+    plannedDifference: string | null;
+    confirmedDifference: string | null;
+    completionBp: number | null;
+    status: 'NO_GOAL' | 'BELOW' | 'AT' | 'ABOVE';
+    monthsWithGoal: number;
+    monthsWithoutGoal: number;
+  } | null;
   limitations: string[];
 }
 
@@ -354,6 +373,75 @@ const INSIGHT_PERIOD_LABELS: Record<string, string> = {
   '1A': '1 ano',
   INCEPTION: 'Desde o início',
 };
+
+/**
+ * Phase 5Q-J (mobile) — user-defined monthly contribution goal, read-only.
+ * Shows the goal the user declared plus a web-only note for create/edit.
+ * Facts only: the amount is user-declared and the app only compares.
+ */
+interface ContributionGoalState {
+  current: {
+    id: string;
+    amount: string;
+    currency: string;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+  } | null;
+  upcoming: {
+    id: string;
+    amount: string;
+    currency: string;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+  } | null;
+  history: Array<{
+    id: string;
+    amount: string;
+    currency: string;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+  }>;
+}
+
+function ContributionGoal({ portfolioId }: { portfolioId: string }) {
+  const goal = useQuery({
+    queryKey: ['portfolio-contribution-goal', portfolioId],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: ContributionGoalState }>(
+        `/api/v1/portfolios/${portfolioId}/contribution-goal`,
+      );
+      return res.data;
+    },
+    enabled: !!portfolioId,
+    staleTime: 30000,
+  });
+
+  if (goal.isLoading || goal.isError || !goal.data) {
+    return null;
+  }
+  const current = goal.data.current;
+  if (!current) {
+    return (
+      <View style={{ marginTop: 12 }} testID="contribution-goal">
+        <Text style={styles.title}>Meta de aporte mensal</Text>
+        <Text style={styles.body}>
+          Você ainda não definiu uma meta de aporte para esta carteira. Definir e alterar metas está
+          disponível na versão web.
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <View style={{ marginTop: 12 }} testID="contribution-goal">
+      <Text style={styles.title}>Meta de aporte mensal</Text>
+      <Text style={styles.body} testID="contribution-goal-current">
+        Meta definida por você:{' '}
+        {formatCentsBr(parseScenarioMoneyToCents(current.amount) ?? BigInt(0))} por mês.
+      </Text>
+      <Text style={styles.note}>Definir e alterar metas está disponível na versão web.</Text>
+    </View>
+  );
+}
 
 function ContributionInsights({
   portfolioId,
@@ -416,6 +504,15 @@ function ContributionInsights({
           </Text>
         </>
       ) : null}
+      {data.goal && data.goalProgress ? (
+        <Text style={styles.body} testID="insights-goal">
+          Meta definida por você:{' '}
+          {formatCentsBr(parseScenarioMoneyToCents(data.goal.amount) ?? BigInt(0))} por mês. No
+          período: meta acumulada{' '}
+          {formatCentsBr(parseScenarioMoneyToCents(data.goalProgress.periodGoalTotal) ?? BigInt(0))}
+          .
+        </Text>
+      ) : null}
       <Text style={styles.muted} testID="insights-status">
         Planejados: {data.summary?.plannedPlanCount ?? 0} • Realizados:{' '}
         {data.summary?.completedPlanCount ?? 0} • Cancelados:{' '}
@@ -428,6 +525,9 @@ function ContributionInsights({
               {formatPlanMonthMobile(row.month)}: planejado{' '}
               {formatCentsBr(parseScenarioMoneyToCents(row.planned) ?? BigInt(0))}, confirmado{' '}
               {formatCentsBr(parseScenarioMoneyToCents(row.confirmed) ?? BigInt(0))}
+              {row.goalAmount !== null
+                ? `, meta ${formatCentsBr(parseScenarioMoneyToCents(row.goalAmount) ?? BigInt(0))}`
+                : null}
             </Text>
           ))}
         </View>

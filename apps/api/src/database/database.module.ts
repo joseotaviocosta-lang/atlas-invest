@@ -43,6 +43,7 @@ import {
   AllocationScenarioRepository,
   ContributionPlanRepository,
   ContributionPlanLinkRepository,
+  ContributionGoalRepository,
 } from '@atlas/database';
 import {
   PRISMA_CLIENT,
@@ -83,6 +84,7 @@ import {
   ALLOCATION_SCENARIO_REPOSITORY,
   CONTRIBUTION_PLAN_REPOSITORY,
   CONTRIBUTION_PLAN_LINK_REPOSITORY,
+  CONTRIBUTION_GOAL_REPOSITORY,
   MARKET_QUOTE_REPOSITORY,
   BENCHMARK_OBSERVATION_REPOSITORY,
   FX_OBSERVATION_REPOSITORY,
@@ -162,6 +164,11 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     {
       provide: CONTRIBUTION_PLAN_LINK_REPOSITORY,
       useFactory: (prisma: AtlasPrismaClient) => new ContributionPlanLinkRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
+    {
+      provide: CONTRIBUTION_GOAL_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new ContributionGoalRepository(prisma),
       inject: [PRISMA_CLIENT],
     },
     {
@@ -325,6 +332,7 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     ALLOCATION_SCENARIO_REPOSITORY,
     CONTRIBUTION_PLAN_REPOSITORY,
     CONTRIBUTION_PLAN_LINK_REPOSITORY,
+    CONTRIBUTION_GOAL_REPOSITORY,
     USER_REPOSITORY,
     SESSION_REPOSITORY,
     PASSWORD_RESET_TOKEN_REPOSITORY,

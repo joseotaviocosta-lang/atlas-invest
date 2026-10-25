@@ -2184,6 +2184,56 @@ export interface IContributionPlanRepository {
   remove(planId: string, portfolioId: string): Promise<boolean>;
 }
 
+export interface PortfolioContributionGoalRow {
+  id: string;
+  portfolioId: string;
+  /** Canonical decimal money string (exact, never float). */
+  amount: string;
+  currency: string;
+  /** Inclusive first effective day of the month (`YYYY-MM-01`). */
+  effectiveFrom: string;
+  /** Exclusive end day, or null when open-ended. */
+  effectiveTo: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Phase 5Q-J: versioned user-defined monthly contribution goals.
+ * One row per effective version ([effectiveFrom, effectiveTo), NULL end
+ * = open); only one open row per portfolio (partial unique index).
+ * `replaceOpen` is atomic: close + create in one transaction, with an
+ * optional optimistic `expectedUpdatedAt` guard so concurrent writers
+ * converge on exactly one winner. History rows are never mutated.
+ */
+export interface IContributionGoalRepository {
+  listByPortfolio(portfolioId: string): Promise<PortfolioContributionGoalRow[]>;
+  findOpen(portfolioId: string): Promise<PortfolioContributionGoalRow | null>;
+  replaceOpen(
+    portfolioId: string,
+    input: {
+      amount: string;
+      currency: string;
+      /** First day of the effective month (`YYYY-MM-01`). */
+      effectiveFrom: string;
+      /** First day of the closing month (`YYYY-MM-01`), or null when the open version starts then. */
+      closeOpenAt: string | null;
+      expectedUpdatedAt?: Date;
+    },
+  ): Promise<PortfolioContributionGoalRow | null>;
+  updateAmountIfOpen(
+    goalId: string,
+    portfolioId: string,
+    amount: string,
+    expectedUpdatedAt: Date,
+  ): Promise<PortfolioContributionGoalRow | null>;
+  endOpen(
+    portfolioId: string,
+    closeMonthFirstDay: string,
+  ): Promise<PortfolioContributionGoalRow | null>;
+  removeById(goalId: string, portfolioId: string): Promise<boolean>;
+}
+
 export interface ContributionPlanLinkRow {
   id: string;
   planId: string;
