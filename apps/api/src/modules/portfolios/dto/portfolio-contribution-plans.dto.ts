@@ -82,3 +82,16 @@ export class UpdateContributionPlanSwaggerDto {
   @ApiProperty({ type: [ContributionPlanItemSwaggerDto] })
   items!: ContributionPlanItemSwaggerDto[];
 }
+
+export const PlanTrackingLinkBodySchema = z
+  .object({
+    transactionId: z.string().uuid(),
+  })
+  .strict();
+
+export type PlanTrackingLinkBody = z.infer<typeof PlanTrackingLinkBodySchema>;
+
+export class PlanTrackingLinkSwaggerDto {
+  @ApiProperty({ type: String, format: 'uuid', description: 'Ledger transaction to link' })
+  transactionId!: string;
+}

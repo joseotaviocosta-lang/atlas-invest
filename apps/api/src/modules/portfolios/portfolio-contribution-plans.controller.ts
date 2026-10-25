@@ -26,6 +26,9 @@ import {
   CreateContributionPlanBody,
   CreateContributionPlanBodySchema,
   CreateContributionPlanSwaggerDto,
+  PlanTrackingLinkBody,
+  PlanTrackingLinkBodySchema,
+  PlanTrackingLinkSwaggerDto,
   UpdateContributionPlanBody,
   UpdateContributionPlanBodySchema,
   UpdateContributionPlanSwaggerDto,
@@ -253,5 +256,109 @@ export class PortfolioContributionPlansController {
   ) {
     await this.plans.deletePlan({ planId, portfolioId, userId: principal.userId });
     return { data: { deleted: true } };
+  }
+
+  @Get(':planId/tracking')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Read planned vs actual tracking (confirmed links only)',
+    description:
+      'Aggregates CONFIRMED ledger links against the declared plan and derives deterministic candidates on read. Candidates are suggestions only — never counted until you confirm.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiParam({ name: 'planId', description: 'UUID of the contribution plan' })
+  @ApiResponse({ status: 200, description: 'Plan with tracking, confirmed links and candidates' })
+  @ApiResponse({ status: 404, description: 'Portfolio or plan not found' })
+  async getTracking(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Param('planId', UUIDParamPipe) planId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.plans.getPlanTracking({
+      planId,
+      portfolioId,
+      userId: principal.userId,
+    });
+    return { data: result };
+  }
+
+  @Post(':planId/tracking/confirm')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Confirm a ledger transaction as plan actual',
+    description:
+      'Explicit human confirmation only. Creates no transaction and changes no plan status. Idempotent for the same link.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiParam({ name: 'planId', description: 'UUID of the contribution plan' })
+  @ApiBody({ type: PlanTrackingLinkSwaggerDto })
+  @ApiResponse({ status: 200, description: 'Link confirmed' })
+  @ApiResponse({ status: 400, description: 'Ineligible transaction or immutable plan' })
+  @ApiResponse({ status: 404, description: 'Portfolio, plan or transaction not found' })
+  async confirmLink(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Param('planId', UUIDParamPipe) planId: string,
+    @Body(new ZodValidationPipe(PlanTrackingLinkBodySchema)) body: PlanTrackingLinkBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const link = await this.plans.confirmPlanLink({
+      planId,
+      portfolioId,
+      userId: principal.userId,
+      transactionId: body.transactionId,
+    });
+    return { data: { link } };
+  }
+
+  @Post(':planId/tracking/reject')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Reject a candidate (memory so it never reappears)',
+    description: 'Idempotent. Does not touch the transaction or the plan.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiParam({ name: 'planId', description: 'UUID of the contribution plan' })
+  @ApiBody({ type: PlanTrackingLinkSwaggerDto })
+  @ApiResponse({ status: 200, description: 'Candidate rejected' })
+  @ApiResponse({ status: 404, description: 'Portfolio, plan or transaction not found' })
+  async rejectLink(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Param('planId', UUIDParamPipe) planId: string,
+    @Body(new ZodValidationPipe(PlanTrackingLinkBodySchema)) body: PlanTrackingLinkBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const link = await this.plans.rejectPlanLink({
+      planId,
+      portfolioId,
+      userId: principal.userId,
+      transactionId: body.transactionId,
+    });
+    return { data: { link } };
+  }
+
+  @Delete(':planId/tracking/:transactionId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Unlink a confirmed transaction (keeps the audit row)',
+    description: 'Flips CONFIRMED to REJECTED. Already-rejected is a no-op success.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiParam({ name: 'planId', description: 'UUID of the contribution plan' })
+  @ApiParam({ name: 'transactionId', description: 'UUID of the ledger transaction' })
+  @ApiResponse({ status: 200, description: 'Link unlinked' })
+  @ApiResponse({ status: 404, description: 'Portfolio, plan, transaction or link not found' })
+  async unlinkLink(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Param('planId', UUIDParamPipe) planId: string,
+    @Param('transactionId', UUIDParamPipe) transactionId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const link = await this.plans.unlinkPlanLink({
+      planId,
+      portfolioId,
+      userId: principal.userId,
+      transactionId,
+    });
+    return { data: { link } };
   }
 }

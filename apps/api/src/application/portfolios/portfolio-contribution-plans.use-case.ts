@@ -1,25 +1,40 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { EntityNotFoundError } from '@atlas/database';
+import { LocalDate, type Transaction } from '@atlas/domain';
 import type {
   IAllocationScenarioRepository,
+  IAssetRepository,
+  IContributionPlanLinkRepository,
   IContributionPlanRepository,
   IPortfolioRepository,
+  ITransactionRepository,
   PortfolioContributionPlanRow,
 } from '@atlas/database';
 import {
   addDecimals,
   canTransitionPlanStatus,
+  deriveContributionCandidates,
+  deriveContributionTracking,
+  ELIGIBLE_CONTRIBUTION_TRANSACTION_TYPES,
   InvalidContributionPlanError,
+  InvalidContributionTrackingError,
   MAX_ACTIVE_CONTRIBUTION_PLANS_PER_PORTFOLIO,
   parseScenarioAmountToCanonical,
+  trackingCandidateWindow,
   validatePlanInput,
   validateScenarioInput,
+  type ContributionTracking,
   type SimulatedScenario,
+  type TrackingCandidate,
 } from '@atlas/portfolio-strategy';
+import { STRATEGY_CATEGORIES } from '@atlas/portfolio-strategy';
 import {
   ALLOCATION_SCENARIO_REPOSITORY,
+  ASSET_REPOSITORY,
+  CONTRIBUTION_PLAN_LINK_REPOSITORY,
   CONTRIBUTION_PLAN_REPOSITORY,
   PORTFOLIO_REPOSITORY,
+  TRANSACTION_REPOSITORY,
 } from '../../database/tokens';
 import { GetPortfolioAllocationStrategyUseCase } from './get-portfolio-allocation-strategy.use-case';
 import { GetPortfolioAllocationUseCase } from '../valuation/get-portfolio-allocation.use-case';
@@ -77,6 +92,12 @@ export class PortfolioContributionPlansUseCase {
     private readonly strategies: GetPortfolioAllocationStrategyUseCase,
     @Inject(GetPortfolioAllocationUseCase)
     private readonly allocation: GetPortfolioAllocationUseCase,
+    @Inject(TRANSACTION_REPOSITORY)
+    private readonly transactions: ITransactionRepository,
+    @Inject(ASSET_REPOSITORY)
+    private readonly assets: IAssetRepository,
+    @Inject(CONTRIBUTION_PLAN_LINK_REPOSITORY)
+    private readonly links: IContributionPlanLinkRepository,
   ) {}
 
   private async verifyOwnership(portfolioId: string, userId?: string) {
@@ -414,5 +435,269 @@ export class PortfolioContributionPlansUseCase {
     if (!removed) {
       throw new EntityNotFoundError('ContributionPlan', command.planId);
     }
+  }
+
+  /**
+   * Classifies ledger transactions into plan categories for actuals.
+   * DEPOSIT (no asset) is cash by definition; asset-backed rows use the
+   * canonical asset type when it is a known category, else OTHER.
+   * Nothing is invented: unmapped rows stay visible as OTHER.
+   */
+  private async classifyTransactions(
+    transactions: Array<{ id: string; assetId?: string | null; type: string }>,
+  ): Promise<Map<string, string>> {
+    const categories = new Map<string, string>();
+    const assetIds = Array.from(
+      new Set(
+        transactions
+          .filter((tx) => tx.type !== 'DEPOSIT' && tx.assetId !== undefined && tx.assetId !== null)
+          .map((tx) => tx.assetId as string),
+      ),
+    );
+    const assets = assetIds.length > 0 ? await this.assets.findByIds(assetIds) : [];
+    const typeByAssetId = new Map<string, string>(assets.map((asset) => [asset.id, asset.type]));
+    for (const tx of transactions) {
+      if (tx.type === 'DEPOSIT') {
+        categories.set(tx.id, 'CASH');
+        continue;
+      }
+      const assetType =
+        tx.assetId !== undefined && tx.assetId !== null ? typeByAssetId.get(tx.assetId) : undefined;
+      categories.set(
+        tx.id,
+        assetType !== undefined && (STRATEGY_CATEGORIES as readonly string[]).includes(assetType)
+          ? assetType
+          : 'OTHER',
+      );
+    }
+    return categories;
+  }
+
+  private transactionAmount(
+    tx: unknown,
+  ): { amount: string; currency: string; tradeDate: string } | null {
+    const candidate = tx as {
+      amount?: { amount?: string };
+      currency?: string;
+      tradeDate?: { toString(): string };
+    };
+    const amount = candidate.amount?.amount;
+    if (typeof amount !== 'string' || typeof candidate.currency !== 'string') return null;
+    const tradeDate = candidate.tradeDate?.toString();
+    if (typeof tradeDate !== 'string') return null;
+    return { amount, currency: candidate.currency, tradeDate };
+  }
+
+  /**
+   * Phase 5Q-G — planned vs actual tracking (read-only aggregation).
+   * Confirmed links only feed the totals; candidates are derived on read
+   * (never persisted, never counted). Cancelled plans show confirmed
+   * history without new candidates.
+   */
+  async getPlanTracking(command: {
+    planId: string;
+    portfolioId: string;
+    userId?: string;
+  }): Promise<{
+    plan: ContributionPlanView;
+    tracking: ContributionTracking;
+    confirmed: Array<{
+      transactionId: string;
+      type: string;
+      tradeDate: string;
+      amount: string;
+      currency: string;
+      category: string;
+    }>;
+    candidates: Array<TrackingCandidate & { type: string; category: string }>;
+    limitations: string[];
+  }> {
+    const row = await this.loadScoped(command.planId, command.portfolioId, command.userId);
+    const plan = this.toView(row);
+    const links = await this.links.listByPlan(row.id);
+    const confirmedIds = new Set(
+      links.filter((link) => link.status === 'CONFIRMED').map((link) => link.transactionId),
+    );
+    const rejectedIds = new Set(
+      links.filter((link) => link.status === 'REJECTED').map((link) => link.transactionId),
+    );
+    const confirmedTxs = await this.transactions.findByIds([...confirmedIds]);
+    const confirmedById = new Map<string, Transaction>(confirmedTxs.map((tx) => [tx.id, tx]));
+    const categories = await this.classifyTransactions(
+      confirmedTxs.map((tx) => ({
+        id: tx.id,
+        assetId: (tx as { assetId?: string | null }).assetId ?? null,
+        type: tx.type,
+      })),
+    );
+    const actual = [...confirmedIds].flatMap((id) => {
+      const tx = confirmedById.get(id);
+      const parsed = tx ? this.transactionAmount(tx) : null;
+      // A confirmed link whose transaction vanished or lost its amount
+      // stays visible as a count but contributes no invented money.
+      if (!tx || !parsed) return [];
+      return [
+        {
+          transactionId: id,
+          type: tx.type,
+          tradeDate: parsed.tradeDate,
+          amount: parsed.amount,
+          currency: parsed.currency,
+          category: categories.get(id) ?? 'OTHER',
+        },
+      ];
+    });
+    const planned = new Map(row.items.map((item) => [item.category, item.amount]));
+    const tracking = deriveContributionTracking({ planned, actual });
+    let candidates: Array<TrackingCandidate & { type: string; category: string }> = [];
+    if (row.status !== 'CANCELLED') {
+      const window = trackingCandidateWindow(row.plannedDate);
+      const pool = await this.transactions.findByPortfolioId(
+        command.portfolioId,
+        {
+          type: 'DEPOSIT',
+          startDate: LocalDate.from(window.start),
+          endDate: LocalDate.from(window.end),
+        },
+        { limit: 200 },
+      );
+      const inScope = pool.filter((tx) => tx.portfolioId === command.portfolioId);
+      const derived = deriveContributionCandidates({
+        plannedDate: row.plannedDate,
+        plannedTotal: plan.total,
+        currency: row.currency,
+        transactions: inScope.flatMap((tx) => {
+          const parsed = this.transactionAmount(tx);
+          if (!parsed) return [];
+          return [
+            {
+              id: tx.id,
+              type: tx.type,
+              tradeDate: parsed.tradeDate,
+              amount: parsed.amount,
+              currency: parsed.currency,
+            },
+          ];
+        }),
+        confirmedIds,
+        rejectedIds,
+      });
+      const candidateCategories = await this.classifyTransactions(
+        derived.map((candidate) => {
+          const tx = inScope.find((item) => item.id === candidate.transactionId);
+          return {
+            id: candidate.transactionId,
+            assetId: (tx as { assetId?: string | null } | undefined)?.assetId ?? null,
+            type: 'DEPOSIT',
+          };
+        }),
+      );
+      candidates = derived.map((candidate) => ({
+        ...candidate,
+        type: 'DEPOSIT',
+        category: candidateCategories.get(candidate.transactionId) ?? 'CASH',
+      }));
+    }
+    const limitations: string[] = [];
+    if (row.status === 'CANCELLED') limitations.push('PLAN_CANCELLED');
+    return { plan, tracking, confirmed: actual, candidates, limitations };
+  }
+
+  private async loadScopedTransaction(transactionId: string, portfolioId: string, userId?: string) {
+    await this.verifyOwnership(portfolioId, userId);
+    const tx = await this.transactions.findById(transactionId);
+    if (!tx || tx.portfolioId !== portfolioId) {
+      throw new EntityNotFoundError('Transaction', transactionId);
+    }
+    return tx;
+  }
+
+  private assertEligibleActual(
+    tx: { type: string; currency: string },
+    planCurrency: string,
+    transactionId: string,
+  ): void {
+    if (!(ELIGIBLE_CONTRIBUTION_TRANSACTION_TYPES as readonly string[]).includes(tx.type)) {
+      throw new InvalidContributionTrackingError(
+        `Transaction ${transactionId} of type ${tx.type} cannot confirm a contribution plan`,
+      );
+    }
+    if (tx.currency !== planCurrency) {
+      throw new InvalidContributionTrackingError(
+        `Transaction currency ${tx.currency} does not match plan currency ${planCurrency}`,
+      );
+    }
+  }
+
+  /**
+   * Confirms a ledger transaction as plan actual. Idempotent for the same
+   * link; moves REJECTED back to CONFIRMED on explicit re-confirm; refuses
+   * transactions already confirmed to another plan (single actual owner).
+   * Never creates or mutates a transaction; never touches plan status.
+   */
+  async confirmPlanLink(command: {
+    planId: string;
+    portfolioId: string;
+    userId?: string;
+    transactionId: string;
+  }): Promise<{ transactionId: string; status: string }> {
+    const row = await this.loadScoped(command.planId, command.portfolioId, command.userId);
+    if (row.status === 'CANCELLED') {
+      throw new InvalidContributionPlanError('Cancelled plans are read-only');
+    }
+    const tx = await this.loadScopedTransaction(
+      command.transactionId,
+      command.portfolioId,
+      command.userId,
+    );
+    this.assertEligibleActual(tx, row.currency, command.transactionId);
+    const elsewhere = await this.links.findConfirmedByTransaction(command.transactionId);
+    if (elsewhere && elsewhere.planId !== row.id) {
+      throw new InvalidContributionTrackingError(
+        'Transaction is already confirmed to another contribution plan',
+      );
+    }
+    const link = await this.links.confirm(row.id, command.transactionId);
+    return { transactionId: link.transactionId, status: link.status };
+  }
+
+  /**
+   * Rejects a candidate (memory so it never reappears). Idempotent.
+   */
+  async rejectPlanLink(command: {
+    planId: string;
+    portfolioId: string;
+    userId?: string;
+    transactionId: string;
+  }): Promise<{ transactionId: string; status: string }> {
+    const row = await this.loadScoped(command.planId, command.portfolioId, command.userId);
+    if (row.status === 'CANCELLED') {
+      throw new InvalidContributionPlanError('Cancelled plans are read-only');
+    }
+    await this.loadScopedTransaction(command.transactionId, command.portfolioId, command.userId);
+    const link = await this.links.reject(row.id, command.transactionId);
+    return { transactionId: link.transactionId, status: link.status };
+  }
+
+  /**
+   * Unlinks a confirmed transaction (CONFIRMED → REJECTED, audit kept).
+   * Already-rejected is a no-op success; absent is 404.
+   */
+  async unlinkPlanLink(command: {
+    planId: string;
+    portfolioId: string;
+    userId?: string;
+    transactionId: string;
+  }): Promise<{ transactionId: string; status: string }> {
+    const row = await this.loadScoped(command.planId, command.portfolioId, command.userId);
+    if (row.status === 'CANCELLED') {
+      throw new InvalidContributionPlanError('Cancelled plans are read-only');
+    }
+    await this.loadScopedTransaction(command.transactionId, command.portfolioId, command.userId);
+    const link = await this.links.unlink(row.id, command.transactionId);
+    if (!link) {
+      throw new EntityNotFoundError('ContributionPlanLink', command.transactionId);
+    }
+    return { transactionId: link.transactionId, status: link.status };
   }
 }

@@ -121,19 +121,60 @@ describe('Phase 5Q-E/5Q-F: saved scenarios and contribution plans boundaries', (
     }
   });
 
+  it('contribution plan engine stays pure: no Nest/Prisma/clock/floats', () => {
+    for (const file of [
+      'packages/portfolio-strategy/src/contribution-tracking.ts',
+      'packages/portfolio-strategy/src/contribution-plan.ts',
+    ]) {
+      const content = readSource(file);
+      expect(content, file).not.toMatch(/@nestjs/);
+      expect(content, file).not.toMatch(/@prisma\/client/);
+      expect(content, file).not.toMatch(/@atlas\/database/);
+      expect(content, file).not.toMatch(/@atlas\/tax-engine/);
+      expect(content, file).not.toMatch(/@atlas\/ui/);
+      expect(content, file).not.toMatch(/@atlas\/b3-integration/);
+      expect(content, file).not.toMatch(/setInterval|setTimeout/);
+      expect(content, file).not.toMatch(/Date\.now\(\)/);
+      expect(content, file).not.toMatch(/new Date\(\s*\)/);
+      expect(content, file).not.toMatch(/fetch\(|axios/i);
+      expect(content, file).not.toMatch(/process\.env/);
+      expect(content, file).not.toMatch(/parseFloat/);
+    }
+  });
+
+  it('candidate derivation can never persist CONFIRMED without explicit action', () => {
+    const content = readSource(
+      'apps/api/src/application/portfolios/portfolio-contribution-plans.use-case.ts',
+    );
+    // getPlanTracking derives candidates; only confirmPlanLink persists them.
+    const trackingBody = content.slice(
+      content.indexOf('async getPlanTracking'),
+      content.indexOf('async confirmPlanLink'),
+    );
+    expect(trackingBody).not.toMatch(/links\.confirm/);
+    expect(trackingBody).toContain('deriveContributionCandidates');
+    expect(readSource('packages/portfolio-strategy/src/contribution-tracking.ts')).toContain(
+      'MAX_TRACKING_CANDIDATES',
+    );
+  });
+
   it('contribution plans never touch transactions, ledgers or execution', () => {
     for (const file of [
       'packages/database/src/repositories/contribution-plan.repository.ts',
+      'packages/database/src/repositories/contribution-plan-link.repository.ts',
       'apps/api/src/application/portfolios/portfolio-contribution-plans.use-case.ts',
       'apps/api/src/modules/portfolios/portfolio-contribution-plans.controller.ts',
       'apps/web/src/components/portfolio/PortfolioContributionPlans.tsx',
       'apps/mobile/src/components/portfolio/MobileStrategySection.tsx',
     ]) {
       const content = readSource(file);
-      expect(content, file).not.toMatch(/TransactionRepository/);
-      expect(content, file).not.toMatch(/transactionRepository\.(create|createMany|update)/);
+      // Reads use interfaces + finders; writes/mutations are prohibited.
+      // (Interface names contain 'TransactionRepository' — match the concrete writer only.)
+      expect(content, file).not.toMatch(/[^I]TransactionRepository/);
       expect(content, file).not.toMatch(/CreateTransactionUseCase/);
-      expect(content, file).not.toMatch(/prisma\.transaction\.create/);
+      expect(content, file).not.toMatch(/transactions\.(create|createMany|update)/);
+      expect(content, file).not.toMatch(/prisma\.transaction\.(create|createMany|update|delete)/);
+      expect(content, file).not.toMatch(/new TransactionRepository/);
       expect(content, file).not.toMatch(/@atlas\/b3-integration/);
       expect(content, file).not.toMatch(/@atlas\/tax-engine/);
       expect(content, file).not.toMatch(/parseFloat/);
@@ -162,8 +203,15 @@ describe('Phase 5Q-E/5Q-F: saved scenarios and contribution plans boundaries', (
       'apps/api/src/modules/portfolios/dto/portfolio-contribution-plans.dto.ts',
     );
     expect(dto).toContain('.strict()');
-    const createBlock = dto.slice(dto.indexOf('CreateContributionPlanBodySchema'));
+    // Create/update bodies hold intent only; transactionId lives solely in
+    // the link body (explicit human confirmation target).
+    const createBlock = dto.slice(
+      dto.indexOf('CreateContributionPlanBodySchema'),
+      dto.indexOf('UpdateContributionPlanBodySchema'),
+    );
     expect(createBlock).not.toMatch(/status|currency|completedAt|transaction/i);
+    // sourceScenarioId is the only allowed source reference (provenance).
     expect(createBlock).not.toMatch(/portfolioId|provider|source(?!ScenarioId)/);
+    expect(dto).toContain('transactionId');
   });
 });

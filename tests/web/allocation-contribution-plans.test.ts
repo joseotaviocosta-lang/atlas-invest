@@ -135,4 +135,29 @@ describe('Phase 5Q-F: contribution plans web surface', () => {
       );
     }
   });
+
+  it('tracks planned vs actual with explicit confirmation only', () => {
+    expect(section).toContain('Planejado x realizado');
+    expect(section).toContain('plan-tracking-summary');
+    expect(section).toContain('plan-tracking');
+    expect(section).toContain('Operações vinculadas');
+    expect(section).toContain('Operações que podem estar relacionadas');
+    expect(section).toContain('Estas operações são apenas sugestões de correspondência.');
+    expect(section).toContain('depois que você confirma o vínculo');
+    expect(section).toContain('Vincular');
+    expect(section).toContain('Não é deste plano');
+    expect(section).toContain('Desvincular');
+    expect(section).toContain('abaixo do valor planejado');
+    expect(section).toContain('valor planejado foi identificado');
+    expect(section).toContain('Nenhuma operação foi vinculada a este plano.');
+    expect(section).toContain('Plano marcado como realizado, mas nenhuma operação foi vinculada.');
+    expect(section).toContain('/tracking/confirm');
+    expect(section).toContain('/tracking/reject');
+    expect(section).toContain('/tracking/');
+  });
+
+  it('keeps cancelled plans read-only in tracking', () => {
+    expect(section).toContain("planStatus === 'CANCELLED'");
+    expect(section).toContain('!readOnly');
+  });
 });

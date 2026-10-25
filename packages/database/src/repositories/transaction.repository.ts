@@ -52,6 +52,14 @@ export class TransactionRepository implements ITransactionRepository {
     return raw ? TransactionMapper.toDomain(raw) : null;
   }
 
+  async findByIds(ids: readonly string[]): Promise<Transaction[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.transaction.findMany({
+      where: { id: { in: [...ids] } },
+    });
+    return rows.map((row) => TransactionMapper.toDomain(row));
+  }
+
   async findByPortfolioId(
     portfolioId: string,
     filter?: TransactionLedgerFilter,

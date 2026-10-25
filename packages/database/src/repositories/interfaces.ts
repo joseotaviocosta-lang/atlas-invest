@@ -51,6 +51,8 @@ export interface ITransactionRepository {
   create(transaction: Transaction): Promise<Transaction>;
   createMany(transactions: Transaction[]): Promise<Transaction[]>;
   findById(id: string): Promise<Transaction | null>;
+  /** Batch lookup by ids in a single query (avoids per-transaction queries). */
+  findByIds(ids: readonly string[]): Promise<Transaction[]>;
   findByPortfolioId(
     portfolioId: string,
     filter?: TransactionLedgerFilter,
@@ -2180,6 +2182,34 @@ export interface IContributionPlanRepository {
     status: 'COMPLETED' | 'CANCELLED',
   ): Promise<PortfolioContributionPlanRow | null>;
   remove(planId: string, portfolioId: string): Promise<boolean>;
+}
+
+export interface ContributionPlanLinkRow {
+  id: string;
+  planId: string;
+  transactionId: string;
+  status: 'CONFIRMED' | 'REJECTED';
+  confirmedAt: Date | null;
+  rejectedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Phase 5Q-G: plan ↔ transaction links (relation + audit state only).
+ * Persists CONFIRMED and REJECTED rows; candidates are derived on read.
+ * No amounts, dates, categories or currencies stored — facts come from
+ * the ledger and the plan. setStatus() is guarded: CONFIRMED wins the
+ * partial unique index on transactionId, so a second plan's confirm
+ * throws (fail-closed, no double-counted actuals). removeLink() only
+ * flips CONFIRMED → REJECTED (audit preserved).
+ */
+export interface IContributionPlanLinkRepository {
+  listByPlan(planId: string): Promise<ContributionPlanLinkRow[]>;
+  findConfirmedByTransaction(transactionId: string): Promise<ContributionPlanLinkRow | null>;
+  confirm(planId: string, transactionId: string): Promise<ContributionPlanLinkRow>;
+  reject(planId: string, transactionId: string): Promise<ContributionPlanLinkRow>;
+  unlink(planId: string, transactionId: string): Promise<ContributionPlanLinkRow | null>;
 }
 
 export interface IntegrationJobRow {

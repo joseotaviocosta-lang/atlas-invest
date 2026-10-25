@@ -332,6 +332,13 @@ interface PlanDetail {
     afterOutsideCount: number;
   } | null;
   limitations: string[];
+  candidates: Array<{
+    transactionId: string;
+    tradeDate: string;
+    amount: string;
+    currency: string;
+    category: string;
+  }>;
 }
 
 function formatPlanDateMobile(yyyyMmDd: string): string {
@@ -466,6 +473,20 @@ function ContributionPlans({ portfolioId }: { portfolioId: string }) {
               {describeScenarioLimitation(limitation)}
             </Text>
           ))}
+          {opened.candidates.length > 0 ? (
+            <View style={{ marginTop: 4 }}>
+              <Text style={styles.muted}>Sugestões de correspondência (somente leitura)</Text>
+              {opened.candidates.map((candidate) => (
+                <Text key={candidate.transactionId} style={styles.muted}>
+                  {formatPlanDateMobile(candidate.tradeDate)} •{' '}
+                  {formatCentsBr(parseScenarioMoneyToCents(candidate.amount) ?? BigInt(0))}
+                </Text>
+              ))}
+              <Text style={styles.note}>
+                Para vincular operações a este plano, use a versão web.
+              </Text>
+            </View>
+          ) : null}
         </View>
       ) : opened && opened.live === null ? (
         <View style={{ marginTop: 8 }} testID="contribution-plan-detail">

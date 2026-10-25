@@ -9,6 +9,7 @@ import { colors, spacing, borderRadius, getTodayCivilDateString } from '@atlas/u
 import {
   describePlanStatus,
   describeScenarioLimitation,
+  formatAggregatePp,
   formatCentsBr,
   formatPlanDate,
   formatScenarioMoney,
@@ -66,6 +67,38 @@ interface PlanLiveView {
   marketDataAsOf: string | null;
 }
 
+interface TrackingConfirmedRow {
+  transactionId: string;
+  type: string;
+  tradeDate: string;
+  amount: string;
+  currency: string;
+  category: string;
+}
+
+interface TrackingCandidateRow {
+  transactionId: string;
+  tradeDate: string;
+  amount: string;
+  currency: string;
+  category: string;
+}
+
+interface PlanTrackingData {
+  plan: ContributionPlanDto;
+  tracking: {
+    plannedTotal: string;
+    actualTotal: string;
+    difference: string;
+    completionBp: number | null;
+    byCategory: Array<{ category: string; planned: string; actual: string; difference: string }>;
+    confirmedCount: number;
+  };
+  confirmed: TrackingConfirmedRow[];
+  candidates: TrackingCandidateRow[];
+  limitations: string[];
+}
+
 interface PlanDetailData {
   plan: ContributionPlanDto;
   live: PlanLiveView | null;
@@ -117,6 +150,267 @@ const inputStyle: React.CSSProperties = {
   fontSize: '0.875rem',
 };
 
+function formatSignedMoney(canonical: string, currency: string): string {
+  const negative = canonical.trim().startsWith('-');
+  const abs = negative ? canonical.trim().slice(1) : canonical;
+  return `${negative ? '-' : ''}${formatScenarioMoney(abs, currency)}`;
+}
+
+/**
+ * Phase 5Q-G — planned vs actual tracking (read-only aggregation).
+ * Shows confirmed totals (ledger facts), deterministic candidates
+ * (suggestions only) and explicit confirm/reject/unlink actions.
+ * Candidates never count until a human confirms.
+ */
+function PlanTrackingSection({
+  planStatus,
+  tracking,
+  trackingLoading,
+  onConfirm,
+  onReject,
+  onUnlink,
+  actionPending,
+  actionError,
+}: {
+  planStatus: string;
+  tracking: PlanTrackingData | null;
+  trackingLoading: boolean;
+  onConfirm: (transactionId: string) => void;
+  onReject: (transactionId: string) => void;
+  onUnlink: (transactionId: string) => void;
+  actionPending: boolean;
+  actionError: unknown;
+}) {
+  const readOnly = planStatus === 'CANCELLED';
+  return (
+    <div
+      style={{
+        marginTop: `${spacing.sm}px`,
+        borderTop: `1px solid ${colors.border}`,
+        paddingTop: `${spacing.sm}px`,
+      }}
+      data-testid="plan-tracking"
+    >
+      <h5 style={{ fontSize: '0.875rem', fontWeight: 700, margin: '0 0 4px' }}>
+        Planejado x realizado
+      </h5>
+      {trackingLoading ? (
+        <Skeleton width="100%" height="80px" />
+      ) : !tracking ? (
+        <p style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+          Não foi possível carregar o acompanhamento deste plano.
+        </p>
+      ) : (
+        <>
+          <p style={{ fontSize: '0.875rem', margin: '8px 0' }} data-testid="plan-tracking-summary">
+            Planejado: {formatScenarioMoney(tracking.tracking.plannedTotal, tracking.plan.currency)}
+            . Identificado em operações confirmadas:{' '}
+            {formatScenarioMoney(tracking.tracking.actualTotal, tracking.plan.currency)}. Diferença:{' '}
+            {formatSignedMoney(tracking.tracking.difference, tracking.plan.currency)}
+            {tracking.tracking.difference.startsWith('-')
+              ? ` (${formatCentsBr(parseScenarioMoneyToCents(tracking.tracking.difference.slice(1)) ?? BigInt(0))} abaixo do valor planejado)`
+              : tracking.tracking.difference !== '0'
+                ? ` (${formatCentsBr(parseScenarioMoneyToCents(tracking.tracking.difference) ?? BigInt(0))} acima do valor planejado)`
+                : null}
+          </p>
+          {tracking.tracking.completionBp !== null ? (
+            <p style={{ fontSize: '0.8125rem', color: colors.textSecondary, margin: '0 0 8px' }}>
+              {String(formatAggregatePp(tracking.tracking.completionBp)).replace(' p.p.', '%')} do
+              valor planejado foi identificado em operações confirmadas.
+            </p>
+          ) : null}
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', color: colors.textSecondary }}>
+                  <th scope="col" style={{ padding: '6px 8px 6px 0', fontWeight: 600 }}>
+                    Categoria
+                  </th>
+                  <th
+                    scope="col"
+                    style={{ padding: '6px 8px', fontWeight: 600, textAlign: 'right' }}
+                  >
+                    Planejado
+                  </th>
+                  <th
+                    scope="col"
+                    style={{ padding: '6px 8px', fontWeight: 600, textAlign: 'right' }}
+                  >
+                    Realizado
+                  </th>
+                  <th
+                    scope="col"
+                    style={{ padding: '6px 0 6px 8px', fontWeight: 600, textAlign: 'right' }}
+                  >
+                    Diferença
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {tracking.tracking.byCategory.map((row) => (
+                  <tr key={row.category} style={{ borderTop: `1px solid ${colors.border}` }}>
+                    <td style={{ padding: '8px 8px 8px 0', fontWeight: 600 }}>
+                      {scenarioCategoryLabel(row.category)}
+                    </td>
+                    <td style={{ padding: 8, textAlign: 'right' }}>
+                      {formatScenarioMoney(row.planned, tracking.plan.currency)}
+                    </td>
+                    <td style={{ padding: 8, textAlign: 'right' }}>
+                      {formatScenarioMoney(row.actual, tracking.plan.currency)}
+                    </td>
+                    <td style={{ padding: '8px 0 8px 8px', textAlign: 'right' }}>
+                      {formatSignedMoney(row.difference, tracking.plan.currency)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h6 style={{ fontSize: '0.8125rem', fontWeight: 700, margin: '12px 0 4px' }}>
+            Operações vinculadas
+          </h6>
+          {tracking.confirmed.length === 0 ? (
+            <p
+              style={{ fontSize: '0.8125rem', color: colors.textSecondary }}
+              data-testid="tracking-empty-actual"
+            >
+              {planStatus === 'COMPLETED'
+                ? 'Plano marcado como realizado, mas nenhuma operação foi vinculada.'
+                : 'Nenhuma operação foi vinculada a este plano.'}
+            </p>
+          ) : (
+            <ul
+              style={{
+                listStyle: 'none',
+                margin: 0,
+                padding: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+              }}
+            >
+              {tracking.confirmed.map((row) => (
+                <li
+                  key={row.transactionId}
+                  style={{
+                    fontSize: '0.8125rem',
+                    display: 'flex',
+                    gap: 8,
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                  }}
+                  data-testid={`tracking-confirmed-${row.transactionId}`}
+                >
+                  <span>
+                    {formatPlanDate(row.tradeDate)} • Depósito •{' '}
+                    {formatScenarioMoney(row.amount, row.currency)} •{' '}
+                    {scenarioCategoryLabel(row.category)}
+                  </span>
+                  {!readOnly ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onUnlink(row.transactionId)}
+                      disabled={actionPending}
+                      style={{ minHeight: 44 }}
+                      aria-label={`Desvincular operação de ${formatPlanDate(row.tradeDate)}`}
+                    >
+                      Desvincular
+                    </Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {!readOnly ? (
+            <>
+              <h6 style={{ fontSize: '0.8125rem', fontWeight: 700, margin: '12px 0 4px' }}>
+                Operações que podem estar relacionadas
+              </h6>
+              <p style={{ fontSize: '0.75rem', color: colors.textSecondary, margin: '0 0 8px' }}>
+                Estas operações são apenas sugestões de correspondência. O Atlas só considera uma
+                operação no acompanhamento depois que você confirma o vínculo.
+              </p>
+              {tracking.candidates.length === 0 ? (
+                <p style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                  Nenhuma sugestão no momento.
+                </p>
+              ) : (
+                <ul
+                  style={{
+                    listStyle: 'none',
+                    margin: 0,
+                    padding: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4,
+                  }}
+                >
+                  {tracking.candidates.map((candidate) => (
+                    <li
+                      key={candidate.transactionId}
+                      style={{
+                        fontSize: '0.8125rem',
+                        display: 'flex',
+                        gap: 8,
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                      }}
+                      data-testid={`tracking-candidate-${candidate.transactionId}`}
+                    >
+                      <span>
+                        {formatPlanDate(candidate.tradeDate)} • Depósito •{' '}
+                        {formatScenarioMoney(candidate.amount, candidate.currency)} •{' '}
+                        {scenarioCategoryLabel(candidate.category)}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onConfirm(candidate.transactionId)}
+                        disabled={actionPending}
+                        style={{ minHeight: 44 }}
+                        aria-label={`Vincular esta operação ao plano`}
+                      >
+                        Vincular
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onReject(candidate.transactionId)}
+                        disabled={actionPending}
+                        style={{ minHeight: 44 }}
+                        aria-label={`Não relacionar esta operação a este plano`}
+                      >
+                        Não é deste plano
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          ) : null}
+          {tracking.limitations.map((limitation) => (
+            <p
+              key={limitation}
+              style={{ fontSize: '0.8125rem', color: colors.textSecondary }}
+              data-testid={`tracking-limitation-${limitation}`}
+            >
+              {describeScenarioLimitation(limitation)}
+            </p>
+          ))}
+          {actionError ? (
+            <p role="alert" style={{ fontSize: '0.875rem', color: colors.negative }}>
+              {errorMessage(actionError, 'Não foi possível atualizar o vínculo. Tente novamente.')}
+            </p>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
 /**
  * Phase 5Q-F — contribution planning workspace (intent only).
  * Lists upcoming + history, creates/edits PLANNED plans, marks complete
@@ -156,6 +450,18 @@ export function PortfolioContributionPlans({ portfolioId }: { portfolioId: strin
     queryFn: async () => {
       const res = await apiClient.get<{ data: PlanDetailData }>(
         `/api/v1/portfolios/${portfolioId}/contribution-plans/${openId}`,
+      );
+      return res.data;
+    },
+    enabled: authReady && portfolioId !== null && openId !== null,
+    staleTime: 30_000,
+  });
+
+  const trackingQuery = useQuery({
+    queryKey: [...contributionPlansQueryKey(portfolioId ?? ''), 'tracking', openId],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: PlanTrackingData }>(
+        `/api/v1/portfolios/${portfolioId}/contribution-plans/${openId}/tracking`,
       );
       return res.data;
     },
@@ -265,6 +571,44 @@ export function PortfolioContributionPlans({ portfolioId }: { portfolioId: strin
     },
   });
 
+  const trackMutation = useMutation({
+    mutationFn: async (action: {
+      id: string;
+      kind: 'confirm' | 'reject';
+      transactionId: string;
+    }) => {
+      if (action.kind === 'confirm') {
+        const res = await apiClient.post<{ data: unknown }>(
+          `/api/v1/portfolios/${portfolioId}/contribution-plans/${action.id}/tracking/confirm`,
+          { transactionId: action.transactionId },
+        );
+        return res.data;
+      }
+      const res = await apiClient.post<{ data: unknown }>(
+        `/api/v1/portfolios/${portfolioId}/contribution-plans/${action.id}/tracking/reject`,
+        { transactionId: action.transactionId },
+      );
+      return res.data;
+    },
+    onSuccess: async () => {
+      await invalidateAll();
+      setAnnouncement('Vínculo atualizado. Apenas confirmações contam no acompanhamento.');
+    },
+  });
+
+  const unlinkMutation = useMutation({
+    mutationFn: async (action: { id: string; transactionId: string }) => {
+      const res = await apiClient.delete<{ data: unknown }>(
+        `/api/v1/portfolios/${portfolioId}/contribution-plans/${action.id}/tracking/${action.transactionId}`,
+      );
+      return res.data;
+    },
+    onSuccess: async () => {
+      await invalidateAll();
+      setAnnouncement('Vínculo removido. O histórico de rejeição foi mantido.');
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (planId: string) => {
       await apiClient.delete(`/api/v1/portfolios/${portfolioId}/contribution-plans/${planId}`);
@@ -309,6 +653,8 @@ export function PortfolioContributionPlans({ portfolioId }: { portfolioId: strin
   const history = listQuery.data?.history ?? [];
   const rawDetail = detailQuery.data ?? null;
   const detail = rawDetail && rawDetail.plan.id === openId ? rawDetail : null;
+  const rawTracking = trackingQuery.data ?? null;
+  const tracking = rawTracking && openId ? rawTracking : null;
 
   const renderCard = (plan: ContributionPlanDto) => {
     const overdue = plan.status === 'PLANNED' && plan.plannedDate < today;
@@ -684,6 +1030,22 @@ export function PortfolioContributionPlans({ portfolioId }: { portfolioId: strin
                   Fechar
                 </Button>
               </div>
+              <PlanTrackingSection
+                planStatus={detail.plan.status}
+                tracking={tracking}
+                trackingLoading={trackingQuery.isLoading}
+                onConfirm={(transactionId) =>
+                  trackMutation.mutate({ id: detail.plan.id, kind: 'confirm', transactionId })
+                }
+                onReject={(transactionId) =>
+                  trackMutation.mutate({ id: detail.plan.id, kind: 'reject', transactionId })
+                }
+                onUnlink={(transactionId) =>
+                  unlinkMutation.mutate({ id: detail.plan.id, transactionId })
+                }
+                actionPending={trackMutation.isPending || unlinkMutation.isPending}
+                actionError={trackMutation.error ?? unlinkMutation.error}
+              />
             </div>
           ) : openId && detailQuery.isLoading ? (
             <Skeleton width="100%" height="120px" />

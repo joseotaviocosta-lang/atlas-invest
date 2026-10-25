@@ -193,6 +193,7 @@ model Transaction {
   account                 Account                        @relation(fields: [accountId, portfolioId], references: [id, portfolioId], onDelete: Restrict)
   asset                   Asset?                         @relation(fields: [assetId], references: [id], onDelete: Restrict)
   taxTradeClassifications TaxTradeClassificationRecord[]
+  contributionPlanLinks   ContributionPlanTransactionLink[]
 
   @@unique([portfolioId, provider, externalId], name: "portfolio_provider_external_id_unique")
   @@index([portfolioId, tradeDate, createdAt, id])
@@ -418,6 +419,7 @@ model PortfolioContributionPlan {
   portfolio      Portfolio                    @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   sourceScenario PortfolioAllocationScenario? @relation(fields: [sourceScenarioId], references: [id], onDelete: SetNull)
   items          PortfolioContributionPlanItem[]
+  trackingLinks  ContributionPlanTransactionLink[]
 
   @@index([portfolioId])
   @@index([portfolioId, status, plannedDate])
@@ -437,6 +439,39 @@ model PortfolioContributionPlanItem {
   @@unique([planId, category])
   @@index([planId])
   @@map("portfolio_contribution_plan_items")
+}
+
+/// Phase 5Q-G — links between contribution plans and ledger transactions.
+///
+/// One row per (plan, transaction): CONFIRMED (user-confirmed actual) or
+/// REJECTED (user-dismissed candidate; memory so it never reappears).
+/// Candidates are derived on read and never persisted. No amounts, dates,
+/// categories, assets or currencies are stored here — those facts always
+/// come from the ledger (Transaction) and the plan (items). A partial
+/// unique index guarantees one CONFIRMED plan per transaction (no
+/// double-counted actuals across plans; v1 does not split transactions).
+/// Plan delete cascades (PLANNED plans are the only deletable ones;
+/// terminal history is immutable upstream). Transaction delete cascades as
+/// well: links are portfolio-scoped rows and portfolio deletion already
+/// cascades every other relation; the ledger itself stays append-only via
+/// the API (no transaction delete path exists).
+model ContributionPlanTransactionLink {
+  id            String    @id @default(uuid()) @db.Uuid
+  planId        String    @map("plan_id") @db.Uuid
+  transactionId String    @map("transaction_id") @db.Uuid
+  status        String    @db.VarChar(20)
+  confirmedAt   DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  rejectedAt    DateTime? @map("rejected_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  plan        PortfolioContributionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  transaction Transaction                 @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, transactionId])
+  @@index([planId])
+  @@index([planId, status])
+  @@map("contribution_plan_transaction_links")
 }
 
 /// Phase 5Q-E — saved hypothetical allocation scenarios (input only).
