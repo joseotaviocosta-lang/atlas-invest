@@ -2206,6 +2206,8 @@ export interface ContributionPlanLinkRow {
  */
 export interface IContributionPlanLinkRepository {
   listByPlan(planId: string): Promise<ContributionPlanLinkRow[]>;
+  /** Batch read for N plans in one query (no per-plan reads). */
+  listByPlanIds(planIds: readonly string[]): Promise<Map<string, ContributionPlanLinkRow[]>>;
   findConfirmedByTransaction(transactionId: string): Promise<ContributionPlanLinkRow | null>;
   /** Batch confirmed lookup (one query): transactionId → owning planId. */
   findConfirmedByTransactionIds(transactionIds: readonly string[]): Promise<Map<string, string>>;

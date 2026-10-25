@@ -215,3 +215,73 @@ describe('Phase 5Q-E/5Q-F: saved scenarios and contribution plans boundaries', (
     expect(dto).toContain('transactionId');
   });
 });
+
+/**
+ * Phase 5Q-I — contribution insights are derived, read-only analytics.
+ * Aggregates plans + CONFIRMED links + ledger rows; never writes,
+ * never scores, never forecasts, never recommends.
+ */
+describe('Phase 5Q-I: contribution insights boundaries', () => {
+  it('insights engine stays pure: no Nest/Prisma/clock/floats', () => {
+    const content = readSource('packages/portfolio-strategy/src/contribution-insights.ts');
+    expect(content).not.toMatch(/@nestjs/);
+    expect(content).not.toMatch(/@prisma\/client/);
+    expect(content).not.toMatch(/@atlas\/database/);
+    expect(content).not.toMatch(/@atlas\/ui/);
+    expect(content).not.toMatch(/@atlas\/b3-integration/);
+    expect(content).not.toMatch(/setInterval|setTimeout/);
+    expect(content).not.toMatch(/Date\.now\(\)/);
+    expect(content).not.toMatch(/new Date\(\s*\)/);
+    expect(content).not.toMatch(/fetch\(|axios/i);
+    expect(content).not.toMatch(/process\.env/);
+    expect(content).not.toMatch(/parseFloat/);
+    expect(content).toContain('deriveContributionInsights');
+    expect(content).toContain('resolveInsightPeriod');
+  });
+
+  it('insights read is derived only: no writes, no links mutations', () => {
+    const content = readSource(
+      'apps/api/src/application/portfolios/portfolio-contribution-insights.use-case.ts',
+    );
+    expect(content).not.toMatch(/\.create\(|\.update\(|\.delete\(/);
+    expect(content).not.toMatch(/links\.(confirm|reject|unlink|create)/);
+    expect(content).not.toMatch(/transactions\.(create|createMany|update|delete)/);
+    expect(content).not.toMatch(/CreateTransactionUseCase/);
+    expect(content).not.toMatch(/new TransactionRepository/);
+    expect(content).not.toMatch(/@atlas\/b3-integration|@atlas\/tax-engine/);
+    expect(content).not.toMatch(/parseFloat/);
+    expect(content).toContain('listByPlanIds');
+  });
+
+  it('insights API exposes no execution, forecast or review paths', () => {
+    const controller = readSource(
+      'apps/api/src/modules/portfolios/portfolio-contribution-insights.controller.ts',
+    );
+    expect(controller).toContain('CurrentPrincipal');
+    expect(controller).toContain('UUIDParamPipe');
+    expect(controller).toContain('contribution-insights');
+    expect(controller).not.toMatch(/Post\(|Put\(|Patch\(|Delete\(/);
+  });
+
+  it('no score, forecast, streak or advice enters the insights stack', () => {
+    const files = [
+      'packages/portfolio-strategy/src/contribution-insights.ts',
+      'apps/api/src/application/portfolios/portfolio-contribution-insights.use-case.ts',
+      'apps/api/src/modules/portfolios/portfolio-contribution-insights.controller.ts',
+      'apps/web/src/components/portfolio/PortfolioContributionInsights.tsx',
+      'apps/mobile/src/components/portfolio/MobileStrategySection.tsx',
+    ];
+    const forbidden =
+      /score|streak|disciplina|forecast|previs[aã]o|mantendo este ritmo|você deveria|deve (investir|aportar)|recomendamos|ideal|ótimo|meta mensal|discipline/i;
+    for (const file of files) {
+      const content = readSource(file);
+      expect(content, file).not.toMatch(forbidden);
+    }
+    for (const file of files) {
+      const content = readSource(file);
+      expect(content, file).not.toMatch(
+        /Markowitz|risk parity|optimizer|solver|MachineLearning|TensorFlow|brain\.js/i,
+      );
+    }
+  });
+});

@@ -116,3 +116,32 @@ describe('Phase 5Q-F (mobile): contribution plans', () => {
     expect(card).not.toMatch(/melhor cenário|vencedor|Comprar|Vender\b|Executar/);
   });
 });
+
+/**
+ * Phase 5Q-I (mobile) — contribution insights read-only.
+ * Summary, counts, textual timeline and recent plans with navigation.
+ * No chart, no scores, no forecasts, no gamification.
+ */
+describe('Phase 5Q-I (mobile): contribution insights', () => {
+  const card = fs.readFileSync(
+    path.join(process.cwd(), 'apps/mobile/src/components/portfolio/MobileStrategySection.tsx'),
+    'utf8',
+  );
+
+  it('shows summary, timeline text and recent plans', () => {
+    expect(card).toContain('Histórico e acompanhamento');
+    expect(card).toContain('/contribution-insights');
+    expect(card).toContain('Planejado:');
+    expect(card).toContain('Realizados:');
+    expect(card).toContain('Cancelados');
+    expect(card).toContain('Ver plano');
+    expect(card).not.toContain('onPress={() => {}}');
+  });
+
+  it('shows limitations and no gamification language', () => {
+    expect(card).toContain('describeInsightsLimitation');
+    expect(card).not.toMatch(/streak|score|disciplina|forecast|previs[aã]o/i);
+    // 'não faz recomendações' is the established neutral disclaimer, not advice.
+    expect(card).not.toMatch(/você deveria|deve (comprar|vender|aportar)/i);
+  });
+});

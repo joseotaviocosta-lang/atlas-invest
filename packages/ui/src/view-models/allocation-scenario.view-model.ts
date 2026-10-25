@@ -196,7 +196,11 @@ export function describeMatchReason(reason: string): string {
 }
 
 /** Days between trade and planned date -> neutral pt-BR timing phrase. */
-export function describeMatchTiming(dateDistanceDays: number, tradeDate: string, plannedDate: string): string {
+export function describeMatchTiming(
+  dateDistanceDays: number,
+  tradeDate: string,
+  plannedDate: string,
+): string {
   if (!Number.isSafeInteger(dateDistanceDays) || tradeDate === plannedDate) {
     return 'na data planejada';
   }
@@ -212,4 +216,40 @@ export function formatPlanDate(yyyyMmDd: string): string {
   const [year = '', month = '', day = ''] = yyyyMmDd.split('-');
   if (year === '' || month === '' || day === '') return yyyyMmDd;
   return `${day}/${month}/${year}`;
+}
+
+/** Month bucket 'YYYY-MM' -> short pt-BR label ('2026-11' -> 'nov/26'). Display only. */
+export function formatPlanMonth(monthKey: string): string {
+  const [year = '', month = ''] = monthKey.split('-');
+  const names = [
+    'jan',
+    'fev',
+    'mar',
+    'abr',
+    'mai',
+    'jun',
+    'jul',
+    'ago',
+    'set',
+    'out',
+    'nov',
+    'dez',
+  ];
+  const index = Number(month) - 1;
+  if (year === '' || Number.isNaN(index) || index < 0 || index > 11) return monthKey;
+  return `${names[index]}/${year.slice(2)}`;
+}
+
+/** Insights-specific limitations (read-only analytics; no judgment). */
+export function describeInsightsLimitation(code: string): string {
+  if (code === 'NO_PLANS_IN_PERIOD') return 'Nenhum plano no período selecionado.';
+  if (code === 'NO_CONFIRMED_ACTUALS')
+    return 'Nenhuma operação confirmada no período — os totais consideram apenas intenções declaradas.';
+  if (code === 'MIXED_CURRENCIES')
+    return 'Há planos em mais de uma moeda; os totais são mostrados por moeda, sem conversão.';
+  if (code === 'UNCLASSIFIED_ACTUALS')
+    return 'Parte do valor confirmado não pôde ser classificada por categoria e aparece como não classificada.';
+  if (code === 'CASH_ACTUAL_SEMANTICS')
+    return 'Operações confirmadas representam entradas de caixa. Elas não provam em qual categoria o valor foi aplicado depois.';
+  return describeScenarioLimitation(code);
 }

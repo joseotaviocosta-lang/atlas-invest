@@ -4,6 +4,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 import { themeTokens } from '@atlas/ui';
 import {
+  describeInsightsLimitation,
   describeMatchReason,
   describeMatchTiming,
   describeScenarioLimitation,
@@ -220,6 +221,7 @@ function SavedScenarios({ portfolioId }: { portfolioId: string }) {
  * offers a dead-end action.
  */
 export function MobileStrategySection({ portfolioId }: { portfolioId: string | null }) {
+  const [openPlanId, setOpenPlanId] = useState<string | null>(null);
   const { data, isLoading, isError } = useQuery({
     queryKey: ['portfolio-allocation-strategy', portfolioId],
     queryFn: async () => {
@@ -281,7 +283,12 @@ export function MobileStrategySection({ portfolioId }: { portfolioId: string | n
       </Text>
       <Text style={styles.note}>Simulações de aporte hipotético disponíveis na versão web.</Text>
       <SavedScenarios portfolioId={portfolioId} />
-      <ContributionPlans portfolioId={portfolioId} />
+      <ContributionPlans
+        portfolioId={portfolioId}
+        openPlanId={openPlanId}
+        onOpenPlanChange={setOpenPlanId}
+      />
+      <ContributionInsights portfolioId={portfolioId} onOpenPlan={setOpenPlanId} />
     </Card>
   );
 }
@@ -304,6 +311,162 @@ const styles = {
   link: { fontSize: 14, fontWeight: '600' as const, color: themeTokens.colors.primary },
   note: { fontSize: 12, color: themeTokens.colors.textMuted, marginTop: 8 },
 };
+
+/**
+ * Phase 5Q-I (mobile) — contribution insights, read-only.
+ * Hero totals, status counts, textual monthly timeline and recent
+ * plans with navigation. Textual list instead of a chart. Facts only,
+ * neutral copy, no judgment language.
+ */
+interface InsightsData {
+  period: string;
+  currency: string | null;
+  summary: {
+    plannedTotal: string;
+    confirmedTotal: string;
+    difference: string;
+    completionBp: number | null;
+    plannedPlanCount: number;
+    completedPlanCount: number;
+    cancelledPlanCount: number;
+    plansWithConfirmed: number;
+    completedWithoutConfirmedCount: number;
+  } | null;
+  timeline: Array<{ month: string; planned: string; confirmed: string; difference: string }>;
+  statusBreakdown: Array<{ status: string; count: number; plannedTotal: string }>;
+  byCategory: Array<{ category: string; planned: string; confirmed: string; difference: string }>;
+  recentPlans: Array<{
+    id: string;
+    name: string;
+    plannedDate: string;
+    status: string;
+    plannedTotal: string;
+    confirmedTotal: string;
+    difference: string;
+  }>;
+  limitations: string[];
+}
+
+const INSIGHT_PERIOD_LABELS: Record<string, string> = {
+  '3M': '3M',
+  '6M': '6M',
+  YTD: 'No ano',
+  '1A': '1 ano',
+  INCEPTION: 'Desde o início',
+};
+
+function ContributionInsights({
+  portfolioId,
+  onOpenPlan,
+}: {
+  portfolioId: string;
+  onOpenPlan: (planId: string) => void;
+}) {
+  const [period, setPeriod] = useState<string>('1A');
+  const insights = useQuery({
+    queryKey: ['portfolio-contribution-insights', portfolioId, period],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: InsightsData }>(
+        `/api/v1/portfolios/${portfolioId}/contribution-insights?period=${period}`,
+      );
+      return res.data;
+    },
+    enabled: !!portfolioId,
+    staleTime: 30000,
+  });
+
+  if (insights.isLoading || insights.isError || !insights.data) {
+    return null;
+  }
+  const data = insights.data;
+  return (
+    <View style={{ marginTop: 12 }} testID="contribution-insights">
+      <Text style={styles.title}>Histórico e acompanhamento</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+        {Object.entries(INSIGHT_PERIOD_LABELS).map(([value, label]) => (
+          <Pressable
+            key={value}
+            onPress={() => setPeriod(value)}
+            accessibilityRole="button"
+            accessibilityLabel={`Ver histórico de ${label}`}
+            accessibilityState={{ selected: period === value }}
+          >
+            <Text style={[styles.link, period !== value && styles.muted]}>{label}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {data.limitations.map((limitation) => (
+        <Text key={limitation} style={styles.note}>
+          {describeInsightsLimitation(limitation)}
+        </Text>
+      ))}
+      {data.summary ? (
+        <>
+          <Text style={styles.body} testID="insights-hero">
+            Planejado:{' '}
+            {formatCentsBr(parseScenarioMoneyToCents(data.summary.plannedTotal) ?? BigInt(0))}.
+            Identificado:{' '}
+            {formatCentsBr(parseScenarioMoneyToCents(data.summary.confirmedTotal) ?? BigInt(0))}.
+          </Text>
+          <Text style={styles.muted}>
+            {formatCentsBr(parseScenarioMoneyToCents(data.summary.plannedTotal) ?? BigInt(0))}{' '}
+            planejados,{' '}
+            {formatCentsBr(parseScenarioMoneyToCents(data.summary.confirmedTotal) ?? BigInt(0))}{' '}
+            identificados em operações confirmadas.
+          </Text>
+        </>
+      ) : null}
+      <Text style={styles.muted} testID="insights-status">
+        Planejados: {data.summary?.plannedPlanCount ?? 0} • Realizados:{' '}
+        {data.summary?.completedPlanCount ?? 0} • Cancelados:{' '}
+        {data.summary?.cancelledPlanCount ?? 0}
+      </Text>
+      {data.timeline.length > 0 ? (
+        <View style={{ marginTop: 8 }} testID="insights-timeline">
+          {data.timeline.map((row) => (
+            <Text key={row.month} style={styles.muted}>
+              {formatPlanMonthMobile(row.month)}: planejado{' '}
+              {formatCentsBr(parseScenarioMoneyToCents(row.planned) ?? BigInt(0))}, confirmado{' '}
+              {formatCentsBr(parseScenarioMoneyToCents(row.confirmed) ?? BigInt(0))}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+      {data.recentPlans.length > 0 ? (
+        <View style={{ marginTop: 8 }}>
+          {data.recentPlans.map((plan) => (
+            <View key={plan.id} style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.category}>{plan.name}</Text>
+                <Text style={styles.muted}>
+                  {formatPlanDateMobile(plan.plannedDate)} • {describePlanStatus(plan.status)}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => onOpenPlan(plan.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Ver plano ${plan.name}`}
+              >
+                <Text style={styles.link}>Ver plano</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function formatPlanMonthMobile(monthKey: string): string {
+  const [year = '', month = ''] = monthKey.split('-');
+  return `${month}/${year}`;
+}
+
+function describePlanStatus(status: string): string {
+  if (status === 'COMPLETED') return 'Realizado';
+  if (status === 'CANCELLED') return 'Cancelado';
+  return 'Planejado';
+}
 
 /**
  * Phase 5Q-F (mobile) — contribution plans list + read-only detail with
@@ -362,8 +525,21 @@ function formatPlanDateMobile(yyyyMmDd: string): string {
   return `${day}/${month}/${year}`;
 }
 
-function ContributionPlans({ portfolioId }: { portfolioId: string }) {
-  const [openId, setOpenId] = useState<string | null>(null);
+function ContributionPlans({
+  portfolioId,
+  openPlanId,
+  onOpenPlanChange,
+}: {
+  portfolioId: string;
+  openPlanId?: string | null;
+  onOpenPlanChange?: (id: string | null) => void;
+}) {
+  const [internalOpenId, setInternalOpenId] = useState<string | null>(null);
+  const openId = openPlanId !== undefined ? openPlanId : internalOpenId;
+  const setOpenId = (id: string | null) => {
+    setInternalOpenId(id);
+    onOpenPlanChange?.(id);
+  };
   const list = useQuery({
     queryKey: ['portfolio-contribution-plans', portfolioId],
     queryFn: async () => {

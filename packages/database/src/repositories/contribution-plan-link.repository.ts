@@ -70,6 +70,25 @@ export class ContributionPlanLinkRepository implements IContributionPlanLinkRepo
     }
   }
 
+  async listByPlanIds(planIds: readonly string[]): Promise<Map<string, ContributionPlanLinkRow[]>> {
+    try {
+      if (planIds.length === 0) return new Map();
+      const rows = await this.prisma.contributionPlanTransactionLink.findMany({
+        where: { planId: { in: [...planIds] } },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      });
+      const byPlan = new Map<string, ContributionPlanLinkRow[]>();
+      for (const row of rows) {
+        const list = byPlan.get(row.planId) ?? [];
+        list.push(this.map(row));
+        byPlan.set(row.planId, list);
+      }
+      return byPlan;
+    } catch {
+      throw new PersistenceError('Failed to list tracking links for plans');
+    }
+  }
+
   async confirm(planId: string, transactionId: string): Promise<ContributionPlanLinkRow> {
     try {
       // Upsert keyed on (plan, transaction): idempotent re-confirm wins

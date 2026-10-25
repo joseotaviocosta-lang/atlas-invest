@@ -190,3 +190,73 @@ describe('Phase 5Q-F: contribution plans web surface', () => {
     expect(section).toContain('!readOnly');
   });
 });
+
+describe('Phase 5Q-I: contribution insights web surface', () => {
+  const insights = fs.readFileSync(
+    path.join(process.cwd(), 'apps/web/src/components/portfolio/PortfolioContributionInsights.tsx'),
+    'utf8',
+  );
+  const plans = fs.readFileSync(
+    path.join(process.cwd(), 'apps/web/src/components/portfolio/PortfolioContributionPlans.tsx'),
+    'utf8',
+  );
+
+  it('lives inside planning with an explicit entry point', () => {
+    expect(plans).toContain('PortfolioContributionInsights');
+    expect(insights).toContain('Histórico e acompanhamento');
+    expect(insights).toContain('contribution-insights');
+    expect(insights).toContain('/contribution-insights?period=');
+  });
+
+  it('offers fixed presets with 1A default and rejects the rest server-side', () => {
+    expect(insights).toContain('insights-period-');
+    for (const label of ['3M', '6M', 'No ano', '1 ano', 'Desde o início']) {
+      expect(insights).toContain(label);
+    }
+    expect(insights).toContain("useState<string>('1A')");
+  });
+
+  it('renders the hero with neutral difference copy', () => {
+    expect(insights).toContain('insights-hero');
+    expect(insights).toContain('No período:');
+    expect(insights).toContain('Identificado em operações confirmadas');
+    expect(insights).toContain('Diferença:');
+    expect(insights).toContain('foram identificados em operações confirmadas');
+  });
+
+  it('shows status counts, timeline chart plus table, and category table', () => {
+    expect(insights).toContain('insights-status');
+    expect(insights).toContain('Planejados');
+    expect(insights).toContain('Realizados');
+    expect(insights).toContain('Cancelados');
+    expect(insights).toContain('timeline-chart');
+    expect(insights).toContain('insights-by-category');
+    expect(insights).toContain('scope="col"');
+  });
+
+  it('lists recent plans with navigation and empty states', () => {
+    expect(insights).toContain('insights-recent-plans');
+    expect(insights).toContain('Ver plano');
+    expect(insights).toContain('Nenhum plano neste período');
+    expect(insights).toContain('Aguardar vínculo');
+    expect(insights).toContain('Revisar plano');
+  });
+
+  it('shows limitations without inventing category equivalence', () => {
+    expect(insights).toContain('describeInsightsLimitation');
+    expect(insights).toContain('insights-limitation-');
+  });
+
+  it('contains no score, forecast, gamification or advice language', () => {
+    expect(insights).not.toMatch(/score|streak|disciplina|forecast|previs[aã]o/i);
+    expect(insights).not.toMatch(
+      /você deveria|deve (investir|aportar)|recomendamos|ideal|ótimo|meta mensal/i,
+    );
+    expect(insights).not.toMatch(/Comprar agora|Executar|Gerar ordem/i);
+  });
+
+  it('keeps numbers server-computed with string-only chart geometry', () => {
+    expect(insights).not.toMatch(/parseFloat/);
+    expect(insights).toContain('decimalToMicroUnits');
+  });
+});

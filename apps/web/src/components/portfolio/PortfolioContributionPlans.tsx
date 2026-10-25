@@ -20,6 +20,7 @@ import {
   type AllocationScenarioRowView,
 } from '@atlas/ui';
 import { LiveResultTable } from './PortfolioSavedScenarios';
+import { PortfolioContributionInsights } from './PortfolioContributionInsights';
 
 const PLAN_CATEGORIES = [
   'STOCK',
@@ -1451,6 +1452,18 @@ export function PortfolioContributionPlans({ portfolioId }: { portfolioId: strin
                 {history.map(renderCard)}
               </ul>
             </>
+          ) : null}
+          {portfolioId ? (
+            <PortfolioContributionInsights
+              portfolioId={portfolioId}
+              onOpenPlan={(planId) => {
+                setOpenId(planId);
+                setAnnouncement('Plano aberto a partir do histórico.');
+                document
+                  .getElementById('contribution-plans')
+                  ?.scrollIntoView({ behavior: 'smooth' });
+              }}
+            />
           ) : null}
         </>
       )}

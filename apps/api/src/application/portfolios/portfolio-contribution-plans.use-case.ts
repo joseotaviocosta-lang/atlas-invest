@@ -31,7 +31,6 @@ import {
   type SimulatedScenario,
   type TrackingCandidate,
 } from '@atlas/portfolio-strategy';
-import { STRATEGY_CATEGORIES } from '@atlas/portfolio-strategy';
 import {
   ALLOCATION_SCENARIO_REPOSITORY,
   ASSET_REPOSITORY,
@@ -40,6 +39,7 @@ import {
   PORTFOLIO_REPOSITORY,
   TRANSACTION_REPOSITORY,
 } from '../../database/tokens';
+import { classifyPlanTransactions, planTransactionAmount } from './contribution-tracking-read';
 import { GetPortfolioAllocationStrategyUseCase } from './get-portfolio-allocation-strategy.use-case';
 import { GetPortfolioAllocationUseCase } from '../valuation/get-portfolio-allocation.use-case';
 import type { ScenarioLiveResultView } from './portfolio-allocation-scenarios.use-case';
@@ -450,46 +450,13 @@ export class PortfolioContributionPlansUseCase {
   private async classifyTransactions(
     transactions: Array<{ id: string; assetId?: string | null; type: string }>,
   ): Promise<Map<string, string>> {
-    const categories = new Map<string, string>();
-    const assetIds = Array.from(
-      new Set(
-        transactions
-          .filter((tx) => tx.type !== 'DEPOSIT' && tx.assetId !== undefined && tx.assetId !== null)
-          .map((tx) => tx.assetId as string),
-      ),
-    );
-    const assets = assetIds.length > 0 ? await this.assets.findByIds(assetIds) : [];
-    const typeByAssetId = new Map<string, string>(assets.map((asset) => [asset.id, asset.type]));
-    for (const tx of transactions) {
-      if (tx.type === 'DEPOSIT') {
-        categories.set(tx.id, 'CASH');
-        continue;
-      }
-      const assetType =
-        tx.assetId !== undefined && tx.assetId !== null ? typeByAssetId.get(tx.assetId) : undefined;
-      categories.set(
-        tx.id,
-        assetType !== undefined && (STRATEGY_CATEGORIES as readonly string[]).includes(assetType)
-          ? assetType
-          : 'OTHER',
-      );
-    }
-    return categories;
+    return classifyPlanTransactions(transactions, (ids) => this.assets.findByIds(ids));
   }
 
   private transactionAmount(
     tx: unknown,
   ): { amount: string; currency: string; tradeDate: string } | null {
-    const candidate = tx as {
-      amount?: { amount?: string };
-      currency?: string;
-      tradeDate?: { toString(): string };
-    };
-    const amount = candidate.amount?.amount;
-    if (typeof amount !== 'string' || typeof candidate.currency !== 'string') return null;
-    const tradeDate = candidate.tradeDate?.toString();
-    if (typeof tradeDate !== 'string') return null;
-    return { amount, currency: candidate.currency, tradeDate };
+    return planTransactionAmount(tx as Transaction);
   }
 
   /**

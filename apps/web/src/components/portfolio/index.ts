@@ -18,4 +18,5 @@ export * from './PortfolioStrategySection';
 export * from './PortfolioScenarioSimulator';
 export * from './PortfolioSavedScenarios';
 export * from './PortfolioContributionPlans';
+export * from './PortfolioContributionInsights';
 export * from './PortfolioShell';
