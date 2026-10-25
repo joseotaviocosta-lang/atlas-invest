@@ -7,6 +7,8 @@ import { useAuthReady } from '@/hooks/use-auth-ready';
 import { Skeleton, ErrorState, EmptyState, SectionHeader, Button, Badge } from '@/components/ui';
 import { colors, spacing, borderRadius, getTodayCivilDateString } from '@atlas/ui';
 import {
+  describeMatchReason,
+  describeMatchTiming,
   describePlanStatus,
   describeScenarioLimitation,
   formatAggregatePp,
@@ -82,6 +84,20 @@ interface TrackingCandidateRow {
   amount: string;
   currency: string;
   category: string;
+  dateDistanceDays: number;
+  amountDifference: string;
+  reasons: string[];
+}
+
+interface TrackingGroupRow {
+  transactionIds: [string, string];
+  tradeDates: [string, string];
+  amounts: [string, string];
+  currency: string;
+  combinedAmount: string;
+  amountDifference: string;
+  dateSpanDays: number;
+  reasons: string[];
 }
 
 interface PlanTrackingData {
@@ -96,6 +112,13 @@ interface PlanTrackingData {
   };
   confirmed: TrackingConfirmedRow[];
   candidates: TrackingCandidateRow[];
+  candidateGroups: TrackingGroupRow[];
+  matchingPolicy: {
+    daysBefore: number;
+    daysAfter: number;
+    queryLimit: number;
+    maxCandidates: number;
+  };
   limitations: string[];
 }
 
@@ -163,6 +186,9 @@ function formatSignedMoney(canonical: string, currency: string): string {
  * Candidates never count until a human confirms.
  */
 function PlanTrackingSection({
+  planId,
+  portfolioId,
+  plannedDate,
   planStatus,
   tracking,
   trackingLoading,
@@ -171,7 +197,11 @@ function PlanTrackingSection({
   onUnlink,
   actionPending,
   actionError,
+  onChanged,
 }: {
+  planId: string;
+  portfolioId: string;
+  plannedDate: string;
   planStatus: string;
   tracking: PlanTrackingData | null;
   trackingLoading: boolean;
@@ -180,8 +210,58 @@ function PlanTrackingSection({
   onUnlink: (transactionId: string) => void;
   actionPending: boolean;
   actionError: unknown;
+  onChanged: () => void;
 }) {
   const readOnly = planStatus === 'CANCELLED';
+  const queryClient = useQueryClient();
+  const [confirmingGroup, setConfirmingGroup] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchFrom, setSearchFrom] = useState('');
+  const [searchTo, setSearchTo] = useState('');
+
+  const groupMutation = useMutation({
+    mutationFn: async (transactionIds: [string, string]) => {
+      const res = await apiClient.post<{ data: unknown }>(
+        `/api/v1/portfolios/${portfolioId}/contribution-plans/${planId}/tracking/confirm-group`,
+        { transactionIds },
+      );
+      return res.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: contributionPlansQueryKey(portfolioId),
+      });
+      setConfirmingGroup(null);
+      onChanged();
+    },
+  });
+
+  const searchQuery = useQuery({
+    queryKey: [
+      ...contributionPlansQueryKey(portfolioId),
+      'tracking-search',
+      planId,
+      searchFrom,
+      searchTo,
+    ],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (searchFrom) params.set('from', searchFrom);
+      if (searchTo) params.set('to', searchTo);
+      const query = params.toString() ? `?${params.toString()}` : '';
+      const res = await apiClient.get<{
+        data: {
+          candidates: TrackingCandidateRow[];
+          window: { start: string; end: string };
+        };
+      }>(`/api/v1/portfolios/${portfolioId}/contribution-plans/${planId}/tracking/search${query}`);
+      return res.data;
+    },
+    enabled: false,
+    staleTime: 30_000,
+  });
+
+  const searched = searchQuery.data ?? null;
   return (
     <div
       style={{
@@ -338,57 +418,353 @@ function PlanTrackingSection({
                   Nenhuma sugestão no momento.
                 </p>
               ) : (
-                <ul
-                  style={{
-                    listStyle: 'none',
-                    margin: 0,
-                    padding: 0,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 4,
-                  }}
-                >
-                  {tracking.candidates.map((candidate) => (
-                    <li
-                      key={candidate.transactionId}
-                      style={{
-                        fontSize: '0.8125rem',
-                        display: 'flex',
-                        gap: 8,
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                      }}
-                      data-testid={`tracking-candidate-${candidate.transactionId}`}
-                    >
-                      <span>
-                        {formatPlanDate(candidate.tradeDate)} • Depósito •{' '}
-                        {formatScenarioMoney(candidate.amount, candidate.currency)} •{' '}
-                        {scenarioCategoryLabel(candidate.category)}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onConfirm(candidate.transactionId)}
-                        disabled={actionPending}
-                        style={{ minHeight: 44 }}
-                        aria-label={`Vincular esta operação ao plano`}
+                <>
+                  <p
+                    style={{ fontSize: '0.75rem', color: colors.textSecondary, margin: '0 0 8px' }}
+                  >
+                    {tracking.candidates.length === 1
+                      ? '1 operação próxima encontrada, ordenada por proximidade de data e valor.'
+                      : `${tracking.candidates.length} operações próximas encontradas, ordenadas por proximidade de data e valor.`}
+                  </p>
+                  <ul
+                    style={{
+                      listStyle: 'none',
+                      margin: 0,
+                      padding: 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4,
+                    }}
+                  >
+                    {tracking.candidates.map((candidate) => (
+                      <li
+                        key={candidate.transactionId}
+                        style={{
+                          fontSize: '0.8125rem',
+                          display: 'flex',
+                          gap: 8,
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                        }}
+                        data-testid={`tracking-candidate-${candidate.transactionId}`}
                       >
-                        Vincular
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onReject(candidate.transactionId)}
-                        disabled={actionPending}
-                        style={{ minHeight: 44 }}
-                        aria-label={`Não relacionar esta operação a este plano`}
-                      >
-                        Não é deste plano
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
+                        <span>
+                          {formatPlanDate(candidate.tradeDate)} • Depósito •{' '}
+                          {formatScenarioMoney(candidate.amount, candidate.currency)} •{' '}
+                          {scenarioCategoryLabel(candidate.category)}
+                          {candidate.reasons.includes('EXACT_AMOUNT') ? (
+                            <>
+                              {' '}
+                              <Badge variant="success">Valor exato</Badge>
+                            </>
+                          ) : null}
+                        </span>
+                        <span
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            fontSize: '0.75rem',
+                            color: colors.textSecondary,
+                          }}
+                        >
+                          Por que apareceu:{' '}
+                          {describeMatchTiming(
+                            candidate.dateDistanceDays,
+                            candidate.tradeDate,
+                            plannedDate,
+                          )}
+                          {candidate.amountDifference !== '0'
+                            ? `; ${formatCentsBr(parseScenarioMoneyToCents(candidate.amountDifference) ?? BigInt(0))} de diferença para o total do plano`
+                            : '; mesmo valor do total do plano'}
+                        </span>
+                        <span
+                          style={{ display: 'flex', gap: 4, flexWrap: 'wrap', width: '100%' }}
+                          data-testid={`tracking-reasons-${candidate.transactionId}`}
+                        >
+                          {candidate.reasons.map((reason) => (
+                            <Badge key={reason} variant="neutral">
+                              {describeMatchReason(reason)}
+                            </Badge>
+                          ))}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onConfirm(candidate.transactionId)}
+                          disabled={actionPending}
+                          style={{ minHeight: 44 }}
+                          aria-label={`Vincular esta operação ao plano`}
+                        >
+                          Vincular
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onReject(candidate.transactionId)}
+                          disabled={actionPending}
+                          style={{ minHeight: 44 }}
+                          aria-label={`Não relacionar esta operação a este plano`}
+                        >
+                          Não é deste plano
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
+              {tracking.candidateGroups.length > 0 ? (
+                <>
+                  <h6 style={{ fontSize: '0.8125rem', fontWeight: 700, margin: '12px 0 4px' }}>
+                    Combinações de 2 operações
+                  </h6>
+                  <p
+                    style={{ fontSize: '0.75rem', color: colors.textSecondary, margin: '0 0 8px' }}
+                  >
+                    Pares cuja soma se aproxima do total planejado. Confirmar vincula as 2 operações
+                    de uma vez — ou nenhuma, nunca pela metade.
+                  </p>
+                  <ul
+                    style={{
+                      listStyle: 'none',
+                      margin: 0,
+                      padding: 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 8,
+                    }}
+                  >
+                    {tracking.candidateGroups.map((group) => {
+                      const key = group.transactionIds.join('+');
+                      const confirming = confirmingGroup === key;
+                      return (
+                        <li
+                          key={key}
+                          style={{
+                            border: `1px solid ${colors.border}`,
+                            borderRadius: 8,
+                            padding: 8,
+                            fontSize: '0.8125rem',
+                          }}
+                          data-testid={`tracking-group-${group.transactionIds[0]}-${group.transactionIds[1]}`}
+                        >
+                          <div style={{ marginBottom: 4 }}>
+                            {group.tradeDates.map((date, index) => (
+                              <span key={group.transactionIds[index]}>
+                                {formatPlanDate(date)} •{' '}
+                                {formatScenarioMoney(group.amounts[index]!, tracking.plan.currency)}
+                                {index === 0 ? ' + ' : ''}
+                              </span>
+                            ))}
+                            {group.reasons.includes('COMBINED_EXACT_AMOUNT') ? (
+                              <>
+                                {' '}
+                                <Badge variant="success">Soma exata</Badge>
+                              </>
+                            ) : null}
+                          </div>
+                          <div
+                            style={{
+                              color: colors.textSecondary,
+                              fontSize: '0.75rem',
+                              marginBottom: 8,
+                            }}
+                          >
+                            Total:{' '}
+                            {formatScenarioMoney(group.combinedAmount, tracking.plan.currency)} •
+                            Diferença:{' '}
+                            {formatSignedMoney(group.amountDifference, tracking.plan.currency)}
+                          </div>
+                          {confirming ? (
+                            <div
+                              style={{
+                                display: 'flex',
+                                gap: 8,
+                                flexWrap: 'wrap',
+                                alignItems: 'center',
+                              }}
+                            >
+                              <span>
+                                Vincular estas 2 operações ao plano? Total:{' '}
+                                {formatScenarioMoney(group.combinedAmount, tracking.plan.currency)}.
+                                Nenhum lançamento será criado ou executado.
+                              </span>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() =>
+                                  groupMutation.mutate([
+                                    group.transactionIds[0]!,
+                                    group.transactionIds[1]!,
+                                  ])
+                                }
+                                disabled={groupMutation.isPending}
+                                style={{ minHeight: 44 }}
+                                aria-label="Confirmar vínculo das 2 operações"
+                                data-testid={`tracking-group-confirm-${group.transactionIds[0]}-${group.transactionIds[1]}`}
+                              >
+                                {groupMutation.isPending
+                                  ? 'Vinculando…'
+                                  : 'Vincular estas operações'}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setConfirmingGroup(null)}
+                                style={{ minHeight: 44 }}
+                              >
+                                Manter sem vincular
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setConfirmingGroup(key)}
+                              style={{ minHeight: 44 }}
+                              aria-label={`Vincular estas 2 operações ao plano`}
+                            >
+                              Vincular estas 2 operações
+                            </Button>
+                          )}
+                          {groupMutation.isError && confirming ? (
+                            <p
+                              role="alert"
+                              style={{ fontSize: '0.875rem', color: colors.negative }}
+                            >
+                              {errorMessage(
+                                groupMutation.error,
+                                'Não foi possível vincular o par. Tente novamente.',
+                              )}
+                            </p>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              ) : null}
+              <div style={{ marginTop: 8 }}>
+                {!searchOpen ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSearchOpen(true)}
+                    style={{ minHeight: 44 }}
+                    aria-label="Procurar outra operação"
+                    data-testid="tracking-search-open"
+                  >
+                    Procurar outra operação
+                  </Button>
+                ) : (
+                  <div data-testid="tracking-search">
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                      <label style={{ fontSize: '0.8125rem' }}>
+                        De{' '}
+                        <input
+                          type="date"
+                          value={searchFrom}
+                          onChange={(event) => setSearchFrom(event.target.value)}
+                          aria-label="Buscar operações a partir de"
+                          data-testid="tracking-search-from"
+                          style={{ ...inputStyle, minHeight: 44 }}
+                        />
+                      </label>
+                      <label style={{ fontSize: '0.8125rem' }}>
+                        Até{' '}
+                        <input
+                          type="date"
+                          value={searchTo}
+                          onChange={(event) => setSearchTo(event.target.value)}
+                          aria-label="Buscar operações até"
+                          data-testid="tracking-search-to"
+                          style={{ ...inputStyle, minHeight: 44 }}
+                        />
+                      </label>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => searchQuery.refetch()}
+                        disabled={searchQuery.isFetching}
+                        style={{ minHeight: 44, alignSelf: 'flex-end' }}
+                        aria-label="Buscar operações no período"
+                        data-testid="tracking-search-run"
+                      >
+                        {searchQuery.isFetching ? 'Buscando…' : 'Buscar'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSearchOpen(false);
+                          setSearchFrom('');
+                          setSearchTo('');
+                        }}
+                        style={{ minHeight: 44, alignSelf: 'flex-end' }}
+                      >
+                        Fechar busca
+                      </Button>
+                    </div>
+                    {searchQuery.isError ? (
+                      <p role="alert" style={{ fontSize: '0.875rem', color: colors.negative }}>
+                        {errorMessage(
+                          searchQuery.error,
+                          'Busca inválida. Use datas YYYY-MM-DD em um intervalo de até 90 dias.',
+                        )}
+                      </p>
+                    ) : null}
+                    {searched && searched.candidates.length === 0 ? (
+                      <p
+                        style={{ fontSize: '0.8125rem', color: colors.textSecondary }}
+                        data-testid="tracking-search-empty"
+                      >
+                        Nenhuma operação encontrada neste período.
+                      </p>
+                    ) : null}
+                    {searched && searched.candidates.length > 0 ? (
+                      <ul
+                        style={{
+                          listStyle: 'none',
+                          margin: 0,
+                          padding: 0,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 4,
+                        }}
+                      >
+                        {searched.candidates.map((candidate) => (
+                          <li
+                            key={candidate.transactionId}
+                            style={{
+                              fontSize: '0.8125rem',
+                              display: 'flex',
+                              gap: 8,
+                              alignItems: 'center',
+                              flexWrap: 'wrap',
+                            }}
+                            data-testid={`tracking-search-result-${candidate.transactionId}`}
+                          >
+                            <span>
+                              {formatPlanDate(candidate.tradeDate)} • Depósito •{' '}
+                              {formatScenarioMoney(candidate.amount, candidate.currency)} •{' '}
+                              {scenarioCategoryLabel(candidate.category)}
+                            </span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onConfirm(candidate.transactionId)}
+                              disabled={actionPending}
+                              style={{ minHeight: 44 }}
+                              aria-label="Vincular operação encontrada ao plano"
+                            >
+                              Vincular
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                )}
+              </div>
             </>
           ) : null}
           {tracking.limitations.map((limitation) => (
@@ -1031,6 +1407,9 @@ export function PortfolioContributionPlans({ portfolioId }: { portfolioId: strin
                 </Button>
               </div>
               <PlanTrackingSection
+                planId={detail.plan.id}
+                portfolioId={portfolioId ?? ''}
+                plannedDate={detail.plan.plannedDate}
                 planStatus={detail.plan.status}
                 tracking={tracking}
                 trackingLoading={trackingQuery.isLoading}
@@ -1045,6 +1424,9 @@ export function PortfolioContributionPlans({ portfolioId }: { portfolioId: strin
                 }
                 actionPending={trackMutation.isPending || unlinkMutation.isPending}
                 actionError={trackMutation.error ?? unlinkMutation.error}
+                onChanged={() => {
+                  setAnnouncement('Acompanhamento atualizado.');
+                }}
               />
             </div>
           ) : openId && detailQuery.isLoading ? (

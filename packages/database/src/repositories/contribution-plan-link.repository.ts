@@ -56,6 +56,20 @@ export class ContributionPlanLinkRepository implements IContributionPlanLinkRepo
     }
   }
 
+  async findConfirmedByTransactionIds(
+    transactionIds: readonly string[],
+  ): Promise<Map<string, string>> {
+    try {
+      if (transactionIds.length === 0) return new Map();
+      const rows = await this.prisma.contributionPlanTransactionLink.findMany({
+        where: { transactionId: { in: [...transactionIds] }, status: 'CONFIRMED' },
+      });
+      return new Map(rows.map((row) => [row.transactionId, row.planId]));
+    } catch {
+      throw new PersistenceError('Failed to load confirmed links for transactions');
+    }
+  }
+
   async confirm(planId: string, transactionId: string): Promise<ContributionPlanLinkRow> {
     try {
       // Upsert keyed on (plan, transaction): idempotent re-confirm wins
@@ -79,6 +93,39 @@ export class ContributionPlanLinkRepository implements IContributionPlanLinkRepo
         );
       }
       throw new PersistenceError(`Failed to confirm tracking link for plan ${planId}`);
+    }
+  }
+
+  async confirmMany(
+    planId: string,
+    transactionIds: readonly [string, string],
+  ): Promise<ContributionPlanLinkRow[]> {
+    try {
+      // One transaction: both upserts land or neither does. Partial
+      // unique violations roll everything back (fail-closed).
+      const rows = await this.prisma.$transaction(
+        transactionIds.map((transactionId) =>
+          this.prisma.contributionPlanTransactionLink.upsert({
+            where: { planId_transactionId: { planId, transactionId } },
+            update: { status: 'CONFIRMED', confirmedAt: new Date(), rejectedAt: null },
+            create: {
+              id: randomUUID(),
+              planId,
+              transactionId,
+              status: 'CONFIRMED',
+              confirmedAt: new Date(),
+            },
+          }),
+        ),
+      );
+      return rows.map((row) => this.map(row));
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        throw new PersistenceError(
+          `Failed to confirm tracking links for plan ${planId}: ${error.code}`,
+        );
+      }
+      throw new PersistenceError(`Failed to confirm tracking links for plan ${planId}`);
     }
   }
 

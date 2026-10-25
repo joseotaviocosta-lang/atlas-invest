@@ -3,8 +3,11 @@ import {
   absDecimalDifference,
   addDaysIso,
   canTransitionPlanLinkStatus,
+  CONTRIBUTION_MATCH_POLICY,
   deriveContributionCandidates,
+  deriveContributionCandidateGroups,
   deriveContributionTracking,
+  rankContributionCandidates,
   ratioToHundredthsOfPercent,
   trackingCandidateWindow,
 } from '@atlas/portfolio-strategy';
@@ -176,6 +179,156 @@ describe('Phase 5Q-G: tracking aggregation', () => {
       start: '2026-11-03',
       end: '2026-11-24',
     });
+  });
+});
+
+describe('Phase 5Q-H: match explanations and ranking', () => {
+  const planned = { plannedDate: '2026-11-10', plannedTotal: '5000', currency: 'BRL' };
+
+  it('exposes factual reasons for every candidate', () => {
+    const candidates = deriveContributionCandidates({
+      ...planned,
+      transactions: [
+        tx('t-exact', 'DEPOSIT', '2026-11-10', '5000'),
+        tx('t-before', 'DEPOSIT', '2026-11-05', '2000'),
+        tx('t-after', 'DEPOSIT', '2026-11-20', '6000'),
+      ],
+      confirmedIds: new Set(),
+      rejectedIds: new Set(),
+    });
+    const byId = new Map(candidates.map((candidate) => [candidate.transactionId, candidate]));
+    expect(byId.get('t-exact')?.reasons).toEqual([
+      'SAME_CURRENCY',
+      'WITHIN_DATE_WINDOW',
+      'ON_PLANNED_DATE',
+      'EXACT_AMOUNT',
+    ]);
+    expect(byId.get('t-before')?.reasons).toEqual([
+      'SAME_CURRENCY',
+      'WITHIN_DATE_WINDOW',
+      'BEFORE_PLANNED_DATE',
+      'PARTIAL_AMOUNT',
+    ]);
+    expect(byId.get('t-after')?.reasons).toEqual([
+      'SAME_CURRENCY',
+      'WITHIN_DATE_WINDOW',
+      'AFTER_PLANNED_DATE',
+      'ABOVE_PLANNED_AMOUNT',
+    ]);
+    expect(byId.get('t-exact')?.dateDistanceDays).toBe(0);
+    expect(byId.get('t-before')?.dateDistanceDays).toBe(5);
+    expect(byId.get('t-before')?.amountDifference).toBe('3000');
+  });
+
+  it('ranks deterministically with no hidden weights', () => {
+    const input = {
+      ...planned,
+      transactions: [
+        tx('t-b', 'DEPOSIT', '2026-11-12', '4900'),
+        tx('t-a', 'DEPOSIT', '2026-11-12', '5000'),
+        tx('t-c', 'DEPOSIT', '2026-11-08', '5000'),
+      ],
+      confirmedIds: new Set<string>(),
+      rejectedIds: new Set<string>(),
+    };
+    const first = deriveContributionCandidates(input);
+    const second = deriveContributionCandidates({
+      ...input,
+      transactions: [...input.transactions].reverse(),
+    });
+    expect(first.map((candidate) => candidate.transactionId)).toEqual(
+      second.map((candidate) => candidate.transactionId),
+    );
+    // Same date distance (2d): exact amount wins; trade-date breaks the exact tie.
+    expect(first.map((candidate) => candidate.transactionId)).toEqual(['t-c', 't-a', 't-b']);
+    expect(rankContributionCandidates(first).map((candidate) => candidate.transactionId)).toEqual(
+      first.map((candidate) => candidate.transactionId),
+    );
+  });
+
+  it('centralizes the matching policy without magic numbers', () => {
+    expect(CONTRIBUTION_MATCH_POLICY).toEqual({
+      daysBefore: 7,
+      daysAfter: 14,
+      queryLimit: 200,
+      maxCandidates: 50,
+      groupBaseLimit: 20,
+      maxGroupSize: 2,
+    });
+    expect(trackingCandidateWindow('2026-11-10')).toEqual({
+      start: '2026-11-03',
+      end: '2026-11-24',
+    });
+  });
+
+  it('supports explicit windows for manual search', () => {
+    const candidates = deriveContributionCandidates({
+      ...planned,
+      transactions: [tx('t-far', 'DEPOSIT', '2026-09-01', '5000')],
+      confirmedIds: new Set(),
+      rejectedIds: new Set(),
+      window: { start: '2026-08-01', end: '2026-12-31' },
+    });
+    expect(candidates.map((candidate) => candidate.transactionId)).toEqual(['t-far']);
+    expect(candidates[0]?.reasons).toContain('WITHIN_DATE_WINDOW');
+  });
+});
+
+describe('Phase 5Q-H: candidate pair groups', () => {
+  const planned = { plannedTotal: '5000', currency: 'BRL' };
+
+  function candidate(id: string, tradeDate: string, amount: string) {
+    return {
+      transactionId: id,
+      tradeDate,
+      amount,
+      currency: 'BRL',
+      dateDistanceDays: 0,
+      amountDifference: '0',
+      reasons: [] as never[],
+    };
+  }
+
+  it('finds exact combined pairs factually', () => {
+    const groups = deriveContributionCandidateGroups({
+      ...planned,
+      candidates: [
+        candidate('t-a', '2026-11-12', '2000'),
+        candidate('t-b', '2026-11-15', '3000'),
+        candidate('t-c', '2026-11-20', '1000'),
+      ],
+    });
+    const exact = groups.find((group) => group.reasons.includes('COMBINED_EXACT_AMOUNT'))!;
+    expect(exact.transactionIds).toEqual(['t-a', 't-b']);
+    expect(exact.combinedAmount).toBe('5000');
+    expect(exact.amountDifference).toBe('0');
+  });
+
+  it('orders pairs deterministically and bounds the search', () => {
+    const many = Array.from({ length: 30 }, (_, index) =>
+      candidate(`t-${String(index).padStart(2, '0')}`, '2026-11-10', '100'),
+    );
+    // Production feeds the ranked list (deterministic); rank both input
+    // orders first so the top-20 base — and therefore the pairs — coincide.
+    const ranked = rankContributionCandidates(many);
+    const rankedReversed = rankContributionCandidates([...many].reverse());
+    expect(rankedReversed).toEqual(ranked);
+    const groups = deriveContributionCandidateGroups({ ...planned, candidates: ranked });
+    // Base limited to 20 legs → C(20,2) = 190 pairs.
+    expect(groups).toHaveLength(190);
+    const again = deriveContributionCandidateGroups({
+      ...planned,
+      candidates: rankedReversed,
+    });
+    expect(again).toEqual(groups);
+  });
+
+  it('rejects duplicates inside a group by construction', () => {
+    const groups = deriveContributionCandidateGroups({
+      ...planned,
+      candidates: [candidate('t-a', '2026-11-10', '2500')],
+    });
+    expect(groups).toEqual([]);
   });
 });
 

@@ -477,4 +477,165 @@ describe('API Integration: contribution plan tracking (Phase 5Q-G)', () => {
     expect(serialized).not.toMatch(/passwordHash|refreshToken|externalId|fingerprint|provider/i);
     expect(res.body.data.confirmed[0]).not.toHaveProperty('assetId');
   });
+
+  it('exposes explanations, policy and pair groups in tracking', async () => {
+    const plan = await createPlan();
+    const near = await deposit('2000', '2026-11-12');
+    const exact = await deposit('5000', '2026-11-10');
+    await deposit('100', '2026-11-09');
+    await deposit('3000', '2026-11-15');
+    const res = await request(app.getHttpServer())
+      .get(trackingUrl(plan.id))
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.matchingPolicy).toEqual({
+      daysBefore: 7,
+      daysAfter: 14,
+      queryLimit: 200,
+      maxCandidates: 50,
+    });
+    const candidates = res.body.data.candidates as Array<{
+      transactionId: string;
+      dateDistanceDays: number;
+      amountDifference: string;
+      reasons: string[];
+    }>;
+    const exactCandidate = candidates.find((candidate) => candidate.transactionId === exact.id)!;
+    expect(exactCandidate.reasons).toEqual([
+      'SAME_CURRENCY',
+      'WITHIN_DATE_WINDOW',
+      'ON_PLANNED_DATE',
+      'EXACT_AMOUNT',
+    ]);
+    expect(exactCandidate.dateDistanceDays).toBe(0);
+    expect(exactCandidate.amountDifference).toBe('0');
+    const nearCandidate = candidates.find((candidate) => candidate.transactionId === near.id)!;
+    expect(nearCandidate.reasons).toContain('PARTIAL_AMOUNT');
+    // Deterministic order: same-date exact first, then by date distance.
+    expect(candidates.map((candidate) => candidate.transactionId)[0]).toBe(exact.id);
+    const groups = res.body.data.candidateGroups as Array<{
+      transactionIds: [string, string];
+      combinedAmount: string;
+      amountDifference: string;
+      dateSpanDays: number;
+      reasons: string[];
+    }>;
+    expect(groups.length).toBeGreaterThan(0);
+    const totals = new Set(groups.map((group) => group.combinedAmount));
+    expect(totals.has('5000')).toBe(true);
+    expect(groups[0]).toBeDefined();
+    expect(res.body.data.tracking.actualTotal).toBe('0');
+    expect(res.body.data.tracking.confirmedCount).toBe(0);
+  });
+
+  it('confirms a pair atomically with explicit copy', async () => {
+    const plan = await createPlan();
+    const first = await deposit('2000', '2026-11-12');
+    const second = await deposit('3000', '2026-11-15');
+    const res = await request(app.getHttpServer())
+      .post(`${trackingUrl(plan.id)}/confirm-group`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ transactionIds: [first.id, second.id] });
+    expect(res.status).toBe(200);
+    expect(res.body.data.links).toHaveLength(2);
+    expect(res.body.data.links).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ transactionId: first.id, status: 'CONFIRMED' }),
+        expect.objectContaining({ transactionId: second.id, status: 'CONFIRMED' }),
+      ]),
+    );
+    const tracked = await request(app.getHttpServer())
+      .get(trackingUrl(plan.id))
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(tracked.body.data.tracking.actualTotal).toBe('5000');
+    expect(tracked.body.data.tracking.difference).toBe('0');
+    expect(tracked.body.data.tracking.completionBp).toBe(10000);
+    // Idempotent repeat.
+    const repeat = await request(app.getHttpServer())
+      .post(`${trackingUrl(plan.id)}/confirm-group`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ transactionIds: [first.id, second.id] });
+    expect(repeat.status).toBe(200);
+  });
+
+  it('rejects invalid, duplicate and foreign group confirmations', async () => {
+    const plan = await createPlan();
+    const first = await deposit('2000', '2026-11-12');
+    for (const body of [
+      { transactionIds: [first.id, first.id] },
+      { transactionIds: [first.id] },
+      { transactionIds: [first.id, randomUUID(), randomUUID()] },
+      { transactionIds: ['not-a-uuid', first.id] },
+      {},
+      { transactionIds: [first.id, 42] },
+    ]) {
+      const res = await request(app.getHttpServer())
+        .post(`${trackingUrl(plan.id)}/confirm-group`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(body);
+      expect(res.status, JSON.stringify(body)).toBe(400);
+    }
+    const second = await deposit('3000', '2026-11-15');
+    const other = await createPlan({ ...VALID_BODY, name: 'Other' });
+    await request(app.getHttpServer())
+      .post(`${trackingUrl(other.id)}/confirm`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ transactionId: first.id })
+      .expect(200);
+    const clash = await request(app.getHttpServer())
+      .post(`${trackingUrl(plan.id)}/confirm-group`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ transactionIds: [first.id, second.id] });
+    expect(clash.status).toBe(400);
+    const tracked = await request(app.getHttpServer())
+      .get(trackingUrl(plan.id))
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(tracked.body.data.tracking.actualTotal).toBe('0');
+  });
+
+  it('searches manually in a bounded window without dumping the ledger', async () => {
+    const plan = await createPlan();
+    const inside = await deposit('1500', '2026-08-15');
+    await deposit('1500', '2026-01-05');
+    const found = await request(app.getHttpServer())
+      .get(`${trackingUrl(plan.id)}/search?from=2026-08-01&to=2026-09-30`)
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(found.status).toBe(200);
+    expect(found.body.data.window).toEqual({ start: '2026-08-01', end: '2026-09-30' });
+    expect(
+      found.body.data.candidates.map(
+        (candidate: { transactionId: string }) => candidate.transactionId,
+      ),
+    ).toEqual([inside.id]);
+    for (const query of [
+      '?from=2026-13-01',
+      '?from=2026-10-01&to=2026-09-01',
+      '?from=2020-01-01&to=2026-12-31',
+    ]) {
+      const bad = await request(app.getHttpServer())
+        .get(`${trackingUrl(plan.id)}/search${query}`)
+        .set('Authorization', `Bearer ${authToken}`);
+      expect(bad.status, query).toBe(400);
+    }
+    const confirmed = await request(app.getHttpServer())
+      .post(`${trackingUrl(plan.id)}/confirm`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ transactionId: inside.id });
+    expect(confirmed.status).toBe(200);
+  });
+
+  it('performs zero writes on tracking reads and searches', async () => {
+    const plan = await createPlan();
+    await deposit('1000', '2026-11-11');
+    const before = await prisma.contributionPlanTransactionLink.count();
+    await request(app.getHttpServer())
+      .get(trackingUrl(plan.id))
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`${trackingUrl(plan.id)}/search`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(200);
+    expect(await prisma.contributionPlanTransactionLink.count()).toBe(before);
+  });
 });

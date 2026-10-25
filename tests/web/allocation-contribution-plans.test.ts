@@ -156,6 +156,35 @@ describe('Phase 5Q-F: contribution plans web surface', () => {
     expect(section).toContain('/tracking/');
   });
 
+  it('shows candidate explanations without confidence language', () => {
+    expect(section).toContain('Por que apareceu');
+    expect(section).toContain('tracking-reasons-');
+    expect(section).toContain('Valor exato');
+    expect(section).toContain('ordenadas por proximidade de data e valor');
+    expect(section).toContain('Nenhuma sugestão no momento');
+    expect(section).not.toMatch(/confiança|confidence|probabilidade|score|% de chance/i);
+  });
+
+  it('groups pairs with explicit atomic confirmation', () => {
+    expect(section).toContain('Combinações de 2 operações');
+    expect(section).toContain('Soma exata');
+    expect(section).toContain('Vincular estas 2 operações');
+    expect(section).toContain('Vincular estas operações');
+    expect(section).toContain('lançamento será criado ou executado');
+    expect(section).toContain('ou nenhuma, nunca pela metade');
+    expect(section).toContain('/tracking/confirm-group');
+    expect(section).toContain('Manter sem vincular');
+  });
+
+  it('offers bounded manual search without dumping the ledger', () => {
+    expect(section).toContain('Procurar outra operação');
+    expect(section).toContain('tracking-search-open');
+    expect(section).toContain('tracking-search-from');
+    expect(section).toContain('tracking-search-to');
+    expect(section).toContain('/tracking/search');
+    expect(section).toContain('Nenhuma operação encontrada neste período');
+  });
+
   it('keeps cancelled plans read-only in tracking', () => {
     expect(section).toContain("planStatus === 'CANCELLED'");
     expect(section).toContain('!readOnly');

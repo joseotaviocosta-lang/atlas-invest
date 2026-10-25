@@ -20,12 +20,49 @@ export class InvalidContributionTrackingError extends DomainError {
  */
 export const ELIGIBLE_CONTRIBUTION_TRANSACTION_TYPES = ['DEPOSIT'] as const;
 
+/**
+ * Phase 5Q-H — centralized contribution matching policy (discovery only).
+ *
+ * daysBefore/daysAfter keep the asymmetric window: ledger dates lag or
+ * lead the planned date, rarely matching it exactly. queryLimit bounds
+ * the DB read; maxCandidates caps the ranked output; groupBaseLimit
+ * bounds pair search (C(20,2) = 190 max); maxGroupSize is 2 in v1
+ * (subset-sum is out of scope). No weights, no scores — ordering is
+ * documented in rankContributionCandidates.
+ */
+export const CONTRIBUTION_MATCH_POLICY = {
+  daysBefore: 7,
+  daysAfter: 14,
+  queryLimit: 200,
+  maxCandidates: 50,
+  groupBaseLimit: 20,
+  maxGroupSize: 2,
+} as const;
+
 /** Candidate discovery window around the planned date (heuristic, not a rule). */
-export const TRACKING_CANDIDATE_WINDOW_BEFORE_DAYS = 7;
-export const TRACKING_CANDIDATE_WINDOW_AFTER_DAYS = 14;
+export const TRACKING_CANDIDATE_WINDOW_BEFORE_DAYS = CONTRIBUTION_MATCH_POLICY.daysBefore;
+export const TRACKING_CANDIDATE_WINDOW_AFTER_DAYS = CONTRIBUTION_MATCH_POLICY.daysAfter;
 
 /** Cap on derived candidates (bounded read, deterministic order). */
-export const MAX_TRACKING_CANDIDATES = 50;
+export const MAX_TRACKING_CANDIDATES = CONTRIBUTION_MATCH_POLICY.maxCandidates;
+
+/**
+ * Factual match reasons. Every reason is a verifiable fact about the
+ * transaction vs the plan — never likelihood, never a recommendation.
+ * The UI renders these verbatim as "why this appeared".
+ */
+export type ContributionMatchReason =
+  | 'SAME_CURRENCY'
+  | 'WITHIN_DATE_WINDOW'
+  | 'ON_PLANNED_DATE'
+  | 'BEFORE_PLANNED_DATE'
+  | 'AFTER_PLANNED_DATE'
+  | 'EXACT_AMOUNT'
+  | 'PARTIAL_AMOUNT'
+  | 'ABOVE_PLANNED_AMOUNT'
+  | 'COMBINED_EXACT_AMOUNT'
+  | 'COMBINED_PARTIAL_AMOUNT'
+  | 'COMBINED_ABOVE_AMOUNT';
 
 export type PlanLinkStatus = 'CONFIRMED' | 'REJECTED';
 
@@ -60,6 +97,51 @@ export interface TrackingCandidate {
   tradeDate: string;
   amount: string;
   currency: string;
+  /** Days between trade date and planned date (exact civil math). */
+  dateDistanceDays: number;
+  /** Exact |amount − plannedTotal| as a canonical decimal. */
+  amountDifference: string;
+  /** Factual reasons, stable order: currency, window, date side, amount side. */
+  reasons: ContributionMatchReason[];
+}
+
+/**
+ * Deterministic ranking, documented and weight-free:
+ * 1. date distance asc, 2. amount distance asc (exact decimal),
+ * 3. trade date asc, 4. id asc. No scores, no hidden weights —
+ * what you read here is the whole ranking.
+ */
+export function rankContributionCandidates(
+  candidates: readonly TrackingCandidate[],
+): TrackingCandidate[] {
+  return [...candidates].sort((left, right) => {
+    if (left.dateDistanceDays !== right.dateDistanceDays) {
+      return left.dateDistanceDays - right.dateDistanceDays;
+    }
+    const amountOrder = compareDecimalStrings(left.amountDifference, right.amountDifference);
+    if (amountOrder !== 0) return amountOrder;
+    if (left.tradeDate !== right.tradeDate) {
+      return left.tradeDate < right.tradeDate ? -1 : 1;
+    }
+    return left.transactionId < right.transactionId ? -1 : 1;
+  });
+}
+
+function candidateReasons(input: {
+  tradeDate: string;
+  plannedDate: string;
+  amount: string;
+  plannedTotal: string;
+}): ContributionMatchReason[] {
+  const reasons: ContributionMatchReason[] = ['SAME_CURRENCY', 'WITHIN_DATE_WINDOW'];
+  if (input.tradeDate === input.plannedDate) reasons.push('ON_PLANNED_DATE');
+  else if (input.tradeDate < input.plannedDate) reasons.push('BEFORE_PLANNED_DATE');
+  else reasons.push('AFTER_PLANNED_DATE');
+  const order = compareDecimalStrings(input.amount, input.plannedTotal);
+  if (order === 0) reasons.push('EXACT_AMOUNT');
+  else if (order < 0) reasons.push('PARTIAL_AMOUNT');
+  else reasons.push('ABOVE_PLANNED_AMOUNT');
+  return reasons;
 }
 
 function splitDecimalParts(value: string): { int: string; frac: string } {
@@ -216,10 +298,11 @@ export function trackingCandidateWindow(plannedDate: string): {
 /**
  * Derives deterministic candidates on read (never persisted here).
  * Filters: eligible type, same currency, trade date inside the
- * [planned - 7d, planned + 14d] window, not already confirmed or
- * rejected. Orders by date distance, then exact amount distance to the
- * planned total, then trade date, then id — capped. Rejected and
- * confirmed ids come from the link table (memory, not math).
+ * [planned − 7d, planned + 14d] window (or an explicit override window
+ * for manual search), not already confirmed or rejected. Each candidate
+ * carries factual reasons + exact distances; ordering goes through
+ * rankContributionCandidates. Rejected and confirmed ids come from the
+ * link table (memory, not math).
  */
 export function deriveContributionCandidates(input: {
   plannedDate: string;
@@ -229,38 +312,102 @@ export function deriveContributionCandidates(input: {
   confirmedIds: ReadonlySet<string>;
   rejectedIds: ReadonlySet<string>;
   maxCandidates?: number;
+  window?: { start: string; end: string };
 }): TrackingCandidate[] {
-  const limit = input.maxCandidates ?? MAX_TRACKING_CANDIDATES;
-  const windowStart = addDaysIso(input.plannedDate, -TRACKING_CANDIDATE_WINDOW_BEFORE_DAYS);
-  const windowEnd = addDaysIso(input.plannedDate, TRACKING_CANDIDATE_WINDOW_AFTER_DAYS);
+  const limit = input.maxCandidates ?? CONTRIBUTION_MATCH_POLICY.maxCandidates;
+  const window = input.window ?? trackingCandidateWindow(input.plannedDate);
   const ranked = input.transactions
     .filter((tx) =>
       (ELIGIBLE_CONTRIBUTION_TRANSACTION_TYPES as readonly string[]).includes(tx.type),
     )
     .filter((tx) => tx.currency === input.currency)
-    .filter((tx) => tx.tradeDate >= windowStart && tx.tradeDate <= windowEnd)
+    .filter((tx) => tx.tradeDate >= window.start && tx.tradeDate <= window.end)
     .filter((tx) => !input.confirmedIds.has(tx.id) && !input.rejectedIds.has(tx.id))
-    .map((tx) => ({
-      tx,
-      dateDistance: dateDistanceDays(tx.tradeDate, input.plannedDate),
-      amountDistance: absDecimalDifference(tx.amount, input.plannedTotal),
-    }))
+    .map((tx): TrackingCandidate => ({
+      transactionId: tx.id,
+      tradeDate: tx.tradeDate,
+      amount: tx.amount,
+      currency: tx.currency,
+      dateDistanceDays: dateDistanceDays(tx.tradeDate, input.plannedDate),
+      amountDifference: absDecimalDifference(tx.amount, input.plannedTotal),
+      reasons: candidateReasons({
+        tradeDate: tx.tradeDate,
+        plannedDate: input.plannedDate,
+        amount: tx.amount,
+        plannedTotal: input.plannedTotal,
+      }),
+    }));
+  return rankContributionCandidates(ranked).slice(0, limit);
+}
+
+export interface ContributionCandidateGroup {
+  transactionIds: [string, string];
+  tradeDates: [string, string];
+  amounts: [string, string];
+  currency: string;
+  combinedAmount: string;
+  /** Exact |combined − plannedTotal| as a canonical decimal. */
+  amountDifference: string;
+  /** Days between the two legs (exact civil math). */
+  dateSpanDays: number;
+  reasons: ContributionMatchReason[];
+}
+
+/**
+ * Derives pair groups from the top-ranked candidates (never persisted).
+ * Bounded: at most groupBaseLimit legs in, C(n,2) pairs out. Pairs use
+ * exact decimal sums; ordering is amount distance, then date span, then
+ * id pair — deterministic, no scores. Rejected/confirmed legs never
+ * enter: callers pass already-filtered candidates.
+ */
+export function deriveContributionCandidateGroups(input: {
+  plannedTotal: string;
+  currency: string;
+  candidates: readonly TrackingCandidate[];
+  groupBaseLimit?: number;
+}): ContributionCandidateGroup[] {
+  const base = input.candidates.slice(
+    0,
+    input.groupBaseLimit ?? CONTRIBUTION_MATCH_POLICY.groupBaseLimit,
+  );
+  const groups: Array<ContributionCandidateGroup & { idKey: string }> = [];
+  for (let leftIndex = 0; leftIndex < base.length; leftIndex += 1) {
+    const left = base[leftIndex]!;
+    for (let rightIndex = leftIndex + 1; rightIndex < base.length; rightIndex += 1) {
+      const right = base[rightIndex]!;
+      const combinedAmount = addDecimals(left.amount, right.amount);
+      const amountDifference = absDecimalDifference(combinedAmount, input.plannedTotal);
+      const order = compareDecimalStrings(combinedAmount, input.plannedTotal);
+      groups.push({
+        transactionIds: [left.transactionId, right.transactionId].sort() as [string, string],
+        tradeDates: [left.tradeDate, right.tradeDate].sort() as [string, string],
+        amounts: [left.amount, right.amount],
+        currency: input.currency,
+        combinedAmount,
+        amountDifference,
+        dateSpanDays: dateDistanceDays(left.tradeDate, right.tradeDate),
+        reasons: [
+          order === 0
+            ? 'COMBINED_EXACT_AMOUNT'
+            : order < 0
+              ? 'COMBINED_PARTIAL_AMOUNT'
+              : 'COMBINED_ABOVE_AMOUNT',
+        ],
+        idKey: [left.transactionId, right.transactionId].sort().join('|'),
+      });
+    }
+  }
+  return groups
     .sort((left, right) => {
-      if (left.dateDistance !== right.dateDistance) return left.dateDistance - right.dateDistance;
-      const amountOrder = compareDecimalStrings(left.amountDistance, right.amountDistance);
+      const amountOrder = compareDecimalStrings(left.amountDifference, right.amountDifference);
       if (amountOrder !== 0) return amountOrder;
-      if (left.tx.tradeDate !== right.tx.tradeDate) {
-        return left.tx.tradeDate < right.tx.tradeDate ? -1 : 1;
-      }
-      return left.tx.id < right.tx.id ? -1 : 1;
+      if (left.dateSpanDays !== right.dateSpanDays) return left.dateSpanDays - right.dateSpanDays;
+      return left.idKey < right.idKey ? -1 : left.idKey > right.idKey ? 1 : 0;
     })
-    .slice(0, limit);
-  return ranked.map(({ tx }) => ({
-    transactionId: tx.id,
-    tradeDate: tx.tradeDate,
-    amount: tx.amount,
-    currency: tx.currency,
-  }));
+    .map(({ idKey, ...group }) => {
+      void idKey;
+      return group;
+    });
 }
 
 export interface TrackingCategoryRow {

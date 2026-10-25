@@ -4,6 +4,8 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 import { themeTokens } from '@atlas/ui';
 import {
+  describeMatchReason,
+  describeMatchTiming,
   describeScenarioLimitation,
   formatAggregatePp,
   formatCentsBr,
@@ -338,6 +340,19 @@ interface PlanDetail {
     amount: string;
     currency: string;
     category: string;
+    dateDistanceDays: number;
+    amountDifference: string;
+    reasons: string[];
+  }>;
+  candidateGroups: Array<{
+    transactionIds: [string, string];
+    tradeDates: [string, string];
+    amounts: [string, string];
+    currency: string;
+    combinedAmount: string;
+    amountDifference: string;
+    dateSpanDays: number;
+    reasons: string[];
   }>;
 }
 
@@ -375,6 +390,14 @@ function ContributionPlans({ portfolioId }: { portfolioId: string }) {
     mutationFn: async (action: { id: string; kind: 'complete' | 'cancel' }) => {
       await apiClient.post(
         `/api/v1/portfolios/${portfolioId}/contribution-plans/${action.id}/${action.kind}`,
+      );
+    },
+  });
+  const confirmGroup = useMutation({
+    mutationFn: async (action: { id: string; transactionIds: [string, string] }) => {
+      await apiClient.post(
+        `/api/v1/portfolios/${portfolioId}/contribution-plans/${action.id}/tracking/confirm-group`,
+        { transactionIds: action.transactionIds },
       );
     },
   });
@@ -479,11 +502,48 @@ function ContributionPlans({ portfolioId }: { portfolioId: string }) {
               {opened.candidates.map((candidate) => (
                 <Text key={candidate.transactionId} style={styles.muted}>
                   {formatPlanDateMobile(candidate.tradeDate)} •{' '}
-                  {formatCentsBr(parseScenarioMoneyToCents(candidate.amount) ?? BigInt(0))}
+                  {formatCentsBr(parseScenarioMoneyToCents(candidate.amount) ?? BigInt(0))} •{' '}
+                  {describeMatchTiming(
+                    candidate.dateDistanceDays,
+                    candidate.tradeDate,
+                    opened.plan.plannedDate,
+                  )}
+                  {' • '}
+                  {candidate.reasons.map((reason) => describeMatchReason(reason)).join(' • ')}
                 </Text>
               ))}
+              {opened.candidateGroups.length > 0 ? (
+                <View style={{ marginTop: 4 }}>
+                  <Text style={styles.muted}>Pares que somam o plano</Text>
+                  {opened.candidateGroups.slice(0, 3).map((group) => (
+                    <View key={group.transactionIds.join('+')} style={{ marginTop: 4 }}>
+                      <Text style={styles.muted}>
+                        {group.tradeDates.map(formatPlanDateMobile).join(' + ')} ={' '}
+                        {formatCentsBr(
+                          parseScenarioMoneyToCents(group.combinedAmount) ?? BigInt(0),
+                        )}
+                        {group.reasons.includes('COMBINED_EXACT_AMOUNT') ? ' • Soma exata' : ''}
+                      </Text>
+                      {opened.plan.status === 'PLANNED' ? (
+                        <Pressable
+                          onPress={() =>
+                            confirmGroup.mutate({
+                              id: opened.plan.id,
+                              transactionIds: group.transactionIds,
+                            })
+                          }
+                          accessibilityRole="button"
+                          accessibilityLabel={`Vincular estas 2 operações ao plano ${opened.plan.name}`}
+                        >
+                          <Text style={styles.link}>Vincular estas 2 operações</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  ))}
+                </View>
+              ) : null}
               <Text style={styles.note}>
-                Para vincular operações a este plano, use a versão web.
+                Para vincular operações individuais a este plano, use a versão web.
               </Text>
             </View>
           ) : null}

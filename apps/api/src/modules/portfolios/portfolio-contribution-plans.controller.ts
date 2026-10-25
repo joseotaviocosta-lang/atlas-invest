@@ -26,6 +26,9 @@ import {
   CreateContributionPlanBody,
   CreateContributionPlanBodySchema,
   CreateContributionPlanSwaggerDto,
+  PlanTrackingGroupBody,
+  PlanTrackingGroupBodySchema,
+  PlanTrackingGroupSwaggerDto,
   PlanTrackingLinkBody,
   PlanTrackingLinkBodySchema,
   PlanTrackingLinkSwaggerDto,
@@ -334,6 +337,76 @@ export class PortfolioContributionPlansController {
       transactionId: body.transactionId,
     });
     return { data: { link } };
+  }
+
+  @Post(':planId/tracking/confirm-group')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Confirm a pair of transactions together (atomic)',
+    description:
+      'One explicit group action: both links persist in a single transaction or neither does. Vincular estas operações ao plano? Isso apenas registra a relação entre o plano e operações já existentes. Nenhum lançamento será criado ou executado.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiParam({ name: 'planId', description: 'UUID of the contribution plan' })
+  @ApiBody({ type: PlanTrackingGroupSwaggerDto })
+  @ApiResponse({ status: 200, description: 'Group confirmed atomically' })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid IDs, same ID twice, ineligible or owned elsewhere',
+  })
+  @ApiResponse({ status: 404, description: 'Portfolio, plan or transaction not found' })
+  async confirmGroup(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Param('planId', UUIDParamPipe) planId: string,
+    @Body(new ZodValidationPipe(PlanTrackingGroupBodySchema)) body: PlanTrackingGroupBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.plans.confirmPlanGroup({
+      planId,
+      portfolioId,
+      userId: principal.userId,
+      transactionIds: body.transactionIds,
+    });
+    return { data: result };
+  }
+
+  @Get(':planId/tracking/search')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Manually search ledger deposits in an explicit date range',
+    description:
+      'Same eligibility and currency rules as discovery; rejected and already-confirmed transactions stay hidden. Span capped at 90 days. Read-only.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiParam({ name: 'planId', description: 'UUID of the contribution plan' })
+  @ApiQuery({
+    name: 'from',
+    required: false,
+    description: 'Date-only YYYY-MM-DD (default planned − 90d)',
+  })
+  @ApiQuery({
+    name: 'to',
+    required: false,
+    description: 'Date-only YYYY-MM-DD (default planned + 90d)',
+  })
+  @ApiResponse({ status: 200, description: 'Manual search candidates' })
+  @ApiResponse({ status: 400, description: 'Invalid range' })
+  @ApiResponse({ status: 404, description: 'Portfolio or plan not found' })
+  async searchTransactions(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Param('planId', UUIDParamPipe) planId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const result = await this.plans.searchPlanTransactions({
+      planId,
+      portfolioId,
+      userId: principal.userId,
+      from,
+      to,
+    });
+    return { data: result };
   }
 
   @Delete(':planId/tracking/:transactionId')

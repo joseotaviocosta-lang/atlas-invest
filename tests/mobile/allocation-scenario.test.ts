@@ -92,14 +92,23 @@ describe('Phase 5Q-F (mobile): contribution plans', () => {
     expect(card).not.toContain('Salvar plano');
   });
 
-  it('shows tracking summaries and read-only candidates without auto-confirming', () => {
+  it('shows tracking summaries and read-only suggestions with explanations', () => {
     expect(card).toContain('contribution-plan-detail');
     expect(card).toContain('fora da meta');
     expect(card).toContain('Nenhuma operação é criada');
     expect(card).toContain('Sugestões de correspondência (somente leitura)');
-    expect(card).toContain('Para vincular operações a este plano, use a versão web.');
-    expect(card).not.toContain('Vincular');
+    expect(card).toContain('describeMatchTiming');
+    expect(card).toContain('describeMatchReason');
+    expect(card).toContain('Para vincular operações individuais a este plano, use a versão web.');
     expect(card).not.toMatch(/melhor cenário|vencedor|Comprar|Vender\b|Executar/);
+  });
+
+  it('shows pair groups with explicit group confirmation', () => {
+    expect(card).toContain('Pares que somam o plano');
+    expect(card).toContain('Soma exata');
+    expect(card).toContain('Vincular estas 2 operações');
+    expect(card).toContain('/tracking/confirm-group');
+    expect(card).not.toContain('onPress={() => {}}');
   });
 
   it('discloses status-only semantics without advice or execution', () => {

@@ -162,6 +162,51 @@ export function describePlanStatus(status: string): string {
   return 'Planejado';
 }
 
+/**
+ * Factual match reason -> pt-BR label. Rendered verbatim as "why this
+ * appeared". No likelihood language anywhere in this vocabulary.
+ */
+export function describeMatchReason(reason: string): string {
+  switch (reason) {
+    case 'SAME_CURRENCY':
+      return 'Mesma moeda do plano';
+    case 'WITHIN_DATE_WINDOW':
+      return 'Dentro da janela de busca';
+    case 'ON_PLANNED_DATE':
+      return 'Na data planejada';
+    case 'BEFORE_PLANNED_DATE':
+      return 'Antes da data planejada';
+    case 'AFTER_PLANNED_DATE':
+      return 'Depois da data planejada';
+    case 'EXACT_AMOUNT':
+      return 'Valor exato';
+    case 'PARTIAL_AMOUNT':
+      return 'Valor parcial';
+    case 'ABOVE_PLANNED_AMOUNT':
+      return 'Acima do valor planejado';
+    case 'COMBINED_EXACT_AMOUNT':
+      return 'Soma exata do par';
+    case 'COMBINED_PARTIAL_AMOUNT':
+      return 'Soma parcial do par';
+    case 'COMBINED_ABOVE_AMOUNT':
+      return 'Soma acima do plano';
+    default:
+      return reason;
+  }
+}
+
+/** Days between trade and planned date -> neutral pt-BR timing phrase. */
+export function describeMatchTiming(dateDistanceDays: number, tradeDate: string, plannedDate: string): string {
+  if (!Number.isSafeInteger(dateDistanceDays) || tradeDate === plannedDate) {
+    return 'na data planejada';
+  }
+  const days = Math.abs(dateDistanceDays);
+  const unit = days === 1 ? 'dia' : 'dias';
+  return tradeDate < plannedDate
+    ? `${days} ${unit} antes da data planejada`
+    : `${days} ${unit} depois da data planejada`;
+}
+
 /** Date-only 'YYYY-MM-DD' -> 'DD/MM/YYYY' via string split (no Date). */
 export function formatPlanDate(yyyyMmDd: string): string {
   const [year = '', month = '', day = ''] = yyyyMmDd.split('-');

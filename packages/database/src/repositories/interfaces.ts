@@ -2207,7 +2207,14 @@ export interface ContributionPlanLinkRow {
 export interface IContributionPlanLinkRepository {
   listByPlan(planId: string): Promise<ContributionPlanLinkRow[]>;
   findConfirmedByTransaction(transactionId: string): Promise<ContributionPlanLinkRow | null>;
+  /** Batch confirmed lookup (one query): transactionId → owning planId. */
+  findConfirmedByTransactionIds(transactionIds: readonly string[]): Promise<Map<string, string>>;
   confirm(planId: string, transactionId: string): Promise<ContributionPlanLinkRow>;
+  /** Atomic multi-confirm: all links persist or none do. */
+  confirmMany(
+    planId: string,
+    transactionIds: readonly [string, string],
+  ): Promise<ContributionPlanLinkRow[]>;
   reject(planId: string, transactionId: string): Promise<ContributionPlanLinkRow>;
   unlink(planId: string, transactionId: string): Promise<ContributionPlanLinkRow | null>;
 }

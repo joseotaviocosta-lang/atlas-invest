@@ -12,8 +12,11 @@ import type {
 } from '@atlas/database';
 import {
   addDecimals,
+  addDaysIso,
   canTransitionPlanStatus,
+  CONTRIBUTION_MATCH_POLICY,
   deriveContributionCandidates,
+  deriveContributionCandidateGroups,
   deriveContributionTracking,
   ELIGIBLE_CONTRIBUTION_TRANSACTION_TYPES,
   InvalidContributionPlanError,
@@ -23,6 +26,7 @@ import {
   trackingCandidateWindow,
   validatePlanInput,
   validateScenarioInput,
+  type ContributionCandidateGroup,
   type ContributionTracking,
   type SimulatedScenario,
   type TrackingCandidate,
@@ -510,6 +514,13 @@ export class PortfolioContributionPlansUseCase {
       category: string;
     }>;
     candidates: Array<TrackingCandidate & { type: string; category: string }>;
+    candidateGroups: ContributionCandidateGroup[];
+    matchingPolicy: {
+      daysBefore: number;
+      daysAfter: number;
+      queryLimit: number;
+      maxCandidates: number;
+    };
     limitations: string[];
   }> {
     const row = await this.loadScoped(command.planId, command.portfolioId, command.userId);
@@ -550,57 +561,175 @@ export class PortfolioContributionPlansUseCase {
     const planned = new Map(row.items.map((item) => [item.category, item.amount]));
     const tracking = deriveContributionTracking({ planned, actual });
     let candidates: Array<TrackingCandidate & { type: string; category: string }> = [];
+    let candidateGroups: ContributionCandidateGroup[] = [];
     if (row.status !== 'CANCELLED') {
       const window = trackingCandidateWindow(row.plannedDate);
-      const pool = await this.transactions.findByPortfolioId(
-        command.portfolioId,
-        {
-          type: 'DEPOSIT',
-          startDate: LocalDate.from(window.start),
-          endDate: LocalDate.from(window.end),
-        },
-        { limit: 200 },
-      );
-      const inScope = pool.filter((tx) => tx.portfolioId === command.portfolioId);
-      const derived = deriveContributionCandidates({
+      candidates = await this.deriveCandidates({
+        portfolioId: command.portfolioId,
         plannedDate: row.plannedDate,
         plannedTotal: plan.total,
         currency: row.currency,
-        transactions: inScope.flatMap((tx) => {
-          const parsed = this.transactionAmount(tx);
-          if (!parsed) return [];
-          return [
-            {
-              id: tx.id,
-              type: tx.type,
-              tradeDate: parsed.tradeDate,
-              amount: parsed.amount,
-              currency: parsed.currency,
-            },
-          ];
-        }),
+        window,
         confirmedIds,
         rejectedIds,
       });
-      const candidateCategories = await this.classifyTransactions(
-        derived.map((candidate) => {
-          const tx = inScope.find((item) => item.id === candidate.transactionId);
-          return {
-            id: candidate.transactionId,
-            assetId: (tx as { assetId?: string | null } | undefined)?.assetId ?? null,
-            type: 'DEPOSIT',
-          };
-        }),
-      );
-      candidates = derived.map((candidate) => ({
-        ...candidate,
-        type: 'DEPOSIT',
-        category: candidateCategories.get(candidate.transactionId) ?? 'CASH',
-      }));
+      candidateGroups = deriveContributionCandidateGroups({
+        plannedTotal: plan.total,
+        currency: row.currency,
+        candidates,
+      });
     }
     const limitations: string[] = [];
     if (row.status === 'CANCELLED') limitations.push('PLAN_CANCELLED');
-    return { plan, tracking, confirmed: actual, candidates, limitations };
+    return {
+      plan,
+      tracking,
+      confirmed: actual,
+      candidates,
+      candidateGroups,
+      matchingPolicy: {
+        daysBefore: CONTRIBUTION_MATCH_POLICY.daysBefore,
+        daysAfter: CONTRIBUTION_MATCH_POLICY.daysAfter,
+        queryLimit: CONTRIBUTION_MATCH_POLICY.queryLimit,
+        maxCandidates: CONTRIBUTION_MATCH_POLICY.maxCandidates,
+      },
+      limitations,
+    };
+  }
+
+  /**
+   * Shared candidate derivation: bounded ledger query, same-currency and
+   * eligibility filters, engine ranking, per-candidate categories.
+   * Read-only by construction (no link writes anywhere in this path).
+   */
+  private async deriveCandidates(command: {
+    portfolioId: string;
+    plannedDate: string;
+    plannedTotal: string;
+    currency: string;
+    window: { start: string; end: string };
+    confirmedIds: ReadonlySet<string>;
+    rejectedIds: ReadonlySet<string>;
+  }): Promise<Array<TrackingCandidate & { type: string; category: string }>> {
+    const pool = await this.transactions.findByPortfolioId(
+      command.portfolioId,
+      {
+        type: 'DEPOSIT',
+        startDate: LocalDate.from(command.window.start),
+        endDate: LocalDate.from(command.window.end),
+      },
+      { limit: CONTRIBUTION_MATCH_POLICY.queryLimit },
+    );
+    const inScope = pool.filter((tx) => tx.portfolioId === command.portfolioId);
+    const derived = deriveContributionCandidates({
+      plannedDate: command.plannedDate,
+      plannedTotal: command.plannedTotal,
+      currency: command.currency,
+      transactions: inScope.flatMap((tx) => {
+        const parsed = this.transactionAmount(tx);
+        if (!parsed) return [];
+        return [
+          {
+            id: tx.id,
+            type: tx.type,
+            tradeDate: parsed.tradeDate,
+            amount: parsed.amount,
+            currency: parsed.currency,
+          },
+        ];
+      }),
+      confirmedIds: command.confirmedIds,
+      rejectedIds: command.rejectedIds,
+      window: command.window,
+    });
+    const candidateCategories = await this.classifyTransactions(
+      derived.map((candidate) => {
+        const tx = inScope.find((item) => item.id === candidate.transactionId);
+        return {
+          id: candidate.transactionId,
+          assetId: (tx as { assetId?: string | null } | undefined)?.assetId ?? null,
+          type: 'DEPOSIT',
+        };
+      }),
+    );
+    return derived.map((candidate) => ({
+      ...candidate,
+      type: 'DEPOSIT',
+      category: candidateCategories.get(candidate.transactionId) ?? 'CASH',
+    }));
+  }
+
+  /**
+   * Manual search: explicit date range (default planned ± 90d, span capped
+   * at 90d), same eligibility + currency rules as discovery. Rejected and
+   * already-confirmed (any plan) transactions stay hidden; confirmation
+   * reuses the single explicit mechanism.
+   */
+  async searchPlanTransactions(command: {
+    planId: string;
+    portfolioId: string;
+    userId?: string;
+    from?: string;
+    to?: string;
+  }): Promise<{
+    plan: ContributionPlanView;
+    window: { start: string; end: string };
+    candidates: Array<TrackingCandidate & { type: string; category: string }>;
+  }> {
+    const row = await this.loadScoped(command.planId, command.portfolioId, command.userId);
+    if (row.status === 'CANCELLED') {
+      throw new InvalidContributionPlanError('Cancelled plans are read-only');
+    }
+    const plan = this.toView(row);
+    const parseDate = (raw: string | undefined, fallback: string): string => {
+      if (raw === undefined) return fallback;
+      try {
+        return LocalDate.from(raw.trim()).toString();
+      } catch {
+        throw new InvalidContributionTrackingError(`Invalid search date '${raw}'`);
+      }
+    };
+    const start = parseDate(command.from, addDaysIso(row.plannedDate, -90));
+    const end = parseDate(command.to, addDaysIso(row.plannedDate, 90));
+    if (start > end) {
+      throw new InvalidContributionTrackingError('Search start date is after end date');
+    }
+    // Bounded explicit window (default ±90d around the plan). The take:200
+    // query bound applies on top; this cap keeps results relevant.
+    if (addDaysIso(start, 180) < end) {
+      throw new InvalidContributionTrackingError('Search range exceeds 180 days');
+    }
+    const links = await this.links.listByPlan(row.id);
+    const confirmedIds = new Set(
+      links.filter((link) => link.status === 'CONFIRMED').map((link) => link.transactionId),
+    );
+    const rejectedIds = new Set(
+      links.filter((link) => link.status === 'REJECTED').map((link) => link.transactionId),
+    );
+    const pool = await this.transactions.findByPortfolioId(
+      command.portfolioId,
+      {
+        type: 'DEPOSIT',
+        startDate: LocalDate.from(start),
+        endDate: LocalDate.from(end),
+      },
+      { limit: CONTRIBUTION_MATCH_POLICY.queryLimit },
+    );
+    const ownerByTx = await this.links.findConfirmedByTransactionIds(pool.map((tx) => tx.id));
+    const hidden = new Set<string>();
+    for (const [transactionId, ownerPlanId] of ownerByTx) {
+      if (ownerPlanId !== row.id) hidden.add(transactionId);
+    }
+    const candidates = await this.deriveCandidates({
+      portfolioId: command.portfolioId,
+      plannedDate: row.plannedDate,
+      plannedTotal: plan.total,
+      currency: row.currency,
+      window: { start, end },
+      confirmedIds: new Set([...confirmedIds, ...hidden]),
+      rejectedIds,
+    });
+    return { plan, window: { start, end }, candidates };
   }
 
   private async loadScopedTransaction(transactionId: string, portfolioId: string, userId?: string) {
@@ -659,6 +788,43 @@ export class PortfolioContributionPlansUseCase {
     }
     const link = await this.links.confirm(row.id, command.transactionId);
     return { transactionId: link.transactionId, status: link.status };
+  }
+
+  /**
+   * Confirms a pair as one explicit group action. Both transactions are
+   * validated first (scoped, eligible, same currency, not owned
+   * elsewhere); the repository persists both in a single transaction —
+   * all confirm or none does. Repeating the same pair is idempotent.
+   */
+  async confirmPlanGroup(command: {
+    planId: string;
+    portfolioId: string;
+    userId?: string;
+    transactionIds: readonly [string, string];
+  }): Promise<{ links: Array<{ transactionId: string; status: string }> }> {
+    const row = await this.loadScoped(command.planId, command.portfolioId, command.userId);
+    if (row.status === 'CANCELLED') {
+      throw new InvalidContributionPlanError('Cancelled plans are read-only');
+    }
+    const [firstId, secondId] = command.transactionIds;
+    const [first, second] = await Promise.all([
+      this.loadScopedTransaction(firstId, command.portfolioId, command.userId),
+      this.loadScopedTransaction(secondId, command.portfolioId, command.userId),
+    ]);
+    this.assertEligibleActual(first, row.currency, firstId);
+    this.assertEligibleActual(second, row.currency, secondId);
+    const owners = await this.links.findConfirmedByTransactionIds([firstId, secondId]);
+    for (const [transactionId, ownerPlanId] of owners) {
+      if (ownerPlanId !== row.id) {
+        throw new InvalidContributionTrackingError(
+          `Transaction ${transactionId} is already confirmed to another contribution plan`,
+        );
+      }
+    }
+    const confirmed = await this.links.confirmMany(row.id, [firstId, secondId]);
+    return {
+      links: confirmed.map((link) => ({ transactionId: link.transactionId, status: link.status })),
+    };
   }
 
   /**

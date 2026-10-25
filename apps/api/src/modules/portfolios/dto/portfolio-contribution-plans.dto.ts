@@ -91,7 +91,28 @@ export const PlanTrackingLinkBodySchema = z
 
 export type PlanTrackingLinkBody = z.infer<typeof PlanTrackingLinkBodySchema>;
 
+export const PlanTrackingGroupBodySchema = z
+  .object({
+    transactionIds: z
+      .tuple([z.string().uuid(), z.string().uuid()])
+      .refine(([first, second]) => first !== second, {
+        message: 'transactionIds must be two distinct transactions',
+      }),
+  })
+  .strict();
+
+export type PlanTrackingGroupBody = z.infer<typeof PlanTrackingGroupBodySchema>;
+
 export class PlanTrackingLinkSwaggerDto {
   @ApiProperty({ type: String, format: 'uuid', description: 'Ledger transaction to link' })
   transactionId!: string;
+}
+
+export class PlanTrackingGroupSwaggerDto {
+  @ApiProperty({
+    type: [String],
+    example: ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'],
+    description: 'Exactly two distinct ledger transactions to confirm together',
+  })
+  transactionIds!: string[];
 }
