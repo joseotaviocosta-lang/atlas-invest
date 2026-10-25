@@ -22,6 +22,7 @@ import {
 import { LiveResultTable } from './PortfolioSavedScenarios';
 import { PortfolioContributionInsights } from './PortfolioContributionInsights';
 import { PortfolioContributionGoalSection } from './PortfolioContributionGoal';
+import { PortfolioContributionCalendar } from './PortfolioContributionCalendar';
 
 const PLAN_CATEGORIES = [
   'STOCK',
@@ -142,8 +143,10 @@ export function contributionPlansQueryKey(portfolioId: string) {
 
 /** Fires a cross-section prefill: scenario/simulator → plans form. */
 export function dispatchCreatePlan(prefill: {
-  name: string;
-  items: Array<{ category: string; amount: string }>;
+  name?: string;
+  items?: Array<{ category: string; amount: string }>;
+  /** Date-only YYYY-MM-DD; the form still requires user-entered amounts. */
+  plannedDate?: string;
 }) {
   window.dispatchEvent(new CustomEvent(CREATE_PLAN_EVENT, { detail: prefill }));
 }
@@ -855,6 +858,7 @@ export function PortfolioContributionPlans({ portfolioId }: { portfolioId: strin
       const prefill = (event as CustomEvent).detail as {
         name?: string;
         items?: Array<{ category: string; amount: string }>;
+        plannedDate?: string;
       };
       const values: Record<string, string> = {};
       for (const item of prefill?.items ?? []) {
@@ -862,12 +866,20 @@ export function PortfolioContributionPlans({ portfolioId }: { portfolioId: strin
           values[item.category] = item.amount.replace('.', ',');
         }
       }
+      const prefilledDate =
+        typeof prefill?.plannedDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(prefill.plannedDate)
+          ? prefill.plannedDate
+          : '';
       setEditingId(null);
       setFormName(typeof prefill?.name === 'string' ? prefill.name : '');
-      setFormDate('');
+      setFormDate(prefilledDate);
       setFormValues(values);
       setFormOpen(true);
-      setAnnouncement('Valores trazidos para o plano. Escolha a data planejada e salve.');
+      setAnnouncement(
+        prefilledDate !== '' && Object.keys(values).length === 0
+          ? 'Data planejada preenchida com o mês selecionado. Informe os valores do plano.'
+          : 'Valores trazidos para o plano. Escolha a data planejada e salve.',
+      );
       document.getElementById('contribution-plans')?.scrollIntoView({ behavior: 'smooth' });
     };
     window.addEventListener(CREATE_PLAN_EVENT, handler);
@@ -1461,6 +1473,18 @@ export function PortfolioContributionPlans({ portfolioId }: { portfolioId: strin
               onOpenPlan={(planId) => {
                 setOpenId(planId);
                 setAnnouncement('Plano aberto a partir do histórico.');
+                document
+                  .getElementById('contribution-plans')
+                  ?.scrollIntoView({ behavior: 'smooth' });
+              }}
+            />
+          ) : null}
+          {portfolioId ? (
+            <PortfolioContributionCalendar
+              portfolioId={portfolioId}
+              onOpenPlan={(planId) => {
+                setOpenId(planId);
+                setAnnouncement('Plano aberto a partir do calendário.');
                 document
                   .getElementById('contribution-plans')
                   ?.scrollIntoView({ behavior: 'smooth' });

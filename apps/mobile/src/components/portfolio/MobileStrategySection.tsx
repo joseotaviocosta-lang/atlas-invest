@@ -10,6 +10,7 @@ import {
   describeScenarioLimitation,
   formatAggregatePp,
   formatCentsBr,
+  formatPlanMonthLong,
   formatScenarioBp,
   parseScenarioMoneyToCents,
   scenarioCategoryLabel,
@@ -290,6 +291,7 @@ export function MobileStrategySection({ portfolioId }: { portfolioId: string | n
       />
       <ContributionGoal portfolioId={portfolioId} />
       <ContributionInsights portfolioId={portfolioId} onOpenPlan={setOpenPlanId} />
+      <ContributionCalendar portfolioId={portfolioId} onOpenPlan={setOpenPlanId} />
     </Card>
   );
 }
@@ -553,6 +555,207 @@ function ContributionInsights({
           ))}
         </View>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * Phase 5Q-K (mobile) — contribution planning calendar, read-only.
+ * Vertical monthly timeline: goal, planned and confirmed amounts with
+ * expandable plan and actual rows. Facts only; plan creation stays
+ * web-only. No suggestions, no automation, no execution.
+ */
+interface CalendarMonthTotals {
+  currency: string;
+  planned: string;
+  plannedCount: number;
+  completedCount: number;
+  cancelledCount: number;
+  confirmed: string;
+  confirmedCount: number;
+}
+
+interface CalendarData {
+  range: { from: string; to: string };
+  currencies: string[];
+  months: Array<{
+    month: string;
+    isCurrentMonth: boolean;
+    goal: { amount: string; currency: string } | null;
+    goalChange: boolean;
+    totalsByCurrency: CalendarMonthTotals[];
+    plannedDifferenceToGoal: string | null;
+    confirmedDifferenceToGoal: string | null;
+    plans: Array<{
+      id: string;
+      name: string;
+      plannedDate: string;
+      status: string;
+      currency: string;
+      total: string;
+    }>;
+    confirmedActuals: Array<{
+      tradeDate: string;
+      amount: string;
+      currency: string;
+      type: string;
+      linkedPlanId: string;
+      linkedPlanName: string;
+    }>;
+  }>;
+  summaryByCurrency: Array<{
+    currency: string;
+    goalTotal: string;
+    plannedTotal: string;
+    confirmedTotal: string;
+    monthsWithGoal: number;
+    monthsWithoutGoal: number;
+  }>;
+  limitations: string[];
+}
+
+const CALENDAR_TYPE_LABELS: Record<string, string> = { DEPOSIT: 'Depósito' };
+
+function ContributionCalendar({
+  portfolioId,
+  onOpenPlan,
+}: {
+  portfolioId: string;
+  onOpenPlan: (planId: string) => void;
+}) {
+  const [year, setYear] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const calendar = useQuery({
+    queryKey: ['portfolio-contribution-calendar', portfolioId, year ?? 'default'],
+    queryFn: async () => {
+      const params = year ? `?from=${year}-01&to=${year}-12` : '';
+      const res = await apiClient.get<{ data: CalendarData }>(
+        `/api/v1/portfolios/${portfolioId}/contribution-calendar${params}`,
+      );
+      return res.data;
+    },
+    enabled: !!portfolioId,
+    staleTime: 30000,
+  });
+
+  if (calendar.isLoading || calendar.isError || !calendar.data) {
+    return null;
+  }
+  const data = calendar.data;
+  const displayYear = year ?? data.range.from.slice(0, 4);
+  return (
+    <View style={{ marginTop: 12 }} testID="contribution-calendar">
+      <Text style={styles.title}>Visão mensal</Text>
+      <Text style={styles.muted}>
+        Mês a mês: a meta definida por você, os planos criados e as operações confirmadas.
+      </Text>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'center' }}>
+        <Pressable
+          onPress={() => setYear(String(Number(displayYear) - 1))}
+          accessibilityRole="button"
+          accessibilityLabel="Ver ano anterior"
+        >
+          <Text style={styles.link}>←</Text>
+        </Pressable>
+        <Text style={styles.category} testID="calendar-year">
+          {displayYear}
+        </Text>
+        <Pressable
+          onPress={() => setYear(String(Number(displayYear) + 1))}
+          accessibilityRole="button"
+          accessibilityLabel="Ver próximo ano"
+        >
+          <Text style={styles.link}>→</Text>
+        </Pressable>
+      </View>
+      {data.limitations.map((limitation) => (
+        <Text key={limitation} style={styles.note}>
+          {describeInsightsLimitation(limitation)}
+        </Text>
+      ))}
+      {data.summaryByCurrency.map((row) => (
+        <Text key={row.currency} style={styles.muted} testID="calendar-summary">
+          No período ({row.currency}): meta definida{' '}
+          {formatCentsBr(parseScenarioMoneyToCents(row.goalTotal) ?? BigInt(0))} · planejado{' '}
+          {formatCentsBr(parseScenarioMoneyToCents(row.plannedTotal) ?? BigInt(0))} · confirmado{' '}
+          {formatCentsBr(parseScenarioMoneyToCents(row.confirmedTotal) ?? BigInt(0))}.
+        </Text>
+      ))}
+      {data.months.map((month) => {
+        const isOpen = expanded[month.month] ?? false;
+        return (
+          <View key={month.month} style={{ marginTop: 8 }} testID={`calendar-month-${month.month}`}>
+            <Text style={styles.category}>
+              {formatPlanMonthLong(month.month)}
+              {month.isCurrentMonth ? ' (Mês atual)' : null}
+            </Text>
+            <Text style={styles.muted}>
+              {month.goal
+                ? `Meta definida: ${formatCentsBr(parseScenarioMoneyToCents(month.goal.amount) ?? BigInt(0))}`
+                : 'Sem meta definida. A definição de metas está disponível na versão web.'}
+            </Text>
+            {month.goalChange && month.goal ? (
+              <Text style={styles.muted}>
+                Meta passa a{' '}
+                {formatCentsBr(parseScenarioMoneyToCents(month.goal.amount) ?? BigInt(0))}
+                /mês neste mês.
+              </Text>
+            ) : null}
+            {month.totalsByCurrency.map((totals) => (
+              <Text key={totals.currency} style={styles.muted}>
+                Planejado {formatCentsBr(parseScenarioMoneyToCents(totals.planned) ?? BigInt(0))} ·
+                confirmado{' '}
+                {totals.confirmedCount > 0
+                  ? formatCentsBr(parseScenarioMoneyToCents(totals.confirmed) ?? BigInt(0))
+                  : 'nenhuma operação confirmada ainda'}
+                .
+              </Text>
+            ))}
+            <Pressable
+              onPress={() => setExpanded((previous) => ({ ...previous, [month.month]: !isOpen }))}
+              accessibilityRole="button"
+              accessibilityLabel={`${isOpen ? 'Recolher' : 'Expandir'} ${formatPlanMonthLong(month.month)}`}
+              accessibilityState={{ expanded: isOpen }}
+            >
+              <Text style={styles.link}>{isOpen ? 'Recolher' : 'Expandir'}</Text>
+            </Pressable>
+            {isOpen ? (
+              <View>
+                {month.plans.map((plan) => (
+                  <View key={plan.id} style={styles.row}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.category}>{plan.name}</Text>
+                      <Text style={styles.muted}>
+                        {formatPlanDateMobile(plan.plannedDate)} · {describePlanStatus(plan.status)}{' '}
+                        · {formatCentsBr(parseScenarioMoneyToCents(plan.total) ?? BigInt(0))}
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={() => onOpenPlan(plan.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={'Ver plano ' + plan.name}
+                    >
+                      <Text style={styles.link}>Ver plano</Text>
+                    </Pressable>
+                  </View>
+                ))}
+                {month.confirmedActuals.map((actualRow, index) => (
+                  <Text
+                    key={`${actualRow.tradeDate}-${actualRow.amount}-${index}`}
+                    style={styles.muted}
+                  >
+                    {formatPlanDateMobile(actualRow.tradeDate)} ·{' '}
+                    {CALENDAR_TYPE_LABELS[actualRow.type] ?? actualRow.type} ·{' '}
+                    {formatCentsBr(parseScenarioMoneyToCents(actualRow.amount) ?? BigInt(0))} ·
+                    Vinculado ao plano {actualRow.linkedPlanName}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        );
+      })}
+      <Text style={styles.note}>Criação de planos disponível na versão web.</Text>
     </View>
   );
 }

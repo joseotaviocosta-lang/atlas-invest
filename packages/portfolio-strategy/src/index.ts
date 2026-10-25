@@ -6,3 +6,4 @@ export * from './contribution-plan';
 export * from './contribution-tracking';
 export * from './contribution-insights';
 export * from './contribution-goals';
+export * from './contribution-calendar';

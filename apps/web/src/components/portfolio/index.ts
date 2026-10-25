@@ -20,4 +20,5 @@ export * from './PortfolioSavedScenarios';
 export * from './PortfolioContributionPlans';
 export * from './PortfolioContributionInsights';
 export * from './PortfolioContributionGoal';
+export * from './PortfolioContributionCalendar';
 export * from './PortfolioShell';

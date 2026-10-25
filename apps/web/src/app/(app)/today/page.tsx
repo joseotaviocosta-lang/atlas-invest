@@ -501,6 +501,12 @@ export default function TodayPage() {
           >
             <Button size="sm">Ver planejamento</Button>
           </Link>
+          <Link
+            href={`/portfolio?tab=allocation&portfolioId=${firstPortfolioId}#contribution-calendar`}
+            aria-label="Ver calendário de aportes"
+          >
+            <Button size="sm">Ver calendário</Button>
+          </Link>
         </div>
       ) : null}
 

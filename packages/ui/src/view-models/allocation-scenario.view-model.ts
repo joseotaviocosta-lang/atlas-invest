@@ -240,6 +240,28 @@ export function formatPlanMonth(monthKey: string): string {
   return `${names[index]}/${year.slice(2)}`;
 }
 
+/** Month bucket 'YYYY-MM' -> long pt-BR label ('2026-11' -> 'Novembro de 2026'). Display only. */
+export function formatPlanMonthLong(monthKey: string): string {
+  const [year = '', month = ''] = monthKey.split('-');
+  const names = [
+    'Janeiro',
+    'Fevereiro',
+    'Março',
+    'Abril',
+    'Maio',
+    'Junho',
+    'Julho',
+    'Agosto',
+    'Setembro',
+    'Outubro',
+    'Novembro',
+    'Dezembro',
+  ];
+  const index = Number(month) - 1;
+  if (year === '' || Number.isNaN(index) || index < 0 || index > 11) return monthKey;
+  return `${names[index]} de ${year}`;
+}
+
 /** Insights-specific limitations (read-only analytics; no judgment). */
 export function describeInsightsLimitation(code: string): string {
   if (code === 'NO_PLANS_IN_PERIOD') return 'Nenhum plano no período selecionado.';
@@ -253,5 +275,6 @@ export function describeInsightsLimitation(code: string): string {
     return 'Operações confirmadas representam entradas de caixa. Elas não provam em qual categoria o valor foi aplicado depois.';
   if (code === 'GOAL_CURRENCY_MISMATCH')
     return 'A meta usa outra moeda e não entra neste total; os valores são mostrados por moeda, sem conversão.';
+  if (code === 'NO_ACTIVITY') return 'Nenhuma meta, plano ou operação confirmada neste período.';
   return describeScenarioLimitation(code);
 }

@@ -136,6 +136,18 @@ export function goalForMonth(
   versions: ReadonlyArray<GoalVersionInput>,
   month: string,
 ): string | null {
+  return goalVersionForMonth(versions, month)?.amount ?? null;
+}
+
+/**
+ * Version in force for a month (same half-open semantics as
+ * goalForMonth). Exposes currency alongside the amount so consumers
+ * never compare money across currencies.
+ */
+export function goalVersionForMonth(
+  versions: ReadonlyArray<GoalVersionInput>,
+  month: string,
+): GoalVersionInput | null {
   let best: GoalVersionInput | null = null;
   for (const version of versions) {
     if (compareMonthKeys(version.effectiveFromMonth, month) > 0) continue;
@@ -152,7 +164,7 @@ export function goalForMonth(
       best = version;
     }
   }
-  return best ? best.amount : null;
+  return best;
 }
 
 export type GoalMonthStatus = 'NO_GOAL' | 'BELOW' | 'AT' | 'ABOVE';
