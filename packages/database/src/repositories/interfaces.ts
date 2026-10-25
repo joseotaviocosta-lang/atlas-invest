@@ -2107,6 +2107,81 @@ export interface IAllocationScenarioRepository {
   remove(scenarioId: string, portfolioId: string): Promise<boolean>;
 }
 
+export interface PortfolioContributionPlanItemRow {
+  id: string;
+  planId: string;
+  category: string;
+  /** Canonical decimal money string (exact, never float). */
+  amount: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PortfolioContributionPlanRow {
+  id: string;
+  portfolioId: string;
+  name: string;
+  /** Date-only civil date `YYYY-MM-DD` (never a timestamp). */
+  plannedDate: string;
+  status: string;
+  currency: string;
+  sourceScenarioId: string | null;
+  completedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  items: PortfolioContributionPlanItemRow[];
+}
+
+export interface PortfolioContributionPlanItemInput {
+  category: string;
+  /** Canonical decimal money string (exact, never float). */
+  amount: string;
+}
+
+export interface PortfolioContributionPlanWriteInput {
+  name: string;
+  /** Date-only civil date `YYYY-MM-DD`. */
+  plannedDate: string;
+  currency: string;
+  sourceScenarioId?: string | null;
+  items: readonly PortfolioContributionPlanItemInput[];
+}
+
+/**
+ * Phase 5Q-F: user-declared contribution plans (future intent, not advice).
+ * Persists ONLY the declared intent — name, date, per-category amounts.
+ * Never transactions, orders, projected values or recommendations.
+ * Writes are atomic (plan + full item set in one transaction).
+ * Status changes are guarded: setStatus() only moves out of PLANNED and
+ * returns null otherwise (single transition wins under concurrency);
+ * replace()/remove() only touch PLANNED plans and return null/false
+ * otherwise (terminal history stays immutable).
+ */
+export interface IContributionPlanRepository {
+  countActiveByPortfolio(portfolioId: string): Promise<number>;
+  listByPortfolio(portfolioId: string, status?: string): Promise<PortfolioContributionPlanRow[]>;
+  findNextPlanned(portfolioId: string): Promise<PortfolioContributionPlanRow | null>;
+  findByIdAndPortfolio(
+    planId: string,
+    portfolioId: string,
+  ): Promise<PortfolioContributionPlanRow | null>;
+  create(
+    portfolioId: string,
+    input: PortfolioContributionPlanWriteInput,
+  ): Promise<PortfolioContributionPlanRow>;
+  replace(
+    planId: string,
+    portfolioId: string,
+    input: PortfolioContributionPlanWriteInput,
+  ): Promise<PortfolioContributionPlanRow | null>;
+  setStatus(
+    planId: string,
+    portfolioId: string,
+    status: 'COMPLETED' | 'CANCELLED',
+  ): Promise<PortfolioContributionPlanRow | null>;
+  remove(planId: string, portfolioId: string): Promise<boolean>;
+}
+
 export interface IntegrationJobRow {
   id: string;
   scheduleId: string;

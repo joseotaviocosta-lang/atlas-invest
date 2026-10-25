@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, ApiError } from '@/api/client';
 import { Button, Badge } from '@/components/ui';
 import { colors, spacing } from '@atlas/ui';
+import { dispatchCreatePlan } from './PortfolioContributionPlans';
 import {
   describeScenarioState,
   formatCentsBr,
@@ -432,6 +433,20 @@ function SaveCurrentSimulation({
           style={{ minHeight: 44 }}
         >
           {saveMutation.isPending ? 'Salvando…' : 'Salvar cenário'}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() =>
+            dispatchCreatePlan({
+              name: name.trim() === '' ? 'Plano de aporte' : name.trim(),
+              items: entries,
+            })
+          }
+          style={{ minHeight: 44 }}
+          aria-label="Criar plano a partir desta simulação"
+          data-testid="scenario-create-plan"
+        >
+          Criar plano
         </Button>
       </div>
       {saveMutation.isError ? (

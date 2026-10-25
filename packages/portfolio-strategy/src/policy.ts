@@ -23,6 +23,13 @@ export const STRATEGY_MIN_COVERAGE_BP = 8000;
  */
 export const MAX_SAVED_SCENARIOS_PER_PORTFOLIO = 50;
 
+/**
+ * Phase 5Q-F — cap on active (PLANNED) contribution plans per portfolio.
+ * Same abuse-guard semantics as saved scenarios. Completed/cancelled
+ * history is unbounded in v1 (small in practice; pagination is future).
+ */
+export const MAX_ACTIVE_CONTRIBUTION_PLANS_PER_PORTFOLIO = 50;
+
 /** Saved scenario names: plain text, trimmed, 1..80 chars, no markup. */
 export const SCENARIO_NAME_MIN_LENGTH = 1;
 export const SCENARIO_NAME_MAX_LENGTH = 80;

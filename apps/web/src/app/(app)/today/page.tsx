@@ -13,7 +13,7 @@ import {
   Button,
   Badge,
 } from '@/components/ui';
-import { colors, spacing, borderRadius, formatCurrency, formatPercentage } from '@atlas/ui';
+import { colors, spacing, borderRadius, formatCurrency, formatPercentage, formatPlanDate, getTodayCivilDateString } from '@atlas/ui';
 import { apiClient } from '@/api/client';
 import {
   PortfolioValuationResponse,
@@ -45,6 +45,7 @@ export default function TodayPage() {
   const firstName = user?.name ? user.name.split(' ')[0] : 'Investidor';
   const firstPortfolio = portfolios[0];
   const firstPortfolioId = firstPortfolio?.id;
+  const today = getTodayCivilDateString();
 
   // Pending review inbox count (derived, badge feed — no list load).
   const { data: pendingData } = useQuery({
@@ -93,6 +94,28 @@ export default function TodayPage() {
     staleTime: 60 * 1000,
   });
   const strategyOutsideCount = strategyData?.data?.comparison?.outsideTolerance.length ?? 0;
+
+  // Next planned contribution (intent only — never executed by the Atlas).
+  const { data: nextPlanData } = useQuery<{
+    data: {
+      plan: {
+        id: string;
+        name: string;
+        plannedDate: string;
+        status: string;
+        total: string;
+      } | null;
+    };
+  }>({
+    queryKey: ['portfolio-contribution-plans-next', firstPortfolioId],
+    queryFn: async () => {
+      if (!firstPortfolioId) return { data: { plan: null } };
+      return apiClient.get(`/api/v1/portfolios/${firstPortfolioId}/contribution-plans/next`);
+    },
+    enabled: Boolean(firstPortfolioId),
+    staleTime: 60 * 1000,
+  });
+  const nextPlan = nextPlanData?.data?.plan ?? null;
 
   // 1. Ledger state query (Source of truth for cost basis & proventos)
   const { data: stateData } = useQuery<{
@@ -357,6 +380,50 @@ export default function TodayPage() {
             aria-label="Ver estratégia de alocação"
           >
             <Button size="sm">Ver estratégia</Button>
+          </Link>
+        </div>
+      ) : null}
+
+      {/* Next planned contribution (intent only — the Atlas never executes it) */}
+      {nextPlan && firstPortfolioId ? (
+        <div
+          style={{
+            padding: `${spacing.base}px ${spacing.xl}px`,
+            borderRadius: `${borderRadius.lg}px`,
+            backgroundColor: colors.surface,
+            border: `1px solid ${colors.border}`,
+            marginBottom: `${spacing.xl}px`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: `${spacing.base}px`,
+            flexWrap: 'wrap',
+          }}
+          data-testid="today-next-plan"
+        >
+          <div>
+            <div
+              style={{
+                fontWeight: 600,
+                color: colors.textPrimary,
+                fontSize: '0.9375rem',
+                marginBottom: '2px',
+              }}
+            >
+              {nextPlan.plannedDate < today
+                ? `Plano de aporte pendente desde ${formatPlanDate(nextPlan.plannedDate)}`
+                : 'Próximo aporte planejado'}
+            </div>
+            <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+              {nextPlan.name} • {formatPlanDate(nextPlan.plannedDate)} •{' '}
+              {formatCurrency(nextPlan.total, primaryCurrency)}
+            </div>
+          </div>
+          <Link
+            href={`/portfolio?tab=allocation&portfolioId=${firstPortfolioId}`}
+            aria-label="Ver plano de aporte"
+          >
+            <Button size="sm">Ver plano</Button>
           </Link>
         </div>
       ) : null}

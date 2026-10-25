@@ -116,6 +116,7 @@ model Portfolio {
   integrationConnections IntegrationConnection[]
   allocationStrategyTargets PortfolioAllocationStrategyTarget[]
   allocationScenarios         PortfolioAllocationScenario[]
+  contributionPlans           PortfolioContributionPlan[]
   aiConversations        AiConversation[]
   annualOpeningPositions AnnualOpeningPositionInputRecord[]
 
@@ -390,6 +391,54 @@ model PortfolioAllocationStrategyTarget {
   @@map("portfolio_allocation_strategy_targets")
 }
 
+/// Phase 5Q-F — user-declared contribution plans (future intent, not advice).
+///
+/// `portfolio_contribution_plans` stores what the user intends to contribute
+/// (name + date-only `planned_date` + status); `portfolio_contribution_plan_items`
+/// stores the manually-declared per-category amounts as exact Decimals.
+/// Status machine: PLANNED → COMPLETED | CANCELLED (terminal, no reopen in
+/// v1). COMPLETED/CANCELLED never create transactions, orders or ledger
+/// writes — marking complete only flips status (+ completed_at).
+/// `source_scenario_id` is optional provenance (SET NULL on scenario
+/// delete); plans never depend on the scenario afterwards. No projected
+/// values, deviations, coverage, scores or recommendations are persisted:
+/// live impact is always recomputed. Portfolio deletion cascades.
+model PortfolioContributionPlan {
+  id               String    @id @default(uuid()) @db.Uuid
+  portfolioId      String    @map("portfolio_id") @db.Uuid
+  name             String    @db.VarChar(80)
+  plannedDate      DateTime  @map("planned_date") @db.Date
+  status           String    @default("PLANNED") @db.VarChar(20)
+  currency         String    @db.VarChar(3)
+  sourceScenarioId String?   @map("source_scenario_id") @db.Uuid
+  completedAt      DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  portfolio      Portfolio                    @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  sourceScenario PortfolioAllocationScenario? @relation(fields: [sourceScenarioId], references: [id], onDelete: SetNull)
+  items          PortfolioContributionPlanItem[]
+
+  @@index([portfolioId])
+  @@index([portfolioId, status, plannedDate])
+  @@map("portfolio_contribution_plans")
+}
+
+model PortfolioContributionPlanItem {
+  id       String   @id @default(uuid()) @db.Uuid
+  planId   String   @map("plan_id") @db.Uuid
+  category String   @db.VarChar(50)
+  amount   Decimal  @db.Decimal(38, 18)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  plan PortfolioContributionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, category])
+  @@index([planId])
+  @@map("portfolio_contribution_plan_items")
+}
+
 /// Phase 5Q-E — saved hypothetical allocation scenarios (input only).
 ///
 /// `portfolio_allocation_scenarios` stores the user's declared hypothesis
@@ -410,6 +459,7 @@ model PortfolioAllocationScenario {
 
   portfolio Portfolio                           @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   changes   PortfolioAllocationScenarioChange[]
+  sourcedPlans PortfolioContributionPlan[]
 
   @@index([portfolioId])
   @@map("portfolio_allocation_scenarios")

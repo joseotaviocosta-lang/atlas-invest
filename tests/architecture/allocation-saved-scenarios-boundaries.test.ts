@@ -15,7 +15,7 @@ function readSource(relativePath: string): string {
  * engine stays pure; the API simulates both sides on one shared basis;
  * surfaces render server numbers without choosing, scoring or executing.
  */
-describe('Phase 5Q-E: saved scenarios boundaries', () => {
+describe('Phase 5Q-E/5Q-F: saved scenarios and contribution plans boundaries', () => {
   it('comparison engine stays pure with no persistence or clock', () => {
     const content = readSource('packages/portfolio-strategy/src/scenario.ts');
     expect(content).toContain('compareScenarioResults');
@@ -95,13 +95,18 @@ describe('Phase 5Q-E: saved scenarios boundaries', () => {
     expect(section).not.toMatch(/Comprar agora|Executar aporte|Enviar ordem/);
   });
 
-  it('no winner, ranking, score or advice vocabulary enters the 5Q-E stack', () => {
+  it('no winner, ranking, score or advice vocabulary enters the 5Q stack', () => {
     const files = [
       'packages/portfolio-strategy/src/scenario.ts',
+      'packages/portfolio-strategy/src/contribution-plan.ts',
       'packages/database/src/repositories/allocation-scenario.repository.ts',
+      'packages/database/src/repositories/contribution-plan.repository.ts',
       'apps/api/src/application/portfolios/portfolio-allocation-scenarios.use-case.ts',
+      'apps/api/src/application/portfolios/portfolio-contribution-plans.use-case.ts',
       'apps/api/src/modules/portfolios/portfolio-allocation-scenarios.controller.ts',
+      'apps/api/src/modules/portfolios/portfolio-contribution-plans.controller.ts',
       'apps/web/src/components/portfolio/PortfolioSavedScenarios.tsx',
+      'apps/web/src/components/portfolio/PortfolioContributionPlans.tsx',
       'apps/mobile/src/components/portfolio/MobileStrategySection.tsx',
     ];
     const forbidden =
@@ -114,5 +119,51 @@ describe('Phase 5Q-E: saved scenarios boundaries', () => {
       const content = readSource(file);
       expect(content, file).not.toMatch(/Markowitz|risk parity|optimizer|solver/i);
     }
+  });
+
+  it('contribution plans never touch transactions, ledgers or execution', () => {
+    for (const file of [
+      'packages/database/src/repositories/contribution-plan.repository.ts',
+      'apps/api/src/application/portfolios/portfolio-contribution-plans.use-case.ts',
+      'apps/api/src/modules/portfolios/portfolio-contribution-plans.controller.ts',
+      'apps/web/src/components/portfolio/PortfolioContributionPlans.tsx',
+      'apps/mobile/src/components/portfolio/MobileStrategySection.tsx',
+    ]) {
+      const content = readSource(file);
+      expect(content, file).not.toMatch(/TransactionRepository/);
+      expect(content, file).not.toMatch(/transactionRepository\.(create|createMany|update)/);
+      expect(content, file).not.toMatch(/CreateTransactionUseCase/);
+      expect(content, file).not.toMatch(/prisma\.transaction\.create/);
+      expect(content, file).not.toMatch(/@atlas\/b3-integration/);
+      expect(content, file).not.toMatch(/@atlas\/tax-engine/);
+      expect(content, file).not.toMatch(/parseFloat/);
+    }
+    const migration = readSource(
+      'packages/database/prisma/migrations/20261024173000_add_portfolio_contribution_plans/migration.sql',
+    )
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('--'))
+      .join('\n');
+    expect(migration).not.toMatch(/transaction|ledger|broker|order/i);
+  });
+
+  it('plan persistence holds intent only: no result or execution columns', () => {
+    for (const file of [
+      'packages/database/src/repositories/contribution-plan.repository.ts',
+      'packages/database/prisma/migrations/20261024173000_add_portfolio_contribution_plans/migration.sql',
+    ]) {
+      const content = readSource(file)
+        .split('\n')
+        .filter((line) => !line.trim().startsWith('--'))
+        .join('\n');
+      expect(content, file).not.toMatch(/projected|deviation|score|recommend|coverage|valuation/i);
+    }
+    const dto = readSource(
+      'apps/api/src/modules/portfolios/dto/portfolio-contribution-plans.dto.ts',
+    );
+    expect(dto).toContain('.strict()');
+    const createBlock = dto.slice(dto.indexOf('CreateContributionPlanBodySchema'));
+    expect(createBlock).not.toMatch(/status|currency|completedAt|transaction/i);
+    expect(createBlock).not.toMatch(/portfolioId|provider|source(?!ScenarioId)/);
   });
 });

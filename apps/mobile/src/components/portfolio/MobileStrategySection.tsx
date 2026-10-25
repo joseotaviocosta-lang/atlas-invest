@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 import { themeTokens } from '@atlas/ui';
 import {
@@ -279,6 +279,7 @@ export function MobileStrategySection({ portfolioId }: { portfolioId: string | n
       </Text>
       <Text style={styles.note}>Simulações de aporte hipotético disponíveis na versão web.</Text>
       <SavedScenarios portfolioId={portfolioId} />
+      <ContributionPlans portfolioId={portfolioId} />
     </Card>
   );
 }
@@ -301,3 +302,183 @@ const styles = {
   link: { fontSize: 14, fontWeight: '600' as const, color: themeTokens.colors.primary },
   note: { fontSize: 12, color: themeTokens.colors.textMuted, marginTop: 8 },
 };
+
+/**
+ * Phase 5Q-F (mobile) — contribution plans list + read-only detail with
+ * complete/cancel. Create/edit stay web-only. Status flips only — the
+ * app never creates transactions, orders or executions here.
+ */
+interface PlanSummary {
+  id: string;
+  name: string;
+  plannedDate: string;
+  status: string;
+  currency: string;
+  total: string;
+  items: Array<{ category: string; amount: string }>;
+}
+
+interface PlanDetail {
+  plan: PlanSummary;
+  live: {
+    totals: { projected: string; currency: string };
+    rows: Array<{
+      category: string;
+      targetBp: number;
+      currentBp: number | null;
+      projectedBp: number;
+    }>;
+    beforeOutsideCount: number;
+    afterOutsideCount: number;
+  } | null;
+  limitations: string[];
+}
+
+function formatPlanDateMobile(yyyyMmDd: string): string {
+  const [year = '', month = '', day = ''] = yyyyMmDd.split('-');
+  if (year === '' || month === '' || day === '') return yyyyMmDd;
+  return `${day}/${month}/${year}`;
+}
+
+function ContributionPlans({ portfolioId }: { portfolioId: string }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const list = useQuery({
+    queryKey: ['portfolio-contribution-plans', portfolioId],
+    queryFn: async () => {
+      const res = await apiClient.get<{
+        data: { upcoming: PlanSummary[]; history: PlanSummary[] };
+      }>(`/api/v1/portfolios/${portfolioId}/contribution-plans`);
+      return res.data;
+    },
+    enabled: !!portfolioId,
+    staleTime: 30000,
+  });
+  const detail = useQuery({
+    queryKey: ['portfolio-contribution-plans', portfolioId, 'detail', openId],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: PlanDetail }>(
+        `/api/v1/portfolios/${portfolioId}/contribution-plans/${openId}`,
+      );
+      return res.data;
+    },
+    enabled: !!portfolioId && openId !== null,
+    staleTime: 30000,
+  });
+  const transition = useMutation({
+    mutationFn: async (action: { id: string; kind: 'complete' | 'cancel' }) => {
+      await apiClient.post(
+        `/api/v1/portfolios/${portfolioId}/contribution-plans/${action.id}/${action.kind}`,
+      );
+    },
+  });
+
+  const upcoming = list.data?.upcoming ?? [];
+  const history = list.data?.history ?? [];
+  if (list.isError || (!list.isLoading && !list.data)) {
+    return null;
+  }
+  const opened = detail.data && detail.data.plan.id === openId ? detail.data : null;
+
+  const renderPlan = (plan: PlanSummary) => (
+    <View key={plan.id} style={styles.row}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.category}>{plan.name}</Text>
+        <Text style={styles.muted}>
+          {formatPlanDateMobile(plan.plannedDate)} •{' '}
+          {formatCentsBr(parseScenarioMoneyToCents(plan.total) ?? BigInt(0))} •{' '}
+          {plan.status === 'COMPLETED'
+            ? 'Realizado'
+            : plan.status === 'CANCELLED'
+              ? 'Cancelado'
+              : 'Planejado'}
+        </Text>
+      </View>
+      <View style={{ alignItems: 'flex-end', gap: 4 }}>
+        <Pressable
+          onPress={() => {
+            transition.reset();
+            setOpenId(openId === plan.id ? null : plan.id);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`${openId === plan.id ? 'Fechar' : 'Abrir'} ${plan.name}`}
+        >
+          <Text style={styles.link}>{openId === plan.id ? 'Fechar' : 'Abrir'}</Text>
+        </Pressable>
+        {plan.status === 'PLANNED' ? (
+          <>
+            <Pressable
+              onPress={() => transition.mutate({ id: plan.id, kind: 'complete' })}
+              accessibilityRole="button"
+              accessibilityLabel={`Marcar ${plan.name} como realizado`}
+            >
+              <Text style={styles.link}>Realizado</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => transition.mutate({ id: plan.id, kind: 'cancel' })}
+              accessibilityRole="button"
+              accessibilityLabel={`Cancelar ${plan.name}`}
+            >
+              <Text style={styles.link}>Cancelar</Text>
+            </Pressable>
+          </>
+        ) : null}
+      </View>
+    </View>
+  );
+
+  return (
+    <View style={{ marginTop: 12 }} testID="contribution-plans">
+      <Text style={styles.title}>Planejamento de aportes</Text>
+      {upcoming.length === 0 && history.length === 0 ? (
+        <Text style={styles.note}>
+          Nenhum plano ainda. Criar e editar planos estão disponíveis na versão web.
+        </Text>
+      ) : (
+        <>
+          {upcoming.length > 0 ? <Text style={styles.muted}>Próximos aportes</Text> : null}
+          {upcoming.map(renderPlan)}
+          {history.length > 0 ? <Text style={styles.muted}>Histórico</Text> : null}
+          {history.map(renderPlan)}
+        </>
+      )}
+      {opened?.live ? (
+        <View style={{ marginTop: 8 }} testID="contribution-plan-detail">
+          <Text style={styles.muted}>
+            Antes: {opened.live.beforeOutsideCount} fora da meta. Após a hipótese:{' '}
+            {opened.live.afterOutsideCount} fora da meta.
+          </Text>
+          {opened.live.rows.map((row) => (
+            <View key={row.category} style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.category}>{scenarioCategoryLabel(row.category)}</Text>
+                <Text style={styles.muted}>
+                  {formatScenarioBp(row.currentBp)} → {formatScenarioBp(row.projectedBp)}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={styles.value}>{formatScenarioBp(row.targetBp)}</Text>
+                <Text style={styles.muted}>meta</Text>
+              </View>
+            </View>
+          ))}
+          {opened.limitations.map((limitation) => (
+            <Text key={limitation} style={styles.note}>
+              {describeScenarioLimitation(limitation)}
+            </Text>
+          ))}
+        </View>
+      ) : opened && opened.live === null ? (
+        <View style={{ marginTop: 8 }} testID="contribution-plan-detail">
+          {opened.limitations.map((limitation) => (
+            <Text key={limitation} style={styles.note}>
+              {describeScenarioLimitation(limitation)}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+      <Text style={styles.note}>
+        Marcar como realizado apenas atualiza o status. Nenhuma operação é criada.
+      </Text>
+    </View>
+  );
+}

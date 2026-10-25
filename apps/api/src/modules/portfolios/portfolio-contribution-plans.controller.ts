@@ -1,0 +1,257 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  Param,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { PortfolioContributionPlansUseCase } from '../../application/portfolios/portfolio-contribution-plans.use-case';
+import { MAX_ACTIVE_CONTRIBUTION_PLANS_PER_PORTFOLIO } from '@atlas/portfolio-strategy';
+import {
+  CreateContributionPlanBody,
+  CreateContributionPlanBodySchema,
+  CreateContributionPlanSwaggerDto,
+  UpdateContributionPlanBody,
+  UpdateContributionPlanBodySchema,
+  UpdateContributionPlanSwaggerDto,
+} from './dto/portfolio-contribution-plans.dto';
+import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
+import { AuthenticatedPrincipal, CurrentPrincipal } from '../../auth';
+
+/**
+ * Phase 5Q-F — user-declared contribution plans (future intent, not advice).
+ *
+ * Plans record what the user intends to contribute. Completing or
+ * cancelling flips status only — never creates transactions, orders or
+ * ledger writes. Live impact always recomputes against the current
+ * portfolio + strategy.
+ */
+@ApiTags('PortfolioContributionPlans')
+@ApiBearerAuth()
+@Controller('api/v1/portfolios/:portfolioId/contribution-plans')
+export class PortfolioContributionPlansController {
+  constructor(
+    @Inject(PortfolioContributionPlansUseCase)
+    private readonly plans: PortfolioContributionPlansUseCase,
+  ) {}
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Declare a contribution plan (intent only)',
+    description:
+      'Persists the user-declared intent (name, date-only plannedDate, per-category amounts). Never creates transactions or orders.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiBody({ type: CreateContributionPlanSwaggerDto })
+  @ApiResponse({ status: 201, description: 'Declared plan' })
+  @ApiResponse({ status: 400, description: 'Invalid name, date, category or amount' })
+  @ApiResponse({ status: 404, description: 'Portfolio or source scenario not found' })
+  async createPlan(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Body(new ZodValidationPipe(CreateContributionPlanBodySchema))
+    body: CreateContributionPlanBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const plan = await this.plans.createPlan({
+      portfolioId,
+      userId: principal.userId,
+      name: body.name,
+      plannedDate: body.plannedDate,
+      items: body.items,
+      sourceScenarioId: body.sourceScenarioId ?? null,
+    });
+    return { data: { plan } };
+  }
+
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'List contribution plans (upcoming + history, no live impact)',
+    description:
+      'Returns declared intents only. Upcoming PLANNED plans sort by date ascending; terminal history sorts newest first.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiQuery({ name: 'status', required: false, enum: ['PLANNED', 'COMPLETED', 'CANCELLED'] })
+  @ApiResponse({ status: 200, description: 'Plans grouped by lifecycle' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async listPlans(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Query('status') status?: string,
+  ) {
+    if (status !== undefined && !['PLANNED', 'COMPLETED', 'CANCELLED'].includes(status)) {
+      // Unknown filter values fail closed with an empty (not misleading) list.
+      return {
+        data: {
+          upcoming: [],
+          history: [],
+          activeLimit: MAX_ACTIVE_CONTRIBUTION_PLANS_PER_PORTFOLIO,
+        },
+      };
+    }
+    const result = await this.plans.listPlans(portfolioId, principal.userId);
+    if (status === 'PLANNED') {
+      return { data: { ...result, history: [] } };
+    }
+    if (status === 'COMPLETED' || status === 'CANCELLED') {
+      return {
+        data: {
+          ...result,
+          upcoming: [],
+          history: result.history.filter((plan) => plan.status === status),
+        },
+      };
+    }
+    return { data: result };
+  }
+
+  @Get('next')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Read the next planned contribution (Today surface)',
+    description:
+      'Returns the earliest PLANNED plan, or null when none exists. Intent only — no live impact computed here.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({ status: 200, description: 'Next plan or null' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async getNext(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.plans.getNextPlanned(portfolioId, principal.userId);
+    return { data: result };
+  }
+
+  @Get(':planId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Open a plan with live impact',
+    description:
+      'Returns the declared intent plus a live impact recomputed against the current portfolio and strategy.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiParam({ name: 'planId', description: 'UUID of the contribution plan' })
+  @ApiResponse({ status: 200, description: 'Plan with live impact' })
+  @ApiResponse({ status: 404, description: 'Portfolio or plan not found' })
+  async getPlan(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Param('planId', UUIDParamPipe) planId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.plans.getPlanDetail({
+      planId,
+      portfolioId,
+      userId: principal.userId,
+    });
+    return { data: result };
+  }
+
+  @Put(':planId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Replace a PLANNED plan (atomic full replacement)',
+    description:
+      'Only PLANNED plans are editable. Completed and cancelled history stays immutable.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiParam({ name: 'planId', description: 'UUID of the contribution plan' })
+  @ApiBody({ type: UpdateContributionPlanSwaggerDto })
+  @ApiResponse({ status: 200, description: 'Updated plan' })
+  @ApiResponse({ status: 400, description: 'Invalid input or immutable status' })
+  @ApiResponse({ status: 404, description: 'Portfolio or plan not found' })
+  async updatePlan(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Param('planId', UUIDParamPipe) planId: string,
+    @Body(new ZodValidationPipe(UpdateContributionPlanBodySchema))
+    body: UpdateContributionPlanBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const plan = await this.plans.updatePlan({
+      planId,
+      portfolioId,
+      userId: principal.userId,
+      name: body.name,
+      plannedDate: body.plannedDate,
+      items: body.items,
+    });
+    return { data: { plan } };
+  }
+
+  @Post(':planId/complete')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Mark a plan as completed (status only)',
+    description: 'Flips PLANNED to COMPLETED. Creates no transaction, order or ledger write.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiParam({ name: 'planId', description: 'UUID of the contribution plan' })
+  @ApiResponse({ status: 200, description: 'Completed plan' })
+  @ApiResponse({ status: 400, description: 'Plan is not PLANNED' })
+  @ApiResponse({ status: 404, description: 'Portfolio or plan not found' })
+  async completePlan(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Param('planId', UUIDParamPipe) planId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const plan = await this.plans.completePlan({ planId, portfolioId, userId: principal.userId });
+    return { data: { plan } };
+  }
+
+  @Post(':planId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cancel a plan (status only)',
+    description: 'Flips PLANNED to CANCELLED. The portfolio and history are untouched.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiParam({ name: 'planId', description: 'UUID of the contribution plan' })
+  @ApiResponse({ status: 200, description: 'Cancelled plan' })
+  @ApiResponse({ status: 400, description: 'Plan is not PLANNED' })
+  @ApiResponse({ status: 404, description: 'Portfolio or plan not found' })
+  async cancelPlan(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Param('planId', UUIDParamPipe) planId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const plan = await this.plans.cancelPlan({ planId, portfolioId, userId: principal.userId });
+    return { data: { plan } };
+  }
+
+  @Delete(':planId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Delete a PLANNED plan',
+    description:
+      'Only PLANNED plans are deletable. Completed and cancelled plans are preserved as history.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiParam({ name: 'planId', description: 'UUID of the contribution plan' })
+  @ApiResponse({ status: 200, description: 'Plan deleted' })
+  @ApiResponse({ status: 400, description: 'Plan is not PLANNED' })
+  @ApiResponse({ status: 404, description: 'Portfolio or plan not found' })
+  async deletePlan(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Param('planId', UUIDParamPipe) planId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    await this.plans.deletePlan({ planId, portfolioId, userId: principal.userId });
+    return { data: { deleted: true } };
+  }
+}

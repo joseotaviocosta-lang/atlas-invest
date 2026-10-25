@@ -16,6 +16,7 @@ import {
 import { colors, spacing, borderRadius } from '@atlas/ui';
 import { PortfolioScenarioSimulator } from './PortfolioScenarioSimulator';
 import { PortfolioSavedScenarios } from './PortfolioSavedScenarios';
+import { PortfolioContributionPlans } from './PortfolioContributionPlans';
 
 const STRATEGY_CATEGORIES = [
   'STOCK',
@@ -464,6 +465,7 @@ export function PortfolioStrategySection({ portfolioId }: { portfolioId: string 
           ) : null}
           {portfolioId ? <PortfolioScenarioSimulator portfolioId={portfolioId} /> : null}
           {portfolioId ? <PortfolioSavedScenarios portfolioId={portfolioId} /> : null}
+          {portfolioId ? <PortfolioContributionPlans portfolioId={portfolioId} /> : null}
         </>
       )}
     </Card>

@@ -59,3 +59,41 @@ describe('Phase 5Q-E (mobile): saved scenarios read-only', () => {
     expect(card).not.toMatch(/você deveria|deve (comprar|vender|aportar)/i);
   });
 });
+
+/**
+ * Phase 5Q-F (mobile) — contribution plans list + detail with
+ * complete/cancel. Create/edit stay web-only. Status flips only.
+ */
+describe('Phase 5Q-F (mobile): contribution plans', () => {
+  const card = fs.readFileSync(
+    path.join(process.cwd(), 'apps/mobile/src/components/portfolio/MobileStrategySection.tsx'),
+    'utf8',
+  );
+
+  it('lists upcoming and history with a read-only live detail', () => {
+    expect(card).toContain('Planejamento de aportes');
+    expect(card).toContain('Próximos aportes');
+    expect(card).toContain('Histórico');
+    expect(card).toContain('/contribution-plans`');
+    expect(card).toContain('contribution-plan-detail');
+  });
+
+  it('marks complete and cancels without transactions or dead CTAs', () => {
+    expect(card).toContain('/contribution-plans');
+    expect(card).toContain("kind: 'complete'");
+    expect(card).toContain("kind: 'cancel'");
+    expect(card).toContain('Marcar');
+    expect(card).toContain('como realizado');
+    expect(card).not.toContain('onPress={() => {}}');
+  });
+
+  it('keeps create/edit web-only with an explicit note', () => {
+    expect(card).toContain('Criar e editar planos estão disponíveis na versão web');
+    expect(card).not.toContain('Salvar plano');
+  });
+
+  it('discloses status-only semantics without advice or execution', () => {
+    expect(card).toContain('Nenhuma operação é criada');
+    expect(card).not.toMatch(/melhor cenário|vencedor|Comprar|Vender\b|Executar/);
+  });
+});

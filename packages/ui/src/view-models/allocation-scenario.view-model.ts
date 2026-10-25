@@ -97,6 +97,8 @@ export function describeScenarioLimitation(code: string): string {
     return 'Defina metas de alocação antes de simular: sem estratégia, não há comparação.';
   if (code === 'NEEDS_REVIEW')
     return 'Este cenário usa uma categoria que o Atlas não reconhece mais. Revise os valores.';
+  if (code === 'CURRENCY_MISMATCH')
+    return 'As moedas do plano e da carteira atual divergem. Sem conversão, o impacto não pode ser calculado.';
   return 'Limitação indisponível.';
 }
 
@@ -151,4 +153,18 @@ export function formatCentsBr(cents: bigint): string {
   const intPart = (abs / BigInt(100)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   const frac = (abs % BigInt(100)).toString().padStart(2, '0');
   return `R$ ${negative ? '-' : ''}${intPart},${frac}`;
+}
+
+/** Plan status -> pt-BR label. Text-labeled, never color-only. */
+export function describePlanStatus(status: string): string {
+  if (status === 'COMPLETED') return 'Realizado';
+  if (status === 'CANCELLED') return 'Cancelado';
+  return 'Planejado';
+}
+
+/** Date-only 'YYYY-MM-DD' -> 'DD/MM/YYYY' via string split (no Date). */
+export function formatPlanDate(yyyyMmDd: string): string {
+  const [year = '', month = '', day = ''] = yyyyMmDd.split('-');
+  if (year === '' || month === '' || day === '') return yyyyMmDd;
+  return `${day}/${month}/${year}`;
 }

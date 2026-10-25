@@ -10,6 +10,7 @@ export * from './integration-job.repository';
 export * from './integration-connection.repository';
 export * from './allocation-strategy.repository';
 export * from './allocation-scenario.repository';
+export * from './contribution-plan.repository';
 export * from './user.repository';
 export * from './session.repository';
 export * from './password-reset-token.repository';

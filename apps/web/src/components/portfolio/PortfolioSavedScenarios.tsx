@@ -19,6 +19,7 @@ import {
   type AllocationScenarioRowView,
 } from '@atlas/ui';
 import { allocationScenariosQueryKey } from './PortfolioScenarioSimulator';
+import { dispatchCreatePlan } from './PortfolioContributionPlans';
 
 const SCENARIO_CATEGORIES = [
   'STOCK',
@@ -100,7 +101,7 @@ function outsideLabel(count: number): string {
   return count === 1 ? '1 categoria fora da meta' : `${count} categorias fora da meta`;
 }
 
-function LiveResultTable({ live }: { live: LiveResultView }) {
+export function LiveResultTable({ live }: { live: LiveResultView }) {
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
@@ -814,6 +815,25 @@ export function PortfolioSavedScenarios({ portfolioId }: { portfolioId: string |
                     {formatScenarioMoney(detail.live.totals.projected, detail.live.totals.currency)}
                     .
                   </p>
+                  <div style={{ marginTop: 8 }}>
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        dispatchCreatePlan({
+                          name: detail.saved.name,
+                          items: detail.saved.changes.map((change) => ({
+                            category: change.category,
+                            amount: change.amount,
+                          })),
+                        })
+                      }
+                      style={{ minHeight: 44 }}
+                      aria-label={`Criar plano a partir de ${detail.saved.name}`}
+                      data-testid="scenario-create-plan"
+                    >
+                      Criar plano
+                    </Button>
+                  </div>
                 </>
               ) : (
                 <LimitationsNote
