@@ -391,11 +391,6 @@ export function PositionIntelligenceSection({
         )}
       </div>
 
-      {/* Performance unavailable (5R-B material) */}
-      <p style={{ fontSize: '0.8125rem', color: colors.textSecondary, margin: '8px 0 0' }}>
-        O resultado detalhado por posição ainda não está disponível.
-      </p>
-
       {/* Data quality + limitations */}
       <div style={{ marginTop: 8 }} data-testid="position-intelligence-limitations">
         <h4 style={{ fontSize: '0.9375rem', fontWeight: 700, margin: '8px 0 4px' }}>

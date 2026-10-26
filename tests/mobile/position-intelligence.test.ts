@@ -52,8 +52,10 @@ describe('Phase 5R-A (mobile): position intelligence read-only', () => {
   });
 
   it('states limitations factually with neutral copy', () => {
+    // 5R-B supersedes the static note: the live performance block shows it
+    // only when performance is actually unavailable.
+    expect(section).not.toContain('O resultado detalhado por posição ainda não está disponível.');
     expect(section).toContain('DADOS E LIMITAÇÕES');
-    expect(section).toContain('O resultado detalhado por posição ainda não está disponível.');
     expect(section).toContain('describePositionLimitation');
   });
 

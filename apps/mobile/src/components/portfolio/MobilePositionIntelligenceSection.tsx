@@ -278,8 +278,6 @@ export function MobilePositionIntelligenceSection({
           </Text>
         ))}
       </Card>
-
-      <Text style={styles.note}>O resultado detalhado por posição ainda não está disponível.</Text>
     </View>
   );
 }

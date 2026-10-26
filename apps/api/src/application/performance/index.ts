@@ -1,4 +1,5 @@
 export * from './get-portfolio-performance.use-case';
+export * from './get-position-performance.use-case';
 export * from './get-portfolio-performance-series.use-case';
 export * from './get-portfolio-risk-metrics.use-case';
 export * from './get-portfolio-risk-adjusted-metrics.use-case';

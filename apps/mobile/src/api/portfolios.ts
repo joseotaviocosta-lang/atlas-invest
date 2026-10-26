@@ -74,6 +74,17 @@ export const portfoliosApi = {
     return apiClient.get<{ data: AssetMeta }>(`/api/v1/assets/${assetId}`);
   },
 
+  async getPositionPerformance(
+    portfolioId: string,
+    assetId: string,
+    query = '',
+  ): Promise<{ data: unknown }> {
+    const qs = query ? `?${query}` : '';
+    return apiClient.get<{ data: unknown }>(
+      `/api/v1/portfolios/${portfolioId}/positions/${assetId}/performance${qs}`,
+    );
+  },
+
   async getPositionIntelligence(portfolioId: string, assetId: string): Promise<{ data: unknown }> {
     return apiClient.get<{ data: unknown }>(
       `/api/v1/portfolios/${portfolioId}/positions/${assetId}/intelligence`,

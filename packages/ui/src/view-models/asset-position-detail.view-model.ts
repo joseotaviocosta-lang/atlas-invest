@@ -185,7 +185,7 @@ export function describePositionTransactionType(type: string): string {
 }
 
 /**
- * Phase 5R-A — position intelligence limitation copy (facts only).
+ * Phase 5R-A/5R-B — position limitation copy (facts only).
  * Neutral and specific; never judgment, scores or advice.
  */
 export function describePositionLimitation(code: string): string {
@@ -203,6 +203,20 @@ export function describePositionLimitation(code: string): string {
     return 'O custo desta posição é desconhecido. Valores de custo aparecem como indisponíveis, nunca zerados.';
   if (code === 'NO_INCOME_HISTORY')
     return 'Nenhum rendimento registrado para esta posição no histórico.';
+  if (code === 'MISSING_START_PRICE')
+    return 'Sem cotação no início do período. O retorno foi calculado a partir da primeira data com preço.';
+  if (code === 'MISSING_END_PRICE')
+    return 'Sem cotação no fim do período. O retorno foi calculado até a última data com preço.';
+  if (code === 'MISSING_FLOW_PRICE')
+    return 'Sem cotação em uma data com movimentação. O retorno não pôde ser calculado sem interpolar preços.';
+  if (code === 'STALE_END_PRICE')
+    return 'A cotação do fim do período não é da data atual. O retorno usa a última cotação disponível.';
+  if (code === 'INSUFFICIENT_HISTORY')
+    return 'Não há cotações suficientes no período para calcular o retorno.';
+  if (code === 'POSITION_CONTRIBUTION_NOT_AVAILABLE')
+    return 'A contribuição desta posição não pôde ser calculada para o período.';
+  if (code === 'NO_POSITION_IN_PERIOD')
+    return 'A posição não existia neste período. Nenhum resultado foi gerado.';
   return code;
 }
 

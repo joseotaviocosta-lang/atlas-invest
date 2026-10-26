@@ -25,6 +25,7 @@ import {
 } from './valuation';
 import { UpdateBenchmarkDataUseCase, GetBenchmarkCoverageUseCase } from './benchmark';
 import { GetPortfolioPerformanceUseCase } from './performance';
+import { GetPositionPerformanceUseCase } from './performance';
 import { GetPortfolioPerformanceSeriesUseCase } from './performance/get-portfolio-performance-series.use-case';
 import { GetPortfolioRiskMetricsUseCase } from './performance/get-portfolio-risk-metrics.use-case';
 import { GetPortfolioRiskAdjustedMetricsUseCase } from './performance/get-portfolio-risk-adjusted-metrics.use-case';
@@ -162,6 +163,7 @@ const USE_CASES = [
   UpdateBenchmarkDataUseCase,
   GetBenchmarkCoverageUseCase,
   GetPortfolioPerformanceUseCase,
+  GetPositionPerformanceUseCase,
   GetPortfolioPerformanceSeriesUseCase,
   GetPortfolioRiskMetricsUseCase,
   GetPortfolioRiskAdjustedMetricsUseCase,

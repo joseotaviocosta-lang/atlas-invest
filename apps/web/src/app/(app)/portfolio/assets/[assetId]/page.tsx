@@ -30,6 +30,7 @@ import {
   AssetHistorySection,
   PortfolioHistoricalBanner,
   PositionIntelligenceSection,
+  PositionPerformanceSection,
 } from '@/components/portfolio';
 import { Card, Button, Skeleton, ErrorState } from '@/components/ui';
 
@@ -359,6 +360,12 @@ function AssetPositionDetailContent() {
           Valuation and allocation are current-mode concepts, like realized/income aggregates. */}
       {!isHistorical && activePortfolioId ? (
         <PositionIntelligenceSection portfolioId={activePortfolioId} assetId={assetId} />
+      ) : null}
+
+      {/* 3.6 Position Performance (TWR, components, attribution — current mode only).
+          Lazy separate endpoint; the 5R-A section keeps valuation/income/activity. */}
+      {!isHistorical && activePortfolioId ? (
+        <PositionPerformanceSection portfolioId={activePortfolioId} assetId={assetId} />
       ) : null}
 
       {/* 4-5. Realized Results & Income (lifetime aggregates: current mode only).

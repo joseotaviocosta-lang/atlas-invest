@@ -22,4 +22,5 @@ export * from './PortfolioContributionInsights';
 export * from './PortfolioContributionGoal';
 export * from './PortfolioContributionCalendar';
 export * from './PositionIntelligenceSection';
+export * from './PositionPerformanceSection';
 export * from './PortfolioShell';

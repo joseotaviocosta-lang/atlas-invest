@@ -908,3 +908,6 @@ export interface PerformanceEngineContract {
     timeframe: PerformanceTimeframe,
   ): Record<string, Percentage>;
 }
+
+export * from './position-performance';
+export * from './position-attribution';

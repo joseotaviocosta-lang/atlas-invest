@@ -59,8 +59,10 @@ describe('Phase 5R-A: position intelligence web surface', () => {
     expect(section).not.toMatch(/rendimento esperado|projeção|yield/i);
   });
 
-  it('states unavailable performance factually and lists data limitations', () => {
-    expect(section).toContain('O resultado detalhado por posição ainda não está disponível.');
+  it('lists data limitations (performance lives in the 5R-B section)', () => {
+    // 5R-B supersedes the static note: the live performance block shows it
+    // only when performance is actually unavailable.
+    expect(section).not.toContain('O resultado detalhado por posição ainda não está disponível.');
     expect(section).toContain('data-testid="position-intelligence-limitations"');
     expect(section).toContain('Dados e limitações');
     expect(section).toContain('Indisponível');
