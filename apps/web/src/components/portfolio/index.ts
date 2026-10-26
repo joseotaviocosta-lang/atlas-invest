@@ -21,6 +21,7 @@ export * from './PortfolioContributionPlans';
 export * from './PortfolioContributionInsights';
 export * from './PortfolioContributionGoal';
 export * from './PortfolioContributionCalendar';
+export * from './PortfolioCompositionSection';
 export * from './PositionIntelligenceSection';
 export * from './PositionPerformanceSection';
 export * from './PortfolioShell';

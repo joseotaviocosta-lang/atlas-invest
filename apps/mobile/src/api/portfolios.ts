@@ -74,6 +74,10 @@ export const portfoliosApi = {
     return apiClient.get<{ data: AssetMeta }>(`/api/v1/assets/${assetId}`);
   },
 
+  async getPortfolioComposition(portfolioId: string): Promise<{ data: unknown }> {
+    return apiClient.get<{ data: unknown }>(`/api/v1/portfolios/${portfolioId}/composition`);
+  },
+
   async getPositionPerformance(
     portfolioId: string,
     assetId: string,

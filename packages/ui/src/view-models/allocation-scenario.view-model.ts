@@ -262,6 +262,20 @@ export function formatPlanMonthLong(monthKey: string): string {
   return `${names[index]} de ${year}`;
 }
 
+/** Composition-specific limitations (read-only analytics; no judgment). */
+export function describeCompositionLimitation(code: string): string {
+  if (code === 'NO_ACTIVITY') return 'A carteira ainda não possui posições avaliadas.';
+  if (code === 'PARTIAL_PORTFOLIO_VALUATION')
+    return 'Parte da carteira não pôde ser avaliada. A composição considera apenas o valor conhecido.';
+  if (code === 'MIXED_CURRENCIES_WITHOUT_TRANSLATION')
+    return 'Há mais de uma moeda sem conversão disponível. Os valores são mostrados por moeda, sem conversão.';
+  if (code === 'ISSUER_CLASSIFICATION_NOT_AVAILABLE')
+    return 'Classificação de emissor indisponível. Nenhuma fonte canônica de emissores foi encontrada.';
+  if (code === 'SECTOR_CLASSIFICATION_NOT_AVAILABLE')
+    return 'Classificação setorial indisponível. Nenhuma taxonomia setorial canônica foi encontrada.';
+  return code;
+}
+
 /** Insights-specific limitations (read-only analytics; no judgment). */
 export function describeInsightsLimitation(code: string): string {
   if (code === 'NO_PLANS_IN_PERIOD') return 'Nenhum plano no período selecionado.';

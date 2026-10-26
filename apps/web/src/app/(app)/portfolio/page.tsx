@@ -43,6 +43,7 @@ import {
   PortfolioHistoricalBanner,
   PortfolioValuationSection,
   PortfolioAllocationSection,
+  PortfolioCompositionSection,
   PortfolioReviewSection,
   PortfolioStrategySection,
   PortfolioShell,
@@ -1522,6 +1523,9 @@ function PortfolioPageContent() {
                 portfolioId={activePortfolio?.id ?? null}
                 isHistorical={isHistorical}
               />
+              {!isHistorical ? (
+                <PortfolioCompositionSection portfolioId={activePortfolio?.id ?? null} />
+              ) : null}
             </>
           )}
 
