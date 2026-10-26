@@ -13,6 +13,7 @@ export * from './MobilePortfolioIncomeSection';
 export * from './MobilePositionIncomeSection';
 export * from './MobilePortfolioDataQualitySection';
 export * from './MobilePositionDataQualitySection';
+export * from './MobilePortfolioOperationsSection';
 export * from './MobileHistorySection';
 export * from './MobileHistoryFilters';
 export * from './MobileHistoryTimeline';

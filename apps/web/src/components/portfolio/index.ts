@@ -28,4 +28,5 @@ export * from './PositionPerformanceSection';
 export * from './PositionIncomeSection';
 export * from './PortfolioDataQualitySection';
 export * from './PositionDataQualitySection';
+export * from './PortfolioOperationsSection';
 export * from './PortfolioShell';

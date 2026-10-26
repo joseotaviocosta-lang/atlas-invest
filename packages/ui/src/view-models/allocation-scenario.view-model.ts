@@ -359,6 +359,57 @@ export function describeDataQualityStatus(status: string): string {
   return status;
 }
 
+/** Operations status -> neutral pt-BR label. Operational state only, never investment quality. */
+export function describeOperationsStatus(status: string): string {
+  if (status === 'CLEAR') return 'Sem pendências operacionais';
+  if (status === 'ATTENTION_REQUIRED') return 'Revisar';
+  if (status === 'BLOCKED') return 'Dados insuficientes';
+  return status;
+}
+
+/** Operations attention codes -> neutral pt-BR labels. Display only. */
+export function describeOperationsAttention(code: string): string {
+  if (code === 'SYNC_FAILED') return 'Sincronização falhou';
+  if (code === 'SYNC_PARTIAL') return 'Sincronização parcial';
+  if (code === 'CONNECTION_NEEDS_REAUTH') return 'Conexão precisa de nova autorização';
+  if (code === 'PENDING_REVIEWS') return 'Revisões pendentes';
+  if (code === 'RECONCILIATION_DIVERGENT') return 'Divergências com a origem';
+  if (code === 'RECONCILIATION_MISSING_LOCAL') return 'Faltando na carteira';
+  if (code === 'RECONCILIATION_MISSING_SOURCE') return 'Faltando na origem';
+  if (code === 'RECONCILIATION_UNRESOLVED') return 'Reconciliação não resolvida';
+  return describeDataQualityIssue(code);
+}
+
+/** Operations attention detail -> factual impact + safe next step. */
+export function describeOperationsAttentionDetail(code: string): string {
+  if (code === 'SYNC_FAILED')
+    return 'A última sincronização falhou. Ver o histórico de execuções para conferir.';
+  if (code === 'SYNC_PARTIAL')
+    return 'A última sincronização foi parcial. Ver o histórico de execuções para conferir.';
+  if (code === 'CONNECTION_NEEDS_REAUTH')
+    return 'A conexão precisa de nova autorização. Ver as integrações para reconectar.';
+  if (code === 'PENDING_REVIEWS')
+    return 'Há execuções aguardando revisão. Ver as revisões para conferir.';
+  if (code === 'RECONCILIATION_DIVERGENT')
+    return 'Há divergências entre a carteira e a origem. Ver as revisões para conferir.';
+  if (code === 'RECONCILIATION_MISSING_LOCAL')
+    return 'Há registros na origem que não estão na carteira. Ver as revisões para conferir.';
+  if (code === 'RECONCILIATION_MISSING_SOURCE')
+    return 'Há posições na carteira sem correspondência na origem. Ver as revisões para conferir.';
+  if (code === 'RECONCILIATION_UNRESOLVED')
+    return 'Há registros que não puderam ser conciliados. Ver as revisões para conferir.';
+  return describeDataQualityIssueDetail(code);
+}
+
+/** Operations domain codes -> neutral pt-BR labels. Display only. */
+export function describeOperationsDomain(domain: string): string {
+  if (domain === 'SYNC') return 'Sincronização';
+  if (domain === 'INTEGRATION') return 'Integrações';
+  if (domain === 'RECONCILIATION') return 'Reconciliação';
+  if (domain === 'DATA_QUALITY') return 'Qualidade dos dados';
+  return domain;
+}
+
 /** Insights-specific limitations (read-only analytics; no judgment). */
 export function describeInsightsLimitation(code: string): string {
   if (code === 'NO_PLANS_IN_PERIOD') return 'Nenhum plano no período selecionado.';

@@ -13,6 +13,7 @@ import { PortfolioPositionIntelligenceController } from './portfolio-position-in
 import { PortfolioCompositionController } from './portfolio-composition.controller';
 import { PortfolioIncomeController } from './portfolio-income.controller';
 import { PortfolioDataQualityController } from './portfolio-data-quality.controller';
+import { PortfolioOperationsController } from './portfolio-operations.controller';
 
 @Module({
   imports: [ApplicationModule],
@@ -30,6 +31,7 @@ import { PortfolioDataQualityController } from './portfolio-data-quality.control
     PortfolioCompositionController,
     PortfolioIncomeController,
     PortfolioDataQualityController,
+    PortfolioOperationsController,
   ],
 })
 export class PortfoliosModule {}

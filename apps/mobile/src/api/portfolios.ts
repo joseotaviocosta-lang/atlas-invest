@@ -105,6 +105,10 @@ export const portfoliosApi = {
     return apiClient.get<{ data: unknown }>(`/api/v1/portfolios/${portfolioId}/data-quality`);
   },
 
+  async getPortfolioOperations(portfolioId: string): Promise<{ data: unknown }> {
+    return apiClient.get<{ data: unknown }>(`/api/v1/portfolios/${portfolioId}/operations-center`);
+  },
+
   async getPortfolioIncome(portfolioId: string, query = ''): Promise<{ data: unknown }> {
     const qs = query ? `?${query}` : '';
     return apiClient.get<{ data: unknown }>(
