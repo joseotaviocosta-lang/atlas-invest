@@ -9,6 +9,8 @@ export * from './MobileIncomeSection';
 export * from './MobilePositionIntelligenceSection';
 export * from './MobilePositionPerformanceSection';
 export * from './MobileCompositionSection';
+export * from './MobilePortfolioIncomeSection';
+export * from './MobilePositionIncomeSection';
 export * from './MobileHistorySection';
 export * from './MobileHistoryFilters';
 export * from './MobileHistoryTimeline';

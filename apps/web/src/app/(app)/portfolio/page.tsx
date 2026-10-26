@@ -44,6 +44,7 @@ import {
   PortfolioValuationSection,
   PortfolioAllocationSection,
   PortfolioCompositionSection,
+  PortfolioIncomeSection,
   PortfolioReviewSection,
   PortfolioStrategySection,
   PortfolioShell,
@@ -1096,6 +1097,13 @@ function PortfolioPageContent() {
                       {!isHistorical ? (
                         <div style={{ marginBottom: `${spacing.xl}px` }}>
                           <PortfolioReviewSection portfolioId={activePortfolio.id} />
+                        </div>
+                      ) : null}
+
+                      {/* Portfolio Income (current-only; hidden in historical mode) */}
+                      {!isHistorical ? (
+                        <div style={{ marginBottom: `${spacing.xl}px` }}>
+                          <PortfolioIncomeSection portfolioId={activePortfolio.id} />
                         </div>
                       ) : null}
 

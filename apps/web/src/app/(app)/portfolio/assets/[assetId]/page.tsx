@@ -31,6 +31,7 @@ import {
   PortfolioHistoricalBanner,
   PositionIntelligenceSection,
   PositionPerformanceSection,
+  PositionIncomeSection,
 } from '@/components/portfolio';
 import { Card, Button, Skeleton, ErrorState } from '@/components/ui';
 
@@ -366,6 +367,11 @@ function AssetPositionDetailContent() {
           Lazy separate endpoint; the 5R-A section keeps valuation/income/activity. */}
       {!isHistorical && activePortfolioId ? (
         <PositionPerformanceSection portfolioId={activePortfolioId} assetId={assetId} />
+      ) : null}
+
+      {/* 3.7 Position Income (historical income over the current lifecycle — current mode only). */}
+      {!isHistorical && activePortfolioId ? (
+        <PositionIncomeSection portfolioId={activePortfolioId} assetId={assetId} />
       ) : null}
 
       {/* 4-5. Realized Results & Income (lifetime aggregates: current mode only).

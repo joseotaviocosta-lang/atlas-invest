@@ -14,6 +14,7 @@ export * from './portfolio-contribution-calendar.use-case';
 export * from './portfolio-position-intelligence.use-case';
 export * from './portfolio-position-intelligence.compose';
 export * from './get-portfolio-composition.use-case';
+export * from './get-portfolio-income.use-case';
 export * from './portfolio-contribution-goals.use-case';
 export * from './read-models';
 export * from './mappers/portfolio-read-model.mapper';

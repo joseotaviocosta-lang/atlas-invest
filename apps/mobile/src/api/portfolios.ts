@@ -95,6 +95,24 @@ export const portfoliosApi = {
     );
   },
 
+  async getPortfolioIncome(portfolioId: string, query = ''): Promise<{ data: unknown }> {
+    const qs = query ? `?${query}` : '';
+    return apiClient.get<{ data: unknown }>(
+      `/api/v1/portfolios/${portfolioId}/income-intelligence${qs}`,
+    );
+  },
+
+  async getPositionIncome(
+    portfolioId: string,
+    assetId: string,
+    query = '',
+  ): Promise<{ data: unknown }> {
+    const qs = query ? `?${query}` : '';
+    return apiClient.get<{ data: unknown }>(
+      `/api/v1/portfolios/${portfolioId}/positions/${assetId}/income${qs}`,
+    );
+  },
+
   async listAccounts(portfolioId: string): Promise<{ data: AccountDto[] }> {
     return apiClient.get<{ data: AccountDto[] }>(`/api/v1/portfolios/${portfolioId}/accounts`);
   },

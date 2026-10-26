@@ -18,6 +18,7 @@ import {
   PortfolioContributionCalendarUseCase,
   GetPortfolioPositionIntelligenceUseCase,
   GetPortfolioCompositionUseCase,
+  GetPortfolioIncomeUseCase,
 } from './portfolios';
 import {
   GetPortfolioValuationUseCase,
@@ -27,6 +28,7 @@ import {
 import { UpdateBenchmarkDataUseCase, GetBenchmarkCoverageUseCase } from './benchmark';
 import { GetPortfolioPerformanceUseCase } from './performance';
 import { GetPositionPerformanceUseCase } from './performance';
+import { GetPositionIncomeUseCase } from './performance/get-position-income.use-case';
 import { GetPortfolioPerformanceSeriesUseCase } from './performance/get-portfolio-performance-series.use-case';
 import { GetPortfolioRiskMetricsUseCase } from './performance/get-portfolio-risk-metrics.use-case';
 import { GetPortfolioRiskAdjustedMetricsUseCase } from './performance/get-portfolio-risk-adjusted-metrics.use-case';
@@ -159,6 +161,7 @@ const USE_CASES = [
   PortfolioContributionCalendarUseCase,
   GetPortfolioPositionIntelligenceUseCase,
   GetPortfolioCompositionUseCase,
+  GetPortfolioIncomeUseCase,
   GetPortfolioValuationUseCase,
   GetPortfolioAllocationUseCase,
   UpdatePortfolioMarketDataUseCase,
@@ -166,6 +169,7 @@ const USE_CASES = [
   GetBenchmarkCoverageUseCase,
   GetPortfolioPerformanceUseCase,
   GetPositionPerformanceUseCase,
+  GetPositionIncomeUseCase,
   GetPortfolioPerformanceSeriesUseCase,
   GetPortfolioRiskMetricsUseCase,
   GetPortfolioRiskAdjustedMetricsUseCase,

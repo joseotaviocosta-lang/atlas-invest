@@ -276,6 +276,16 @@ export function describeCompositionLimitation(code: string): string {
   return code;
 }
 
+/** Income-specific limitations (read-only analytics; no judgment). */
+export function describeIncomeLimitation(code: string): string {
+  if (code === 'NO_INCOME_IN_PERIOD') return 'Nenhum rendimento registrado no período selecionado.';
+  if (code === 'NO_POSITION_IN_PERIOD')
+    return 'A posição não existia neste período. Nenhum rendimento foi atribuído a ela.';
+  if (code === 'MULTI_CURRENCY_INCOME')
+    return 'Há rendimentos em mais de uma moeda. Os valores são mostrados por moeda, sem conversão.';
+  return code;
+}
+
 /** Insights-specific limitations (read-only analytics; no judgment). */
 export function describeInsightsLimitation(code: string): string {
   if (code === 'NO_PLANS_IN_PERIOD') return 'Nenhum plano no período selecionado.';

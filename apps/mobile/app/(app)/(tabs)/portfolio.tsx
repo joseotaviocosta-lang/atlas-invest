@@ -31,6 +31,7 @@ import { MobileValuationSection } from '../../../src/components/portfolio/Mobile
 import { MobileReviewSection } from '../../../src/components/portfolio/MobileReviewSection';
 import { MobileStrategySection } from '../../../src/components/portfolio/MobileStrategySection';
 import { MobileCompositionSection } from '../../../src/components/portfolio/MobileCompositionSection';
+import { MobilePortfolioIncomeSection } from '../../../src/components/portfolio/MobilePortfolioIncomeSection';
 import { portfoliosApi } from '../../../src/api/portfolios';
 import { ApiError } from '../../../src/api/client';
 import { PortfolioDto } from '../../../src/api/types';
@@ -375,6 +376,10 @@ export default function PortfolioScreen() {
 
                 {!isHistorical && activePortfolio ? (
                   <MobileCompositionSection portfolioId={activePortfolio.id} />
+                ) : null}
+
+                {!isHistorical && activePortfolio ? (
+                  <MobilePortfolioIncomeSection portfolioId={activePortfolio.id} />
                 ) : null}
 
                 {/* Positions List Section */}
