@@ -32,6 +32,7 @@ import {
   PositionIntelligenceSection,
   PositionPerformanceSection,
   PositionIncomeSection,
+  PositionDataQualitySection,
 } from '@/components/portfolio';
 import { Card, Button, Skeleton, ErrorState } from '@/components/ui';
 
@@ -372,6 +373,11 @@ function AssetPositionDetailContent() {
       {/* 3.7 Position Income (historical income over the current lifecycle — current mode only). */}
       {!isHistorical && activePortfolioId ? (
         <PositionIncomeSection portfolioId={activePortfolioId} assetId={assetId} />
+      ) : null}
+
+      {/* 3.8 Position Data Quality (diagnostics — current mode only). */}
+      {!isHistorical && activePortfolioId ? (
+        <PositionDataQualitySection portfolioId={activePortfolioId} assetId={assetId} />
       ) : null}
 
       {/* 4-5. Realized Results & Income (lifetime aggregates: current mode only).

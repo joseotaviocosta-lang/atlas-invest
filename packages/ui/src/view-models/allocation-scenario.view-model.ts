@@ -286,6 +286,79 @@ export function describeIncomeLimitation(code: string): string {
   return code;
 }
 
+/** Data quality issue titles (read-only diagnostics; no judgment, no scores). */
+export function describeDataQualityIssue(code: string): string {
+  if (code === 'MISSING_PRICE') return 'Preço indisponível';
+  if (code === 'STALE_PRICE') return 'Preço desatualizado';
+  if (code === 'INCOMPLETE_COST_BASIS') return 'Custo-base incompleto';
+  if (code === 'NO_FX_TRANSLATION') return 'Sem conversão para a moeda do relatório';
+  if (code === 'MIXED_CURRENCIES_WITHOUT_TRANSLATION') return 'Múltiplas moedas sem conversão';
+  if (code === 'RECONCILIATION_DIVERGENT') return 'Divergência com a origem';
+  if (code === 'RECONCILIATION_MISSING_LOCAL') return 'Faltando na carteira';
+  if (code === 'RECONCILIATION_MISSING_SOURCE') return 'Faltando na origem';
+  if (code === 'RECONCILIATION_UNRESOLVED') return 'Reconciliação não resolvida';
+  if (code === 'PENDING_INTEGRATION_REVIEW') return 'Revisão de importação pendente';
+  return code;
+}
+
+/** Data quality issue detail (factual impact + safe next step; never advice). */
+export function describeDataQualityIssueDetail(code: string): string {
+  if (code === 'MISSING_PRICE')
+    return 'Sem cotação, o valor atual, o peso e o resultado não podem ser calculados. Ver a posição para conferir os dados de mercado.';
+  if (code === 'STALE_PRICE')
+    return 'A avaliação usa uma cotação anterior. Os valores estão calculados, mas podem estar desatualizados.';
+  if (code === 'INCOMPLETE_COST_BASIS')
+    return 'O custo desta posição é desconhecido. Custo médio e resultados realizado, não realizado e econômico aparecem como indisponíveis, nunca zerados. Ver as operações para investigar.';
+  if (code === 'NO_FX_TRANSLATION')
+    return 'Não há conversão para a moeda do relatório. Os valores aparecem na moeda da posição, sem conversão; os valores nativos continuam válidos.';
+  if (code === 'MIXED_CURRENCIES_WITHOUT_TRANSLATION')
+    return 'Há mais de uma moeda sem conversão disponível. A composição é mostrada por moeda, sem conversão para um total único.';
+  if (code === 'RECONCILIATION_DIVERGENT')
+    return 'A quantidade na carteira difere da origem importada. Ver as revisões para conferir.';
+  if (code === 'RECONCILIATION_MISSING_LOCAL')
+    return 'Há registros na origem que não estão na carteira. Ver as revisões para conferir.';
+  if (code === 'RECONCILIATION_MISSING_SOURCE')
+    return 'Há posições na carteira sem correspondência na origem. Ver as revisões para conferir.';
+  if (code === 'RECONCILIATION_UNRESOLVED')
+    return 'Há registros que não puderam ser conciliados. Ver as revisões para conferir.';
+  if (code === 'PENDING_INTEGRATION_REVIEW')
+    return 'Há execuções de importação aguardando revisão. Ver as revisões para conferir.';
+  return code;
+}
+
+/** Affected capability codes -> neutral pt-BR labels. Display only. */
+export function describeAffectedCapability(code: string): string {
+  if (code === 'VALUATION') return 'Avaliação';
+  if (code === 'ALLOCATION') return 'Alocação';
+  if (code === 'UNREALIZED_PNL') return 'Resultado não realizado';
+  if (code === 'REALIZED_PNL') return 'Resultado realizado';
+  if (code === 'ECONOMIC_PNL') return 'Resultado econômico';
+  if (code === 'PERFORMANCE') return 'Desempenho';
+  if (code === 'COMPOSITION') return 'Composição';
+  if (code === 'REPORTING_VALUE') return 'Valor na moeda do relatório';
+  if (code === 'PORTFOLIO_WEIGHT') return 'Peso na carteira';
+  if (code === 'RECONCILIATION') return 'Reconciliação';
+  return code;
+}
+
+/** Quality domain codes -> neutral pt-BR labels. Display only. */
+export function describeDataQualityDomain(domain: string): string {
+  if (domain === 'MARKET_DATA') return 'Dados de mercado';
+  if (domain === 'COST_BASIS') return 'Custo e operações';
+  if (domain === 'FX') return 'Moedas';
+  if (domain === 'RECONCILIATION') return 'Reconciliação';
+  return domain;
+}
+
+/** Quality status codes -> neutral pt-BR labels (always text, never color-only). */
+export function describeDataQualityStatus(status: string): string {
+  if (status === 'COMPLETE') return 'Sem pendências';
+  if (status === 'LIMITED') return 'Informações limitadas';
+  if (status === 'REVIEW_REQUIRED') return 'Revisar';
+  if (status === 'BLOCKED') return 'Dados insuficientes';
+  return status;
+}
+
 /** Insights-specific limitations (read-only analytics; no judgment). */
 export function describeInsightsLimitation(code: string): string {
   if (code === 'NO_PLANS_IN_PERIOD') return 'Nenhum plano no período selecionado.';

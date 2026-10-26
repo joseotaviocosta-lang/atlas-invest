@@ -95,6 +95,16 @@ export const portfoliosApi = {
     );
   },
 
+  async getPositionDataQuality(portfolioId: string, assetId: string): Promise<{ data: unknown }> {
+    return apiClient.get<{ data: unknown }>(
+      `/api/v1/portfolios/${portfolioId}/positions/${assetId}/data-quality`,
+    );
+  },
+
+  async getPortfolioDataQuality(portfolioId: string): Promise<{ data: unknown }> {
+    return apiClient.get<{ data: unknown }>(`/api/v1/portfolios/${portfolioId}/data-quality`);
+  },
+
   async getPortfolioIncome(portfolioId: string, query = ''): Promise<{ data: unknown }> {
     const qs = query ? `?${query}` : '';
     return apiClient.get<{ data: unknown }>(

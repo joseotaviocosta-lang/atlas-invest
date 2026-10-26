@@ -11,6 +11,8 @@ export * from './MobilePositionPerformanceSection';
 export * from './MobileCompositionSection';
 export * from './MobilePortfolioIncomeSection';
 export * from './MobilePositionIncomeSection';
+export * from './MobilePortfolioDataQualitySection';
+export * from './MobilePositionDataQualitySection';
 export * from './MobileHistorySection';
 export * from './MobileHistoryFilters';
 export * from './MobileHistoryTimeline';

@@ -9,3 +9,4 @@ export * from './contribution-goals';
 export * from './contribution-calendar';
 export * from './composition';
 export * from './income';
+export * from './data-quality';

@@ -32,6 +32,7 @@ import {
   MobilePositionIntelligenceSection,
   MobilePositionPerformanceSection,
   MobilePositionIncomeSection,
+  MobilePositionDataQualitySection,
 } from '../../../src/components/portfolio';
 import { portfoliosApi } from '../../../src/api/portfolios';
 import { ApiError } from '../../../src/api/client';
@@ -330,6 +331,11 @@ export default function MobileAssetDetailPage() {
             {/* Position Income (historical income over the current lifecycle — current mode only) */}
             {!isHistorical && activePortfolioId ? (
               <MobilePositionIncomeSection portfolioId={activePortfolioId} assetId={assetId} />
+            ) : null}
+
+            {/* Position Data Quality (diagnostics — current mode only) */}
+            {!isHistorical && activePortfolioId ? (
+              <MobilePositionDataQualitySection portfolioId={activePortfolioId} assetId={assetId} />
             ) : null}
 
             {/* Realized & Income are lifetime aggregates: current mode only.
