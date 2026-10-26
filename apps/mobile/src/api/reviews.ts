@@ -36,17 +36,49 @@ export interface MobileReviewListMeta {
 }
 
 export const reviewsApi = {
-  async listReviews(params?: { limit?: number; cursor?: string | null }): Promise<{
+  async listReviews(params?: {
+    limit?: number;
+    cursor?: string | null;
+    severity?: 'REVIEW' | 'WARNING' | 'ERROR' | null;
+    source?: string | null;
+  }): Promise<{
     data: MobileReviewItem[];
     meta: MobileReviewListMeta;
   }> {
     const query = new URLSearchParams();
     query.set('limit', String(params?.limit ?? 50));
     if (params?.cursor) query.set('cursor', params.cursor);
+    if (params?.severity) query.set('severity', params.severity);
+    if (params?.source) query.set('source', params.source);
     return apiClient.get(`/api/v1/integration-reviews?${query.toString()}`);
   },
 
   async countPending(): Promise<{ data: { pendingCount: number; truncated: boolean } }> {
     return apiClient.get('/api/v1/integration-reviews/count');
   },
+
+  async getReview(runId: string): Promise<{ data: MobileReviewDetail }> {
+    return apiClient.get(`/api/v1/integration-reviews/${runId}`);
+  },
 };
+
+export interface MobileLinkedTransaction {
+  transactionId: string;
+  type: string | null;
+  tradeDate: string | null;
+  assetId: string | null;
+  ticker: string | null;
+  quantity: string | null;
+  amount: string | null;
+  currency: string | null;
+}
+
+export interface MobileReviewDetail {
+  item: MobileReviewItem | null;
+  state: 'ACTIONABLE' | 'RESOLVED';
+  resolvedReason: string | null;
+  portfolioName: string | null;
+  linkedTransactions: MobileLinkedTransaction[];
+  linkedTransactionsTruncated: boolean;
+  limitations: string[];
+}

@@ -68,6 +68,48 @@ export function describeReviewReason(code: string): string {
   return (REASON_COPY as Record<string, string>)[code] ?? 'item precisa de revisão';
 }
 
+/** Reconciliation state -> factual semantics. Display only, never advice. */
+export function describeReconciliationState(state: string): string {
+  if (state === 'MATCHED') return 'Os valores conferem nos dois lados.';
+  if (state === 'DIVERGENT')
+    return 'O mesmo item existe nos dois lados, mas com valores diferentes.';
+  if (state === 'MISSING_LOCAL') return 'Existe na fonte, mas não na carteira.';
+  if (state === 'MISSING_SOURCE') return 'Existe na carteira, mas não na fonte.';
+  if (state === 'UNRESOLVED') return 'Não há correspondência segura para este item.';
+  return state;
+}
+
+/** Difference field -> neutral pt-BR label. Display only. */
+export function describeDifferenceField(field: string): string {
+  if (field === 'date') return 'Data';
+  if (field === 'type') return 'Tipo';
+  if (field === 'asset') return 'Ativo';
+  if (field === 'quantity') return 'Quantidade';
+  if (field === 'amount') return 'Valor';
+  if (field === 'currency') return 'Moeda';
+  return field;
+}
+
+/** Matching fact -> neutral pt-BR label. Display only, never a score. */
+export function describeMatchingFact(fact: string): string {
+  if (fact === 'SAME_DATE') return 'mesma data';
+  if (fact === 'SAME_TYPE') return 'mesmo tipo';
+  if (fact === 'SAME_ASSET') return 'mesmo ativo';
+  if (fact === 'SAME_QUANTITY') return 'mesma quantidade';
+  if (fact === 'SAME_AMOUNT') return 'mesmo valor';
+  if (fact === 'SAME_CURRENCY') return 'mesma moeda';
+  return fact;
+}
+
+/** Workspace limitations -> factual copy. Display only. */
+export function describeWorkspaceLimitation(code: string): string {
+  if (code === 'SOURCE_FACTS_NOT_PERSISTED')
+    return 'O detalhamento item a item da fonte não é guardado após a execução. A comparação mostra os totais e os fatos locais confirmados.';
+  if (code === 'LINKED_TRANSACTIONS_TRUNCATED')
+    return 'Muitas operações vinculadas. Mostrando as primeiras; o livro-razão tem a lista completa.';
+  return code;
+}
+
 export interface ReviewItemMetrics {
   newRecords: number;
   probableDuplicates: number;

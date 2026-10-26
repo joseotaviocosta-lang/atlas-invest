@@ -36,6 +36,7 @@ export class IntegrationReviewsController {
   @ApiQuery({ name: 'cursor', required: false, description: 'Opaque cursor (run id)' })
   @ApiQuery({ name: 'severity', required: false, enum: ['REVIEW', 'WARNING', 'ERROR'] })
   @ApiQuery({ name: 'portfolioId', required: false, description: 'Scope to one portfolio' })
+  @ApiQuery({ name: 'source', required: false, enum: ['B3', 'CSV', 'MANUAL'] })
   @ApiResponse({ status: 200, description: 'Cursor-paginated review items' })
   async listReviews(
     @Query(new ZodValidationPipe(IntegrationReviewListQuerySchema))
@@ -49,6 +50,7 @@ export class IntegrationReviewsController {
         cursor: query.cursor ?? null,
         severity: query.severity ?? null,
         portfolioId: query.portfolioId ?? null,
+        source: query.source ?? null,
       },
     );
     const data = items.map((item) =>
@@ -101,6 +103,9 @@ export class IntegrationReviewsController {
         state: detail.state,
         resolvedReason: detail.resolvedReason,
         portfolioName: detail.portfolioName,
+        linkedTransactions: detail.linkedTransactions,
+        linkedTransactionsTruncated: detail.linkedTransactionsTruncated,
+        limitations: detail.limitations,
       },
     };
   }

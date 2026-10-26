@@ -1,9 +1,10 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { themeTokens } from '@atlas/ui';
 import {
+  REVIEW_FILTERS,
   REVIEW_SEVERITY_PRESENTATION,
   buildReviewItemSummaryLines,
   buildReviewItemTitle,
@@ -28,6 +29,7 @@ function severityColor(severity: MobileReviewItem['severity']): string {
 }
 
 function ReviewCard({ item }: { item: MobileReviewItem }) {
+  const router = useRouter();
   const presentation = REVIEW_SEVERITY_PRESENTATION[item.severity];
   const origin = describeIntegrationRunTrigger(item.trigger);
   const reasonCodes = item.reasonCodes as ReviewReasonCode[];
@@ -63,6 +65,14 @@ function ReviewCard({ item }: { item: MobileReviewItem }) {
         </Text>
       ))}
       <Text style={styles.itemDate}>{item.createdAt.slice(0, 10)}</Text>
+      <Pressable
+        onPress={() => router.push(`/(app)/reviews/${item.runId}` as never)}
+        accessibilityRole="button"
+        accessibilityLabel={`Ver detalhes da pendência de ${item.portfolioName ?? 'carteira'}`}
+        testID={`review-detail-${item.runId}`}
+      >
+        <Text style={styles.link}>Ver detalhes</Text>
+      </Pressable>
     </Card>
   );
 }
@@ -76,9 +86,16 @@ function ReviewCard({ item }: { item: MobileReviewItem }) {
  */
 export default function ReviewsScreen() {
   const router = useRouter();
+  const [severity, setSeverity] = useState<'ALL' | 'REVIEW' | 'WARNING' | 'ERROR'>('ALL');
+  const [source, setSource] = useState<string>('ALL');
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
-    queryKey: ['integration-reviews'],
-    queryFn: () => reviewsApi.listReviews({ limit: 50 }),
+    queryKey: ['integration-reviews', severity, source],
+    queryFn: () =>
+      reviewsApi.listReviews({
+        limit: 50,
+        severity: severity === 'ALL' ? null : severity,
+        source: source === 'ALL' ? null : source,
+      }),
     staleTime: 30_000,
   });
   const items = data?.data ?? [];
@@ -91,6 +108,38 @@ export default function ReviewsScreen() {
         onBack={() => router.back()}
       />
       <View style={styles.content}>
+        <View style={styles.filterRow}>
+          {REVIEW_FILTERS.map((filter) => (
+            <Pressable
+              key={filter.id}
+              onPress={() => setSeverity(filter.id as 'ALL' | 'REVIEW' | 'WARNING' | 'ERROR')}
+              accessibilityRole="button"
+              accessibilityLabel={`Filtrar por ${filter.label}`}
+              accessibilityState={{ selected: severity === filter.id }}
+              testID={`review-filter-${filter.id}`}
+            >
+              <Text style={[styles.filter, severity === filter.id && styles.filterActive]}>
+                {filter.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <View style={styles.filterRow}>
+          {['ALL', 'B3', 'CSV', 'MANUAL'].map((option) => (
+            <Pressable
+              key={option}
+              onPress={() => setSource(option)}
+              accessibilityRole="button"
+              accessibilityLabel={`Filtrar por origem ${option === 'ALL' ? 'todas' : option}`}
+              accessibilityState={{ selected: source === option }}
+              testID={`review-source-${option}`}
+            >
+              <Text style={[styles.filter, source === option && styles.filterActive]}>
+                {option === 'ALL' ? 'Todas' : option}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
         {isLoading ? (
           <LoadingState message="Carregando pendências..." />
         ) : isError ? (
@@ -172,5 +221,28 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginTop: 4,
     marginBottom: 12,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 8,
+  },
+  filter: {
+    fontSize: 13,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    color: themeTokens.colors.textMuted,
+  },
+  filterActive: {
+    fontWeight: '700',
+    color: themeTokens.colors.text,
+  },
+  link: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: themeTokens.colors.text,
+    textDecorationLine: 'underline',
+    marginTop: 6,
+    paddingVertical: 8,
   },
 });

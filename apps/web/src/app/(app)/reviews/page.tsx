@@ -62,6 +62,7 @@ function ReviewsContent() {
   const authReady = useAuthReady();
   const [severity, setSeverity] = useState<string>(searchParams.get('severity') ?? 'ALL');
   const [portfolioId, setPortfolioId] = useState<string>(searchParams.get('portfolioId') ?? '');
+  const [source, setSource] = useState<string>(searchParams.get('source') ?? 'ALL');
 
   const { data: portfolios = [] } = useQuery({
     queryKey: ['portfolios'],
@@ -77,11 +78,12 @@ function ReviewsContent() {
     const params = new URLSearchParams({ limit: '50' });
     if (severity !== 'ALL') params.set('severity', severity);
     if (portfolioId !== '') params.set('portfolioId', portfolioId);
+    if (source !== 'ALL') params.set('source', source);
     return params.toString();
-  }, [severity, portfolioId]);
+  }, [severity, portfolioId, source]);
 
   const reviewsQuery = useQuery({
-    queryKey: ['integration-reviews', severity, portfolioId],
+    queryKey: ['integration-reviews', severity, portfolioId, source],
     queryFn: async () => {
       const res = await apiClient.get<{ data: ReviewItem[] }>(
         `/api/v1/integration-reviews?${queryParams}`,
@@ -138,6 +140,17 @@ function ReviewsContent() {
               ))}
             </select>
           ) : null}
+          <select
+            value={source}
+            onChange={(event) => setSource(event.target.value)}
+            aria-label="Filtrar por origem"
+            style={{ minHeight: 44 }}
+          >
+            <option value="ALL">Todas as origens</option>
+            <option value="B3">B3</option>
+            <option value="CSV">CSV</option>
+            <option value="MANUAL">Manual</option>
+          </select>
         </div>
 
         {reviewsQuery.isLoading ? (
@@ -210,7 +223,7 @@ function ReviewsContent() {
                   <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
                     {formatCivilDateDisplay(item.createdAt.slice(0, 10))}
                   </span>
-                  <span>
+                  <span style={{ display: 'flex', gap: `${spacing.sm}px`, flexWrap: 'wrap' }}>
                     <Link
                       href={reviewActionHref(item.action)}
                       aria-label={`${action.label} a pendência de ${item.portfolioName ?? 'carteira'}`}
@@ -224,6 +237,20 @@ function ReviewsContent() {
                       }}
                     >
                       {action.label} →
+                    </Link>
+                    <Link
+                      href={`/reviews/${item.runId}`}
+                      aria-label={`Ver detalhes da pendência de ${item.portfolioName ?? 'carteira'}`}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        minHeight: 44,
+                        fontSize: '0.875rem',
+                        fontWeight: 600,
+                        color: colors.accent,
+                      }}
+                    >
+                      Ver detalhes →
                     </Link>
                   </span>
                 </article>

@@ -1,22 +1,31 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { EntityNotFoundError } from '@atlas/database';
 import type {
+  IAssetRepository,
   IIntegrationRunRepository,
   IntegrationRunRow,
   IPortfolioRepository,
+  ITransactionRepository,
 } from '@atlas/database';
 import {
   deriveReviewItems,
   type IntegrationReviewItem,
   type ReviewSeverity,
 } from '@atlas/import-engine';
-import { INTEGRATION_RUN_REPOSITORY, PORTFOLIO_REPOSITORY } from '../../database/tokens';
+import {
+  INTEGRATION_RUN_REPOSITORY,
+  PORTFOLIO_REPOSITORY,
+  ASSET_REPOSITORY,
+  TRANSACTION_REPOSITORY,
+} from '../../database/tokens';
+import type { Transaction } from '@atlas/domain';
 
 export interface ListReviewsInput {
   limit: number;
   cursor?: string | null;
   severity?: ReviewSeverity | null;
   portfolioId?: string | null;
+  source?: string | null;
 }
 
 export interface IntegrationReviewListResult {
@@ -29,11 +38,26 @@ export interface IntegrationReviewListResult {
 export type ReviewResolutionState = 'ACTIONABLE' | 'RESOLVED';
 export type ReviewResolvedReason = 'CONFIRMED' | 'SUPERSEDED' | 'NO_ACTION' | 'IN_PROGRESS';
 
+/** Canonical local fact for one linked transaction (never raw payloads). */
+export interface ReviewLinkedTransaction {
+  transactionId: string;
+  type: string | null;
+  tradeDate: string | null;
+  assetId: string | null;
+  ticker: string | null;
+  quantity: string | null;
+  amount: string | null;
+  currency: string | null;
+}
+
 export interface IntegrationReviewDetail {
   item: IntegrationReviewItem | null;
   state: ReviewResolutionState;
   resolvedReason: ReviewResolvedReason | null;
   portfolioName: string | null;
+  linkedTransactions: ReviewLinkedTransaction[];
+  linkedTransactionsTruncated: boolean;
+  limitations: string[];
 }
 
 /**
@@ -53,6 +77,10 @@ export class IntegrationReviewService {
     private readonly runs: IIntegrationRunRepository,
     @Inject(PORTFOLIO_REPOSITORY)
     private readonly portfolios: IPortfolioRepository,
+    @Inject(TRANSACTION_REPOSITORY)
+    private readonly transactions: ITransactionRepository,
+    @Inject(ASSET_REPOSITORY)
+    private readonly assets: IAssetRepository,
   ) {}
 
   private async ownedPortfolios(
@@ -106,9 +134,12 @@ export class IntegrationReviewService {
       cursor: anchor,
     });
     const items = deriveReviewItems(rows.map((row) => this.toDerivationInput(row)));
-    const filtered = input.severity
+    const bySeverity = input.severity
       ? items.filter((item) => item.severity === input.severity)
       : items;
+    const filtered = input.source
+      ? bySeverity.filter((item) => item.source === input.source)
+      : bySeverity;
     const lastRow = rows[rows.length - 1];
     return {
       items: filtered,
@@ -133,12 +164,20 @@ export class IntegrationReviewService {
       sameSource.map((candidate) => this.toDerivationInput(candidate)),
     );
     const item = items.find((candidate) => candidate.runId === runId) ?? null;
+    const linked = await this.linkedLocalFacts(row);
+    const limitations = this.workspaceLimitations(row, item);
+    if (linked.truncated) {
+      limitations.push('LINKED_TRANSACTIONS_TRUNCATED');
+    }
     if (item) {
       return {
         item,
         state: 'ACTIONABLE',
         resolvedReason: null,
         portfolioName: names.get(row.portfolioId) ?? null,
+        linkedTransactions: linked.rows,
+        linkedTransactionsTruncated: linked.truncated,
+        limitations,
       };
     }
     return {
@@ -146,7 +185,71 @@ export class IntegrationReviewService {
       state: 'RESOLVED',
       resolvedReason: this.resolvedReasonFor(row.status),
       portfolioName: names.get(row.portfolioId) ?? null,
+      linkedTransactions: linked.rows,
+      linkedTransactionsTruncated: linked.truncated,
+      limitations,
     };
+  }
+
+  /**
+   * Local facts for transactions this run confirmed, bounded. Source-side
+   * itemization is never persisted, so the source panel stays empty by
+   * design (see SOURCE_FACTS_NOT_PERSISTED).
+   */
+  private async linkedLocalFacts(row: IntegrationRunRow): Promise<{
+    rows: ReviewLinkedTransaction[];
+    truncated: boolean;
+  }> {
+    const ids = await this.runs.listTransactionIdsByRun(row.id, row.portfolioId);
+    const page = ids.slice(0, REVIEW_LINKED_TRANSACTIONS_LIMIT + 1);
+    const transactions = page.length > 0 ? await this.transactions.findByIds(page) : [];
+    const assetIds = [
+      ...new Set(
+        transactions
+          .map((tx) => readTransactionAssetId(tx))
+          .filter((assetId): assetId is string => assetId !== null),
+      ),
+    ];
+    const metas = assetIds.length > 0 ? await this.assets.findByIds(assetIds) : [];
+    const tickerById = new Map(metas.map((asset) => [String(asset.id), asset.ticker as string]));
+    const rows = transactions.slice(0, REVIEW_LINKED_TRANSACTIONS_LIMIT).map((tx) => {
+      const assetId = readTransactionAssetId(tx);
+      return {
+        transactionId: readTransactionId(tx),
+        type: readTransactionType(tx),
+        tradeDate: readTransactionTradeDate(tx),
+        assetId,
+        ticker: assetId !== null ? (tickerById.get(assetId) ?? null) : null,
+        quantity: readTransactionQuantity(tx),
+        amount: readTransactionAmount(tx),
+        currency: readTransactionCurrency(tx),
+      };
+    });
+    return { rows, truncated: ids.length > REVIEW_LINKED_TRANSACTIONS_LIMIT };
+  }
+
+  private workspaceLimitations(
+    row: IntegrationRunRow,
+    item: IntegrationReviewItem | null,
+  ): string[] {
+    const limitations: string[] = [];
+    const reconReasons = [
+      'POSITION_DIVERGENCE',
+      'MISSING_LOCAL_POSITION',
+      'MISSING_SOURCE_POSITION',
+      'UNRESOLVED_POSITION',
+      'NEW_RECORDS',
+      'PROBABLE_DUPLICATE',
+      'CONFLICT',
+    ];
+    const reasons = item?.reasonCodes ?? [];
+    if (row.reconciliation !== null || reasons.some((code) => reconReasons.includes(code))) {
+      // Source snapshots and per-item entries are derived in memory
+      // during preview/sync and never persisted — historical runs keep
+      // counts only.
+      limitations.push('SOURCE_FACTS_NOT_PERSISTED');
+    }
+    return limitations;
   }
 
   private resolvedReasonFor(status: string): ReviewResolvedReason {
@@ -162,4 +265,51 @@ export class IntegrationReviewService {
     const items = deriveReviewItems(rows.map((row) => this.toDerivationInput(row)));
     return { pendingCount: items.length, truncated: rows.length >= 200 };
   }
+}
+
+/** Bounded linked-transaction page: detail stays lazy, never full dumps. */
+const REVIEW_LINKED_TRANSACTIONS_LIMIT = 50;
+
+type RawTx = {
+  id?: { toString(): string };
+  type?: string;
+  tradeDate?: { toString(): string };
+  currency?: string;
+  assetId?: { toString(): string };
+  quantity?: { value?: string };
+  amount?: { amount?: string };
+};
+
+function readTransactionId(tx: Transaction): string {
+  return (tx as unknown as RawTx).id?.toString() ?? '';
+}
+
+function readTransactionType(tx: Transaction): string | null {
+  const type = (tx as unknown as RawTx).type;
+  return typeof type === 'string' ? type : null;
+}
+
+function readTransactionTradeDate(tx: Transaction): string | null {
+  const date = (tx as unknown as RawTx).tradeDate?.toString();
+  return typeof date === 'string' ? date.slice(0, 10) : null;
+}
+
+function readTransactionAssetId(tx: Transaction): string | null {
+  const assetId = (tx as unknown as RawTx).assetId?.toString();
+  return typeof assetId === 'string' ? assetId : null;
+}
+
+function readTransactionQuantity(tx: Transaction): string | null {
+  const quantity = (tx as unknown as RawTx).quantity?.value;
+  return typeof quantity === 'string' ? quantity : null;
+}
+
+function readTransactionAmount(tx: Transaction): string | null {
+  const amount = (tx as unknown as RawTx).amount?.amount;
+  return typeof amount === 'string' ? amount : null;
+}
+
+function readTransactionCurrency(tx: Transaction): string | null {
+  const currency = (tx as unknown as RawTx).currency;
+  return typeof currency === 'string' ? currency : null;
 }
