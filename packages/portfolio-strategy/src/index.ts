@@ -10,5 +10,6 @@ export * from './contribution-calendar';
 export * from './composition';
 export * from './income';
 export * from './data-quality';
+export * from './maintenance';
 export * from './operations';
 export * from './reconciliation';

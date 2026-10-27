@@ -25,6 +25,13 @@ interface QualityIssueView {
     count: number | null;
   };
   actions: Array<{ type: string; assetId: string | null }>;
+  maintenance?: {
+    status: string;
+    actionType: string;
+    route: string | null;
+    explanation: string;
+    safetyNote: string | null;
+  } | null;
 }
 
 interface PositionDataQualityData {
@@ -41,6 +48,31 @@ interface PositionDataQualityData {
   generatedAt: string;
   marketDataAsOf: string | null;
   limitations: string[];
+}
+
+/**
+ * Phase 5S-D — maintenance action labels (display only; actionability
+ * comes from the backend policy).
+ */
+function maintenanceActionLabel(actionType: string): string {
+  switch (actionType) {
+    case 'REFRESH_MARKET_DATA':
+      return 'atualizar dados de mercado';
+    case 'REFRESH_FX_DATA':
+      return 'atualizar câmbio (provedor)';
+    case 'REVIEW_RECONCILIATION':
+      return 'revisar reconciliação';
+    case 'VIEW_OPERATIONS':
+      return 'ver operações';
+    case 'VIEW_POSITION':
+      return 'ver posição';
+    case 'VIEW_MARKET_DATA':
+      return 'ver dados de mercado';
+    case 'VIEW_REVIEWS':
+      return 'ver revisões';
+    default:
+      return 'ver manutenção de dados';
+  }
 }
 
 /**
@@ -103,6 +135,12 @@ export function PositionDataQualitySection({
                   <span>
                     {' '}
                     Afeta: {issue.affectedCapabilities.map(describeAffectedCapability).join(', ')}.
+                  </span>
+                )}
+                {issue.maintenance && issue.maintenance.status !== 'STRUCTURAL' && (
+                  <span>
+                    {' '}
+                    Ação disponível: {maintenanceActionLabel(issue.maintenance.actionType)}.
                   </span>
                 )}
               </li>

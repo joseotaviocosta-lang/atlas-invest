@@ -9,6 +9,7 @@ import type {
 import { deriveReviewItems } from '@atlas/import-engine';
 import {
   buildOperationsAttention,
+  deriveMaintenanceAction,
   deriveOperationsStatus,
   previewAttention,
   type OperationsAttentionItem,
@@ -87,8 +88,44 @@ export interface PortfolioOperationsModel {
     decidedPairs: number;
     totalPairs: number;
   };
+  /**
+   * Phase 5S-D — maintenance counts over the same quality issues.
+   * Same policy as the maintenance workspace; navigation only, no
+   * new attention category.
+   */
+  maintenance: {
+    actionable: number;
+    navigable: number;
+    unsupported: number;
+    structural: number;
+  };
   availableActions: Array<{ type: string }>;
   limitations: string[];
+}
+
+/**
+ * Phase 5S-D — maintenance counts over the 5R-E issues in this
+ * composition. Same pure policy as the maintenance workspace, so
+ * counts are consistent everywhere. Structural classification limits
+ * count as structural.
+ */
+function summarizeMaintenance(quality: PortfolioDataQualityModel): {
+  actionable: number;
+  navigable: number;
+  unsupported: number;
+  structural: number;
+} {
+  const counts = { actionable: 0, navigable: 0, unsupported: 0, structural: 0 };
+  const issues = [...quality.positions.flatMap((row) => row.issues), ...quality.portfolioIssues];
+  for (const issue of issues) {
+    const status = deriveMaintenanceAction(issue.code).status;
+    if (status === 'ACTIONABLE') counts.actionable += 1;
+    else if (status === 'NAVIGABLE') counts.navigable += 1;
+    else if (status === 'STRUCTURAL') counts.structural += 1;
+    else counts.unsupported += 1;
+  }
+  counts.structural += quality.structuralLimitations.length;
+  return counts;
 }
 
 function toDerivationInput(row: IntegrationRunRow) {
@@ -258,6 +295,7 @@ export async function composePortfolioOperations(
     reviewPreview,
     recentActivity,
     reviewWorkflow: { pendingPairs, decidedPairs, totalPairs },
+    maintenance: summarizeMaintenance(quality),
     availableActions: [
       { type: 'VIEW_REVIEWS' },
       { type: 'VIEW_DATA_QUALITY' },

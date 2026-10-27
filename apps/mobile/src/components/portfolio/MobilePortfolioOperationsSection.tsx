@@ -67,6 +67,12 @@ interface PortfolioOperationsData {
     decidedPairs: number;
     totalPairs: number;
   };
+  maintenance: {
+    actionable: number;
+    navigable: number;
+    unsupported: number;
+    structural: number;
+  };
   reviewPreview: Array<{
     source: string;
     status: string;
@@ -204,6 +210,25 @@ export function MobilePortfolioOperationsSection({ portfolioId }: { portfolioId:
                 {data.dataQuality.summary.positionsBlocked} com dados insuficientes
               </Text>
             </View>
+            {(data.maintenance.actionable > 0 || data.maintenance.navigable > 0) && (
+              <View testID="operations-maintenance">
+                <Text style={styles.subHeading}>Manutenção de dados</Text>
+                <Text style={styles.muted}>
+                  {data.maintenance.actionable > 0 &&
+                    `${data.maintenance.actionable} podem ser corrigidas no Atlas. `}
+                  {data.maintenance.navigable > 0 &&
+                    `${data.maintenance.navigable} requerem revisão.`}
+                </Text>
+                <Pressable
+                  onPress={() => router.push('/(app)/reviews' as never)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Ver revisões"
+                  testID="operations-maintenance-reviews"
+                >
+                  <Text style={styles.link}>Ver revisões</Text>
+                </Pressable>
+              </View>
+            )}
             {data.recentActivity.length > 0 && (
               <View testID="operations-recent-runs">
                 <Text style={styles.subHeading}>Execuções recentes</Text>

@@ -12,6 +12,7 @@ import {
 } from '../../database/tokens';
 import { GetPortfolioAllocationUseCase } from '../valuation/get-portfolio-allocation.use-case';
 import { GetPortfolioValuationUseCase } from '../valuation/get-portfolio-valuation.use-case';
+import { deriveMaintenanceAction } from '@atlas/portfolio-strategy';
 import {
   composePortfolioDataQuality,
   type DataQualityPositionRow,
@@ -63,8 +64,15 @@ export class GetPositionDataQualityUseCase {
     if (!row) {
       throw new EntityNotFoundError('Position', params.assetId);
     }
+    // Same policy as the portfolio maintenance workspace: actionability
+    // is derived from the backend policy, never decided in the UI.
+    const issues = row.issues.map((issue) => ({
+      ...issue,
+      maintenance: deriveMaintenanceAction(issue.code),
+    }));
     return {
       ...row,
+      issues,
       portfolioId: quality.portfolioId,
       generatedAt: quality.generatedAt,
       marketDataAsOf: quality.marketDataAsOf,

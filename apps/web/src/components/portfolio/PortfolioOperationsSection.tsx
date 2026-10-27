@@ -71,6 +71,12 @@ interface PortfolioOperationsData {
     decidedPairs: number;
     totalPairs: number;
   };
+  maintenance: {
+    actionable: number;
+    navigable: number;
+    unsupported: number;
+    structural: number;
+  };
   reviewPreview: Array<{
     source: string;
     status: string;
@@ -243,6 +249,24 @@ export function PortfolioOperationsSection({ portfolioId }: { portfolioId: strin
               Ver qualidade dos dados
             </Link>
           </div>
+
+          {(data.maintenance.actionable > 0 || data.maintenance.navigable > 0) && (
+            <div data-testid="operations-maintenance">
+              <h4 style={{ fontSize: '0.875rem', margin: '12px 0 4px' }}>Manutenção de dados</h4>
+              <p style={{ fontSize: '0.8125rem', color: colors.textSecondary, margin: 0 }}>
+                {data.maintenance.actionable > 0 &&
+                  `${data.maintenance.actionable} podem ser corrigidas no Atlas. `}
+                {data.maintenance.navigable > 0 &&
+                  `${data.maintenance.navigable} requerem revisão.`}
+              </p>
+              <Link
+                href={`/portfolio/maintenance?portfolioId=${portfolioId}`}
+                aria-label="Revisar manutenção"
+              >
+                Revisar manutenção
+              </Link>
+            </div>
+          )}
 
           {data.recentActivity.length > 0 && (
             <div data-testid="operations-recent-runs">

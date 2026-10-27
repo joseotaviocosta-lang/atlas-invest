@@ -17,6 +17,8 @@ export * from './get-portfolio-composition.use-case';
 export * from './get-portfolio-income.use-case';
 export * from './get-portfolio-data-quality.use-case';
 export * from './portfolio-data-quality.compose';
+export * from './get-portfolio-maintenance.use-case';
+export * from './portfolio-maintenance.compose';
 export * from './get-portfolio-operations.use-case';
 export * from './portfolio-operations.compose';
 export * from './portfolio-contribution-goals.use-case';
