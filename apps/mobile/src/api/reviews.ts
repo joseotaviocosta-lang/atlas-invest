@@ -76,6 +76,7 @@ export interface MobileLinkedTransaction {
   currency: string | null;
   decision: 'CONFIRM_MATCH' | 'NOT_A_MATCH' | null;
   decidedAt: string | null;
+  rectified: boolean;
 }
 
 export interface MobileReviewDetail {

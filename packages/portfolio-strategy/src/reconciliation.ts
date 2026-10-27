@@ -320,3 +320,87 @@ export function deriveSourceItemKey(input: SourceItemKeyInput): string {
   ].join('|');
   return `hash:${sha256Hex(canonical)}`;
 }
+
+export interface RectificationPairLink {
+  originalTransactionId: string;
+  replacementTransactionId: string | null;
+}
+
+export type RectificationChainStatus = 'CURRENT' | 'SUPERSEDED';
+
+/**
+ * Resolves the current effective transaction of a rectification chain.
+ * Follows original → replacement links to the terminal replacement.
+ * Cycle-safe by construction (visited guard): replacements are always
+ * freshly created, so a cycle indicates corrupt data and resolves to
+ * null instead of looping.
+ */
+export function resolveEffectiveTransactionId(
+  transactionId: string,
+  links: readonly RectificationPairLink[],
+): string | null {
+  const next = new Map<string, string | null>();
+  for (const link of links) {
+    if (!next.has(link.originalTransactionId)) {
+      next.set(link.originalTransactionId, link.replacementTransactionId);
+    }
+  }
+  const visited = new Set<string>();
+  let current: string | null = transactionId;
+  while (current !== null && next.has(current)) {
+    if (visited.has(current)) return null;
+    visited.add(current);
+    const following = next.get(current);
+    if (following === undefined || following === null) return current;
+    current = following;
+  }
+  return current;
+}
+
+export interface CanonicalTransactionFacts {
+  type: string | null;
+  tradeDate: string | null;
+  assetId: string | null;
+  accountId: string | null;
+  quantity: string | null;
+  unitPrice: string | null;
+  fees: string | null;
+  taxes: string | null;
+  currency: string | null;
+}
+
+function equivalentDecimal(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = typeof a === 'string' && a !== '' ? a : '0';
+  const right = typeof b === 'string' && b !== '' ? b : '0';
+  try {
+    return canonicalDecimal(left) === canonicalDecimal(right);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Exact equivalence between an original and a candidate replacement
+ * (all canonical fields; no floats; dates as YYYY-MM-DD prefixes).
+ * Used to reject no-change rectifications before writing anything.
+ */
+export function isEquivalentReplacement(
+  original: CanonicalTransactionFacts,
+  replacement: CanonicalTransactionFacts,
+): boolean {
+  if ((original.type ?? null) !== (replacement.type ?? null)) return false;
+  if (original.tradeDate !== null && replacement.tradeDate !== null) {
+    if (!datesEqual(original.tradeDate, replacement.tradeDate)) return false;
+  } else if (original.tradeDate !== replacement.tradeDate) {
+    return false;
+  }
+  if ((original.assetId ?? null) !== (replacement.assetId ?? null)) return false;
+  if ((original.accountId ?? null) !== (replacement.accountId ?? null)) return false;
+  if ((original.currency ?? null) !== (replacement.currency ?? null)) return false;
+  return (
+    equivalentDecimal(original.quantity, replacement.quantity) &&
+    equivalentDecimal(original.unitPrice, replacement.unitPrice) &&
+    equivalentDecimal(original.fees, replacement.fees) &&
+    equivalentDecimal(original.taxes, replacement.taxes)
+  );
+}

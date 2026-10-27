@@ -47,6 +47,13 @@ export interface PortfolioActivityItemViewModel {
   readonly canNavigateToAsset: boolean;
   readonly secondaryContext: string | null;
   readonly details: Record<string, unknown>;
+  readonly rectification?: {
+    readonly status: 'SUPERSEDED' | 'CORRECTION';
+    readonly replacementTransactionId: string | null;
+    readonly originalTransactionId: string | null;
+    readonly reason: string | null;
+    readonly decidedAt: string;
+  } | null;
 }
 
 export interface PortfolioActivityGroupViewModel {
@@ -497,9 +504,16 @@ export function buildPortfolioActivityViewModel(
     }
   });
 
+  // 3b. Attach rectification badges from the API read model (pass-through,
+  // order-preserving with the input items).
+  const withRectification: PortfolioActivityItemViewModel[] = mappedItems.map((vm, index) => ({
+    ...vm,
+    rectification: historyItems[index]?.rectification ?? null,
+  }));
+
   // 4. Group by civil date (tradeDate YYYY-MM-DD), preserving descending order
   const groupMap = new Map<string, PortfolioActivityItemViewModel[]>();
-  for (const item of mappedItems) {
+  for (const item of withRectification) {
     const existing = groupMap.get(item.tradeDate);
     if (existing) {
       existing.push(item);

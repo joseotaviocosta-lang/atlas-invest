@@ -107,6 +107,13 @@ export interface PortfolioHistoryItemReadModel {
   readonly assetId: string | null;
   readonly currency: string | null;
   readonly details: Record<string, unknown>;
+  readonly rectification?: {
+    readonly status: 'SUPERSEDED' | 'CORRECTION';
+    readonly replacementTransactionId: string | null;
+    readonly originalTransactionId: string | null;
+    readonly reason: string | null;
+    readonly decidedAt: string;
+  } | null;
 }
 
 export interface PortfolioHistoryPaginationMeta {

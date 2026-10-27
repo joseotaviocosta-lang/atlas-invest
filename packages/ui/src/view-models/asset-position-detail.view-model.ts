@@ -9,6 +9,14 @@ import {
 
 export type { AssetMeta };
 
+export interface PortfolioHistoryRectificationDto {
+  readonly status: 'SUPERSEDED' | 'CORRECTION';
+  readonly replacementTransactionId: string | null;
+  readonly originalTransactionId: string | null;
+  readonly reason: string | null;
+  readonly decidedAt: string;
+}
+
 export interface PortfolioHistoryItemDto {
   readonly id: string;
   readonly kind: 'REALIZED_DISPOSAL' | 'INCOME' | 'CASH_FLOW' | 'CORPORATE_ACTION' | 'TRANSFER';
@@ -18,6 +26,7 @@ export interface PortfolioHistoryItemDto {
   readonly assetId: string | null;
   readonly currency: string | null;
   readonly details: Record<string, unknown>;
+  readonly rectification?: PortfolioHistoryRectificationDto | null;
 }
 
 export interface PortfolioHistoryPaginationMetaDto {

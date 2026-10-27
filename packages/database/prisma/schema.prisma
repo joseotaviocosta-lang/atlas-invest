@@ -121,6 +121,7 @@ model Portfolio {
   aiConversations        AiConversation[]
   annualOpeningPositions AnnualOpeningPositionInputRecord[]
   reconciliationDecisions ReconciliationDecisionRecord[]
+  transactionRectifications TransactionRectificationRecord[]
 
   @@index([userId])
   @@map("portfolios")
@@ -197,6 +198,9 @@ model Transaction {
   taxTradeClassifications TaxTradeClassificationRecord[]
   contributionPlanLinks   ContributionPlanTransactionLink[]
   reconciliationDecisions ReconciliationDecisionRecord[]
+  rectificationsAsOriginal      TransactionRectificationRecord[] @relation("RectificationOriginal")
+  rectificationsAsCompensating  TransactionRectificationRecord[] @relation("RectificationCompensating")
+  rectificationsAsReplacement   TransactionRectificationRecord[] @relation("RectificationReplacement")
 
   @@unique([portfolioId, provider, externalId], name: "portfolio_provider_external_id_unique")
   @@index([portfolioId, tradeDate, createdAt, id])
@@ -1470,6 +1474,38 @@ model IngestionJobRunRecord {
   @@index([status], map: "ingestion_job_runs_status_idx")
   @@index([startedAt], map: "ingestion_job_runs_started_at_idx")
   @@map("ingestion_job_runs")
+}
+
+/// Phase 5S-C — append-only transaction rectification link (identity + audit only).
+/// One row asserts that a human rectified an original transaction: the
+/// ledger keeps the original, its compensating reversal and (except for
+/// pure cancellations) the replacement. Never updates or deletes any
+/// transaction; replay nets out through the compensating leg. One outgoing
+/// rectification per original (pair chain A→B→C via successive rows).
+/// Replacements are always freshly created in the rectification flow,
+/// so cycles are structurally impossible. No raw provider payloads.
+model TransactionRectificationRecord {
+  id                   String   @id @default(uuid()) @db.Uuid
+  portfolioId          String   @map("portfolio_id") @db.Uuid
+  originalTransactionId String  @map("original_transaction_id") @db.Uuid
+  compensatingTransactionId String @map("compensating_transaction_id") @db.Uuid
+  replacementTransactionId String? @map("replacement_transaction_id") @db.Uuid
+  mode                 String   @db.VarChar(20)
+  reason               String   @db.VarChar(500)
+  decidedByPrincipal   String   @map("decided_by_principal") @db.VarChar(255)
+  decidedAt            DateTime @map("decided_at") @db.Timestamptz(6)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  portfolio     Portfolio   @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  original      Transaction @relation("RectificationOriginal", fields: [originalTransactionId], references: [id], onDelete: Restrict)
+  compensating  Transaction @relation("RectificationCompensating", fields: [compensatingTransactionId], references: [id], onDelete: Restrict)
+  replacement   Transaction? @relation("RectificationReplacement", fields: [replacementTransactionId], references: [id], onDelete: Restrict)
+
+  @@unique([originalTransactionId], map: "transaction_rectification_original_uniq")
+  @@unique([compensatingTransactionId], map: "transaction_rectification_compensating_uniq")
+  @@unique([replacementTransactionId], map: "transaction_rectification_replacement_uniq")
+  @@index([portfolioId], map: "transaction_rectification_portfolio_idx")
+  @@map("transaction_rectifications")
 }
 
 /// Phase 5G - Operational alert event (dedupe + lifecycle, never financial).

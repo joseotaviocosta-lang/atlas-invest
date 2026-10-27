@@ -145,7 +145,10 @@ export class PortfolioTransactionsController {
     });
 
     return {
-      data: result.items.map(serializeTransaction),
+      data: result.items.map((tx) => ({
+        ...serializeTransaction(tx),
+        rectification: result.rectifications.get(tx.id) ?? null,
+      })),
       meta: {
         limit: result.limit,
         cursor: result.cursor ?? null,
@@ -168,6 +171,11 @@ export class PortfolioTransactionsController {
   @ApiResponse({ status: 200, description: 'Transaction rectified or cancelled successfully' })
   @ApiResponse({ status: 400, description: 'Validation failed or transaction ineligible' })
   @ApiResponse({ status: 404, description: 'Portfolio or transaction not found' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Transaction already rectified; error carries the current effective transaction id',
+  })
   async rectify(
     @Param('portfolioId', UUIDParamPipe) portfolioId: string,
     @Param('transactionId', UUIDParamPipe) transactionId: string,
@@ -193,6 +201,8 @@ export class PortfolioTransactionsController {
           ? serializeTransaction(result.replacementTransaction)
           : null,
         isIdempotentReplay: result.isIdempotentReplay,
+        rectificationId: result.rectificationId,
+        effectiveTransactionId: result.effectiveTransactionId,
         summary: result.summary,
       },
     };
@@ -217,9 +227,15 @@ export class TransactionsController {
     @Param('transactionId', UUIDParamPipe) transactionId: string,
     @CurrentPrincipal() principal: AuthenticatedPrincipal,
   ) {
-    const tx = await this.getTransactionUseCase.execute(transactionId, principal.userId);
+    const { transaction, rectification } = await this.getTransactionUseCase.execute(
+      transactionId,
+      principal.userId,
+    );
     return {
-      data: serializeTransaction(tx),
+      data: {
+        ...serializeTransaction(transaction),
+        rectification,
+      },
     };
   }
 }

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import {
   Transaction,
   TransactionFactory,
@@ -10,6 +10,7 @@ import {
 } from '@atlas/domain';
 import {
   ITransactionRepository,
+  ITransactionRectificationRepository,
   IPortfolioRepository,
   IAccountRepository,
   IAssetRepository,
@@ -19,10 +20,12 @@ import {
 } from '@atlas/database';
 import {
   TRANSACTION_REPOSITORY,
+  TRANSACTION_RECTIFICATION_REPOSITORY,
   PORTFOLIO_REPOSITORY,
   ACCOUNT_REPOSITORY,
   ASSET_REPOSITORY,
 } from '../../database/tokens';
+import { isEquivalentReplacement } from '@atlas/portfolio-strategy';
 
 export interface RectifyTransactionReplacementCommand {
   type?: TransactionType;
@@ -51,6 +54,8 @@ export interface RectifyPortfolioTransactionResult {
   compensatingTransaction: Transaction;
   replacementTransaction: Transaction | null;
   isIdempotentReplay: boolean;
+  rectificationId: string | null;
+  effectiveTransactionId: string | null;
   summary: string;
 }
 
@@ -59,6 +64,8 @@ export class RectifyPortfolioTransactionUseCase {
   constructor(
     @Inject(TRANSACTION_REPOSITORY)
     private readonly transactionRepository: ITransactionRepository,
+    @Inject(TRANSACTION_RECTIFICATION_REPOSITORY)
+    private readonly rectifications: ITransactionRectificationRepository,
     @Inject(PORTFOLIO_REPOSITORY)
     private readonly portfolioRepository: IPortfolioRepository,
     @Inject(ACCOUNT_REPOSITORY)
@@ -70,6 +77,15 @@ export class RectifyPortfolioTransactionUseCase {
   async execute(
     command: RectifyPortfolioTransactionCommand,
   ): Promise<RectifyPortfolioTransactionResult> {
+    const decidedAt = new Date();
+    const reason = command.reason?.trim() ?? '';
+    if (reason === '') {
+      throw new InvalidTransactionError('A reason is required to rectify a transaction.');
+    }
+    if (reason.length > 500) {
+      throw new InvalidTransactionError('Reason must be at most 500 characters.');
+    }
+
     // 1. Anti-enumeration: Verify portfolio ownership
     const portfolio = await this.portfolioRepository.findById(command.portfolioId);
     if (!portfolio || portfolio.userId !== command.userId) {
@@ -118,6 +134,10 @@ export class RectifyPortfolioTransactionUseCase {
                 replacementExternalId,
               )
             : null;
+        const existingLink = await this.rectifications.findByOriginalTransactionId(
+          originalTx.id,
+          command.portfolioId,
+        );
 
         return {
           originalTransactionId: originalTx.id,
@@ -125,6 +145,12 @@ export class RectifyPortfolioTransactionUseCase {
           compensatingTransaction: existingReversal,
           replacementTransaction: existingReplacement,
           isIdempotentReplay: true,
+          rectificationId: existingLink?.id ?? null,
+          effectiveTransactionId:
+            existingLink?.replacementTransactionId !== null &&
+            existingLink?.replacementTransactionId !== undefined
+              ? await this.resolveEffectiveTransactionId(command.portfolioId, originalTx.id)
+              : null,
           summary:
             command.mode === 'CANCEL'
               ? 'Operação de estorno já confirmada anteriormente (reexecução idempotente).'
@@ -133,7 +159,27 @@ export class RectifyPortfolioTransactionUseCase {
       }
     }
 
-    // 5. Prevent non-idempotent duplicate compensation for the same original transaction
+    // 5. Already rectified (append-only link table): one outgoing rectification
+    // per original. Legacy notes-marked rectifications fall back to
+    // external-id resolution below so old data stays navigable.
+    const existingLink = await this.rectifications.findByOriginalTransactionId(
+      originalTx.id,
+      command.portfolioId,
+    );
+    if (existingLink) {
+      throw new ConflictException({
+        message: 'Transaction has already been rectified.',
+        code: 'TRANSACTION.ALREADY_RECTIFIED',
+        effectiveTransactionId: await this.resolveEffectiveTransactionId(
+          command.portfolioId,
+          originalTx.id,
+        ),
+      });
+    }
+
+    // 6. Prevent non-idempotent duplicate compensation for the same original transaction.
+    // New append-only link rows are checked first (3b); this legacy
+    // notes scan covers rectifications recorded before link rows existed.
     const portfolioTxs = await this.transactionRepository.findByPortfolioId(command.portfolioId);
     const alreadyCompensated = portfolioTxs.some(
       (t) =>
@@ -141,14 +187,19 @@ export class RectifyPortfolioTransactionUseCase {
         (!command.idempotencyKey || t.externalId !== reversalExternalId),
     );
     if (alreadyCompensated) {
-      throw new InvalidTransactionError(
-        'Esta transação já foi estornada/retificada anteriormente.',
-      );
+      throw new ConflictException({
+        message: 'Transaction has already been rectified.',
+        code: 'TRANSACTION.ALREADY_RECTIFIED',
+        effectiveTransactionId: await this.resolveEffectiveTransactionId(
+          command.portfolioId,
+          originalTx.id,
+        ),
+      });
     }
 
     // 6. Derive canonical compensating transaction (strictly append-only, opposite type)
     const compensatingType = originalTx.type === 'BUY' ? 'SELL' : 'BUY';
-    const reasonClean = command.reason?.trim();
+    const reasonClean = reason;
     const compensatingNotes = `[COMPENSAÇÃO ref ${originalTx.id}]${
       command.mode === 'CANCEL' ? ' Estorno cancelatório' : ' Estorno para retificação'
     }${reasonClean ? `: ${reasonClean}` : ''}`;
@@ -262,28 +313,83 @@ export class RectifyPortfolioTransactionUseCase {
         repType === 'BUY'
           ? TransactionFactory.createBuy(commonReplacementProps)
           : TransactionFactory.createSell(commonReplacementProps);
+
+      // No-change guard: a replacement identical to the original in every
+      // canonical field is rejected before writing anything.
+      const originalTrade = originalTx as unknown as {
+        quantity?: { value?: string };
+        unitPrice?: { amount?: string };
+        fees?: { amount?: string };
+        taxes?: { amount?: string };
+        assetId?: { toString(): string };
+      };
+      const equivalent = isEquivalentReplacement(
+        {
+          type: originalTx.type,
+          tradeDate: originalTx.tradeDate.toString(),
+          assetId: originalTx.assetId ?? null,
+          accountId: originalTx.accountId,
+          quantity: originalTrade.quantity?.value ?? null,
+          unitPrice: originalTrade.unitPrice?.amount ?? null,
+          fees: originalTrade.fees?.amount ?? null,
+          taxes: originalTrade.taxes?.amount ?? null,
+          currency: originalTx.currency,
+        },
+        {
+          type: repType,
+          tradeDate: rep.tradeDate,
+          assetId: targetAssetId,
+          accountId: targetAccountId,
+          quantity: rep.quantity,
+          unitPrice: rep.unitPrice,
+          fees: rep.fees ?? '0',
+          taxes: '0',
+          currency: originalTx.currency,
+        },
+      );
+      if (equivalent) {
+        throw new InvalidTransactionError(
+          'Replacement is identical to the original transaction. Nothing to rectify.',
+        );
+      }
     }
 
-    // 8. Atomic persistence of compensating and replacement transactions in single DB transaction
+    // 8. Atomic persistence of compensating + replacement transactions and
+    // the rectification link in a single DB transaction. Either everything
+    // lands or nothing does — no orphan legs, no link-less rectifications.
     const toPersist: Transaction[] =
       command.mode === 'CANCEL' ? [compensatingTx] : [compensatingTx, replacementTx!];
 
     try {
-      const persisted = await this.transactionRepository.createMany(toPersist);
+      const created = await this.rectifications.createWithTransactions({
+        transactions: toPersist,
+        link: {
+          portfolioId: command.portfolioId,
+          originalTransactionId: originalTx.id,
+          compensatingTransactionId: toPersist[0]!.id,
+          replacementTransactionId: command.mode === 'CANCEL' ? null : (toPersist[1]?.id ?? null),
+          mode: command.mode,
+          reason,
+          decidedByPrincipal: command.userId,
+          decidedAt,
+        },
+      });
 
       return {
         originalTransactionId: originalTx.id,
         mode: command.mode,
-        compensatingTransaction: persisted[0]!,
-        replacementTransaction: persisted[1] ?? null,
+        compensatingTransaction: created.transactions[0]!,
+        replacementTransaction: created.transactions[1] ?? null,
         isIdempotentReplay: false,
+        rectificationId: created.record.id,
+        effectiveTransactionId: created.record.replacementTransactionId,
         summary:
           command.mode === 'CANCEL'
             ? 'Transação estornada com sucesso no ledger.'
             : 'Transação retificada com sucesso: estorno e nova operação registradas no ledger.',
       };
     } catch (error) {
-      // If concurrent request succeeded with same idempotency key, return existing
+      // Concurrent winner with the same idempotency key: return existing.
       if (error instanceof DuplicateExternalTransactionError && command.idempotencyKey) {
         const reversal = await this.transactionRepository.findByExternalId(
           command.portfolioId,
@@ -299,6 +405,10 @@ export class RectifyPortfolioTransactionUseCase {
                   replacementExternalId,
                 )
               : null;
+          const existingLink = await this.rectifications.findByOriginalTransactionId(
+            originalTx.id,
+            command.portfolioId,
+          );
 
           return {
             originalTransactionId: originalTx.id,
@@ -306,6 +416,8 @@ export class RectifyPortfolioTransactionUseCase {
             compensatingTransaction: reversal,
             replacementTransaction: replacement,
             isIdempotentReplay: true,
+            rectificationId: existingLink?.id ?? null,
+            effectiveTransactionId: existingLink?.replacementTransactionId ?? null,
             summary:
               command.mode === 'CANCEL'
                 ? 'Operação de estorno já confirmada anteriormente (reexecução idempotente).'
@@ -313,7 +425,35 @@ export class RectifyPortfolioTransactionUseCase {
           };
         }
       }
+      // Any concurrent winner (same key without a clean read, different key,
+      // or raw unique violation): if a link row now exists for this original,
+      // the race is settled — report the conflict with the effective target
+      // instead of a generic persistence error.
+      const raced = await this.rectifications.findByOriginalTransactionId(
+        originalTx.id,
+        command.portfolioId,
+      );
+      if (raced) {
+        throw new ConflictException({
+          message: 'Transaction has already been rectified.',
+          code: 'TRANSACTION.ALREADY_RECTIFIED',
+          effectiveTransactionId: raced.replacementTransactionId,
+        });
+      }
       throw error;
     }
+  }
+
+  /**
+   * Effective transaction for an already-rectified original, following
+   * the append-only chain (A → B → C resolves to C). Delegates to the
+   * repository, which covers link rows and legacy notes-marked
+   * rectifications. Cycles are impossible by construction.
+   */
+  async resolveEffectiveTransactionId(
+    portfolioId: string,
+    originalTransactionId: string,
+  ): Promise<string | null> {
+    return this.rectifications.resolveEffectiveTransactionId(originalTransactionId, portfolioId);
   }
 }

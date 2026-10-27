@@ -78,6 +78,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         if (obj['code']) {
           errorCode = String(obj['code']);
         }
+        // Narrow, explicit passthrough: only whitelisted navigation fields
+        // ever leave the API in error bodies. Never ids, payloads or secrets.
+        if (typeof obj['effectiveTransactionId'] === 'string') {
+          details = { effectiveTransactionId: obj['effectiveTransactionId'] };
+        }
       }
       errorCode =
         errorCode === 'INTERNAL_SERVER_ERROR'

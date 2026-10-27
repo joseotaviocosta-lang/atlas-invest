@@ -252,10 +252,12 @@ describe('API Integration: reconciliation workspace (Phase 5S-B)', () => {
           'type',
           'decision',
           'decidedAt',
+          'rectified',
         ].sort(),
       );
       expect(row.ticker).toBe(asset.ticker);
       expect(row.type).toBe('BUY');
+      expect(row.rectified).toBe(false);
     }
     const ids = data.linkedTransactions.map((row: { transactionId: string }) => row.transactionId);
     expect(ids).toContain(tx1);

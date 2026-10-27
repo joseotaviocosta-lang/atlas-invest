@@ -2413,7 +2413,6 @@ export interface IIntegrationRunRepository {
 }
 
 export type ReconciliationDecisionKind = 'CONFIRM_MATCH' | 'NOT_A_MATCH';
-
 export interface ReconciliationDecisionRow {
   id: string;
   portfolioId: string;
@@ -2456,4 +2455,73 @@ export interface IReconciliationDecisionRepository {
    * review window. Never per-run/per-item calls.
    */
   listByRunIds(runIds: string[], portfolioId: string): Promise<ReconciliationDecisionRow[]>;
+}
+
+export type RectificationMode = 'RECTIFY' | 'CANCEL';
+
+export interface TransactionRectificationRow {
+  id: string;
+  portfolioId: string;
+  originalTransactionId: string;
+  compensatingTransactionId: string;
+  replacementTransactionId: string | null;
+  mode: RectificationMode;
+  reason: string;
+  decidedByPrincipal: string;
+  decidedAt: Date;
+  createdAt: Date;
+}
+
+export interface TransactionRectificationLinkInput {
+  portfolioId: string;
+  originalTransactionId: string;
+  compensatingTransactionId: string;
+  replacementTransactionId: string | null;
+  mode: RectificationMode;
+  reason: string;
+  decidedByPrincipal: string;
+  decidedAt: Date;
+}
+
+/**
+ * Phase 5S-C — append-only transaction rectifications.
+ *
+ * Identity + audit only: one row per original transaction. No update,
+ * no delete, no transaction rewrites — the ledger stays append-only.
+ */
+export interface ITransactionRectificationRepository {
+  createWithTransactions(input: {
+    transactions: Transaction[];
+    link: TransactionRectificationLinkInput;
+  }): Promise<{ transactions: Transaction[]; record: TransactionRectificationRow }>;
+  findByOriginalTransactionId(
+    originalTransactionId: string,
+    portfolioId: string,
+  ): Promise<TransactionRectificationRow | null>;
+  findByReplacementTransactionId(
+    replacementTransactionId: string,
+    portfolioId: string,
+  ): Promise<TransactionRectificationRow | null>;
+  listByOriginalTransactionIds(
+    originalTransactionIds: string[],
+    portfolioId: string,
+  ): Promise<TransactionRectificationRow[]>;
+  /**
+   * Phase 5S-C — bounded reverse lookup for CORRECTION badges and chain
+   * building. One query for a whole page, never per item.
+   */
+  listByReplacementTransactionIds(
+    replacementTransactionIds: string[],
+    portfolioId: string,
+  ): Promise<TransactionRectificationRow[]>;
+  /**
+   * Follows the append-only chain (A → B → C) to the terminal node.
+   * Returns null for cancelled terminals (no replacement) or corrupt
+   * cycles. Used for navigation and "already rectified" answers —
+   * never to rewrite history.
+   */
+  resolveEffectiveTransactionId(
+    originalTransactionId: string,
+    portfolioId: string,
+  ): Promise<string | null>;
 }

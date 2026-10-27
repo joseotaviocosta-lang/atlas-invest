@@ -84,8 +84,8 @@ describe('Phase 5Q-K: contribution planning calendar boundaries', () => {
     const migrations = fs
       .readdirSync(path.join(rootDir, 'packages/database/prisma/migrations'))
       .filter((entry) => /^\d/.test(entry));
-    expect(migrations).toHaveLength(42);
-    expect(migrations[migrations.length - 1]).toContain('add_reconciliation_decisions');
+    expect(migrations).toHaveLength(43);
+    expect(migrations[migrations.length - 1]).toContain('add_transaction_rectifications');
   });
 
   it('no suggestion, reminder, forecast, score or automation in the calendar stack', () => {

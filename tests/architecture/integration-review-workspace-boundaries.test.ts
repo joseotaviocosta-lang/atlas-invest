@@ -59,8 +59,8 @@ describe('Phase 5S-B: reconciliation workspace boundaries', () => {
     const migrations = fs
       .readdirSync(path.join(rootDir, 'packages/database/prisma/migrations'))
       .filter((entry) => /^\d/.test(entry));
-    expect(migrations).toHaveLength(42);
-    expect(migrations[migrations.length - 1]).toContain('add_reconciliation_decisions');
+    expect(migrations).toHaveLength(43);
+    expect(migrations[migrations.length - 1]).toContain('add_transaction_rectifications');
     const schema = readSource('packages/database/prisma/schema.prisma');
     expect(schema).toContain('model ReconciliationDecisionRecord');
     expect(schema).not.toMatch(/model ReviewDecision|model ReviewAction/i);

@@ -93,6 +93,13 @@ interface LedgerTransactionDto {
   unitPrice?: string | { amount: string; currency: string };
   fees?: string | { amount: string; currency: string };
   notes?: string;
+  rectification?: {
+    status: 'SUPERSEDED' | 'CORRECTION';
+    replacementTransactionId: string | null;
+    originalTransactionId: string | null;
+    reason: string | null;
+    decidedAt: string;
+  } | null;
 }
 
 interface CatalogAssetDto {
@@ -535,9 +542,13 @@ function PortfolioPageContent() {
     return m;
   }, [assetsCatalog]);
 
-  const compensatedTxIds = useMemo(() => {
+  const supersededTxIds = useMemo(() => {
     const set = new Set<string>();
     for (const t of transactionsData) {
+      if (t.rectification?.status === 'SUPERSEDED') {
+        set.add(t.id);
+        continue;
+      }
       const match = t.notes?.match(/\[COMPENSAÇÃO ref ([0-9a-fA-F-]+)\]/);
       if (match?.[1]) {
         set.add(match[1]);
@@ -682,6 +693,14 @@ function PortfolioPageContent() {
     }
 
     const reason = corrReason.trim();
+    if (reason === '') {
+      setCorrFormError('Informe o motivo da correção (obrigatório para auditoria).');
+      return;
+    }
+    if (reason.length > 500) {
+      setCorrFormError('O motivo deve ter no máximo 500 caracteres.');
+      return;
+    }
     let replacementPayload: Record<string, string> | undefined;
 
     if (corrMode === 'rectify') {
@@ -713,6 +732,21 @@ function PortfolioPageContent() {
         }
       }
 
+      // Client-side no-change guard (server enforces authoritatively).
+      const origQty = typeof correctingTx.quantity === 'string' ? correctingTx.quantity.trim() : '';
+      const origPrice = moneyAmountOf(correctingTx.unitPrice).trim();
+      const origFees = correctingTx.fees ? moneyAmountOf(correctingTx.fees).trim() : '0';
+      if (
+        normalizedQuantity === origQty &&
+        normalizedUnitPrice === origPrice &&
+        normalizedTradeDate === correctingTx.tradeDate &&
+        normalizedFees === origFees &&
+        corrNotes.trim() === ''
+      ) {
+        setCorrFormError('Nenhuma alteração detectada. Altere ao menos um campo para retificar.');
+        return;
+      }
+
       replacementPayload = {
         type: correctingTx.type,
         quantity: normalizedQuantity,
@@ -732,15 +766,17 @@ function PortfolioPageContent() {
     setIsCorrecting(true);
 
     try {
-      await apiClient.post(
-        `/api/v1/portfolios/${activePortfolio.id}/transactions/${correctingTx.id}/rectify`,
-        {
-          mode: corrMode === 'rectify' ? 'RECTIFY' : 'CANCEL',
-          reason,
-          idempotencyKey,
-          replacement: replacementPayload,
-        },
-      );
+      const res = await apiClient.post<{
+        data: {
+          replacementTransaction?: { id: string } | null;
+          effectiveTransactionId?: string | null;
+        };
+      }>(`/api/v1/portfolios/${activePortfolio.id}/transactions/${correctingTx.id}/rectify`, {
+        mode: corrMode === 'rectify' ? 'RECTIFY' : 'CANCEL',
+        reason,
+        idempotencyKey,
+        replacement: replacementPayload,
+      });
 
       // Invalidate queries so positions, ledger, and state update immediately
       queryClient.invalidateQueries({
@@ -762,16 +798,41 @@ function PortfolioPageContent() {
 
       showToast(
         corrMode === 'rectify'
-          ? 'Operação retificada com sucesso! Lançamento compensatório e nova operação registrados atomicamente no livro-razão.'
-          : 'Lançamento compensatório (estorno) registrado com sucesso no livro-razão!',
+          ? 'Operação retificada! A original foi preservada no histórico; a versão corrigida vale para os cálculos atuais.'
+          : 'Operação anulada por estorno! A original foi preservada no histórico.',
         'positive',
       );
+      const targetId =
+        res.data?.replacementTransaction?.id ?? res.data?.effectiveTransactionId ?? null;
+      if (targetId) {
+        setTimeout(() => {
+          const el = document.getElementById(`tx-${targetId}`);
+          el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 600);
+      }
     } catch (err: unknown) {
       const apiErr = err as ApiError;
       if (apiErr.statusCode === 0) {
         setCorrFormError(
           'Não foi possível alcançar o servidor. Verifique sua conexão e tente novamente.',
         );
+      } else if (apiErr.statusCode === 409) {
+        const details = apiErr.details as { effectiveTransactionId?: string | null } | undefined;
+        const effectiveId = details?.effectiveTransactionId ?? null;
+        setCorrFormError(
+          effectiveId
+            ? 'Esta operação já foi retificada. Você será levado à operação vigente.'
+            : 'Esta operação já foi retificada anteriormente.',
+        );
+        if (effectiveId) {
+          queryClient.invalidateQueries({
+            queryKey: ['portfolio-transactions', activePortfolio.id],
+          });
+          setTimeout(() => {
+            const el = document.getElementById(`tx-${effectiveId}`);
+            el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 600);
+        }
       } else {
         setCorrFormError(apiErr.message || 'Falha ao processar correção no livro-razão.');
       }
@@ -1617,6 +1678,7 @@ function PortfolioPageContent() {
                         borderRadius: `${borderRadius.lg}px`,
                       }}
                     >
+                      <div id={`tx-${tx.id}`} style={{ scrollMarginTop: '80px' }} />
                       <div
                         style={{
                           display: 'flex',
@@ -1669,18 +1731,22 @@ function PortfolioPageContent() {
                           {tx.notes?.includes('[COMPENSAÇÃO') && (
                             <Badge variant="warning">Compensação</Badge>
                           )}
-                          {tx.notes?.includes('[CORREÇÃO') && (
+                          {(tx.notes?.includes('[CORREÇÃO') ||
+                            tx.rectification?.status === 'CORRECTION') && (
                             <Badge variant="positive">Correção</Badge>
                           )}
-                          {compensatedTxIds.has(tx.id) && (
-                            <Badge variant="default">Corrigida</Badge>
+                          {(supersededTxIds.has(tx.id) ||
+                            tx.rectification?.status === 'SUPERSEDED') && (
+                            <Badge variant="default">Retificada</Badge>
                           )}
                           {(tx.type === 'BUY' || tx.type === 'SELL') &&
-                            !compensatedTxIds.has(tx.id) &&
+                            !supersededTxIds.has(tx.id) &&
+                            tx.rectification?.status !== 'SUPERSEDED' &&
                             !tx.notes?.includes('[COMPENSAÇÃO') && (
                               <Button
                                 size="sm"
                                 variant="secondary"
+                                aria-label={`Corrigir operação ${tx.id}`}
                                 onClick={() => {
                                   setCorrectingTx(tx);
                                   setCorrMode('rectify');
@@ -1699,6 +1765,22 @@ function PortfolioPageContent() {
                                 }}
                               >
                                 Corrigir
+                              </Button>
+                            )}
+                          {tx.rectification?.status === 'SUPERSEDED' &&
+                            tx.rectification.replacementTransactionId && (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                aria-label={`Ver operação corrigida de ${tx.id}`}
+                                onClick={() => {
+                                  const el = document.getElementById(
+                                    `tx-${tx.rectification!.replacementTransactionId}`,
+                                  );
+                                  el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                }}
+                              >
+                                Ver correção
                               </Button>
                             )}
                         </div>
@@ -1919,14 +2001,13 @@ function PortfolioPageContent() {
                     }}
                   >
                     <strong style={{ color: colors.textPrimary }}>
-                      Princípio de Imutabilidade (Append-Only):
+                      Retificação — original preservada:
                     </strong>
-                    <br />O registro original permanece no histórico. O Atlas registrará um{' '}
-                    <strong>lançamento compensatório (estorno)</strong> para neutralizar a operação
-                    e
+                    <br />A operação original será preservada no histórico. O Atlas criará uma
+                    versão corrigida para uso nos cálculos futuros.{' '}
                     {corrMode === 'rectify'
-                      ? ', em seguida, criará a nova operação com os dados corrigidos.'
-                      : ' anulará seu efeito patrimonial e fiscal.'}
+                      ? 'Um estorno neutraliza a operação original e uma nova operação carrega os dados corrigidos.'
+                      : 'Um estorno anulará seu efeito patrimonial e fiscal.'}
                   </div>
 
                   {correctingTx && (
@@ -2094,12 +2175,44 @@ function PortfolioPageContent() {
                   )}
 
                   <Input
-                    label="Motivo da Correção (opcional)"
+                    label="Motivo da correção (obrigatório)"
                     placeholder="Ex: Quantidade informada incorretamente"
                     value={corrReason}
                     onChange={(e) => setCorrReason(e.target.value)}
                     disabled={isCorrecting}
+                    required
                   />
+                  {corrMode === 'rectify' && correctingTx && (
+                    <div
+                      data-testid="rectification-diff"
+                      style={{
+                        marginTop: `${spacing.sm}px`,
+                        padding: `${spacing.sm}px`,
+                        border: `1px dashed ${colors.border}`,
+                        borderRadius: `${borderRadius.md}px`,
+                        fontSize: '0.8125rem',
+                        color: colors.textSecondary,
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, color: colors.textPrimary, marginBottom: 4 }}>
+                        Antes → Depois
+                      </div>
+                      <div>
+                        Quantidade: {correctingTx.quantity ?? '—'} → {corrQuantity.trim() || '—'}
+                      </div>
+                      <div>
+                        Preço: {moneyAmountOf(correctingTx.unitPrice)} →{' '}
+                        {corrUnitPrice.trim() || '—'}
+                      </div>
+                      <div>
+                        Data: {correctingTx.tradeDate} → {corrTradeDate.trim() || '—'}
+                      </div>
+                      <div>
+                        Taxas: {correctingTx.fees ? moneyAmountOf(correctingTx.fees) : '0'} →{' '}
+                        {corrFees.trim() || '0'}
+                      </div>
+                    </div>
+                  )}
 
                   <div
                     style={{

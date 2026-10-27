@@ -3,6 +3,8 @@ import {
   compareReconciliationFacts,
   derivePairReview,
   deriveSourceItemKey,
+  isEquivalentReplacement,
+  resolveEffectiveTransactionId,
   type LocalFact,
   type SourceFact,
   type SourceItemKeyInput,
@@ -283,5 +285,62 @@ describe('Phase 5S-B-R1: stable source-item identity', () => {
     });
     expect(key).toMatch(/^hash:[0-9a-f]{64}$/);
     expect(deriveSourceItemKey(base)).toBe('B3:B3-5M-0001');
+  });
+});
+
+describe('Phase 5S-C: chain resolution and replacement equivalence', () => {
+  it('resolves A→B→C to the terminal replacement', () => {
+    expect(
+      resolveEffectiveTransactionId('A', [
+        { originalTransactionId: 'A', replacementTransactionId: 'B' },
+        { originalTransactionId: 'B', replacementTransactionId: 'C' },
+      ]),
+    ).toBe('C');
+  });
+
+  it('leaves unterminated and cancelled chains at their terminal node', () => {
+    expect(resolveEffectiveTransactionId('A', [])).toBe('A');
+    expect(
+      resolveEffectiveTransactionId('A', [
+        { originalTransactionId: 'A', replacementTransactionId: null },
+      ]),
+    ).toBe('A');
+    expect(
+      resolveEffectiveTransactionId('B', [
+        { originalTransactionId: 'A', replacementTransactionId: 'B' },
+      ]),
+    ).toBe('B');
+  });
+
+  it('refuses to loop on corrupt cyclic links', () => {
+    expect(
+      resolveEffectiveTransactionId('A', [
+        { originalTransactionId: 'A', replacementTransactionId: 'B' },
+        { originalTransactionId: 'B', replacementTransactionId: 'A' },
+      ]),
+    ).toBeNull();
+  });
+
+  it('detects semantically identical replacements exactly', () => {
+    const original = {
+      type: 'BUY',
+      tradeDate: '2026-10-15',
+      assetId: 'asset-1',
+      accountId: 'acc-1',
+      quantity: '100',
+      unitPrice: '30.00',
+      fees: '0',
+      taxes: null,
+      currency: 'BRL',
+    };
+    expect(isEquivalentReplacement(original, { ...original })).toBe(true);
+    expect(isEquivalentReplacement(original, { ...original, quantity: '100.00' })).toBe(true);
+    expect(isEquivalentReplacement(original, { ...original, quantity: '99' })).toBe(false);
+    expect(isEquivalentReplacement(original, { ...original, unitPrice: '31' })).toBe(false);
+    expect(isEquivalentReplacement(original, { ...original, tradeDate: '2026-10-16' })).toBe(false);
+    expect(isEquivalentReplacement(original, { ...original, assetId: 'asset-2' })).toBe(false);
+    expect(isEquivalentReplacement(original, { ...original, type: 'SELL' })).toBe(false);
+    expect(isEquivalentReplacement(original, { ...original, fees: '1.00' })).toBe(false);
+    expect(isEquivalentReplacement(original, { ...original, accountId: 'acc-2' })).toBe(false);
   });
 });

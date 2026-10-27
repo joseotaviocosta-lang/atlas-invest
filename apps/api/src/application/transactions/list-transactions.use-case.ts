@@ -2,11 +2,20 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Transaction, LocalDate } from '@atlas/domain';
 import {
   ITransactionRepository,
+  ITransactionRectificationRepository,
   IPortfolioRepository,
   EntityNotFoundError,
   TransactionLedgerFilter,
 } from '@atlas/database';
-import { TRANSACTION_REPOSITORY, PORTFOLIO_REPOSITORY } from '../../database/tokens';
+import {
+  TRANSACTION_REPOSITORY,
+  TRANSACTION_RECTIFICATION_REPOSITORY,
+  PORTFOLIO_REPOSITORY,
+} from '../../database/tokens';
+import {
+  attachRectificationBadges,
+  type RectificationBadge,
+} from './transaction-rectification.view';
 
 export interface ListTransactionsQuery {
   portfolioId: string;
@@ -22,6 +31,7 @@ export interface ListTransactionsQuery {
 
 export interface PaginatedTransactionsResult {
   items: Transaction[];
+  rectifications: Map<string, RectificationBadge>;
   limit: number;
   cursor?: string;
   nextCursor: string | null;
@@ -33,6 +43,8 @@ export class ListTransactionsUseCase {
   constructor(
     @Inject(TRANSACTION_REPOSITORY)
     private readonly transactionRepository: ITransactionRepository,
+    @Inject(TRANSACTION_RECTIFICATION_REPOSITORY)
+    private readonly rectifications: ITransactionRectificationRepository,
     @Inject(PORTFOLIO_REPOSITORY)
     private readonly portfolioRepository: IPortfolioRepository,
   ) {}
@@ -68,8 +80,17 @@ export class ListTransactionsUseCase {
     const lastItem = items[items.length - 1];
     const nextCursor = hasMore && lastItem ? lastItem.id : null;
 
+    // Bounded badge lookup for the page: SUPERSEDED/CORRECTION markers
+    // without changing ledger semantics or pagination.
+    const rectifications = await attachRectificationBadges(
+      { rectifications: this.rectifications },
+      query.portfolioId,
+      items.map((item) => item.id),
+    );
+
     return {
       items,
+      rectifications,
       limit,
       cursor: query.cursor,
       nextCursor,

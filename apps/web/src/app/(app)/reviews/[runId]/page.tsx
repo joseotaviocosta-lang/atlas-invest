@@ -30,6 +30,7 @@ interface LinkedTransactionView {
   currency: string | null;
   decision: 'CONFIRM_MATCH' | 'NOT_A_MATCH' | null;
   decidedAt: string | null;
+  rectified: boolean;
 }
 
 interface ReviewDetailData {
@@ -253,6 +254,11 @@ function ReviewDetailContent() {
                               </Button>
                             </span>
                           )}
+                          {row.rectified ? (
+                            <span style={{ display: 'block', fontSize: '0.75rem' }}>
+                              Posteriormente retificada
+                            </span>
+                          ) : null}
                         </td>
                       </tr>
                     ))}

@@ -84,6 +84,7 @@ export default function ReviewDetailPage() {
                     · {row.amount ?? row.quantity ?? '—'}
                     {row.decision === 'CONFIRM_MATCH' ? ' · Correspondência confirmada' : ''}
                     {row.decision === 'NOT_A_MATCH' ? ' · Não correspondem' : ''}
+                    {row.rectified ? ' · Posteriormente retificada' : ''}
                   </Text>
                 ))
               )}

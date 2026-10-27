@@ -218,6 +218,15 @@ export class PortfolioHistoryItemSwaggerDto {
 
   @ApiProperty({ type: Object })
   details!: Record<string, unknown>;
+
+  @ApiProperty({ type: Object, nullable: true, required: false })
+  rectification?: {
+    status: string;
+    replacementTransactionId: string | null;
+    originalTransactionId: string | null;
+    reason: string | null;
+    decidedAt: string;
+  } | null;
 }
 
 export class PortfolioHistoryPaginationMetaSwaggerDto {

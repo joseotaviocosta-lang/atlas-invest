@@ -5,14 +5,21 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { IPortfolioRepository, ITransactionRepository, IAccountRepository } from '@atlas/database';
+import {
+  IPortfolioRepository,
+  ITransactionRepository,
+  IAccountRepository,
+  ITransactionRectificationRepository,
+} from '@atlas/database';
 import { LocalDate } from '@atlas/domain';
 import { replayPortfolio, PortfolioReplayError } from '@atlas/portfolio-engine';
 import {
   PORTFOLIO_REPOSITORY,
   TRANSACTION_REPOSITORY,
+  TRANSACTION_RECTIFICATION_REPOSITORY,
   ACCOUNT_REPOSITORY,
 } from '../../database/tokens';
+import { attachRectificationBadges } from '../transactions/transaction-rectification.view';
 import { PortfolioHistoryReadModel } from './read-models';
 import { PortfolioReadModelMapper } from './mappers/portfolio-read-model.mapper';
 
@@ -43,6 +50,8 @@ export class GetPortfolioHistoryUseCase {
     private readonly portfolioRepository: IPortfolioRepository,
     @Inject(TRANSACTION_REPOSITORY)
     private readonly transactionRepository: ITransactionRepository,
+    @Inject(TRANSACTION_RECTIFICATION_REPOSITORY)
+    private readonly rectifications: ITransactionRectificationRepository,
     @Inject(ACCOUNT_REPOSITORY)
     private readonly accountRepository: IAccountRepository,
   ) {}
@@ -144,7 +153,7 @@ export class GetPortfolioHistoryUseCase {
       });
 
       // 7. Map and filter to pure Application History Read Model
-      return PortfolioReadModelMapper.toHistoryReadModel(result, {
+      const history = PortfolioReadModelMapper.toHistoryReadModel(result, {
         type: params.type,
         from: fromLocalDate ? fromLocalDate.toString() : undefined,
         to: toLocalDate ? toLocalDate.toString() : undefined,
@@ -153,6 +162,20 @@ export class GetPortfolioHistoryUseCase {
         cursor: params.cursor,
         limit: params.limit,
       });
+
+      // 8. Attach rectification badges (bounded batch over the page).
+      const badges = await attachRectificationBadges(
+        { rectifications: this.rectifications },
+        params.portfolioId,
+        history.items.map((item) => item.transactionId),
+      );
+      return {
+        ...history,
+        items: history.items.map((item) => ({
+          ...item,
+          rectification: badges.get(item.transactionId) ?? null,
+        })),
+      };
     } catch (err: unknown) {
       if (err instanceof PortfolioReplayError) {
         throw new UnprocessableEntityException({

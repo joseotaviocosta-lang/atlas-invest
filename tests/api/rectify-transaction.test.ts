@@ -419,7 +419,7 @@ describe('API Integration: Atomic & Idempotent Transaction Rectification (Hotfix
       expect(state.body.data.positions.length).toBe(0);
     });
 
-    it('rejects rectifying an already compensated transaction when attempted with a new key', async () => {
+    it('rejects rectifying an already compensated transaction with 409 and the effective id', async () => {
       const buyRes = await createTx({
         accountId,
         assetId,
@@ -432,18 +432,22 @@ describe('API Integration: Atomic & Idempotent Transaction Rectification (Hotfix
       const txId = buyRes.body.data.id;
 
       // First cancel succeeds
-      await rectifyTx(txId, {
+      const first = await rectifyTx(txId, {
         mode: 'CANCEL',
         reason: 'Primeiro cancelamento',
       });
+      expect(first.status).toBe(200);
+      expect(first.body.data.rectificationId).toBeDefined();
+      expect(first.body.data.effectiveTransactionId).toBeNull();
 
-      // Second attempt with different key / reason must be rejected
+      // Second attempt with different key / reason must be rejected with 409
       const secondAttempt = await rectifyTx(txId, {
         mode: 'CANCEL',
         reason: 'Tentativa de segundo cancelamento',
         idempotencyKey: 'different-key-99',
       });
-      expect(secondAttempt.status).toBe(400);
+      expect(secondAttempt.status).toBe(409);
+      expect(secondAttempt.body.code).toBe('TRANSACTION.ALREADY_RECTIFIED');
     });
   });
 });

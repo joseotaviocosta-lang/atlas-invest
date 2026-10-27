@@ -202,6 +202,12 @@ function TimelineEventCard({ item, portfolioId }: TimelineEventCardProps) {
             <Badge variant={mapBadgeVariant(item.badgeVariant)}>{item.kindLabel}</Badge>
 
             {item.statusBadgeLabel && <Badge variant="warning">{item.statusBadgeLabel}</Badge>}
+            {item.rectification?.status === 'SUPERSEDED' && (
+              <Badge variant="default">Retificada</Badge>
+            )}
+            {item.rectification?.status === 'CORRECTION' && (
+              <Badge variant="positive">Correção</Badge>
+            )}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>

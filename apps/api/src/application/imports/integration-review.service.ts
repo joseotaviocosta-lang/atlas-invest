@@ -6,6 +6,7 @@ import type {
   IntegrationRunRow,
   IPortfolioRepository,
   IReconciliationDecisionRepository,
+  ITransactionRectificationRepository,
   ITransactionRepository,
 } from '@atlas/database';
 import {
@@ -19,6 +20,7 @@ import {
   PORTFOLIO_REPOSITORY,
   ASSET_REPOSITORY,
   RECONCILIATION_DECISION_REPOSITORY,
+  TRANSACTION_RECTIFICATION_REPOSITORY,
   TRANSACTION_REPOSITORY,
 } from '../../database/tokens';
 import type { Transaction } from '@atlas/domain';
@@ -59,6 +61,7 @@ export interface ReviewLinkedTransaction {
   currency: string | null;
   decision: 'CONFIRM_MATCH' | 'NOT_A_MATCH' | null;
   decidedAt: string | null;
+  rectified: boolean;
 }
 
 export interface IntegrationReviewDetail {
@@ -95,6 +98,8 @@ export class IntegrationReviewService {
     private readonly assets: IAssetRepository,
     @Inject(RECONCILIATION_DECISION_REPOSITORY)
     private readonly decisions: IReconciliationDecisionRepository,
+    @Inject(TRANSACTION_RECTIFICATION_REPOSITORY)
+    private readonly rectifications: ITransactionRectificationRepository,
   ) {}
 
   private async ownedPortfolios(
@@ -253,12 +258,21 @@ export class IntegrationReviewService {
     const decisionByTx = new Map(
       decisions.map((decision) => [decision.localTransactionId, decision]),
     );
+    const rectifiedIds = new Set(
+      (
+        await this.rectifications.listByOriginalTransactionIds(
+          linked.rows.map((linkedRow) => linkedRow.transactionId),
+          row.portfolioId,
+        )
+      ).map((link) => link.originalTransactionId),
+    );
     const linkedRows = linked.rows.map((linkedRow) => {
       const decision = decisionByTx.get(linkedRow.transactionId) ?? null;
       return {
         ...linkedRow,
         decision: decision?.decision ?? null,
         decidedAt: decision ? decision.decidedAt.toISOString() : null,
+        rectified: rectifiedIds.has(linkedRow.transactionId),
       };
     });
     const limitations = this.workspaceLimitations(row, item);
@@ -295,7 +309,7 @@ export class IntegrationReviewService {
    * design (see SOURCE_FACTS_NOT_PERSISTED).
    */
   private async linkedLocalFacts(row: IntegrationRunRow): Promise<{
-    rows: Array<Omit<ReviewLinkedTransaction, 'decision' | 'decidedAt'>>;
+    rows: Array<Omit<ReviewLinkedTransaction, 'decision' | 'decidedAt' | 'rectified'>>;
     truncated: boolean;
     total: number;
   }> {
