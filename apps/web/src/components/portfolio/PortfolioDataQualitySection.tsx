@@ -229,6 +229,22 @@ export function PortfolioDataQualitySection({ portfolioId }: { portfolioId: stri
               ))}
             </ul>
           )}
+
+          {portfolioId && (
+            <div style={{ marginTop: '12px' }}>
+              <Link
+                href={`/portfolio/maintenance?portfolioId=${portfolioId}`}
+                style={{
+                  fontSize: '0.8125rem',
+                  color: colors.accent,
+                  textDecoration: 'none',
+                  fontWeight: 600,
+                }}
+              >
+                Abrir central de manutenção de dados →
+              </Link>
+            </div>
+          )}
         </>
       )}
     </div>

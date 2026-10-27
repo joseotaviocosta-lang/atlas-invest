@@ -25,12 +25,13 @@ describe('Built Runtime Rate Limit Complete Verification (Register & Refresh & L
   });
 
   it('enforces 429 Too Many Requests on register after 3 requests', async () => {
+    const runId = Date.now();
     const statuses: number[] = [];
     for (let i = 0; i < 5; i++) {
       const res = await request(app.getHttpServer())
         .post('/api/v1/auth/register')
         .send({
-          email: `rate-reg-${i}@atlas.dev`,
+          email: `rate-reg-${runId}-${i}@atlas.dev`,
           password: 'Password123!',
           name: `User ${i}`,
         });

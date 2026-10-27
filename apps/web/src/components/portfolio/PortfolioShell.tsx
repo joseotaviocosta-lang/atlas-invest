@@ -23,7 +23,9 @@ export const CARTEIRA_TABS = [
   { id: 'returns', label: 'Rentabilidade' },
   { id: 'dividends', label: 'Proventos' },
   { id: 'allocation', label: 'Alocação' },
+  { id: 'planning', label: 'Planejamento' },
   { id: 'operations', label: 'Operações' },
+  { id: 'history', label: 'Histórico' },
 ];
 
 const PORTFOLIO_TYPE_OPTIONS = [
@@ -104,6 +106,8 @@ export function PortfolioShell({
       router.replace(`/portfolio/performance?${params.toString()}`);
     } else if (pathname.includes('/income')) {
       router.replace(`/portfolio/income?${params.toString()}`);
+    } else if (pathname.includes('/history')) {
+      router.replace(`/portfolio/history?${params.toString()}`);
     } else {
       router.replace(`/portfolio?${params.toString()}`);
     }
@@ -121,6 +125,12 @@ export function PortfolioShell({
     if (tabId === 'dividends') {
       router.push(
         `/portfolio/income${activePortfolio ? `?portfolioId=${activePortfolio.id}` : ''}`,
+      );
+      return;
+    }
+    if (tabId === 'history') {
+      router.push(
+        `/portfolio/history${activePortfolio ? `?portfolioId=${activePortfolio.id}` : ''}`,
       );
       return;
     }

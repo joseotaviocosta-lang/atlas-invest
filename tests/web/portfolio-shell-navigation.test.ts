@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { CARTEIRA_TABS } from '@/components/portfolio/PortfolioShell';
 
 describe('Web: Portfolio Shell & Navigation (Hotfix 03 B3/B4)', () => {
-  it('exposes all 6 canonical tabs in the shared portfolio shell', () => {
+  it('exposes all canonical tabs in the shared portfolio shell', () => {
     const tabIds = CARTEIRA_TABS.map((t) => t.id);
     expect(tabIds).toEqual([
       'overview',
@@ -10,7 +10,9 @@ describe('Web: Portfolio Shell & Navigation (Hotfix 03 B3/B4)', () => {
       'returns',
       'dividends',
       'allocation',
+      'planning',
       'operations',
+      'history',
     ]);
 
     const tabLabels = CARTEIRA_TABS.map((t) => t.label);
@@ -20,7 +22,9 @@ describe('Web: Portfolio Shell & Navigation (Hotfix 03 B3/B4)', () => {
       'Rentabilidade',
       'Proventos',
       'Alocação',
+      'Planejamento',
       'Operações',
+      'Histórico',
     ]);
   });
 
@@ -31,13 +35,18 @@ describe('Web: Portfolio Shell & Navigation (Hotfix 03 B3/B4)', () => {
     const resolveTabUrl = (tabId: string, currentPortfolioId: string) => {
       if (tabId === 'returns') return `/portfolio/performance?portfolioId=${currentPortfolioId}`;
       if (tabId === 'dividends') return `/portfolio/income?portfolioId=${currentPortfolioId}`;
+      if (tabId === 'history') return `/portfolio/history?portfolioId=${currentPortfolioId}`;
       if (tabId === 'overview') return `/portfolio?portfolioId=${currentPortfolioId}`;
       return `/portfolio?portfolioId=${currentPortfolioId}&tab=${tabId}`;
     };
 
     expect(resolveTabUrl('returns', portfolioId)).toBe('/portfolio/performance?portfolioId=p-123');
     expect(resolveTabUrl('dividends', portfolioId)).toBe('/portfolio/income?portfolioId=p-123');
+    expect(resolveTabUrl('history', portfolioId)).toBe('/portfolio/history?portfolioId=p-123');
     expect(resolveTabUrl('overview', portfolioId)).toBe('/portfolio?portfolioId=p-123');
+    expect(resolveTabUrl('planning', portfolioId)).toBe(
+      '/portfolio?portfolioId=p-123&tab=planning',
+    );
     expect(resolveTabUrl('operations', portfolioId)).toBe(
       '/portfolio?portfolioId=p-123&tab=operations',
     );

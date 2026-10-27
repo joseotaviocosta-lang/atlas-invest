@@ -139,7 +139,9 @@ export function PortfolioOperationsSection({ portfolioId }: { portfolioId: strin
   });
 
   if (!portfolioId) {
-    return <EmptyState title="Central de operações" description="Selecione uma carteira." />;
+    return (
+      <EmptyState title="Saúde da Carteira & Pendências" description="Selecione uma carteira." />
+    );
   }
 
   const data = operationsQuery.data ?? null;
@@ -147,8 +149,8 @@ export function PortfolioOperationsSection({ portfolioId }: { portfolioId: strin
   return (
     <div style={{ marginTop: `${spacing.base}px` }} data-testid="portfolio-operations">
       <SectionHeader
-        title="Central de operações"
-        description="Estado operacional da carteira — atenção necessária, integrações, execuções e qualidade dos dados. Somente leitura."
+        title="Saúde da Carteira & Pendências"
+        description="Estado operacional e pendências da carteira — atenção necessária, conciliações, integrações e qualidade dos dados."
       />
       {operationsQuery.isLoading ? (
         <Skeleton width="100%" height="160px" />
@@ -250,14 +252,18 @@ export function PortfolioOperationsSection({ portfolioId }: { portfolioId: strin
             </Link>
           </div>
 
-          {(data.maintenance.actionable > 0 || data.maintenance.navigable > 0) && (
+          {(data.maintenance.actionable > 0 ||
+            data.maintenance.navigable > 0 ||
+            data.maintenance.structural > 0) && (
             <div data-testid="operations-maintenance">
               <h4 style={{ fontSize: '0.875rem', margin: '12px 0 4px' }}>Manutenção de dados</h4>
               <p style={{ fontSize: '0.8125rem', color: colors.textSecondary, margin: 0 }}>
                 {data.maintenance.actionable > 0 &&
                   `${data.maintenance.actionable} podem ser corrigidas no Atlas. `}
                 {data.maintenance.navigable > 0 &&
-                  `${data.maintenance.navigable} requerem revisão.`}
+                  `${data.maintenance.navigable} requerem revisão. `}
+                {data.maintenance.structural > 0 &&
+                  `${data.maintenance.structural} pendências estruturais.`}
               </p>
               <Link
                 href={`/portfolio/maintenance?portfolioId=${portfolioId}`}

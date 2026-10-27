@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { apiClient, ApiError } from '@/api/client';
@@ -19,10 +19,12 @@ import {
   PortfolioHistoryFilters,
   PortfolioHistoryTimeline,
   HistoryFilterState,
+  PortfolioShell,
 } from '@/components/portfolio';
 import { Card, Skeleton, ErrorState } from '@/components/ui';
 
 function PortfolioHistoryContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const portfolioIdParam = searchParams.get('portfolioId');
   const accountIdParam = searchParams.get('accountId');
@@ -201,11 +203,14 @@ function PortfolioHistoryContent() {
   // Initial Loading Skeleton
   if (isPortfoliosLoading || (isHistoryLoading && !historyPages)) {
     return (
-      <div
-        style={{
-          maxWidth: '1000px',
-          margin: '0 auto',
-          padding: `${spacing.xl}px ${spacing.base}px`,
+      <PortfolioShell
+        activeTab="history"
+        selectedPortfolioId={activePortfolioId}
+        portfolios={portfolios}
+        onSelectPortfolio={(id) => {
+          const params = new URLSearchParams(searchParams.toString());
+          params.set('portfolioId', id);
+          router.replace(`/portfolio/history?${params.toString()}`);
         }}
       >
         <div style={{ marginBottom: `${spacing.base}px` }}>
@@ -221,18 +226,21 @@ function PortfolioHistoryContent() {
             <Skeleton width="100%" height="60px" />
           </div>
         </Card>
-      </div>
+      </PortfolioShell>
     );
   }
 
   // Initial Error State
   if (isHistoryError && !historyPages) {
     return (
-      <div
-        style={{
-          maxWidth: '1000px',
-          margin: '0 auto',
-          padding: `${spacing.xl}px ${spacing.base}px`,
+      <PortfolioShell
+        activeTab="history"
+        selectedPortfolioId={activePortfolioId}
+        portfolios={portfolios}
+        onSelectPortfolio={(id) => {
+          const params = new URLSearchParams(searchParams.toString());
+          params.set('portfolioId', id);
+          router.replace(`/portfolio/history?${params.toString()}`);
         }}
       >
         <Card style={{ padding: `${spacing.xxl}px` }}>
@@ -245,41 +253,26 @@ function PortfolioHistoryContent() {
             onRetry={() => refetchHistory()}
           />
         </Card>
-      </div>
+      </PortfolioShell>
     );
   }
 
   return (
-    <div
-      style={{
-        maxWidth: '1000px',
-        margin: '0 auto',
-        padding: `${spacing.xl}px ${spacing.base}px`,
+    <PortfolioShell
+      activeTab="history"
+      selectedPortfolioId={activePortfolioId}
+      portfolios={portfolios}
+      subtitle={
+        activePortfolio
+          ? `Extrato cronológico unificado de movimentações, eventos e rendimentos de "${activePortfolio.name}"`
+          : 'Extrato cronológico unificado de movimentações, eventos e rendimentos'
+      }
+      onSelectPortfolio={(id) => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('portfolioId', id);
+        router.replace(`/portfolio/history?${params.toString()}`);
       }}
     >
-      {/* 1. Breadcrumbs Navigation */}
-      <nav aria-label="Breadcrumb" style={{ marginBottom: `${spacing.md}px` }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: `${spacing.xs}px`,
-            fontSize: '0.875rem',
-            color: colors.textSecondary,
-          }}
-        >
-          <Link
-            href={`/portfolio${activePortfolioId ? `?portfolioId=${activePortfolioId}` : ''}`}
-            style={{ color: colors.accent, textDecoration: 'none', fontWeight: 500 }}
-          >
-            Carteira
-          </Link>
-          <span>/</span>
-          <span style={{ color: colors.textPrimary, fontWeight: 600 }}>Histórico</span>
-        </div>
-      </nav>
-
-      {/* 2. Page Header */}
       <div
         style={{
           display: 'flex',
@@ -290,22 +283,8 @@ function PortfolioHistoryContent() {
           marginBottom: `${spacing.lg}px`,
         }}
       >
-        <div>
-          <h1
-            style={{
-              fontSize: '1.75rem',
-              fontWeight: 800,
-              color: colors.textPrimary,
-              margin: '0 0 4px 0',
-              letterSpacing: '-0.02em',
-            }}
-          >
-            Histórico de Atividades
-          </h1>
-          <p style={{ fontSize: '0.875rem', color: colors.textSecondary, margin: 0 }}>
-            Extrato cronológico unificado de movimentações, eventos e rendimentos da carteira{' '}
-            <strong style={{ color: colors.textPrimary }}>{activePortfolio?.name}</strong>
-          </p>
+        <div style={{ fontSize: '0.875rem', color: colors.textSecondary }}>
+          Linha do tempo contínua de compras, vendas, proventos e eventos corporativos
         </div>
 
         <div
@@ -334,25 +313,10 @@ function PortfolioHistoryContent() {
           >
             <span>✨ Perguntar à IA sobre este período</span>
           </Link>
-          <Link
-            href={`/portfolio${activePortfolioId ? `?portfolioId=${activePortfolioId}` : ''}`}
-            style={{ textDecoration: 'none' }}
-          >
-            <span
-              style={{
-                fontSize: '0.875rem',
-                color: colors.accent,
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              ← Voltar para Visão Geral
-            </span>
-          </Link>
         </div>
       </div>
 
-      {/* 3. Filter Bar */}
+      {/* Filter Bar */}
       <PortfolioHistoryFilters
         filters={filters}
         onChange={setFilters}
@@ -360,7 +324,7 @@ function PortfolioHistoryContent() {
         assets={filterAssets}
       />
 
-      {/* 4. Timeline Feed */}
+      {/* Timeline Feed */}
       <PortfolioHistoryTimeline
         portfolioId={activePortfolioId}
         groups={activityViewModel.groups}
@@ -370,7 +334,7 @@ function PortfolioHistoryContent() {
         loadMoreError={isHistoryError ? (historyError as ApiError)?.message : null}
         hasActiveFilters={hasActiveFilters}
       />
-    </div>
+    </PortfolioShell>
   );
 }
 

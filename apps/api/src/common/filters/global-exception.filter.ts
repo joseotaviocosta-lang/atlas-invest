@@ -17,6 +17,7 @@ const HTTP_STATUS_NAMES: Record<number, string> = {
   404: 'Not Found',
   409: 'Conflict',
   422: 'Unprocessable Entity',
+  429: 'Too Many Requests',
   500: 'Internal Server Error',
   503: 'Service Unavailable',
 };
@@ -96,6 +97,17 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       message = exception.message;
     }
 
+    // Rate limiting sanitation: prevent internal class names (e.g. ThrottlerException) from leaking
+    if (
+      statusCode === HttpStatus.TOO_MANY_REQUESTS ||
+      (exception instanceof HttpException && exception.getStatus() === HttpStatus.TOO_MANY_REQUESTS) ||
+      (exception instanceof Error && exception.constructor.name === 'ThrottlerException')
+    ) {
+      statusCode = HttpStatus.TOO_MANY_REQUESTS;
+      errorCode = 'COMMON.TOO_MANY_REQUESTS';
+      message = 'Muitas tentativas. Aguarde um momento e tente novamente.';
+    }
+
     // Security Invariant: In 5xx responses, NEVER leak database, Prisma, or runtime internals to the client
     if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
       message = 'Não foi possível concluir a operação. Tente novamente.';
@@ -135,6 +147,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         return 'NOT_FOUND';
       case 409:
         return 'CONFLICT';
+      case 429:
+        return 'COMMON.TOO_MANY_REQUESTS';
       default:
         return 'INTERNAL_SERVER_ERROR';
     }

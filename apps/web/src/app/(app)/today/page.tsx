@@ -12,6 +12,7 @@ import {
   Card,
   Button,
   Badge,
+  PortfolioSwitcher,
 } from '@/components/ui';
 import {
   colors,
@@ -39,10 +40,10 @@ interface IncomeSummaryItem {
 export default function TodayPage() {
   const user = useAuthStore((state) => state.user);
 
-  const { data: portfolios = [], isLoading: isLoadingPortfolios } = useQuery({
+  const { data: rawPortfolios = [], isLoading: isLoadingPortfolios } = useQuery({
     queryKey: ['portfolios'],
     queryFn: async () => {
-      const res = await apiClient.get<{ data: Array<{ id: string; name: string }> }>(
+      const res = await apiClient.get<{ data: Array<{ id: string; name: string; type?: string }> }>(
         '/api/v1/portfolios',
       );
       return res.data || [];
@@ -50,9 +51,17 @@ export default function TodayPage() {
     staleTime: 60 * 1000,
   });
 
+  const portfolios: Array<{ id: string; name: string; type: string }> = React.useMemo(() => {
+    const list = Array.isArray(rawPortfolios) ? rawPortfolios : [];
+    return list.map((p) => ({ id: p.id, name: p.name, type: p.type || 'PERSONAL' }));
+  }, [rawPortfolios]);
+
+  const [selectedPortfolioId, setSelectedPortfolioId] = React.useState<string | null>(null);
+
   const firstName = user?.name ? user.name.split(' ')[0] : 'Investidor';
-  const firstPortfolio = portfolios[0];
-  const firstPortfolioId = firstPortfolio?.id;
+  const activePortfolio =
+    portfolios.find((p) => p.id === selectedPortfolioId) || portfolios[0];
+  const activePortfolioId = activePortfolio?.id;
   const today = getTodayCivilDateString();
 
   // Pending review inbox count (derived, badge feed — no list load).
@@ -76,12 +85,12 @@ export default function TodayPage() {
       isEmpty: boolean;
     };
   }>({
-    queryKey: ['portfolio-review', firstPortfolioId],
+    queryKey: ['portfolio-review', activePortfolioId],
     queryFn: async () => {
-      if (!firstPortfolioId) return { data: null } as never;
-      return apiClient.get(`/api/v1/portfolios/${firstPortfolioId}/review`);
+      if (!activePortfolioId) return { data: null } as never;
+      return apiClient.get(`/api/v1/portfolios/${activePortfolioId}/review`);
     },
-    enabled: Boolean(firstPortfolioId),
+    enabled: Boolean(activePortfolioId),
     staleTime: 60 * 1000,
   });
   const reviewAttentionCount = reviewData?.data?.summary.attentionCount ?? 0;
@@ -93,12 +102,12 @@ export default function TodayPage() {
       comparison: { outsideTolerance: string[] } | null;
     };
   }>({
-    queryKey: ['portfolio-allocation-strategy', firstPortfolioId],
+    queryKey: ['portfolio-allocation-strategy', activePortfolioId],
     queryFn: async () => {
-      if (!firstPortfolioId) return { data: { strategy: null, comparison: null } };
-      return apiClient.get(`/api/v1/portfolios/${firstPortfolioId}/allocation-strategy`);
+      if (!activePortfolioId) return { data: { strategy: null, comparison: null } };
+      return apiClient.get(`/api/v1/portfolios/${activePortfolioId}/allocation-strategy`);
     },
-    enabled: Boolean(firstPortfolioId),
+    enabled: Boolean(activePortfolioId),
     staleTime: 60 * 1000,
   });
   const strategyOutsideCount = strategyData?.data?.comparison?.outsideTolerance.length ?? 0;
@@ -115,12 +124,12 @@ export default function TodayPage() {
       } | null;
     };
   }>({
-    queryKey: ['portfolio-contribution-plans-next', firstPortfolioId],
+    queryKey: ['portfolio-contribution-plans-next', activePortfolioId],
     queryFn: async () => {
-      if (!firstPortfolioId) return { data: { plan: null } };
-      return apiClient.get(`/api/v1/portfolios/${firstPortfolioId}/contribution-plans/next`);
+      if (!activePortfolioId) return { data: { plan: null } };
+      return apiClient.get(`/api/v1/portfolios/${activePortfolioId}/contribution-plans/next`);
     },
-    enabled: Boolean(firstPortfolioId),
+    enabled: Boolean(activePortfolioId),
     staleTime: 60 * 1000,
   });
   const nextPlan = nextPlanData?.data?.plan ?? null;
@@ -133,14 +142,14 @@ export default function TodayPage() {
       timeline: Array<{ month: string; confirmed: string }>;
     };
   }>({
-    queryKey: ['portfolio-contribution-insights', firstPortfolioId, '1A'],
+    queryKey: ['portfolio-contribution-insights', activePortfolioId, '1A'],
     queryFn: async () => {
-      if (!firstPortfolioId) return { data: { currency: null, goal: null, timeline: [] } };
+      if (!activePortfolioId) return { data: { currency: null, goal: null, timeline: [] } };
       return apiClient.get(
-        `/api/v1/portfolios/${firstPortfolioId}/contribution-insights?period=1A`,
+        `/api/v1/portfolios/${activePortfolioId}/contribution-insights?period=1A`,
       );
     },
-    enabled: Boolean(firstPortfolioId),
+    enabled: Boolean(activePortfolioId),
     staleTime: 60 * 1000,
   });
   const currentMonthKey = today.slice(0, 7);
@@ -156,26 +165,26 @@ export default function TodayPage() {
       incomeSummaries?: IncomeSummaryItem[];
     };
   }>({
-    queryKey: ['portfolio-state', firstPortfolioId],
+    queryKey: ['portfolio-state', activePortfolioId],
     queryFn: async () => {
-      if (!firstPortfolioId) return { data: { positions: [] } } as never;
-      return apiClient.get(`/api/v1/portfolios/${firstPortfolioId}/state`);
+      if (!activePortfolioId) return { data: { positions: [] } } as never;
+      return apiClient.get(`/api/v1/portfolios/${activePortfolioId}/state`);
     },
-    enabled: Boolean(firstPortfolioId),
+    enabled: Boolean(activePortfolioId),
     staleTime: 30 * 1000,
   });
 
   // 2. Persisted market valuation query (Zero live provider calls on GET)
   const { data: valuationData, isLoading: isLoadingValuation } =
     useQuery<PortfolioValuationResponse>({
-      queryKey: firstPortfolioId
-        ? valuationQueryKey(firstPortfolioId)
+      queryKey: activePortfolioId
+        ? valuationQueryKey(activePortfolioId)
         : ['portfolio-valuation', 'none'],
       queryFn: async () => {
-        if (!firstPortfolioId) throw new Error('No portfolio');
-        return apiClient.get(`/api/v1/portfolios/${firstPortfolioId}/valuation`);
+        if (!activePortfolioId) throw new Error('No portfolio');
+        return apiClient.get(`/api/v1/portfolios/${activePortfolioId}/valuation`);
       },
-      enabled: Boolean(firstPortfolioId),
+      enabled: Boolean(activePortfolioId),
       staleTime: 30 * 1000,
     });
 
@@ -244,11 +253,22 @@ export default function TodayPage() {
         title="Hoje"
         subtitle={`Olá, ${firstName}. Aqui está o panorama do seu patrimônio e do mercado.`}
         action={
-          <Link href="/portfolio">
-            <Button variant="secondary" size="sm">
-              Ver Carteiras →
-            </Button>
-          </Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px` }}>
+            {portfolios.length > 1 && (
+              <PortfolioSwitcher
+                portfolios={portfolios}
+                selectedPortfolioId={activePortfolioId ?? null}
+                onSelectPortfolio={(id) => setSelectedPortfolioId(id)}
+              />
+            )}
+            <Link
+              href={`/portfolio${activePortfolioId ? `?portfolioId=${activePortfolioId}` : ''}`}
+            >
+              <Button variant="secondary" size="sm">
+                Ver Carteira →
+              </Button>
+            </Link>
+          </div>
         }
       />
 
@@ -332,7 +352,7 @@ export default function TodayPage() {
       )}
 
       {/* Portfolio review compact summary (only when attention items exist) */}
-      {reviewAttentionCount > 0 && firstPortfolioId ? (
+      {reviewAttentionCount > 0 && activePortfolioId ? (
         <div
           style={{
             padding: `${spacing.base}px ${spacing.xl}px`,
@@ -365,7 +385,7 @@ export default function TodayPage() {
             </div>
           </div>
           <Link
-            href={`/portfolio?portfolioId=${firstPortfolioId}`}
+            href={`/portfolio?portfolioId=${activePortfolioId}`}
             aria-label="Ver revisão da carteira"
           >
             <Button size="sm">Ver revisão</Button>
@@ -374,7 +394,7 @@ export default function TodayPage() {
       ) : null}
 
       {/* Allocation strategy compact summary (only with declared strategy off-target) */}
-      {strategyOutsideCount > 0 && firstPortfolioId ? (
+      {strategyOutsideCount > 0 && activePortfolioId ? (
         <div
           style={{
             padding: `${spacing.base}px ${spacing.xl}px`,
@@ -407,7 +427,7 @@ export default function TodayPage() {
             </div>
           </div>
           <Link
-            href={`/portfolio?tab=allocation&portfolioId=${firstPortfolioId}`}
+            href={`/portfolio?tab=allocation&portfolioId=${activePortfolioId}`}
             aria-label="Ver estratégia de alocação"
           >
             <Button size="sm">Ver estratégia</Button>
@@ -416,7 +436,7 @@ export default function TodayPage() {
       ) : null}
 
       {/* Next planned contribution (intent only — the Atlas never executes it) */}
-      {nextPlan && firstPortfolioId ? (
+      {nextPlan && activePortfolioId ? (
         <div
           style={{
             padding: `${spacing.base}px ${spacing.xl}px`,
@@ -451,7 +471,7 @@ export default function TodayPage() {
             </div>
           </div>
           <Link
-            href={`/portfolio?tab=allocation&portfolioId=${firstPortfolioId}`}
+            href={`/portfolio?tab=planning&portfolioId=${activePortfolioId}`}
             aria-label="Ver plano de aporte"
           >
             <Button size="sm">Ver plano</Button>
@@ -460,7 +480,7 @@ export default function TodayPage() {
       ) : null}
 
       {/* Monthly contribution goal + current-month confirmed facts (user-defined only) */}
-      {currentGoal && firstPortfolioId ? (
+      {currentGoal && activePortfolioId ? (
         <div
           style={{
             padding: `${spacing.base}px ${spacing.xl}px`,
@@ -496,13 +516,13 @@ export default function TodayPage() {
             </div>
           </div>
           <Link
-            href={`/portfolio?tab=allocation&portfolioId=${firstPortfolioId}`}
+            href={`/portfolio?tab=planning&portfolioId=${activePortfolioId}`}
             aria-label="Ver planejamento de aportes"
           >
             <Button size="sm">Ver planejamento</Button>
           </Link>
           <Link
-            href={`/portfolio?tab=allocation&portfolioId=${firstPortfolioId}#contribution-calendar`}
+            href={`/portfolio?tab=planning&portfolioId=${activePortfolioId}#contribution-calendar`}
             aria-label="Ver calendário de aportes"
           >
             <Button size="sm">Ver calendário</Button>
@@ -525,8 +545,8 @@ export default function TodayPage() {
           <SectionHeader
             title="Resumo Patrimonial"
             description={
-              firstPortfolio
-                ? `Carteira: ${firstPortfolio.name}`
+              activePortfolio
+                ? `Carteira: ${activePortfolio.name}`
                 : 'Indicadores derivados do livro-razão e mercado'
             }
           />

@@ -22,6 +22,7 @@ export default function OnboardingPage() {
   const { showToast } = useToast();
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [createdPortfolioId, setCreatedPortfolioId] = useState<string | null>(null);
   const [portfolioName, setPortfolioName] = useState('Carteira Principal');
   const [portfolioType, setPortfolioType] = useState('PERSONAL');
   const [selectedMethod, setSelectedMethod] = useState<'manual' | 'import_later' | 'explore'>(
@@ -41,14 +42,18 @@ export default function OnboardingPage() {
 
   // If already has portfolios and lands here, allow direct bypass
   const hasExistingPortfolios = portfolios.length > 0;
+  const targetPortfolioId = createdPortfolioId || portfolios[0]?.id;
 
   const createPortfolioMutation = useMutation({
     mutationFn: async (payload: { name: string; baseCurrency: string; type: string }) => {
       const res = await apiClient.post<{ data: PortfolioItem }>('/api/v1/portfolios', payload);
       return res.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['portfolios'] });
+      if (data?.id) {
+        setCreatedPortfolioId(data.id);
+      }
       showToast('Primeira carteira criada com sucesso!', 'positive');
       setStep(3);
     },
@@ -86,8 +91,27 @@ export default function OnboardingPage() {
   };
 
   const handleFinish = () => {
+    if (selectedMethod === 'manual') {
+      router.replace(
+        `/portfolio?${targetPortfolioId ? `portfolioId=${targetPortfolioId}&` : ''}tab=operations&action=new`,
+      );
+      return;
+    }
+    if (selectedMethod === 'import_later') {
+      router.replace(
+        `/portfolio/import${targetPortfolioId ? `?portfolioId=${targetPortfolioId}` : ''}`,
+      );
+      return;
+    }
     router.replace('/today');
   };
+
+  const finishButtonLabel =
+    selectedMethod === 'manual'
+      ? 'Adicionar primeira operação →'
+      : selectedMethod === 'import_later'
+        ? 'Acessar área de importações →'
+        : 'Explorar plataforma →';
 
   if (isCheckingPortfolios) {
     return (
@@ -500,7 +524,7 @@ export default function OnboardingPage() {
             </div>
 
             <Button fullWidth onClick={handleFinish}>
-              Ir para o Início
+              {finishButtonLabel}
             </Button>
           </div>
         )}

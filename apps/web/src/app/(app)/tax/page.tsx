@@ -19,7 +19,7 @@ import {
   type RawMonthlyTaxLiability,
   type RawTaxInputReadiness,
 } from '@atlas/ui';
-import { Card, Skeleton, ErrorState, EmptyState, PageHeader, SectionHeader } from '@/components/ui';
+import { Card, Skeleton, ErrorState, EmptyState, PageHeader, SectionHeader, Tabs } from '@/components/ui';
 import { TaxInputEntry } from '@/components/fiscal/TaxInputEntry';
 import { TaxObligationSection } from '@/components/fiscal/TaxObligationSection';
 import { EquityFiscalSection } from '@/components/fiscal/EquityFiscalSection';
@@ -46,6 +46,14 @@ function FiscalContent() {
   const authReady = isInitialized && status === 'authenticated';
 
   const [competence, setCompetence] = useState('');
+  const [activeTab, setActiveTab] = useState<'monthly' | 'annual' | 'high-income' | 'compliance'>('monthly');
+
+  const taxTabs = [
+    { id: 'monthly', label: 'Apuração Mensal & DARF' },
+    { id: 'annual', label: 'Declaração Anual (DIRPF)' },
+    { id: 'high-income', label: 'Alta Renda (Lei 15.270)' },
+    { id: 'compliance', label: 'Conformidade & Prazos' },
+  ];
 
   useEffect(() => {
     setCompetence(currentCompetence());
@@ -124,70 +132,82 @@ function FiscalContent() {
     <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
       <PageHeader
         title="Fiscal"
-        subtitle="Apuração fiscal mensal derivada do livro-razão imutável (fundação)"
+        subtitle="Gestão tributária completa: apuração mensal de DARFs, declaração anual, regime de alta renda e prazos fiscais."
       />
 
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: `${spacing.sm}px`,
-          marginBottom: `${spacing.lg}px`,
-        }}
-      >
-        <label htmlFor="competence" style={{ fontSize: '0.875rem', color: colors.textSecondary }}>
-          Competência
-        </label>
-        <input
-          id="competence"
-          type="month"
-          value={competence}
-          onChange={(e) => setCompetence(e.target.value)}
-          style={{
-            padding: `${spacing.xs}px ${spacing.sm}px`,
-            borderRadius: `${borderRadius.md}px`,
-            border: `1px solid ${colors.border}`,
-            fontSize: '0.875rem',
-            color: colors.textPrimary,
-            backgroundColor: colors.surface,
-          }}
+      <div style={{ marginBottom: `${spacing.lg}px` }}>
+        <Tabs
+          tabs={taxTabs}
+          activeTab={activeTab}
+          onTabChange={(id) =>
+            setActiveTab(id as 'monthly' | 'annual' | 'high-income' | 'compliance')
+          }
         />
       </div>
 
-      {isLoading && (
-        <Card style={{ padding: `${spacing.xxl}px` }}>
-          <Skeleton width="200px" height="1.5rem" />
-          <Skeleton width="100%" height="80px" />
-        </Card>
-      )}
-
-      {isError && !isLoading && (
-        <Card style={{ padding: `${spacing.xxl}px` }}>
-          <ErrorState
-            title="Falha ao carregar a apuração fiscal"
-            message={
-              (error as ApiError)?.message || 'Ocorreu um erro ao consultar o estado fiscal.'
-            }
-            onRetry={() => refetch()}
-          />
-        </Card>
-      )}
-
-      {viewModel && (
-        <>
-          <details style={{ marginBottom: `${spacing.xl}px` }}>
-            <summary
+      {/* TAB 1: APURAÇÃO MENSAL & DARF */}
+      {activeTab === 'monthly' && (
+        <div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: `${spacing.sm}px`,
+              marginBottom: `${spacing.lg}px`,
+            }}
+          >
+            <label htmlFor="competence" style={{ fontSize: '0.875rem', color: colors.textSecondary }}>
+              Competência
+            </label>
+            <input
+              id="competence"
+              type="month"
+              value={competence}
+              onChange={(e) => setCompetence(e.target.value)}
               style={{
-                cursor: 'pointer',
-                fontSize: '0.9375rem',
-                fontWeight: 600,
+                padding: `${spacing.xs}px ${spacing.sm}px`,
+                borderRadius: `${borderRadius.md}px`,
+                border: `1px solid ${colors.border}`,
+                fontSize: '0.875rem',
                 color: colors.textPrimary,
+                backgroundColor: colors.surface,
               }}
-            >
-              Diagnóstico de fundação (Fase 4A): {viewModel.status} · Competência{' '}
-              {viewModel.competenceLabel}
-            </summary>
-            <div style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginTop: '4px' }}>
+            />
+          </div>
+
+          {isLoading && (
+            <Card style={{ padding: `${spacing.xxl}px` }}>
+              <Skeleton width="200px" height="1.5rem" />
+              <Skeleton width="100%" height="80px" />
+            </Card>
+          )}
+
+          {isError && !isLoading && (
+            <Card style={{ padding: `${spacing.xxl}px` }}>
+              <ErrorState
+                title="Falha ao carregar a apuração fiscal"
+                message={
+                  (error as ApiError)?.message || 'Ocorreu um erro ao consultar o estado fiscal.'
+                }
+                onRetry={() => refetch()}
+              />
+            </Card>
+          )}
+
+          {viewModel && (
+            <>
+              <details style={{ marginBottom: `${spacing.xl}px` }}>
+                <summary
+                  style={{
+                    cursor: 'pointer',
+                    fontSize: '0.9375rem',
+                    fontWeight: 600,
+                    color: colors.textPrimary,
+                  }}
+                >
+                  Diagnóstico Fiscal: {viewModel.status} · Competência {viewModel.competenceLabel}
+                </summary>
+                <div style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginTop: '4px' }}>
               Fatos fiscais normalizados e pendências de evidência. O resultado fiscal vigente é
               apurado nas seções Apuração de imposto, Ações e Composição 6015 abaixo.
             </div>
@@ -329,7 +349,7 @@ function FiscalContent() {
           {liability && (
             <div style={{ marginTop: `${spacing.xl}px` }}>
               <SectionHeader
-                title="Apuração de imposto (Fase 4B)"
+                title="Apuração de imposto"
                 description={liability.statusLabel}
               />
               <div
@@ -577,14 +597,6 @@ function FiscalContent() {
 
           <TaxObligationSection competence={competence} />
 
-          <ComplianceTimelineSection />
-
-          <TaxComplianceActionCenterSection />
-
-          <TaxCompliancePeriodCloseSection />
-
-          <TaxComplianceRemindersSection />
-
           <TaxInputEntry
             competence={competence}
             events={
@@ -598,26 +610,6 @@ function FiscalContent() {
             onSaved={() => refetch()}
           />
 
-          <AnnualPositionsSection portfolioId={selectedPortfolioId} />
-          <AnnualCapitalMarketSection />
-          <AnnualInvestmentIncomeSection />
-          <AnnualReadinessSection />
-          <AnnualReportingSection />
-
-          <Card style={{ padding: `${spacing.base}px`, marginTop: `${spacing.base}px` }}>
-            <SectionHeader
-              title="Tributação mínima de alta renda"
-              description="Revisão anual do regime de altas rendas (Lei nº 15.270/2025): situação, base, evidências e pendências."
-            />
-            <Link
-              href="/tax/high-income"
-              data-testid="tax-high-income-link"
-              style={{ color: colors.accent, fontSize: '0.875rem' }}
-            >
-              Abrir revisão anual de alta renda →
-            </Link>
-          </Card>
-
           <div
             style={{
               marginTop: `${spacing.xl}px`,
@@ -630,6 +622,66 @@ function FiscalContent() {
           </div>
         </>
       )}
+    </div>
+  )}
+
+  {/* TAB 2: DECLARAÇÃO ANUAL (DIRPF) */}
+  {activeTab === 'annual' && (
+    <div>
+      <AnnualPositionsSection portfolioId={selectedPortfolioId} />
+      <AnnualCapitalMarketSection />
+      <AnnualInvestmentIncomeSection />
+      <AnnualReadinessSection />
+      <AnnualReportingSection />
+    </div>
+  )}
+
+  {/* TAB 3: ALTA RENDA (LEI 15.270) */}
+  {activeTab === 'high-income' && (
+    <Card style={{ padding: `${spacing.xl}px` }}>
+      <SectionHeader
+        title="Tributação mínima de alta renda"
+        description="Revisão anual do regime de altas rendas (Lei nº 15.270/2025): situação, base de cálculo, evidências e pendências."
+      />
+      <p
+        style={{
+          fontSize: '0.875rem',
+          color: colors.textSecondary,
+          lineHeight: 1.6,
+          margin: `${spacing.md}px 0`,
+        }}
+      >
+        O regime de alta renda monitora anualmente os rendimentos tributáveis e isentos sujeitos
+        à alíquota efetiva mínima, permitindo o acompanhamento preventivo das obrigações e deduções
+        legais.
+      </p>
+      <Link
+        href="/tax/high-income"
+        data-testid="tax-high-income-link"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px',
+          color: colors.accent,
+          fontWeight: 600,
+          fontSize: '0.875rem',
+          textDecoration: 'none',
+        }}
+      >
+        Abrir revisão anual completa de alta renda →
+      </Link>
+    </Card>
+  )}
+
+  {/* TAB 4: CONFORMIDADE & PRAZOS */}
+  {activeTab === 'compliance' && (
+    <div>
+      <ComplianceTimelineSection />
+      <TaxComplianceActionCenterSection />
+      <TaxCompliancePeriodCloseSection />
+      <TaxComplianceRemindersSection />
+    </div>
+  )}
     </div>
   );
 }

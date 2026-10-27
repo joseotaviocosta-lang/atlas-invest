@@ -34,7 +34,7 @@ import {
   PositionIncomeSection,
   PositionDataQualitySection,
 } from '@/components/portfolio';
-import { Card, Button, Skeleton, ErrorState } from '@/components/ui';
+import { Card, Button, Skeleton, ErrorState, Tabs } from '@/components/ui';
 
 function AssetPositionDetailContent() {
   const params = useParams();
@@ -43,6 +43,24 @@ function AssetPositionDetailContent() {
 
   const assetId = (params?.assetId as string) || '';
   const portfolioIdParam = searchParams.get('portfolioId');
+  const tabParam = searchParams.get('tab') as
+    | 'overview'
+    | 'performance'
+    | 'income'
+    | 'quality'
+    | 'history'
+    | null;
+  const [activeTab, setActiveTab] = React.useState<
+    'overview' | 'performance' | 'income' | 'quality' | 'history'
+  >(() => {
+    if (
+      tabParam &&
+      ['overview', 'performance', 'income', 'quality', 'history'].includes(tabParam)
+    ) {
+      return tabParam;
+    }
+    return 'overview';
+  });
 
   // Temporal context (Fase 2F): historical snapshots come from server replay.
   const today = React.useMemo(() => getTodayCivilDateString(), []);
@@ -51,6 +69,22 @@ function AssetPositionDetailContent() {
     [searchParams, today],
   );
   const isHistorical = temporal.mode === 'HISTORICAL';
+
+  const assetTabs = React.useMemo(() => {
+    if (isHistorical) {
+      return [
+        { id: 'overview', label: 'Visão Geral' },
+        { id: 'history', label: 'Histórico' },
+      ];
+    }
+    return [
+      { id: 'overview', label: 'Visão Geral' },
+      { id: 'performance', label: 'Rentabilidade' },
+      { id: 'income', label: 'Proventos' },
+      { id: 'quality', label: 'Qualidade dos Dados' },
+      { id: 'history', label: 'Histórico' },
+    ];
+  }, [isHistorical]);
 
   const clearAsOf = () => {
     const next = new URLSearchParams(searchParams.toString());
@@ -345,64 +379,75 @@ function AssetPositionDetailContent() {
         </Link>
       </div>
 
-      {/* 2. Primary Position Card (Quantity, Average Cost, Total Cost) */}
-      <AssetPositionPrimaryCard
-        quantity={viewModel.primaryCard.quantity}
-        averageCost={viewModel.primaryCard.averageCost}
-        totalCost={viewModel.primaryCard.totalCost}
-        currency={viewModel.primaryCard.currency}
-        totalCostLabel={viewModel.primaryCard.totalCostLabel}
-        isCostBasisIncomplete={viewModel.primaryCard.isCostBasisIncomplete}
-      />
+      {/* Tabs Navigation */}
+      <div style={{ marginBottom: `${spacing.base}px` }}>
+        <Tabs
+          tabs={assetTabs}
+          activeTab={activeTab}
+          onTabChange={(t) => setActiveTab(t as 'overview' | 'performance' | 'income' | 'quality' | 'history')}
+        />
+      </div>
 
-      {/* 3. Custody Breakdown by Account (historical snapshot when asOf) */}
-      <AssetCustodyBreakdown accounts={viewModel.accountsBreakdown} />
+      {/* TAB 1: VISÃO GERAL */}
+      {activeTab === 'overview' && (
+        <div>
+          {/* Primary Position Card (Quantity, Average Cost, Total Cost) */}
+          <AssetPositionPrimaryCard
+            quantity={viewModel.primaryCard.quantity}
+            averageCost={viewModel.primaryCard.averageCost}
+            totalCost={viewModel.primaryCard.totalCost}
+            currency={viewModel.primaryCard.currency}
+            totalCostLabel={viewModel.primaryCard.totalCostLabel}
+            isCostBasisIncomplete={viewModel.primaryCard.isCostBasisIncomplete}
+          />
 
-      {/* 3.5 Position Intelligence (valuation, weight, income, activity — current mode only).
-          Valuation and allocation are current-mode concepts, like realized/income aggregates. */}
-      {!isHistorical && activePortfolioId ? (
-        <PositionIntelligenceSection portfolioId={activePortfolioId} assetId={assetId} />
-      ) : null}
+          {/* Custody Breakdown by Account (historical snapshot when asOf) */}
+          <AssetCustodyBreakdown accounts={viewModel.accountsBreakdown} />
 
-      {/* 3.6 Position Performance (TWR, components, attribution — current mode only).
-          Lazy separate endpoint; the 5R-A section keeps valuation/income/activity. */}
-      {!isHistorical && activePortfolioId ? (
-        <PositionPerformanceSection portfolioId={activePortfolioId} assetId={assetId} />
-      ) : null}
+          {/* Position Intelligence (valuation, weight, income, activity — current mode only). */}
+          {!isHistorical && activePortfolioId ? (
+            <PositionIntelligenceSection portfolioId={activePortfolioId} assetId={assetId} />
+          ) : null}
 
-      {/* 3.7 Position Income (historical income over the current lifecycle — current mode only). */}
-      {!isHistorical && activePortfolioId ? (
-        <PositionIncomeSection portfolioId={activePortfolioId} assetId={assetId} />
-      ) : null}
-
-      {/* 3.8 Position Data Quality (diagnostics — current mode only). */}
-      {!isHistorical && activePortfolioId ? (
-        <PositionDataQualitySection portfolioId={activePortfolioId} assetId={assetId} />
-      ) : null}
-
-      {/* 4-5. Realized Results & Income (lifetime aggregates: current mode only).
-          In historical mode they would mix lifetime totals with snapshot
-          positions, so they stay hidden by design (no performance analysis). */}
-      {!isHistorical && (
-        <>
-          {/* 4. Realized Results (Disposals) */}
-          <AssetRealizedSection disposals={viewModel.realizedResults.disposals} />
-
-          {/* 5. Income Received (Dividends, JCP, FII Income) */}
-          <AssetIncomeSection events={viewModel.incomeReceived.events} />
-        </>
+          {/* Realized Results (Disposals) */}
+          {!isHistorical && viewModel.realizedResults.disposals.length > 0 && (
+            <AssetRealizedSection disposals={viewModel.realizedResults.disposals} />
+          )}
+        </div>
       )}
 
-      {/* 6. Paginated Reverse-Chronological History Feed (audit events, not a snapshot) */}
-      <AssetHistorySection
-        items={viewModel.history.items}
-        hasNextPage={hasNextPage}
-        isFetchingNextPage={isFetchingNextPage}
-        onLoadMore={() => fetchNextPage()}
-        loadMoreError={
-          isHistoryError ? historyError?.message || 'Erro ao carregar mais eventos' : null
-        }
-      />
+      {/* TAB 2: RENTABILIDADE */}
+      {!isHistorical && activeTab === 'performance' && activePortfolioId && (
+        <PositionPerformanceSection portfolioId={activePortfolioId} assetId={assetId} />
+      )}
+
+      {/* TAB 3: PROVENTOS */}
+      {!isHistorical && activeTab === 'income' && (
+        <div>
+          {activePortfolioId && (
+            <PositionIncomeSection portfolioId={activePortfolioId} assetId={assetId} />
+          )}
+          <AssetIncomeSection events={viewModel.incomeReceived.events} />
+        </div>
+      )}
+
+      {/* TAB 4: QUALIDADE DOS DADOS */}
+      {!isHistorical && activeTab === 'quality' && activePortfolioId && (
+        <PositionDataQualitySection portfolioId={activePortfolioId} assetId={assetId} />
+      )}
+
+      {/* TAB 5: HISTÓRICO */}
+      {activeTab === 'history' && (
+        <AssetHistorySection
+          items={viewModel.history.items}
+          hasNextPage={hasNextPage}
+          isFetchingNextPage={isFetchingNextPage}
+          onLoadMore={() => fetchNextPage()}
+          loadMoreError={
+            isHistoryError ? historyError?.message || 'Erro ao carregar mais eventos' : null
+          }
+        />
+      )}
     </div>
   );
 }

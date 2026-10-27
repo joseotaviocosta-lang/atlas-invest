@@ -47,6 +47,7 @@ import {
   PortfolioIncomeSection,
   PortfolioDataQualitySection,
   PortfolioOperationsSection,
+  PortfolioPlanningSection,
   PortfolioReviewSection,
   PortfolioStrategySection,
   PortfolioShell,
@@ -167,8 +168,9 @@ function PortfolioPageContent() {
   }, [portfolioIdParam, selectedPortfolioId]);
 
   const tabParam = searchParams.get('tab');
+  const actionParam = searchParams.get('action');
   const [activeTab, setActiveTab] = useState(() => {
-    if (tabParam && ['assets', 'allocation', 'operations'].includes(tabParam)) {
+    if (tabParam && ['assets', 'allocation', 'operations', 'planning'].includes(tabParam)) {
       return tabParam;
     }
     return 'overview';
@@ -221,7 +223,14 @@ function PortfolioPageContent() {
       router.replace(
         `/portfolio/income${activePortfolio ? `?portfolioId=${activePortfolio.id}` : ''}`,
       );
-    } else if (tabParam && ['overview', 'assets', 'allocation', 'operations'].includes(tabParam)) {
+    } else if (tabParam === 'history') {
+      router.replace(
+        `/portfolio/history${activePortfolio ? `?portfolioId=${activePortfolio.id}` : ''}`,
+      );
+    } else if (
+      tabParam &&
+      ['overview', 'assets', 'allocation', 'operations', 'planning'].includes(tabParam)
+    ) {
       setActiveTab(tabParam);
     }
   }, [tabParam, activePortfolio, router]);
@@ -236,6 +245,12 @@ function PortfolioPageContent() {
     if (tabId === 'dividends') {
       router.push(
         `/portfolio/income${activePortfolio ? `?portfolioId=${activePortfolio.id}` : ''}`,
+      );
+      return;
+    }
+    if (tabId === 'history') {
+      router.push(
+        `/portfolio/history${activePortfolio ? `?portfolioId=${activePortfolio.id}` : ''}`,
       );
       return;
     }
@@ -565,6 +580,14 @@ function PortfolioPageContent() {
     if (!opAssetId && assetsCatalog[0]) setOpAssetId(assetsCatalog[0].id);
     setIsOpModalOpen(true);
   };
+
+  const hasOpenedNewActionRef = React.useRef(false);
+  React.useEffect(() => {
+    if (actionParam === 'new' && activePortfolio && !hasOpenedNewActionRef.current) {
+      hasOpenedNewActionRef.current = true;
+      openOpModal();
+    }
+  }, [actionParam, activePortfolio, accountsData, assetsCatalog]);
 
   const createTxMutation = useMutation({
     mutationFn: async (payload: Record<string, string>) => {
@@ -1238,7 +1261,7 @@ function PortfolioPageContent() {
                             }
                           />
                           <div>
-                            {overviewViewModel.positions.map((position) => (
+                            {overviewViewModel.positions.slice(0, 5).map((position) => (
                               <PositionRow
                                 key={position.assetId}
                                 position={position}
@@ -1248,6 +1271,16 @@ function PortfolioPageContent() {
                                 isHistorical={isHistorical}
                               />
                             ))}
+                            {overviewViewModel.positions.length > 5 && (
+                              <div style={{ marginTop: `${spacing.md}px`, textAlign: 'center' }}>
+                                <Button
+                                  variant="secondary"
+                                  onClick={() => handleTabChange('assets')}
+                                >
+                                  Ver todos os {overviewViewModel.positions.length} ativos em custódia →
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
@@ -1746,7 +1779,7 @@ function PortfolioPageContent() {
                               <Button
                                 size="sm"
                                 variant="secondary"
-                                aria-label={`Corrigir operação ${tx.id}`}
+                                aria-label={`Retificar operação ${tx.id}`}
                                 onClick={() => {
                                   setCorrectingTx(tx);
                                   setCorrMode('rectify');
@@ -1764,7 +1797,7 @@ function PortfolioPageContent() {
                                   setIsCorrectModalOpen(true);
                                 }}
                               >
-                                Corrigir
+                                Retificar
                               </Button>
                             )}
                           {tx.rectification?.status === 'SUPERSEDED' &&
@@ -1968,7 +2001,7 @@ function PortfolioPageContent() {
                     setCorrectingTx(null);
                   }
                 }}
-                title="Corrigir Operação no Livro-Razão"
+                title="Retificar Operação no Livro-Razão"
               >
                 <form onSubmit={handleCorrectionSubmit}>
                   {corrFormError && (
@@ -2242,6 +2275,11 @@ function PortfolioPageContent() {
                 </form>
               </Modal>
             </div>
+          )}
+
+          {/* TAB 7: PLANEJAMENTO */}
+          {activeTab === 'planning' && (
+            <PortfolioPlanningSection portfolioId={activePortfolio?.id ?? null} />
           )}
         </div>
       )}

@@ -139,11 +139,11 @@ export default function ProfilePage() {
           >
             <div>
               <div style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
-                BFF com Cookies HttpOnly
+                Sessão e Conexão Segura
               </div>
               <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '2px' }}>
-                Refresh token rotativo mantido exclusivamente no servidor com SameSite=Lax e
-                validação de Origin.
+                Suas credenciais e chaves de sessão são criptografadas com proteção de ponta a ponta
+                contra acessos indevidos.
               </div>
             </div>
             <Badge variant="positive">PROTEGIDO</Badge>
@@ -162,11 +162,11 @@ export default function ProfilePage() {
           >
             <div>
               <div style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
-                Isolamento Compulsório de Cache
+                Privacidade de Dados Financeiros
               </div>
               <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '2px' }}>
-                Purga total do cache do TanStack Query na revogação da sessão para prevenir
-                vazamento cross-user.
+                Seus dados patrimoniais e fiscais são estritamente isolados e nunca compartilhados entre
+                diferentes investidores.
               </div>
             </div>
             <Badge variant="primary">ATIVO</Badge>
@@ -185,10 +185,11 @@ export default function ProfilePage() {
           >
             <div>
               <div style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
-                Token em Memória Volátil
+                Proteção de Navegação e Dispositivo
               </div>
               <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '2px' }}>
-                Access token nunca persistido em localStorage, sessionStorage ou IndexedDB.
+                Dados sensíveis de autenticação não são gravados em armazenamento permanente do
+                navegador e são limpos no encerramento da sessão.
               </div>
             </div>
             <Badge variant="positive">SEGURO</Badge>
