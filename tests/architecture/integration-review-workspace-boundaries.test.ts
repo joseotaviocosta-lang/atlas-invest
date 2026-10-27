@@ -33,48 +33,67 @@ describe('Phase 5S-B: reconciliation workspace boundaries', () => {
     expect(content).not.toMatch(/score|confidence|fuzzy|similarity|probability/i);
   });
 
-  it('review service never writes: no run/transaction/persistence mutations', () => {
+  it('review service never writes: reads decisions, writes nothing', () => {
     const content = readSource('apps/api/src/application/imports/integration-review.service.ts');
     expect(content).not.toMatch(/\.create\(|\.update\(|\.delete\(|\.upsert\(/);
     expect(content).not.toMatch(/recordConfirmation|recordPreview|recordFailure/);
     expect(content).not.toMatch(/linkTransactions|createMany/);
     expect(content).not.toMatch(/executeMany|CreateTransactionUseCase/);
-    expect(content).not.toMatch(
-      /confirmMatch|rejectMatch|acceptReview|dismissReview|reviewDecision|reconciliationDecision/i,
-    );
+    expect(content).not.toMatch(/confirmMatch|rejectMatch|acceptReview|dismissReview/i);
     expect(content).toContain('listTransactionIdsByRun');
     expect(content).toContain('findByIds');
+    expect(content).toContain('listByRun');
     expect(content).toContain('SOURCE_FACTS_NOT_PERSISTED');
   });
 
-  it('no decision persistence exists anywhere in the workspace path', () => {
+  it('decision persistence exists only as the authorized append-only table', () => {
     const files = [
-      'apps/api/src/application/imports/integration-review.service.ts',
+      'apps/api/src/application/imports/create-reconciliation-decision.use-case.ts',
       'apps/api/src/modules/reviews/integration-reviews.controller.ts',
-      'apps/api/src/modules/reviews/dto/integration-review.dto.ts',
+      'apps/api/src/modules/reviews/dto/reconciliation-decision.dto.ts',
     ];
     for (const file of files) {
       const content = readSource(file);
-      expect(content, file).not.toMatch(
-        /reconciliationDecision|reviewDecision|reviewAction|confirmMatch|rejectMatch/i,
-      );
+      expect(content, file).not.toMatch(/reviewDecisionRecord|reviewActionRecord/i);
     }
     const migrations = fs
       .readdirSync(path.join(rootDir, 'packages/database/prisma/migrations'))
       .filter((entry) => /^\d/.test(entry));
-    expect(migrations).toHaveLength(41);
+    expect(migrations).toHaveLength(42);
+    expect(migrations[migrations.length - 1]).toContain('add_reconciliation_decisions');
     const schema = readSource('packages/database/prisma/schema.prisma');
-    expect(schema).not.toMatch(
-      /model ReviewDecision|model ReconciliationDecision|model ReviewAction/i,
-    );
+    expect(schema).toContain('model ReconciliationDecisionRecord');
+    expect(schema).not.toMatch(/model ReviewDecision|model ReviewAction/i);
   });
 
-  it('review API exposes no mutation or confirmation paths', () => {
+  it('review API exposes exactly one mutation: append-only decisions, nothing else', () => {
     const controller = readSource('apps/api/src/modules/reviews/integration-reviews.controller.ts');
     expect(controller).toContain('CurrentPrincipal');
     expect(controller).toContain('UUIDParamPipe');
-    expect(controller).not.toMatch(/Post\(|Put\(|Patch\(|Delete\(/);
-    expect(controller).not.toMatch(/confirmMatch|rejectMatch|acceptReview|dismissReview/i);
+    expect(controller).not.toMatch(/Put\(|Patch\(|Delete\(/);
+    const posts = controller.match(/Post\(/g) ?? [];
+    expect(posts).toHaveLength(1);
+    expect(controller).toContain("decisions')");
+    expect(controller).toContain('ReconciliationDecisionBodySchema');
+  });
+
+  it('decision path never touches transaction writers or run state', () => {
+    const files = [
+      'apps/api/src/application/imports/create-reconciliation-decision.use-case.ts',
+      'packages/database/src/repositories/reconciliation-decision.repository.ts',
+    ];
+    for (const file of files) {
+      const content = readSource(file);
+      expect(content, file).not.toMatch(/executeMany|CreateTransactionUseCase/);
+      expect(content, file).not.toMatch(/Transaction\.create|Transaction\.update|\.delete\(/);
+      expect(content, file).not.toMatch(/recordConfirmation|recordPreview|recordFailure/);
+    }
+    const usecase = readSource(
+      'apps/api/src/application/imports/create-reconciliation-decision.use-case.ts',
+    );
+    expect(usecase).toContain('deriveSourceItemKey');
+    expect(usecase).toContain('findByIdentity');
+    expect(usecase).toContain('ConflictException');
   });
 
   it('workspace never infers classifications from names, tickers or currencies', () => {
@@ -84,8 +103,11 @@ describe('Phase 5S-B: reconciliation workspace boundaries', () => {
       'apps/web/src/app/(app)/reviews/[runId]/page.tsx',
       'apps/mobile/app/(app)/reviews/[runId].tsx',
     ];
+    // Canonical case normalization only (fingerprint.ts precedent for
+    // source identity keys); never ticker/name heuristics. startsWith,
+    // endsWith, currency/exchange/ticker comparisons stay prohibited.
     const heuristic =
-      /startsWith|endsWith|toUpperCase\(\)|toLowerCase\(|currency\s*===?\s*['"]BRL['"]|exchange\s*===?\s*['"]B3['"]|ticker\s*===?\s*['"][A-Z]/;
+      /startsWith|endsWith|currency\s*===?\s*['"]BRL['"]|exchange\s*===?\s*['"]B3['"]|ticker\s*===?\s*['"][A-Z]/;
     for (const file of files) {
       const content = readSource(file);
       expect(content, file).not.toMatch(heuristic);

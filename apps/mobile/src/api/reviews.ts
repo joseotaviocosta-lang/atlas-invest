@@ -71,6 +71,8 @@ export interface MobileLinkedTransaction {
   quantity: string | null;
   amount: string | null;
   currency: string | null;
+  decision: 'CONFIRM_MATCH' | 'NOT_A_MATCH' | null;
+  decidedAt: string | null;
 }
 
 export interface MobileReviewDetail {

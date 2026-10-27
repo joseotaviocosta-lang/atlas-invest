@@ -134,6 +134,7 @@ import {
 import {
   ConfirmPortfolioImportUseCase,
   PreviewPortfolioImportUseCase,
+  CreateReconciliationDecisionUseCase,
   IntegrationRunService,
   IntegrationScheduleService,
   IntegrationSchedulerService,
@@ -257,6 +258,7 @@ const USE_CASES = [
   RectifyPortfolioTransactionUseCase,
   PreviewPortfolioImportUseCase,
   ConfirmPortfolioImportUseCase,
+  CreateReconciliationDecisionUseCase,
   IntegrationRunService,
   IntegrationScheduleService,
   IntegrationSchedulerService,

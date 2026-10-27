@@ -1,4 +1,14 @@
-import { Controller, Get, HttpCode, HttpStatus, Inject, Param, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  Param,
+  Post,
+  Query,
+  Body,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -6,12 +16,19 @@ import {
   ApiQuery,
   ApiResponse,
   ApiTags,
+  ApiBody,
 } from '@nestjs/swagger';
 import { IntegrationReviewService } from '../../application/imports/integration-review.service';
+import { CreateReconciliationDecisionUseCase } from '../../application/imports/create-reconciliation-decision.use-case';
 import {
   IntegrationReviewListQuery,
   IntegrationReviewListQuerySchema,
 } from './dto/integration-review.dto';
+import {
+  ReconciliationDecisionBody,
+  ReconciliationDecisionBodySchema,
+  ReconciliationDecisionBodySwaggerDto,
+} from './dto/reconciliation-decision.dto';
 import { mapIntegrationReviewToResponse } from './integration-review.mapper';
 import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
 import { AuthenticatedPrincipal, CurrentPrincipal } from '../../auth';
@@ -23,6 +40,8 @@ export class IntegrationReviewsController {
   constructor(
     @Inject(IntegrationReviewService)
     private readonly reviewService: IntegrationReviewService,
+    @Inject(CreateReconciliationDecisionUseCase)
+    private readonly recordDecision: CreateReconciliationDecisionUseCase,
   ) {}
 
   @Get()
@@ -106,6 +125,47 @@ export class IntegrationReviewsController {
         linkedTransactions: detail.linkedTransactions,
         linkedTransactionsTruncated: detail.linkedTransactionsTruncated,
         limitations: detail.limitations,
+      },
+    };
+  }
+
+  @Post(':runId/decisions')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Record a human reconciliation decision (append-only)',
+    description:
+      'Confirms or rejects the correspondence between a run source item and one linked local transaction. Records identity, decision and audit only. Never creates, edits or deletes ledger transactions; never rewrites run facts. Repeat submissions are idempotent; conflicting decisions are rejected.',
+  })
+  @ApiParam({ name: 'runId', description: 'UUID of the integration run' })
+  @ApiBody({ type: ReconciliationDecisionBodySwaggerDto })
+  @ApiResponse({ status: 200, description: 'Recorded or previously recorded decision' })
+  @ApiResponse({ status: 400, description: 'Invalid decision payload' })
+  @ApiResponse({ status: 404, description: 'Run, transaction or pair not found' })
+  @ApiResponse({ status: 409, description: 'Conflicting decision already recorded' })
+  async createDecision(
+    @Param('runId', UUIDParamPipe) runId: string,
+    @Body(new ZodValidationPipe(ReconciliationDecisionBodySchema))
+    body: ReconciliationDecisionBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const portfolioId = await this.reviewService.ownedPortfolioId(principal.userId, runId);
+    const { row } = await this.recordDecision.execute({
+      portfolioId,
+      runId,
+      transactionId: body.transactionId,
+      decision: body.decision,
+      userId: principal.userId,
+    });
+    return {
+      data: {
+        id: row.id,
+        runId: row.integrationRunId,
+        portfolioId: row.portfolioId,
+        source: row.source,
+        decision: row.decision,
+        localTransactionId: row.localTransactionId,
+        decidedAt: row.decidedAt.toISOString(),
+        decidedByCurrentUser: row.decidedByPrincipal === principal.userId,
       },
     };
   }

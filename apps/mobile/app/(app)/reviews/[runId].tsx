@@ -82,6 +82,8 @@ export default function ReviewDetailPage() {
                   <Text key={row.transactionId} style={styles.row}>
                     {row.tradeDate ?? '—'} · {row.type ?? '—'} · {row.ticker ?? row.assetId ?? '—'}{' '}
                     · {row.amount ?? row.quantity ?? '—'}
+                    {row.decision === 'CONFIRM_MATCH' ? ' · Correspondência confirmada' : ''}
+                    {row.decision === 'NOT_A_MATCH' ? ' · Não correspondem' : ''}
                   </Text>
                 ))
               )}

@@ -2403,3 +2403,44 @@ export interface IIntegrationRunRepository {
   ): Promise<{ rows: IntegrationRunRow[]; hasMore: boolean }>;
   countByPortfolio(portfolioId: string): Promise<number>;
 }
+
+export type ReconciliationDecisionKind = 'CONFIRM_MATCH' | 'NOT_A_MATCH';
+
+export interface ReconciliationDecisionRow {
+  id: string;
+  portfolioId: string;
+  integrationRunId: string;
+  source: string;
+  sourceItemKey: string;
+  localTransactionId: string;
+  decision: ReconciliationDecisionKind;
+  decidedByPrincipal: string;
+  decidedAt: Date;
+  createdAt: Date;
+}
+
+export interface ReconciliationDecisionCreateInput {
+  portfolioId: string;
+  integrationRunId: string;
+  source: string;
+  sourceItemKey: string;
+  localTransactionId: string;
+  decision: ReconciliationDecisionKind;
+  decidedByPrincipal: string;
+  decidedAt: Date;
+}
+
+/**
+ * Phase 5S-B-R1 — human reconciliation decisions. Append-only: create
+ * plus scoped reads. No update, no delete, no transaction writes.
+ */
+export interface IReconciliationDecisionRepository {
+  create(input: ReconciliationDecisionCreateInput): Promise<ReconciliationDecisionRow>;
+  findByIdentity(
+    portfolioId: string,
+    integrationRunId: string,
+    sourceItemKey: string,
+    localTransactionId: string,
+  ): Promise<ReconciliationDecisionRow | null>;
+  listByRun(runId: string, portfolioId: string): Promise<ReconciliationDecisionRow[]>;
+}

@@ -250,6 +250,8 @@ describe('API Integration: reconciliation workspace (Phase 5S-B)', () => {
           'tradeDate',
           'transactionId',
           'type',
+          'decision',
+          'decidedAt',
         ].sort(),
       );
       expect(row.ticker).toBe(asset.ticker);

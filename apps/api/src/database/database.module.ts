@@ -36,6 +36,7 @@ import {
   PrismaCalendarRepository,
   PrismaMacroRepository,
   IntegrationRunRepository,
+  ReconciliationDecisionRepository,
   IntegrationScheduleRepository,
   IntegrationJobRepository,
   IntegrationConnectionRepository,
@@ -77,6 +78,7 @@ import {
   TAX_REMINDER_PREFERENCES_REPOSITORY,
   TAX_PERIOD_CLOSE_REPOSITORY,
   INTEGRATION_RUN_REPOSITORY,
+  RECONCILIATION_DECISION_REPOSITORY,
   INTEGRATION_SCHEDULE_REPOSITORY,
   INTEGRATION_JOB_REPOSITORY,
   INTEGRATION_CONNECTION_REPOSITORY,
@@ -129,6 +131,11 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     {
       provide: INTEGRATION_RUN_REPOSITORY,
       useFactory: (prisma: AtlasPrismaClient) => new IntegrationRunRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
+    {
+      provide: RECONCILIATION_DECISION_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new ReconciliationDecisionRepository(prisma),
       inject: [PRISMA_CLIENT],
     },
     {
@@ -325,6 +332,7 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     ASSET_REPOSITORY,
     TRANSACTION_REPOSITORY,
     INTEGRATION_RUN_REPOSITORY,
+    RECONCILIATION_DECISION_REPOSITORY,
     INTEGRATION_SCHEDULE_REPOSITORY,
     INTEGRATION_JOB_REPOSITORY,
     INTEGRATION_CONNECTION_REPOSITORY,

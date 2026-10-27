@@ -120,6 +120,7 @@ model Portfolio {
   contributionGoals           PortfolioContributionGoal[]
   aiConversations        AiConversation[]
   annualOpeningPositions AnnualOpeningPositionInputRecord[]
+  reconciliationDecisions ReconciliationDecisionRecord[]
 
   @@index([userId])
   @@map("portfolios")
@@ -195,6 +196,7 @@ model Transaction {
   asset                   Asset?                         @relation(fields: [assetId], references: [id], onDelete: Restrict)
   taxTradeClassifications TaxTradeClassificationRecord[]
   contributionPlanLinks   ContributionPlanTransactionLink[]
+  reconciliationDecisions ReconciliationDecisionRecord[]
 
   @@unique([portfolioId, provider, externalId], name: "portfolio_provider_external_id_unique")
   @@index([portfolioId, tradeDate, createdAt, id])
@@ -247,6 +249,7 @@ model IntegrationRun {
 
   portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   links     IntegrationRunTransaction[]
+  reconciliationDecisions ReconciliationDecisionRecord[]
 
   @@index([portfolioId])
   @@map("integration_runs")
@@ -1493,4 +1496,34 @@ model OperationalAlertEventRecord {
   @@index([alertType], map: "operational_alert_events_alert_type_idx")
   @@index([lastDetectedAt], map: "operational_alert_events_detected_at_idx")
   @@map("operational_alert_events")
+}
+
+/// Phase 5S-B-R1 — Human reconciliation decision (identity + decision + audit only).
+/// One row asserts that a human reviewed the pair (integration run source
+/// item, local transaction): CONFIRM_MATCH records correspondence,
+/// NOT_A_MATCH records rejection. Never creates, edits or deletes
+/// ledger transactions; never rewrites run reconciliation summaries.
+/// Identity is (portfolio, run, source item key, transaction): decisions
+/// are run-scoped and idempotent per pair. No update or delete path:
+/// a conflicting decision is rejected, never overwritten. Raw provider
+/// payloads, secrets and credentials are never stored here.
+model ReconciliationDecisionRecord {
+  id                  String   @id @default(uuid()) @db.Uuid
+  portfolioId         String   @map("portfolio_id") @db.Uuid
+  integrationRunId    String   @map("integration_run_id") @db.Uuid
+  source              String   @db.VarChar(50)
+  sourceItemKey       String   @map("source_item_key") @db.VarChar(255)
+  localTransactionId  String   @map("local_transaction_id") @db.Uuid
+  decision            String   @db.VarChar(20)
+  decidedByPrincipal  String   @map("decided_by_principal") @db.VarChar(255)
+  decidedAt           DateTime @map("decided_at") @db.Timestamptz(6)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  portfolio   Portfolio        @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  run         IntegrationRun   @relation(fields: [integrationRunId], references: [id], onDelete: Cascade)
+  transaction Transaction      @relation(fields: [localTransactionId], references: [id], onDelete: Restrict)
+
+  @@unique([portfolioId, integrationRunId, sourceItemKey, localTransactionId], map: "reconciliation_decision_pair_uniq")
+  @@index([integrationRunId], map: "reconciliation_decision_run_idx")
+  @@map("reconciliation_decisions")
 }

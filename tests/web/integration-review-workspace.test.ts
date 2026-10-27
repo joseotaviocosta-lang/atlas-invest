@@ -3,11 +3,13 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 /**
- * Phase 5S-B (web) — reconciliation workspace surfaces.
+ * Phase 5S-B-R1 (web) — reconciliation workspace with human decisions.
  *
  * Inbox with state/source filters and detail links; lazy detail with
  * run context, source/local panels, reconciliation semantics,
- * differences and navigation-only actions. No mutations, no scores.
+ * differences, and explicit per-transaction decisions (confirm/reject
+ * with confirmation copy and persisted state). No auto-match, no
+ * ledger mutation, no scores.
  */
 describe('Phase 5S-B: reconciliation workspace web surfaces', () => {
   const inbox = fs.readFileSync(
@@ -48,19 +50,29 @@ describe('Phase 5S-B: reconciliation workspace web surfaces', () => {
     expect(detail).toContain('describeReconciliationState');
     expect(detail).toContain('data-testid="review-differences"');
     expect(detail).toContain('describeDifferenceField');
-  });
-
-  it('states source limits and offers navigation-only actions', () => {
-    expect(detail).toContain('review-limitation-');
     expect(detail).toContain('review-limitation-${');
     expect(detail).toContain('describeWorkspaceLimitation');
+  });
+
+  it('offers explicit decisions with confirmation copy and persisted state', () => {
+    expect(detail).toContain('decision-confirm-${');
+    expect(detail).toContain('decision-reject-${');
+    expect(detail).toContain('Confirmar correspondência');
+    expect(detail).toContain('Não correspondem');
+    expect(detail).toContain('data-testid="decision-confirmation"');
+    expect(detail).toContain('Nenhuma operação do ledger será criada, editada ou excluída');
+    expect(detail).toContain('Nenhuma operação será removida');
+    expect(detail).toContain('data-testid="decision-submit"');
+    expect(detail).toContain('Correspondência confirmada');
+    expect(detail).toContain('/decisions`, pendingDecision');
     expect(detail).toContain(
       '/portfolio/import?portfolioId=${item.portfolioId}&runId=${item.runId}',
     );
     expect(detail).toContain('Continuar revisão →');
     expect(detail).toContain('← Pendências');
-    expect(detail).not.toMatch(/Confirmar correspondência|Marcar como resolvido|Aceitar|Rejeitar/i);
-    expect(detail).not.toMatch(/Criar automaticamente|Excluir operação/i);
+    expect(detail).not.toMatch(
+      /Criar automaticamente|Excluir operação|auto-?accept|auto-?confirm/i,
+    );
   });
 
   it('renders empty, loading and error states accessibly', () => {

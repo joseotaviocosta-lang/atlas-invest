@@ -90,8 +90,8 @@ describe('Phase 5S-A: operations center boundaries', () => {
     const migrations = fs
       .readdirSync(path.join(rootDir, 'packages/database/prisma/migrations'))
       .filter((entry) => /^\d/.test(entry));
-    expect(migrations).toHaveLength(41);
-    expect(migrations[migrations.length - 1]).toContain('contribution_goals');
+    expect(migrations).toHaveLength(42);
+    expect(migrations[migrations.length - 1]).toContain('add_reconciliation_decisions');
   });
 
   it('no score, rating, risk, recommendation, investment or forecast language', () => {

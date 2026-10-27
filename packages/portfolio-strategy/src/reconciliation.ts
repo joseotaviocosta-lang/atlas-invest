@@ -1,4 +1,5 @@
 import { DomainError } from '@atlas/domain';
+import { createHash } from 'node:crypto';
 import { canonicalDecimal } from './scenario';
 
 export class InvalidReconciliationInputError extends DomainError {
@@ -217,4 +218,74 @@ export function compareReconciliationFacts(
     differences,
     matchingFacts,
   };
+}
+
+/** Deterministic vocabulary for human reconciliation decisions. */
+export const RECONCILIATION_DECISIONS = ['CONFIRM_MATCH', 'NOT_A_MATCH'] as const;
+export type ReconciliationDecision = (typeof RECONCILIATION_DECISIONS)[number];
+
+export function isReconciliationDecision(value: string): value is ReconciliationDecision {
+  return (RECONCILIATION_DECISIONS as readonly string[]).includes(value);
+}
+
+export interface SourceItemKeyInput {
+  portfolioId: string;
+  source: string;
+  runId: string;
+  provider: string | null;
+  externalId: string | null;
+  type: string | null;
+  tradeDate: string | null;
+  assetId: string | null;
+  quantity: string | null;
+  amount: string | null;
+  currency: string | null;
+}
+
+function canonicalMoney(value: string | null): string {
+  if (typeof value !== 'string' || value === '') return '';
+  try {
+    return canonicalDecimal(value);
+  } catch {
+    return value;
+  }
+}
+
+function sha256Hex(canonical: string): string {
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
+}
+
+/**
+ * Stable source-item key for one (run, transaction) pair claim.
+ *
+ * Server-derived only: when the linked transaction carries the import
+ * identity (provider + externalId), the key reuses it normalized —
+ * the same identity the ledger unique constraint already enforces.
+ * Otherwise a canonical hash over canonical facts plus the run scope.
+ * Identity and audit only: no credentials, tokens, private keys or raw
+ * payloads enter the key. Duplicate-looking legitimate rows in the same
+ * run share a key by design; the pair unique constraint keeps their
+ * decisions distinct via the transaction id. Different runs never share keys.
+ */
+export function deriveSourceItemKey(input: SourceItemKeyInput): string {
+  if (
+    typeof input.provider === 'string' &&
+    input.provider !== '' &&
+    typeof input.externalId === 'string' &&
+    input.externalId !== ''
+  ) {
+    return `${input.provider.trim().toUpperCase()}:${input.externalId.trim().toUpperCase()}`;
+  }
+  const canonical = [
+    input.portfolioId,
+    input.source,
+    input.runId,
+    input.type ?? '',
+    typeof input.tradeDate === 'string' ? input.tradeDate.slice(0, 10) : '',
+    input.assetId ?? '',
+    canonicalMoney(input.quantity),
+    canonicalMoney(input.amount),
+    input.currency ?? '',
+  ].join('|');
+  return `hash:${sha256Hex(canonical)}`;
 }

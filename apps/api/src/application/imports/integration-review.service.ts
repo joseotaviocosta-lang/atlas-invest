@@ -5,6 +5,7 @@ import type {
   IIntegrationRunRepository,
   IntegrationRunRow,
   IPortfolioRepository,
+  IReconciliationDecisionRepository,
   ITransactionRepository,
 } from '@atlas/database';
 import {
@@ -16,6 +17,7 @@ import {
   INTEGRATION_RUN_REPOSITORY,
   PORTFOLIO_REPOSITORY,
   ASSET_REPOSITORY,
+  RECONCILIATION_DECISION_REPOSITORY,
   TRANSACTION_REPOSITORY,
 } from '../../database/tokens';
 import type { Transaction } from '@atlas/domain';
@@ -48,6 +50,8 @@ export interface ReviewLinkedTransaction {
   quantity: string | null;
   amount: string | null;
   currency: string | null;
+  decision: 'CONFIRM_MATCH' | 'NOT_A_MATCH' | null;
+  decidedAt: string | null;
 }
 
 export interface IntegrationReviewDetail {
@@ -81,6 +85,8 @@ export class IntegrationReviewService {
     private readonly transactions: ITransactionRepository,
     @Inject(ASSET_REPOSITORY)
     private readonly assets: IAssetRepository,
+    @Inject(RECONCILIATION_DECISION_REPOSITORY)
+    private readonly decisions: IReconciliationDecisionRepository,
   ) {}
 
   private async ownedPortfolios(
@@ -149,6 +155,20 @@ export class IntegrationReviewService {
     };
   }
 
+  /**
+   * Ownership-scoped portfolio id for a run. Used by mutation endpoints
+   * that need the portfolio before delegating to a use-case. 404 on
+   * foreign runs (anti-enumeration, never 403).
+   */
+  async ownedPortfolioId(userId: string, runId: string): Promise<string> {
+    const { ids } = await this.ownedPortfolios(userId);
+    const row = await this.runs.findByIdInPortfolios(runId, ids);
+    if (!row) {
+      throw new EntityNotFoundError('IntegrationRun', runId);
+    }
+    return row.portfolioId;
+  }
+
   async getReview(userId: string, runId: string): Promise<IntegrationReviewDetail> {
     const { ids, names } = await this.ownedPortfolios(userId);
     const row = await this.runs.findByIdInPortfolios(runId, ids);
@@ -165,6 +185,18 @@ export class IntegrationReviewService {
     );
     const item = items.find((candidate) => candidate.runId === runId) ?? null;
     const linked = await this.linkedLocalFacts(row);
+    const decisions = await this.decisions.listByRun(row.id, row.portfolioId);
+    const decisionByTx = new Map(
+      decisions.map((decision) => [decision.localTransactionId, decision]),
+    );
+    const linkedRows = linked.rows.map((linkedRow) => {
+      const decision = decisionByTx.get(linkedRow.transactionId) ?? null;
+      return {
+        ...linkedRow,
+        decision: decision?.decision ?? null,
+        decidedAt: decision ? decision.decidedAt.toISOString() : null,
+      };
+    });
     const limitations = this.workspaceLimitations(row, item);
     if (linked.truncated) {
       limitations.push('LINKED_TRANSACTIONS_TRUNCATED');
@@ -175,7 +207,7 @@ export class IntegrationReviewService {
         state: 'ACTIONABLE',
         resolvedReason: null,
         portfolioName: names.get(row.portfolioId) ?? null,
-        linkedTransactions: linked.rows,
+        linkedTransactions: linkedRows,
         linkedTransactionsTruncated: linked.truncated,
         limitations,
       };
@@ -185,7 +217,7 @@ export class IntegrationReviewService {
       state: 'RESOLVED',
       resolvedReason: this.resolvedReasonFor(row.status),
       portfolioName: names.get(row.portfolioId) ?? null,
-      linkedTransactions: linked.rows,
+      linkedTransactions: linkedRows,
       linkedTransactionsTruncated: linked.truncated,
       limitations,
     };
@@ -197,7 +229,7 @@ export class IntegrationReviewService {
    * design (see SOURCE_FACTS_NOT_PERSISTED).
    */
   private async linkedLocalFacts(row: IntegrationRunRow): Promise<{
-    rows: ReviewLinkedTransaction[];
+    rows: Array<Omit<ReviewLinkedTransaction, 'decision' | 'decidedAt'>>;
     truncated: boolean;
   }> {
     const ids = await this.runs.listTransactionIdsByRun(row.id, row.portfolioId);

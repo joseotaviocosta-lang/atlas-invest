@@ -40,8 +40,15 @@ describe('Phase 5S-B (mobile): reconciliation workspace read-only', () => {
     expect(detail).toContain('describeWorkspaceLimitation');
   });
 
+  it('shows persisted decision state read-only on native detail', () => {
+    expect(detail).toContain('testID="review-run-context"');
+    expect(detail).toContain('Correspondência confirmada');
+    expect(detail).toContain('Não correspondem');
+  });
+
   it('offers no import or decision actions natively', () => {
-    expect(detail).not.toMatch(/Confirmar|Rejeitar|Aceitar|Importar agora/);
+    expect(detail).not.toContain('Confirmar correspondência</');
+    expect(detail).not.toMatch(/apiClient|api\.post|POST.*decisions/);
     expect(list).toContain('acesse a versão web');
   });
 

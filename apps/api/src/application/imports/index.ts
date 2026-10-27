@@ -1,6 +1,7 @@
 export * from './import-validation.error';
 export * from './preview-portfolio-import.use-case';
 export * from './confirm-portfolio-import.use-case';
+export * from './create-reconciliation-decision.use-case';
 export * from './integration-run.service';
 export * from './integration-scheduling.tokens';
 export * from './integration-schedule.service';

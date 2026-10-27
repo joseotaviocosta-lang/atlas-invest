@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   compareReconciliationFacts,
+  deriveSourceItemKey,
   type LocalFact,
   type SourceFact,
+  type SourceItemKeyInput,
 } from '@atlas/portfolio-strategy';
 
 function source(overrides: Partial<SourceFact> = {}): SourceFact {
@@ -173,5 +175,80 @@ describe('Phase 5S-B: missing sides, multiples and ordering', () => {
     expect(compareReconciliationFacts.toString()).not.toMatch(
       /parseFloat|\bNumber\(|confidence|similarity/i,
     );
+  });
+});
+
+describe('Phase 5S-B-R1: stable source-item identity', () => {
+  const base: SourceItemKeyInput = {
+    portfolioId: 'portfolio-1',
+    source: 'B3',
+    runId: 'run-1',
+    provider: 'B3',
+    externalId: 'B3-5M-0001',
+    type: 'BUY',
+    tradeDate: '2026-10-10',
+    assetId: 'asset-1',
+    quantity: '100',
+    amount: null,
+    currency: 'BRL',
+  };
+
+  it('reuses the import identity when the transaction carries one', () => {
+    expect(deriveSourceItemKey(base)).toBe('B3:B3-5M-0001');
+    expect(deriveSourceItemKey({ ...base, provider: 'b3', externalId: 'b3-5m-0001' })).toBe(
+      'B3:B3-5M-0001',
+    );
+  });
+
+  it('is stable across rereads and independent of field order', () => {
+    const keyed: SourceItemKeyInput = {
+      portfolioId: 'portfolio-1',
+      source: 'CSV',
+      runId: 'run-9',
+      provider: null,
+      externalId: null,
+      type: 'DIVIDEND',
+      tradeDate: '2026-10-10T00:00:00.000Z',
+      assetId: 'asset-7',
+      quantity: '10.0',
+      amount: '87.30',
+      currency: 'BRL',
+    };
+    const again: SourceItemKeyInput = {
+      currency: 'BRL',
+      amount: '87.3',
+      quantity: '10',
+      assetId: 'asset-7',
+      tradeDate: '2026-10-10',
+      type: 'DIVIDEND',
+      externalId: null,
+      provider: null,
+      runId: 'run-9',
+      source: 'CSV',
+      portfolioId: 'portfolio-1',
+    };
+    expect(deriveSourceItemKey(keyed)).toBe(deriveSourceItemKey(again));
+    expect(deriveSourceItemKey(keyed).startsWith('hash:')).toBe(true);
+  });
+
+  it('separates runs and keeps duplicate-looking rows distinguishable by pair', () => {
+    const manual = { ...base, provider: null, externalId: null };
+    expect(deriveSourceItemKey({ ...manual, runId: 'run-1' })).not.toBe(
+      deriveSourceItemKey({ ...manual, runId: 'run-2' }),
+    );
+    // Same canonical facts, same run: same key by design; the pair
+    // unique constraint keeps per-transaction decisions distinct.
+    expect(deriveSourceItemKey(manual)).toBe(deriveSourceItemKey(manual));
+  });
+
+  it('never embeds secrets, tokens or raw payloads', () => {
+    const key = deriveSourceItemKey({
+      ...base,
+      provider: null,
+      externalId: null,
+      quantity: 'secrettoken',
+    });
+    expect(key).toMatch(/^hash:[0-9a-f]{64}$/);
+    expect(deriveSourceItemKey(base)).toBe('B3:B3-5M-0001');
   });
 });

@@ -6,6 +6,7 @@ export * from './account.repository';
 export * from './transaction.repository';
 export * from './integration-run.repository';
 export * from './integration-schedule.repository';
+export * from './reconciliation-decision.repository';
 export * from './integration-job.repository';
 export * from './integration-connection.repository';
 export * from './allocation-strategy.repository';

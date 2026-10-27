@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense } from 'react';
+import React, { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -17,7 +17,7 @@ import {
   type ReviewSeverity,
   type ReviewReasonCode,
 } from '@atlas/ui';
-import { Card, Skeleton, ErrorState, PageHeader } from '@/components/ui';
+import { Card, Skeleton, ErrorState, PageHeader, Button } from '@/components/ui';
 
 interface LinkedTransactionView {
   transactionId: string;
@@ -28,6 +28,8 @@ interface LinkedTransactionView {
   quantity: string | null;
   amount: string | null;
   currency: string | null;
+  decision: 'CONFIRM_MATCH' | 'NOT_A_MATCH' | null;
+  decidedAt: string | null;
 }
 
 interface ReviewDetailData {
@@ -73,6 +75,12 @@ function ReviewDetailContent() {
   const params = useParams();
   const authReady = useAuthReady();
   const runId = (params?.runId as string) || '';
+  const [pendingDecision, setPendingDecision] = useState<{
+    transactionId: string;
+    decision: 'CONFIRM_MATCH' | 'NOT_A_MATCH';
+  } | null>(null);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [deciding, setDeciding] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: ['integration-review', runId],
@@ -89,6 +97,23 @@ function ReviewDetailContent() {
 
   const data = detailQuery.data ?? null;
   const item = data?.item ?? null;
+
+  async function submitDecision() {
+    if (!pendingDecision) return;
+    setDeciding(true);
+    setDecisionError(null);
+    try {
+      await apiClient.post(`/api/v1/integration-reviews/${runId}/decisions`, pendingDecision);
+      setPendingDecision(null);
+      await detailQuery.refetch();
+    } catch {
+      setDecisionError(
+        'Não foi possível registrar a decisão. Tente novamente; confirmar duas vezes não cria duplicatas.',
+      );
+    } finally {
+      setDeciding(false);
+    }
+  }
 
   return (
     <div>
@@ -153,19 +178,103 @@ function ReviewDetailContent() {
                       <th scope="col">Tipo</th>
                       <th scope="col">Ativo</th>
                       <th scope="col">Valor</th>
+                      <th scope="col">Decisão</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.linkedTransactions.map((row) => (
-                      <tr key={row.transactionId}>
+                      <tr
+                        key={row.transactionId}
+                        data-testid={`review-linked-${row.transactionId}`}
+                      >
                         <td>{row.tradeDate ?? '—'}</td>
                         <td>{row.type ?? '—'}</td>
                         <td>{row.ticker ?? row.assetId ?? '—'}</td>
                         <td>{moneyLabel(row)}</td>
+                        <td>
+                          {row.decision === 'CONFIRM_MATCH' ? (
+                            <span>Correspondência confirmada</span>
+                          ) : row.decision === 'NOT_A_MATCH' ? (
+                            <span>Não correspondem</span>
+                          ) : (
+                            <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                style={{ minHeight: 44 }}
+                                aria-label={`Confirmar correspondência de ${row.ticker ?? row.transactionId}`}
+                                onClick={() =>
+                                  setPendingDecision({
+                                    transactionId: row.transactionId,
+                                    decision: 'CONFIRM_MATCH',
+                                  })
+                                }
+                                data-testid={`decision-confirm-${row.transactionId}`}
+                              >
+                                Confirmar correspondência
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                style={{ minHeight: 44 }}
+                                aria-label={`Marcar que não correspondem: ${row.ticker ?? row.transactionId}`}
+                                onClick={() =>
+                                  setPendingDecision({
+                                    transactionId: row.transactionId,
+                                    decision: 'NOT_A_MATCH',
+                                  })
+                                }
+                                data-testid={`decision-reject-${row.transactionId}`}
+                              >
+                                Não correspondem
+                              </Button>
+                            </span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              )}
+              {pendingDecision && (
+                <div data-testid="decision-confirmation" style={{ marginTop: 12 }}>
+                  <p style={{ fontSize: '0.8125rem', margin: '0 0 4px' }}>
+                    {pendingDecision.decision === 'CONFIRM_MATCH'
+                      ? 'Esta ação registra apenas que os dois registros correspondem. Nenhuma operação do ledger será criada, editada ou excluída.'
+                      : 'Esta ação registra que estes dois registros não correspondem. Nenhuma operação será removida.'}
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      style={{ minHeight: 44 }}
+                      disabled={deciding}
+                      onClick={submitDecision}
+                      aria-label="Confirmar decisão de reconciliação"
+                      data-testid="decision-submit"
+                    >
+                      Confirmar decisão
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      style={{ minHeight: 44 }}
+                      disabled={deciding}
+                      onClick={() => setPendingDecision(null)}
+                      aria-label="Cancelar decisão"
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {decisionError && (
+                <p
+                  role="alert"
+                  style={{ fontSize: '0.8125rem', color: colors.negative, margin: '8px 0 0' }}
+                >
+                  {decisionError}
+                </p>
               )}
             </div>
 
