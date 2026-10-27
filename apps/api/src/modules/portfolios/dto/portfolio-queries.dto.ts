@@ -78,3 +78,29 @@ export class GetPortfolioHistoryQueryDto {
   })
   limit?: number;
 }
+
+export class GetPortfolioAuditHistoryQueryDto {
+  @ApiPropertyOptional({
+    type: String,
+    enum: ['ALL', 'RECTIFICATIONS', 'RECONCILIATIONS', 'IMPORTS'],
+    description: 'Filter operational audit events by category',
+    example: 'ALL',
+    default: 'ALL',
+  })
+  category?: 'ALL' | 'RECTIFICATIONS' | 'RECONCILIATIONS' | 'IMPORTS';
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Opaque cursor for pagination',
+    example: 'eyJhdCI6IjIwMjYtMDktMTdUMTA6MDA6MDAuMDAwWiIsImlkIjoiMSJ9',
+  })
+  cursor?: string;
+
+  @ApiPropertyOptional({
+    type: Number,
+    description: 'Maximum number of items to return (1 to 100, default: 25)',
+    example: 25,
+    default: 25,
+  })
+  limit?: number;
+}

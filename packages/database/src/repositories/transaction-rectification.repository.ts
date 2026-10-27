@@ -175,6 +175,42 @@ export class TransactionRectificationRepository implements ITransactionRectifica
     }
   }
 
+  async listByPortfolio(
+    portfolioId: string,
+    options: {
+      limit: number;
+      cursor?: { decidedAt: Date } | null;
+    },
+  ): Promise<TransactionRectificationRow[]> {
+    const take = Math.min(200, Math.max(1, Math.floor(options.limit)));
+    try {
+      const rows = await (
+        this.prisma as unknown as {
+          transactionRectificationRecord: {
+            findMany(args: {
+              where: {
+                portfolioId: string;
+                decidedAt?: { lte: Date };
+              };
+              orderBy: Array<{ decidedAt?: 'desc'; id?: 'desc' }>;
+              take: number;
+            }): Promise<PrismaRectificationRow[]>;
+          };
+        }
+      ).transactionRectificationRecord.findMany({
+        where: {
+          portfolioId,
+          ...(options.cursor ? { decidedAt: { lte: options.cursor.decidedAt } } : {}),
+        },
+        orderBy: [{ decidedAt: 'desc' }, { id: 'desc' }],
+        take,
+      });
+      return rows.map((row) => this.map(row));
+    } catch {
+      throw new PersistenceError('Failed to list transaction rectifications by portfolio');
+    }
+  }
+
   async resolveEffectiveTransactionId(
     originalTransactionId: string,
     portfolioId: string,

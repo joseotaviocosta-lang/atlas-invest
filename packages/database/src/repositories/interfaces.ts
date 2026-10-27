@@ -2409,6 +2409,16 @@ export interface IIntegrationRunRepository {
     portfolioId: string,
     input: { limit: number; cursor?: string | null },
   ): Promise<{ rows: IntegrationRunRow[]; hasMore: boolean }>;
+  /**
+   * Phase 5S-E — bounded read for operational activity feed with timestamp cursor.
+   */
+  listForAudit(
+    portfolioId: string,
+    options: {
+      limit: number;
+      cursor?: { createdAt: Date } | null;
+    },
+  ): Promise<IntegrationRunRow[]>;
   countByPortfolio(portfolioId: string): Promise<number>;
 }
 
@@ -2455,6 +2465,16 @@ export interface IReconciliationDecisionRepository {
    * review window. Never per-run/per-item calls.
    */
   listByRunIds(runIds: string[], portfolioId: string): Promise<ReconciliationDecisionRow[]>;
+  /**
+   * Phase 5S-E — bounded read for operational activity feed.
+   */
+  listByPortfolio(
+    portfolioId: string,
+    options: {
+      limit: number;
+      cursor?: { decidedAt: Date } | null;
+    },
+  ): Promise<ReconciliationDecisionRow[]>;
 }
 
 export type RectificationMode = 'RECTIFY' | 'CANCEL';
@@ -2513,6 +2533,16 @@ export interface ITransactionRectificationRepository {
   listByReplacementTransactionIds(
     replacementTransactionIds: string[],
     portfolioId: string,
+  ): Promise<TransactionRectificationRow[]>;
+  /**
+   * Phase 5S-E — bounded read for operational activity feed.
+   */
+  listByPortfolio(
+    portfolioId: string,
+    options: {
+      limit: number;
+      cursor?: { decidedAt: Date } | null;
+    },
   ): Promise<TransactionRectificationRow[]>;
   /**
    * Follows the append-only chain (A → B → C) to the terminal node.

@@ -92,6 +92,16 @@ interface PortfolioOperationsData {
     newRecords: number;
     confirmed: number;
   }>;
+  activityPreview?: Array<{
+    id: string;
+    eventType: string;
+    category: string;
+    occurredAt: string;
+    title: string;
+    description: string;
+    actor: { kind: string; label: string } | null;
+    reason: string | null;
+  }>;
   availableActions: Array<{ type: string }>;
   limitations: string[];
 }
@@ -290,6 +300,26 @@ export function PortfolioOperationsSection({ portfolioId }: { portfolioId: strin
                 aria-label="Ver histórico de execuções"
               >
                 Ver histórico de execuções
+              </Link>
+            </div>
+          )}
+
+          {data.activityPreview && data.activityPreview.length > 0 && (
+            <div data-testid="operations-activity-preview">
+              <h4 style={{ fontSize: '0.875rem', margin: '12px 0 4px' }}>Últimas atividades</h4>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {data.activityPreview.map((item) => (
+                  <li key={item.id} style={{ fontSize: '0.8125rem', marginBottom: 4 }}>
+                    <strong>{item.title}</strong> · {item.actor?.label ?? 'Autor não disponível'} ·{' '}
+                    <span style={{ color: colors.textSecondary }}>{item.description}</span>
+                  </li>
+                ))}
+              </ul>
+              <Link
+                href={`/portfolio/history?portfolioId=${portfolioId}&view=activity`}
+                aria-label="Ver histórico de alterações"
+              >
+                Ver histórico de alterações →
               </Link>
             </div>
           )}

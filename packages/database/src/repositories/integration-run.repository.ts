@@ -400,6 +400,29 @@ export class IntegrationRunRepository implements IIntegrationRunRepository {
     };
   }
 
+  async listForAudit(
+    portfolioId: string,
+    options: {
+      limit: number;
+      cursor?: { createdAt: Date } | null;
+    },
+  ): Promise<IntegrationRunRow[]> {
+    const take = Math.min(200, Math.max(1, Math.floor(options.limit)));
+    try {
+      const rows = await this.prisma.integrationRun.findMany({
+        where: {
+          portfolioId,
+          ...(options.cursor ? { createdAt: { lte: options.cursor.createdAt } } : {}),
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take,
+      });
+      return rows.map((row) => this.map(row));
+    } catch {
+      throw new PersistenceError('Failed to list integration runs for audit feed');
+    }
+  }
+
   async countByPortfolio(portfolioId: string): Promise<number> {
     try {
       return await this.prisma.integrationRun.count({ where: { portfolioId } });

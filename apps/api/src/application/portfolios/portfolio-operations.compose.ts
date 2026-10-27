@@ -5,6 +5,8 @@ import type {
   IntegrationRunRow,
   IPortfolioRepository,
   IReconciliationDecisionRepository,
+  ITransactionRectificationRepository,
+  ITransactionRepository,
 } from '@atlas/database';
 import { deriveReviewItems } from '@atlas/import-engine';
 import {
@@ -22,6 +24,8 @@ import {
   composePortfolioDataQuality,
   type PortfolioDataQualityModel,
 } from './portfolio-data-quality.compose';
+import { composePortfolioAuditHistory } from './portfolio-audit-history.compose';
+import type { OperationalAuditItem } from './portfolio-audit-history.types';
 
 /**
  * Phase 5S-A — portfolio operations center composition (pure orchestration).
@@ -83,6 +87,7 @@ export interface PortfolioOperationsModel {
   };
   reviewPreview: OperationsReviewPreviewView[];
   recentActivity: OperationsRecentRunView[];
+  activityPreview?: OperationalAuditItem[];
   reviewWorkflow: {
     pendingPairs: number;
     decidedPairs: number;
@@ -156,6 +161,8 @@ export async function composePortfolioOperations(
     assets: IAssetRepository;
     runs: IIntegrationRunRepository;
     decisions: IReconciliationDecisionRepository;
+    rectifications?: ITransactionRectificationRepository;
+    transactions?: ITransactionRepository;
   },
   params: { portfolioId: string; userId: string },
 ): Promise<PortfolioOperationsModel> {
@@ -166,7 +173,7 @@ export async function composePortfolioOperations(
     throw new EntityNotFoundError('Portfolio', params.portfolioId);
   }
 
-  const [settings, quality, recentRuns, windowRuns] = await Promise.all([
+  const [settings, quality, recentRuns, windowRuns, auditResult] = await Promise.all([
     deps.settings.getSettings(params.userId, params.portfolioId),
     composePortfolioDataQuality(
       {
@@ -180,6 +187,22 @@ export async function composePortfolioOperations(
     ),
     deps.runs.listRecentByPortfolioIds([params.portfolioId], OPERATIONS_RECENT_RUN_LIMIT),
     deps.runs.listRecentByPortfolioIds([params.portfolioId], OPERATIONS_REVIEW_WINDOW_LIMIT),
+    deps.rectifications
+      ? composePortfolioAuditHistory(
+          {
+            rectifications: deps.rectifications,
+            decisions: deps.decisions,
+            runs: deps.runs,
+            transactions: deps.transactions,
+            assets: deps.assets,
+          },
+          {
+            portfolioId: params.portfolioId,
+            currentUserId: params.userId,
+            limit: 5,
+          },
+        )
+      : Promise.resolve({ items: [] as OperationalAuditItem[] }),
   ]);
 
   // Pair workflow over the bounded review window: which actionable runs
@@ -294,6 +317,7 @@ export async function composePortfolioOperations(
     },
     reviewPreview,
     recentActivity,
+    activityPreview: auditResult.items,
     reviewWorkflow: { pendingPairs, decidedPairs, totalPairs },
     maintenance: summarizeMaintenance(quality),
     availableActions: [

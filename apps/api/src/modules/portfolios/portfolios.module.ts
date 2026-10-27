@@ -15,6 +15,7 @@ import { PortfolioIncomeController } from './portfolio-income.controller';
 import { PortfolioDataQualityController } from './portfolio-data-quality.controller';
 import { PortfolioMaintenanceController } from './portfolio-maintenance.controller';
 import { PortfolioOperationsController } from './portfolio-operations.controller';
+import { PortfolioAuditHistoryController } from './portfolio-audit-history.controller';
 
 @Module({
   imports: [ApplicationModule],
@@ -34,6 +35,7 @@ import { PortfolioOperationsController } from './portfolio-operations.controller
     PortfolioDataQualityController,
     PortfolioMaintenanceController,
     PortfolioOperationsController,
+    PortfolioAuditHistoryController,
   ],
 })
 export class PortfoliosModule {}

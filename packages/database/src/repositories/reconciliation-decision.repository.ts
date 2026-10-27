@@ -152,4 +152,40 @@ export class ReconciliationDecisionRepository implements IReconciliationDecision
       throw new PersistenceError('Failed to list reconciliation decisions for integration runs');
     }
   }
+
+  async listByPortfolio(
+    portfolioId: string,
+    options: {
+      limit: number;
+      cursor?: { decidedAt: Date } | null;
+    },
+  ): Promise<ReconciliationDecisionRow[]> {
+    const take = Math.min(200, Math.max(1, Math.floor(options.limit)));
+    try {
+      const rows = await (
+        this.prisma as unknown as {
+          reconciliationDecisionRecord: {
+            findMany(args: {
+              where: {
+                portfolioId: string;
+                decidedAt?: { lte: Date };
+              };
+              orderBy: Array<{ decidedAt?: 'desc'; id?: 'desc' }>;
+              take: number;
+            }): Promise<PrismaDecisionRow[]>;
+          };
+        }
+      ).reconciliationDecisionRecord.findMany({
+        where: {
+          portfolioId,
+          ...(options.cursor ? { decidedAt: { lte: options.cursor.decidedAt } } : {}),
+        },
+        orderBy: [{ decidedAt: 'desc' }, { id: 'desc' }],
+        take,
+      });
+      return rows.map((row) => this.map(row));
+    } catch {
+      throw new PersistenceError('Failed to list reconciliation decisions by portfolio');
+    }
+  }
 }

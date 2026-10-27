@@ -4,12 +4,16 @@ import type {
   IIntegrationRunRepository,
   IPortfolioRepository,
   IReconciliationDecisionRepository,
+  ITransactionRectificationRepository,
+  ITransactionRepository,
 } from '@atlas/database';
 import {
   ASSET_REPOSITORY,
   INTEGRATION_RUN_REPOSITORY,
   PORTFOLIO_REPOSITORY,
   RECONCILIATION_DECISION_REPOSITORY,
+  TRANSACTION_RECTIFICATION_REPOSITORY,
+  TRANSACTION_REPOSITORY,
 } from '../../database/tokens';
 import { IntegrationSettingsService } from '../imports/integration-settings.service';
 import { GetPortfolioAllocationUseCase } from '../valuation/get-portfolio-allocation.use-case';
@@ -42,6 +46,10 @@ export class GetPortfolioOperationsUseCase {
     private readonly runs: IIntegrationRunRepository,
     @Inject(RECONCILIATION_DECISION_REPOSITORY)
     private readonly decisions: IReconciliationDecisionRepository,
+    @Inject(TRANSACTION_RECTIFICATION_REPOSITORY)
+    private readonly rectifications: ITransactionRectificationRepository,
+    @Inject(TRANSACTION_REPOSITORY)
+    private readonly transactions: ITransactionRepository,
   ) {}
 
   async execute(params: {
@@ -57,6 +65,8 @@ export class GetPortfolioOperationsUseCase {
         assets: this.assets,
         runs: this.runs,
         decisions: this.decisions,
+        rectifications: this.rectifications,
+        transactions: this.transactions,
       },
       params,
     );

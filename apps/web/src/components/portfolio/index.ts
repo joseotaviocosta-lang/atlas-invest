@@ -30,4 +30,5 @@ export * from './PortfolioDataQualitySection';
 export * from './PositionDataQualitySection';
 export * from './PortfolioOperationsSection';
 export * from './PortfolioPlanningSection';
+export * from './PortfolioAuditTimeline';
 export * from './PortfolioShell';

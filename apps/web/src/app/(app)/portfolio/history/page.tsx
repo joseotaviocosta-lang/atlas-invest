@@ -9,6 +9,7 @@ import { PortfolioDto } from '@/api/types';
 import {
   colors,
   spacing,
+  borderRadius,
   buildPortfolioActivityViewModel,
   PortfolioStateDto,
   PortfolioHistoryItemDto,
@@ -18,6 +19,7 @@ import {
 import {
   PortfolioHistoryFilters,
   PortfolioHistoryTimeline,
+  PortfolioAuditTimeline,
   HistoryFilterState,
   PortfolioShell,
 } from '@/components/portfolio';
@@ -29,7 +31,20 @@ function PortfolioHistoryContent() {
   const portfolioIdParam = searchParams.get('portfolioId');
   const accountIdParam = searchParams.get('accountId');
 
-  // Filter State (accountId may arrive via deep-link from the account detail)
+  // View State (operations vs activity audit feed)
+  const viewParam = searchParams.get('view') === 'activity' ? 'activity' : 'operations';
+  const [activeView, setActiveView] = useState<'operations' | 'activity'>(viewParam);
+
+  const handleViewChange = (view: 'operations' | 'activity') => {
+    setActiveView(view);
+    const nextParams = new URLSearchParams(searchParams.toString());
+    if (view === 'activity') {
+      nextParams.set('view', 'activity');
+    } else {
+      nextParams.delete('view');
+    }
+    router.replace(`/portfolio/history?${nextParams.toString()}`);
+  };
   const [filters, setFilters] = useState<HistoryFilterState>({
     period: 'all',
     type: '',
@@ -273,67 +288,124 @@ function PortfolioHistoryContent() {
         router.replace(`/portfolio/history?${params.toString()}`);
       }}
     >
+      {/* Sub-tab switcher: Operações vs Atividade */}
       <div
+        role="tablist"
+        aria-label="Tipo de histórico"
         style={{
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: `${spacing.sm}px`,
+          gap: spacing.xs,
+          padding: '4px',
+          backgroundColor: colors.surface,
+          borderRadius: `${borderRadius.md}px`,
+          border: `1px solid ${colors.border}`,
           marginBottom: `${spacing.lg}px`,
+          width: 'fit-content',
         }}
       >
-        <div style={{ fontSize: '0.875rem', color: colors.textSecondary }}>
-          Linha do tempo contínua de compras, vendas, proventos e eventos corporativos
-        </div>
-
-        <div
+        <button
+          role="tab"
+          aria-selected={activeView === 'operations'}
+          onClick={() => handleViewChange('operations')}
           style={{
-            display: 'flex',
-            gap: `${spacing.sm}px`,
-            alignItems: 'center',
-            flexWrap: 'wrap',
+            padding: `${spacing.xs}px ${spacing.md}px`,
+            fontSize: '0.875rem',
+            fontWeight: activeView === 'operations' ? 600 : 500,
+            color: activeView === 'operations' ? colors.surface : colors.textPrimary,
+            backgroundColor: activeView === 'operations' ? colors.accent : 'transparent',
+            border: 'none',
+            borderRadius: `${borderRadius.sm}px`,
+            cursor: 'pointer',
           }}
         >
-          <Link
-            href={`/ai?portfolioId=${activePortfolioId}&scope=timeline${filters.from ? `&from=${filters.from}` : ''}${filters.to ? `&to=${filters.to}` : ''}`}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 14px',
-              fontSize: '0.875rem',
-              fontWeight: 600,
-              color: colors.accent,
-              backgroundColor: `${colors.accent}15`,
-              border: `1px solid ${colors.accent}40`,
-              borderRadius: '8px',
-              textDecoration: 'none',
-            }}
-          >
-            <span>✨ Perguntar à IA sobre este período</span>
-          </Link>
-        </div>
+          Operações
+        </button>
+        <button
+          role="tab"
+          aria-selected={activeView === 'activity'}
+          onClick={() => handleViewChange('activity')}
+          style={{
+            padding: `${spacing.xs}px ${spacing.md}px`,
+            fontSize: '0.875rem',
+            fontWeight: activeView === 'activity' ? 600 : 500,
+            color: activeView === 'activity' ? colors.surface : colors.textPrimary,
+            backgroundColor: activeView === 'activity' ? colors.accent : 'transparent',
+            border: 'none',
+            borderRadius: `${borderRadius.sm}px`,
+            cursor: 'pointer',
+          }}
+        >
+          Atividade
+        </button>
       </div>
 
-      {/* Filter Bar */}
-      <PortfolioHistoryFilters
-        filters={filters}
-        onChange={setFilters}
-        accounts={accountsData}
-        assets={filterAssets}
-      />
+      {activeView === 'activity' ? (
+        <PortfolioAuditTimeline portfolioId={activePortfolioId} />
+      ) : (
+        <>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: `${spacing.sm}px`,
+              marginBottom: `${spacing.lg}px`,
+            }}
+          >
+            <div style={{ fontSize: '0.875rem', color: colors.textSecondary }}>
+              Linha do tempo contínua de compras, vendas, proventos e eventos corporativos
+            </div>
 
-      {/* Timeline Feed */}
-      <PortfolioHistoryTimeline
-        portfolioId={activePortfolioId}
-        groups={activityViewModel.groups}
-        hasNextPage={Boolean(hasNextPage)}
-        isFetchingNextPage={isFetchingNextPage}
-        onLoadMore={() => fetchNextPage()}
-        loadMoreError={isHistoryError ? (historyError as ApiError)?.message : null}
-        hasActiveFilters={hasActiveFilters}
-      />
+            <div
+              style={{
+                display: 'flex',
+                gap: `${spacing.sm}px`,
+                alignItems: 'center',
+                flexWrap: 'wrap',
+              }}
+            >
+              <Link
+                href={`/ai?portfolioId=${activePortfolioId}&scope=timeline${filters.from ? `&from=${filters.from}` : ''}${filters.to ? `&to=${filters.to}` : ''}`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 14px',
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  color: colors.accent,
+                  backgroundColor: `${colors.accent}15`,
+                  border: `1px solid ${colors.accent}40`,
+                  borderRadius: '8px',
+                  textDecoration: 'none',
+                }}
+              >
+                <span>✨ Perguntar à IA sobre este período</span>
+              </Link>
+            </div>
+          </div>
+
+          {/* Filter Bar */}
+          <PortfolioHistoryFilters
+            filters={filters}
+            onChange={setFilters}
+            accounts={accountsData}
+            assets={filterAssets}
+          />
+
+          {/* Timeline Feed */}
+          <PortfolioHistoryTimeline
+            portfolioId={activePortfolioId}
+            groups={activityViewModel.groups}
+            hasNextPage={Boolean(hasNextPage)}
+            isFetchingNextPage={isFetchingNextPage}
+            onLoadMore={() => fetchNextPage()}
+            loadMoreError={isHistoryError ? (historyError as ApiError)?.message : null}
+            hasActiveFilters={hasActiveFilters}
+          />
+        </>
+      )}
     </PortfolioShell>
   );
 }
