@@ -79,3 +79,27 @@ Todas as alterações preservaram rigorosamente a pureza do domínio:
 - **Build de Produção Web:** Next.js 15 compilou 33 rotas estáticas e dinâmicas com sucesso (`pnpm --filter @atlas/web build`).
 - **Lint:** ESLint aprovado sem violações (`pnpm lint`).
 - **Migrações:** 0 novas migrações geradas ou pendentes.
+
+---
+
+## Apêndice R1: Encerramento de Regressões & Verificação Completa do Produto
+
+A rodada R1 comprovou exaustivamente que a reorganização de UX e Arquitetura de Informação **não alterou a semântica de domínio** e manteve 100% de estabilidade regressiva nos subsistemas:
+
+1. **Portfolio Strategy & Contributions:**
+   - 14 arquivos, 157/157 testes unitários aprovados (`vitest.portfolio-strategy.config.ts`).
+   - 8 arquivos, 92/92 testes de integração de API aprovados (`tests/api/contribution-*.test.ts`, `tests/api/allocation-*.test.ts`).
+   - 6 arquivos, 60/60 testes de componentes Web aprovados (`tests/web/allocation-*.test.ts`, `tests/web/contribution-*.test.ts`).
+2. **Operações de Portfólio, Conciliação e Retificação (Fases 5S-A a 5S-D):**
+   - 7 arquivos, 65/65 testes Web de operações aprovados (`tests/web/portfolio-operations*.test.ts`, `tests/web/review-inbox.test.ts`, `tests/web/portfolio-data-maintenance.test.ts`, etc.).
+   - 7 arquivos, 36/36 testes de API de operações e retificação aprovados (`tests/api/portfolio-operations.test.ts`, `tests/api/transaction-rectification.test.ts`, `tests/api/portfolio-maintenance.test.ts`, etc.).
+3. **Tax Engine & Interface Fiscal:**
+   - 78 arquivos, 813/813 testes unitários e fuzz matemáticos aprovados (`vitest.tax-engine.config.ts`).
+   - 14 arquivos, 84/84 testes de interface Web fiscal aprovados (`tests/web/*tax*.test.ts`, `tests/web/*fiscal*.test.ts`, `tests/web/*annual*.test.ts`).
+4. **Console de Operações de Ingestão (`/admin/operations`):**
+   - Rota restrita a operadores (`IngestionOperatorGuard` via `INGESTION_OPERATOR_USER_IDS` retornando 403 / `INGESTION.OPERATOR_FORBIDDEN`).
+   - Investidores comuns não visualizam atalhos ou links de navegação para a área operacional (`ADMIN_NAVIGATION_DEFERRED`).
+5. **Auditoria de Terminologia e Segurança:**
+   - 0 ocorrências de jargão de roadmap ("Fase 4A", etc.) ou vazamento de classes de exceção ("ThrottlerException") no front-end.
+   - Status de integração B3 preservado em `PREPARING` / `ENGINEERING_READY_FOR_CERT` sem chamadas de rede ou credenciais reais.
+
