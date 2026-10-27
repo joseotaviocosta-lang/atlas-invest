@@ -3,11 +3,13 @@ import type {
   IAssetRepository,
   IIntegrationRunRepository,
   IPortfolioRepository,
+  IReconciliationDecisionRepository,
 } from '@atlas/database';
 import {
   ASSET_REPOSITORY,
   INTEGRATION_RUN_REPOSITORY,
   PORTFOLIO_REPOSITORY,
+  RECONCILIATION_DECISION_REPOSITORY,
 } from '../../database/tokens';
 import { IntegrationSettingsService } from '../imports/integration-settings.service';
 import { GetPortfolioAllocationUseCase } from '../valuation/get-portfolio-allocation.use-case';
@@ -38,6 +40,8 @@ export class GetPortfolioOperationsUseCase {
     private readonly assets: IAssetRepository,
     @Inject(INTEGRATION_RUN_REPOSITORY)
     private readonly runs: IIntegrationRunRepository,
+    @Inject(RECONCILIATION_DECISION_REPOSITORY)
+    private readonly decisions: IReconciliationDecisionRepository,
   ) {}
 
   async execute(params: {
@@ -52,6 +56,7 @@ export class GetPortfolioOperationsUseCase {
         allocation: this.allocation,
         assets: this.assets,
         runs: this.runs,
+        decisions: this.decisions,
       },
       params,
     );

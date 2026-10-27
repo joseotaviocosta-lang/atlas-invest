@@ -47,9 +47,21 @@ interface ReviewItem {
   status: string;
   severity: ReviewSeverity;
   reasonCodes: string[];
+  pairReview: { status: string; totalPairs: number; decidedPairs: number };
   metrics: ReviewMetrics;
   createdAt: string;
   action: { kind: 'REVIEW_RUN' | 'VIEW_RUN'; runId: string; portfolioId: string };
+}
+
+function pairBadgeLabel(pairReview: ReviewItem['pairReview']): string | null {
+  if (pairReview.status === 'RESOLVED') return 'Revisado';
+  if (pairReview.status === 'PARTIALLY_RESOLVED') {
+    return `${pairReview.decidedPairs} de ${pairReview.totalPairs} revisados`;
+  }
+  if (pairReview.status === 'PENDING' && pairReview.totalPairs > 0) {
+    return `${pairReview.totalPairs} ${pairReview.totalPairs === 1 ? 'par pendente' : 'pares pendentes'}`;
+  }
+  return null;
 }
 
 interface PortfolioOption {
@@ -63,6 +75,7 @@ function ReviewsContent() {
   const [severity, setSeverity] = useState<string>(searchParams.get('severity') ?? 'ALL');
   const [portfolioId, setPortfolioId] = useState<string>(searchParams.get('portfolioId') ?? '');
   const [source, setSource] = useState<string>(searchParams.get('source') ?? 'ALL');
+  const [workflow, setWorkflow] = useState<string>(searchParams.get('workflow') ?? 'ALL');
 
   const { data: portfolios = [] } = useQuery({
     queryKey: ['portfolios'],
@@ -79,11 +92,12 @@ function ReviewsContent() {
     if (severity !== 'ALL') params.set('severity', severity);
     if (portfolioId !== '') params.set('portfolioId', portfolioId);
     if (source !== 'ALL') params.set('source', source);
+    if (workflow !== 'ALL') params.set('state', workflow);
     return params.toString();
-  }, [severity, portfolioId, source]);
+  }, [severity, portfolioId, source, workflow]);
 
   const reviewsQuery = useQuery({
-    queryKey: ['integration-reviews', severity, portfolioId, source],
+    queryKey: ['integration-reviews', severity, portfolioId, source, workflow],
     queryFn: async () => {
       const res = await apiClient.get<{ data: ReviewItem[] }>(
         `/api/v1/integration-reviews?${queryParams}`,
@@ -151,6 +165,30 @@ function ReviewsContent() {
             <option value="CSV">CSV</option>
             <option value="MANUAL">Manual</option>
           </select>
+          <div
+            role="group"
+            aria-label="Filtrar por estado da revisão"
+            style={{ display: 'flex', gap: 8 }}
+          >
+            {[
+              { value: 'ALL', label: 'Todas' },
+              { value: 'PENDING', label: 'Pendentes' },
+              { value: 'RESOLVED', label: 'Resolvidas' },
+            ].map((option) => (
+              <Button
+                key={option.value}
+                variant={workflow === option.value ? 'primary' : 'outline'}
+                size="sm"
+                onClick={() => setWorkflow(option.value)}
+                aria-label={`Mostrar revisões ${option.label.toLowerCase()}`}
+                aria-pressed={workflow === option.value}
+                style={{ minHeight: 44 }}
+                data-testid={`review-workflow-${option.value}`}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
         </div>
 
         {reviewsQuery.isLoading ? (
@@ -252,6 +290,9 @@ function ReviewsContent() {
                     >
                       Ver detalhes →
                     </Link>
+                    {pairBadgeLabel(item.pairReview) && (
+                      <Badge variant="neutral">{pairBadgeLabel(item.pairReview)}</Badge>
+                    )}
                   </span>
                 </article>
               );

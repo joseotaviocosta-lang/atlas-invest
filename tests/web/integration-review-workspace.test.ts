@@ -3,13 +3,12 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 /**
- * Phase 5S-B-R1 (web) — reconciliation workspace with human decisions.
+ * Phase 5S-B (web) — reconciliation workspace surfaces, R2 workflow.
  *
- * Inbox with state/source filters and detail links; lazy detail with
- * run context, source/local panels, reconciliation semantics,
- * differences, and explicit per-transaction decisions (confirm/reject
- * with confirmation copy and persisted state). No auto-match, no
- * ledger mutation, no scores.
+ * Inbox with severity/source/workflow filters and detail links; lazy
+ * detail with run context, source/local panels, reconciliation
+ * semantics, differences, explicit decisions and persisted state.
+ * No auto-match, no ledger mutation, no scores.
  */
 describe('Phase 5S-B: reconciliation workspace web surfaces', () => {
   const inbox = fs.readFileSync(
@@ -21,14 +20,19 @@ describe('Phase 5S-B: reconciliation workspace web surfaces', () => {
     'utf8',
   );
 
-  it('lists reviews with severity, portfolio and source filters', () => {
+  it('lists reviews with severity, source and workflow filters', () => {
     expect(inbox).toContain('/api/v1/integration-reviews?${queryParams}');
     expect(inbox).toContain("params.set('source', source)");
+    expect(inbox).toContain("params.set('state', workflow)");
     expect(inbox).toContain('Filtrar por origem');
     expect(inbox).toContain('value="B3"');
     expect(inbox).toContain('value="CSV"');
     expect(inbox).toContain('value="MANUAL"');
-    expect(inbox).toContain("queryKey: ['integration-reviews', severity, portfolioId, source]");
+    expect(inbox).toContain('Filtrar por estado da revisão');
+    expect(inbox).toContain('review-workflow-${option.value}');
+    expect(inbox).toContain(
+      "queryKey: ['integration-reviews', severity, portfolioId, source, workflow]",
+    );
   });
 
   it('links each row to the lazy detail view', () => {
@@ -52,6 +56,16 @@ describe('Phase 5S-B: reconciliation workspace web surfaces', () => {
     expect(detail).toContain('describeDifferenceField');
     expect(detail).toContain('review-limitation-${');
     expect(detail).toContain('describeWorkspaceLimitation');
+  });
+
+  it('shows pair progress and separates engine, human and review state', () => {
+    expect(detail).toContain('Reconciliação detectada:');
+    expect(detail).toContain('Revisão:');
+    expect(detail).toContain('Concluída');
+    expect(detail).toContain('pares revisados');
+    expect(detail).toContain('Pendente (');
+    expect(detail).toContain('Não acionável para este item');
+    expect(detail).not.toMatch(/Corrigido|Resolvido no ledger/i);
   });
 
   it('offers explicit decisions with confirmation copy and persisted state', () => {

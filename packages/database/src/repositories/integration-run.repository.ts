@@ -340,6 +340,23 @@ export class IntegrationRunRepository implements IIntegrationRunRepository {
     }
   }
 
+  async countLinksByRunIds(
+    runIds: string[],
+    portfolioId: string,
+  ): Promise<Array<{ runId: string; count: number }>> {
+    if (runIds.length === 0) return [];
+    try {
+      const groups = await this.prisma.integrationRunTransaction.groupBy({
+        by: ['runId'],
+        where: { runId: { in: [...new Set(runIds)] }, portfolioId },
+        _count: { runId: true },
+      });
+      return groups.map((group) => ({ runId: group.runId, count: group._count.runId }));
+    } catch {
+      throw new PersistenceError('Failed to count linked transactions for integration runs');
+    }
+  }
+
   async listByPortfolio(
     portfolioId: string,
     input: { limit: number; cursor?: string | null },

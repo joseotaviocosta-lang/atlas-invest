@@ -66,6 +66,11 @@ interface PortfolioOperationsData {
     };
     issuesByDomain: Array<{ domain: string; count: number }>;
   };
+  reviewWorkflow: {
+    pendingPairs: number;
+    decidedPairs: number;
+    totalPairs: number;
+  };
   reviewPreview: Array<{
     source: string;
     status: string;
@@ -211,6 +216,13 @@ export function PortfolioOperationsSection({ portfolioId }: { portfolioId: strin
               {data.reconciliation.divergent} · Revisões pendentes:{' '}
               {data.reconciliation.pendingReviews}
               {data.reconciliation.truncated ? ' · Janela limitada às execuções recentes' : ''}
+            </p>
+            <p style={{ fontSize: '0.8125rem', color: colors.textSecondary, margin: '4px 0 0' }}>
+              Pares revisados: {data.reviewWorkflow.decidedPairs} de{' '}
+              {data.reviewWorkflow.totalPairs}
+              {data.reviewWorkflow.pendingPairs > 0
+                ? ` · ${data.reviewWorkflow.pendingPairs} aguardando decisão`
+                : ' · nada pendente'}
             </p>
             <Link href={`/reviews?portfolioId=${portfolioId}`} aria-label="Ver revisões">
               Ver revisões

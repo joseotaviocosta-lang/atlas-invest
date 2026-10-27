@@ -13,6 +13,7 @@ import {
   type IntegrationReviewItem,
   type ReviewSeverity,
 } from '@atlas/import-engine';
+import { derivePairReview, type PairReviewSummary } from '@atlas/portfolio-strategy';
 import {
   INTEGRATION_RUN_REPOSITORY,
   PORTFOLIO_REPOSITORY,
@@ -28,13 +29,19 @@ export interface ListReviewsInput {
   severity?: ReviewSeverity | null;
   portfolioId?: string | null;
   source?: string | null;
+  state?: 'PENDING' | 'RESOLVED' | 'ALL' | null;
+}
+
+export interface ReviewedReviewItem extends IntegrationReviewItem {
+  pairReview: PairReviewSummary;
 }
 
 export interface IntegrationReviewListResult {
-  items: IntegrationReviewItem[];
+  items: ReviewedReviewItem[];
   portfolioNames: Map<string, string>;
   hasMore: boolean;
   nextCursor: string | null;
+  workflow: { pendingPairs: number; resolvedPairs: number; totalPairs: number };
 }
 
 export type ReviewResolutionState = 'ACTIONABLE' | 'RESOLVED';
@@ -61,6 +68,7 @@ export interface IntegrationReviewDetail {
   portfolioName: string | null;
   linkedTransactions: ReviewLinkedTransaction[];
   linkedTransactionsTruncated: boolean;
+  pairReview: PairReviewSummary;
   limitations: string[];
 }
 
@@ -143,15 +151,70 @@ export class IntegrationReviewService {
     const bySeverity = input.severity
       ? items.filter((item) => item.severity === input.severity)
       : items;
-    const filtered = input.source
+    const bySource = input.source
       ? bySeverity.filter((item) => item.source === input.source)
       : bySeverity;
+
+    // Pair progress for the page runs, batched per portfolio: one
+    // link-count query and one decision query per owned portfolio in
+    // the page, never per-item reads.
+    const runIdsByPortfolio = new Map<string, string[]>();
+    for (const row of rows) {
+      const list = runIdsByPortfolio.get(row.portfolioId);
+      if (list) list.push(row.id);
+      else runIdsByPortfolio.set(row.portfolioId, [row.id]);
+    }
+    const linkCountByRun = new Map<string, number>();
+    const decidedByRun = new Map<string, number>();
+    for (const [ownerPortfolioId, runIds] of runIdsByPortfolio) {
+      const [linkCounts, decisions] = await Promise.all([
+        this.runs.countLinksByRunIds(runIds, ownerPortfolioId),
+        this.decisions.listByRunIds(runIds, ownerPortfolioId),
+      ]);
+      for (const entry of linkCounts) linkCountByRun.set(entry.runId, entry.count);
+      for (const decision of decisions) {
+        decidedByRun.set(
+          decision.integrationRunId,
+          (decidedByRun.get(decision.integrationRunId) ?? 0) + 1,
+        );
+      }
+    }
+    const reviewed: ReviewedReviewItem[] = bySource.map((item) => {
+      const totalPairs = linkCountByRun.get(item.runId) ?? 0;
+      const decidedPairs = decidedByRun.get(item.runId) ?? 0;
+      return { ...item, pairReview: derivePairReview(totalPairs, decidedPairs) };
+    });
+
+    // Workflow filter is post-derivation on the page, like the severity
+    // filter: cursors stay stable run anchors. Absent = current behavior
+    // (all actionable), so pair resolution never hides import work.
+    // PENDING keeps everything except fully pair-decided runs.
+    const filtered =
+      !input.state || input.state === 'ALL'
+        ? reviewed
+        : input.state === 'RESOLVED'
+          ? reviewed.filter((item) => item.pairReview.status === 'RESOLVED')
+          : reviewed.filter((item) => item.pairReview.status !== 'RESOLVED');
+
+    let pendingPairs = 0;
+    let resolvedPairs = 0;
+    let totalPairs = 0;
+    for (const item of reviewed) {
+      totalPairs += item.pairReview.totalPairs;
+      if (item.pairReview.status === 'RESOLVED') {
+        resolvedPairs += item.pairReview.decidedPairs;
+      } else if (item.pairReview.status !== 'NOT_ACTIONABLE') {
+        pendingPairs += item.pairReview.totalPairs - item.pairReview.decidedPairs;
+      }
+    }
+
     const lastRow = rows[rows.length - 1];
     return {
       items: filtered,
       portfolioNames: names,
       hasMore,
       nextCursor: hasMore && lastRow ? lastRow.id : null,
+      workflow: { pendingPairs, resolvedPairs, totalPairs },
     };
   }
 
@@ -186,6 +249,7 @@ export class IntegrationReviewService {
     const item = items.find((candidate) => candidate.runId === runId) ?? null;
     const linked = await this.linkedLocalFacts(row);
     const decisions = await this.decisions.listByRun(row.id, row.portfolioId);
+    const pairReview = derivePairReview(linked.total, decisions.length);
     const decisionByTx = new Map(
       decisions.map((decision) => [decision.localTransactionId, decision]),
     );
@@ -209,6 +273,7 @@ export class IntegrationReviewService {
         portfolioName: names.get(row.portfolioId) ?? null,
         linkedTransactions: linkedRows,
         linkedTransactionsTruncated: linked.truncated,
+        pairReview,
         limitations,
       };
     }
@@ -219,6 +284,7 @@ export class IntegrationReviewService {
       portfolioName: names.get(row.portfolioId) ?? null,
       linkedTransactions: linkedRows,
       linkedTransactionsTruncated: linked.truncated,
+      pairReview,
       limitations,
     };
   }
@@ -231,6 +297,7 @@ export class IntegrationReviewService {
   private async linkedLocalFacts(row: IntegrationRunRow): Promise<{
     rows: Array<Omit<ReviewLinkedTransaction, 'decision' | 'decidedAt'>>;
     truncated: boolean;
+    total: number;
   }> {
     const ids = await this.runs.listTransactionIdsByRun(row.id, row.portfolioId);
     const page = ids.slice(0, REVIEW_LINKED_TRANSACTIONS_LIMIT + 1);
@@ -257,7 +324,11 @@ export class IntegrationReviewService {
         currency: readTransactionCurrency(tx),
       };
     });
-    return { rows, truncated: ids.length > REVIEW_LINKED_TRANSACTIONS_LIMIT };
+    return {
+      rows,
+      truncated: ids.length > REVIEW_LINKED_TRANSACTIONS_LIMIT,
+      total: ids.length,
+    };
   }
 
   private workspaceLimitations(

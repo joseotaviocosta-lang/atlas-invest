@@ -55,6 +55,8 @@ describe('Phase 5S-A: operations center web surface', () => {
     expect(section).toContain('em preparação');
     expect(section).toContain('data-testid="operations-reconciliation"');
     expect(section).toContain('Conferidos:');
+    expect(section).toContain('Pares revisados:');
+    expect(section).toContain('aguardando decisão');
     expect(section).toContain('data-testid="operations-data-quality"');
     expect(section).toContain('Qualidade dos dados');
     expect(section).toContain('data-testid="operations-recent-runs"');

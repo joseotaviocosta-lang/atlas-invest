@@ -130,4 +130,26 @@ export class ReconciliationDecisionRepository implements IReconciliationDecision
       throw new PersistenceError(`Failed to list reconciliation decisions for run ${runId}`);
     }
   }
+
+  async listByRunIds(runIds: string[], portfolioId: string): Promise<ReconciliationDecisionRow[]> {
+    if (runIds.length === 0) return [];
+    try {
+      const rows = await (
+        this.prisma as unknown as {
+          reconciliationDecisionRecord: {
+            findMany(args: {
+              where: { integrationRunId: { in: string[] }; portfolioId: string };
+              orderBy: { createdAt: 'asc' };
+            }): Promise<PrismaDecisionRow[]>;
+          };
+        }
+      ).reconciliationDecisionRecord.findMany({
+        where: { integrationRunId: { in: [...new Set(runIds)] }, portfolioId },
+        orderBy: { createdAt: 'asc' },
+      });
+      return rows.map((row) => this.map(row));
+    } catch {
+      throw new PersistenceError('Failed to list reconciliation decisions for integration runs');
+    }
+  }
 }

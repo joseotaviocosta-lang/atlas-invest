@@ -1,4 +1,5 @@
 import type { IntegrationReviewItem } from '@atlas/import-engine';
+import type { PairReviewSummary } from '@atlas/portfolio-strategy';
 
 export type IntegrationReviewActionKind = 'REVIEW_RUN' | 'VIEW_RUN';
 
@@ -18,6 +19,11 @@ export interface IntegrationReviewResponse {
   status: string;
   severity: string;
   reasonCodes: string[];
+  pairReview: {
+    status: string;
+    totalPairs: number;
+    decidedPairs: number;
+  };
   metrics: {
     newRecords: number;
     probableDuplicates: number;
@@ -40,7 +46,7 @@ export interface IntegrationReviewResponse {
  * (hashes, provider keys, payloads), secrets and PII never leave the API.
  */
 export function mapIntegrationReviewToResponse(
-  item: IntegrationReviewItem,
+  item: IntegrationReviewItem & { pairReview: PairReviewSummary },
   portfolioName: string | null,
 ): IntegrationReviewResponse {
   return {
@@ -53,6 +59,7 @@ export function mapIntegrationReviewToResponse(
     status: item.status,
     severity: item.severity,
     reasonCodes: [...item.reasonCodes],
+    pairReview: { ...item.pairReview },
     metrics: { ...item.metrics },
     createdAt: item.createdAt,
     action: {

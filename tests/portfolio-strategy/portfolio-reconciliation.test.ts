@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   compareReconciliationFacts,
+  derivePairReview,
   deriveSourceItemKey,
   type LocalFact,
   type SourceFact,
@@ -175,6 +176,38 @@ describe('Phase 5S-B: missing sides, multiples and ordering', () => {
     expect(compareReconciliationFacts.toString()).not.toMatch(
       /parseFloat|\bNumber\(|confidence|similarity/i,
     );
+    expect(derivePairReview.toString()).not.toMatch(/score|forecast|rating/i);
+  });
+
+  it('derives pair workflow state without persisting it', () => {
+    expect(derivePairReview(0, 0)).toEqual({
+      status: 'NOT_ACTIONABLE',
+      totalPairs: 0,
+      decidedPairs: 0,
+    });
+    expect(derivePairReview(5, 0)).toEqual({ status: 'PENDING', totalPairs: 5, decidedPairs: 0 });
+    expect(derivePairReview(5, 3)).toEqual({
+      status: 'PARTIALLY_RESOLVED',
+      totalPairs: 5,
+      decidedPairs: 3,
+    });
+    expect(derivePairReview(5, 5)).toEqual({ status: 'RESOLVED', totalPairs: 5, decidedPairs: 5 });
+  });
+
+  it('clamps impossible counts and ignores negatives', () => {
+    expect(derivePairReview(2, 9)).toEqual({ status: 'RESOLVED', totalPairs: 2, decidedPairs: 2 });
+    expect(derivePairReview(-4, -2)).toEqual({
+      status: 'NOT_ACTIONABLE',
+      totalPairs: 0,
+      decidedPairs: 0,
+    });
+  });
+
+  it('produces deterministic output for identical inputs', () => {
+    const first = derivePairReview(7, 4);
+    const second = derivePairReview(7, 4);
+    expect(first).toEqual(second);
+    expect(JSON.stringify(first)).not.toMatch(/score|forecast|rating/i);
   });
 });
 

@@ -220,6 +220,37 @@ export function compareReconciliationFacts(
   };
 }
 
+/** Workflow state of one review pair set. Derived only, never persisted. */
+export const PAIR_REVIEW_STATUSES = [
+  'PENDING',
+  'PARTIALLY_RESOLVED',
+  'RESOLVED',
+  'NOT_ACTIONABLE',
+] as const;
+export type PairReviewStatus = (typeof PAIR_REVIEW_STATUSES)[number];
+
+export interface PairReviewSummary {
+  status: PairReviewStatus;
+  totalPairs: number;
+  decidedPairs: number;
+}
+
+/**
+ * Derives the pair-review state from counts only. NOT_ACTIONABLE covers
+ * runs without decidable pairs (historical aggregate-only reviews):
+ * they are never counted as pending human work. Decided counts clamp
+ * to the total so races can never report impossible progress.
+ */
+export function derivePairReview(totalPairs: number, decidedPairs: number): PairReviewSummary {
+  const total = Math.max(0, Math.floor(totalPairs));
+  const decided = Math.min(Math.max(0, Math.floor(decidedPairs)), total);
+  if (total === 0) return { status: 'NOT_ACTIONABLE', totalPairs: 0, decidedPairs: 0 };
+  if (decided === 0) return { status: 'PENDING', totalPairs: total, decidedPairs: 0 };
+  if (decided < total)
+    return { status: 'PARTIALLY_RESOLVED', totalPairs: total, decidedPairs: decided };
+  return { status: 'RESOLVED', totalPairs: total, decidedPairs: decided };
+}
+
 /** Deterministic vocabulary for human reconciliation decisions. */
 export const RECONCILIATION_DECISIONS = ['CONFIRM_MATCH', 'NOT_A_MATCH'] as const;
 export type ReconciliationDecision = (typeof RECONCILIATION_DECISIONS)[number];

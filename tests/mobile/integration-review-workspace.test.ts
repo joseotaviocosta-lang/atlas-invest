@@ -18,11 +18,13 @@ describe('Phase 5S-B (mobile): reconciliation workspace read-only', () => {
   );
   const api = fs.readFileSync(path.join(process.cwd(), 'apps/mobile/src/api/reviews.ts'), 'utf8');
 
-  it('lists reviews with severity and source filters plus detail navigation', () => {
+  it('lists reviews with severity, source and workflow filters', () => {
     expect(api).toContain("query.set('source', params.source)");
-    expect(list).toContain("queryKey: ['integration-reviews', severity, source]");
+    expect(api).toContain("query.set('state', params.state)");
+    expect(list).toContain("queryKey: ['integration-reviews', severity, source, workflow]");
     expect(list).toContain('testID={`review-filter-${filter.id}`}');
     expect(list).toContain('testID={`review-source-${option}`}');
+    expect(list).toContain('testID={`review-workflow-${option.value}`}');
     expect(list).toContain('/(app)/reviews/${item.runId}');
     expect(list).toContain('testID={`review-detail-${item.runId}`}');
     expect(api).toContain('getReview(runId');
@@ -44,6 +46,9 @@ describe('Phase 5S-B (mobile): reconciliation workspace read-only', () => {
     expect(detail).toContain('testID="review-run-context"');
     expect(detail).toContain('Correspondência confirmada');
     expect(detail).toContain('Não correspondem');
+    expect(list).toContain('Revisado');
+    expect(list).toContain('revisados');
+    expect(list).toContain('par pendente');
   });
 
   it('offers no import or decision actions natively', () => {

@@ -8,6 +8,7 @@ export const IntegrationReviewListQuerySchema = z.object({
   severity: z.enum(['REVIEW', 'WARNING', 'ERROR']).optional(),
   portfolioId: UUIDSchema.optional(),
   source: z.enum(['B3', 'CSV', 'MANUAL']).optional(),
+  state: z.enum(['PENDING', 'RESOLVED', 'ALL']).optional(),
 });
 
 export type IntegrationReviewListQuery = z.infer<typeof IntegrationReviewListQuerySchema>;
@@ -30,4 +31,7 @@ export class IntegrationReviewListQuerySwaggerDto {
 
   @ApiPropertyOptional({ type: String, enum: ['B3', 'CSV', 'MANUAL'] })
   source?: string;
+
+  @ApiPropertyOptional({ type: String, enum: ['PENDING', 'RESOLVED', 'ALL'] })
+  state?: string;
 }

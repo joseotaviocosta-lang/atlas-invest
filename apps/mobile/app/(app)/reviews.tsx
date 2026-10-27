@@ -65,6 +65,18 @@ function ReviewCard({ item }: { item: MobileReviewItem }) {
         </Text>
       ))}
       <Text style={styles.itemDate}>{item.createdAt.slice(0, 10)}</Text>
+      {item.pairReview && item.pairReview.status === 'RESOLVED' ? (
+        <Text style={styles.itemLine}>Revisado</Text>
+      ) : item.pairReview && item.pairReview.status === 'PARTIALLY_RESOLVED' ? (
+        <Text style={styles.itemLine}>
+          {item.pairReview.decidedPairs} de {item.pairReview.totalPairs} revisados
+        </Text>
+      ) : item.pairReview && item.pairReview.totalPairs > 0 ? (
+        <Text style={styles.itemLine}>
+          {item.pairReview.totalPairs}{' '}
+          {item.pairReview.totalPairs === 1 ? 'par pendente' : 'pares pendentes'}
+        </Text>
+      ) : null}
       <Pressable
         onPress={() => router.push(`/(app)/reviews/${item.runId}` as never)}
         accessibilityRole="button"
@@ -88,13 +100,15 @@ export default function ReviewsScreen() {
   const router = useRouter();
   const [severity, setSeverity] = useState<'ALL' | 'REVIEW' | 'WARNING' | 'ERROR'>('ALL');
   const [source, setSource] = useState<string>('ALL');
+  const [workflow, setWorkflow] = useState<'ALL' | 'PENDING' | 'RESOLVED'>('ALL');
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
-    queryKey: ['integration-reviews', severity, source],
+    queryKey: ['integration-reviews', severity, source, workflow],
     queryFn: () =>
       reviewsApi.listReviews({
         limit: 50,
         severity: severity === 'ALL' ? null : severity,
         source: source === 'ALL' ? null : source,
+        state: workflow === 'ALL' ? null : workflow,
       }),
     staleTime: 30_000,
   });
@@ -136,6 +150,26 @@ export default function ReviewsScreen() {
             >
               <Text style={[styles.filter, source === option && styles.filterActive]}>
                 {option === 'ALL' ? 'Todas' : option}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <View style={styles.filterRow}>
+          {[
+            { value: 'ALL', label: 'Todas' },
+            { value: 'PENDING', label: 'Pendentes' },
+            { value: 'RESOLVED', label: 'Resolvidas' },
+          ].map((option) => (
+            <Pressable
+              key={option.value}
+              onPress={() => setWorkflow(option.value as 'ALL' | 'PENDING' | 'RESOLVED')}
+              accessibilityRole="button"
+              accessibilityLabel={`Mostrar revisões ${option.label.toLowerCase()}`}
+              accessibilityState={{ selected: workflow === option.value }}
+              testID={`review-workflow-${option.value}`}
+            >
+              <Text style={[styles.filter, workflow === option.value && styles.filterActive]}>
+                {option.label}
               </Text>
             </Pressable>
           ))}

@@ -2376,6 +2376,14 @@ export interface IIntegrationRunRepository {
   linkTransactions(input: IntegrationRunLinkInput): Promise<number>;
   /** Transaction ids confirmed by a run, in linkage order. */
   listTransactionIdsByRun(runId: string, portfolioId: string): Promise<string[]>;
+  /**
+   * Phase 5S-B-R2 — bounded link counts for workflow derivation.
+   * One GROUP BY instead of one query per run.
+   */
+  countLinksByRunIds(
+    runIds: string[],
+    portfolioId: string,
+  ): Promise<Array<{ runId: string; count: number }>>;
   findById(id: string, portfolioId: string): Promise<IntegrationRunRow | null>;
   /**
    * Phase 5P-B: ownership-scoped lookup across a user's portfolios.
@@ -2443,4 +2451,9 @@ export interface IReconciliationDecisionRepository {
     localTransactionId: string,
   ): Promise<ReconciliationDecisionRow | null>;
   listByRun(runId: string, portfolioId: string): Promise<ReconciliationDecisionRow[]>;
+  /**
+   * Phase 5S-B-R2 — one bounded read for workflow derivation across a
+   * review window. Never per-run/per-item calls.
+   */
+  listByRunIds(runIds: string[], portfolioId: string): Promise<ReconciliationDecisionRow[]>;
 }

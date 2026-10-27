@@ -26,6 +26,7 @@ export interface MobileReviewItem {
   metrics: MobileReviewMetrics;
   createdAt: string;
   action: { kind: 'REVIEW_RUN' | 'VIEW_RUN'; runId: string; portfolioId: string };
+  pairReview?: { status: string; totalPairs: number; decidedPairs: number } | null;
 }
 
 export interface MobileReviewListMeta {
@@ -41,6 +42,7 @@ export const reviewsApi = {
     cursor?: string | null;
     severity?: 'REVIEW' | 'WARNING' | 'ERROR' | null;
     source?: string | null;
+    state?: 'PENDING' | 'RESOLVED' | 'ALL' | null;
   }): Promise<{
     data: MobileReviewItem[];
     meta: MobileReviewListMeta;
@@ -50,6 +52,7 @@ export const reviewsApi = {
     if (params?.cursor) query.set('cursor', params.cursor);
     if (params?.severity) query.set('severity', params.severity);
     if (params?.source) query.set('source', params.source);
+    if (params?.state) query.set('state', params.state);
     return apiClient.get(`/api/v1/integration-reviews?${query.toString()}`);
   },
 

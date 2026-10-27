@@ -38,6 +38,7 @@ describe('Phase 5S-A (mobile): operations center read-only', () => {
     expect(section).toContain('testID="operations-attention"');
     expect(section).toContain('testID="operations-integrations"');
     expect(section).toContain('testID="operations-reconciliation"');
+    expect(section).toContain('Pares revisados:');
     expect(section).toContain('testID="operations-data-quality"');
     expect(section).toContain('testID="operations-recent-runs"');
     expect(section).toContain('Nenhuma pendência operacional identificada.');

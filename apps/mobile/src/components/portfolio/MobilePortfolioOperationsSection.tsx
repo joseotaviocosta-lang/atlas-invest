@@ -62,6 +62,11 @@ interface PortfolioOperationsData {
     };
     issuesByDomain: Array<{ domain: string; count: number }>;
   };
+  reviewWorkflow: {
+    pendingPairs: number;
+    decidedPairs: number;
+    totalPairs: number;
+  };
   reviewPreview: Array<{
     source: string;
     status: string;
@@ -185,6 +190,10 @@ export function MobilePortfolioOperationsSection({ portfolioId }: { portfolioId:
               <Text style={styles.muted}>
                 Conferidos: {data.reconciliation.matched} · Divergentes:{' '}
                 {data.reconciliation.divergent} · Pendentes: {data.reconciliation.pendingReviews}
+              </Text>
+              <Text style={styles.muted}>
+                Pares revisados: {data.reviewWorkflow.decidedPairs} de{' '}
+                {data.reviewWorkflow.totalPairs}
               </Text>
             </View>
             <View testID="operations-data-quality">

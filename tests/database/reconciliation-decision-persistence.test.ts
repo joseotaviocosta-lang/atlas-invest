@@ -195,4 +195,49 @@ describe('Database: reconciliation decisions (Phase 5S-B-R1)', () => {
     // No backfill: historical runs keep zero decision rows.
     expect(rows).toEqual([]);
   });
+
+  it('lists decisions and link counts per run for workflow derivation', async () => {
+    const runA = await seedRun('AWAITING_REVIEW');
+    const runB = await seedRun('COMPLETED');
+    const tx1 = await seedTransaction();
+    const tx2 = await seedTransaction();
+    await prisma.integrationRunTransaction.createMany({
+      data: [
+        { runId: runA, portfolioId, transactionId: tx1 },
+        { runId: runA, portfolioId, transactionId: tx2 },
+        { runId: runB, portfolioId, transactionId: tx2 },
+      ],
+    });
+
+    const { ReconciliationDecisionRepository } =
+      await import('../../packages/database/src/repositories/reconciliation-decision.repository');
+    const { IntegrationRunRepository } =
+      await import('../../packages/database/src/repositories/integration-run.repository');
+    const decisions = new ReconciliationDecisionRepository(prisma);
+    const runs = new IntegrationRunRepository(prisma);
+
+    const byRuns = await decisions.listByRunIds([runA, runB], portfolioId);
+    expect(byRuns).toEqual([]);
+    await decisions.create({
+      portfolioId,
+      integrationRunId: runA,
+      source: 'B3',
+      sourceItemKey: 'B3:K1',
+      localTransactionId: tx1,
+      decision: 'CONFIRM_MATCH',
+      decidedByPrincipal: 'user-1',
+      decidedAt: new Date(),
+    });
+    const after = await decisions.listByRunIds([runA, runB], portfolioId);
+    expect(after).toHaveLength(1);
+    expect(after[0]?.integrationRunId).toBe(runA);
+
+    const counts = await runs.countLinksByRunIds([runA, runB, randomUUID()], portfolioId);
+    const byRun = new Map(counts.map((entry) => [entry.runId, entry.count]));
+    expect(byRun.get(runA)).toBe(2);
+    expect(byRun.get(runB)).toBe(1);
+    expect(byRun.has(randomUUID())).toBe(false);
+    expect(await runs.countLinksByRunIds([], portfolioId)).toEqual([]);
+    expect(await decisions.listByRunIds([], portfolioId)).toEqual([]);
+  });
 });

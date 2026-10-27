@@ -4,6 +4,7 @@ import type {
   IIntegrationRunRepository,
   IntegrationRunRow,
   IPortfolioRepository,
+  IReconciliationDecisionRepository,
 } from '@atlas/database';
 import { deriveReviewItems } from '@atlas/import-engine';
 import {
@@ -34,6 +35,8 @@ import {
 export const OPERATIONS_RECENT_RUN_LIMIT = 10;
 export const OPERATIONS_REVIEW_PREVIEW_LIMIT = 5;
 export const OPERATIONS_ATTENTION_PREVIEW_LIMIT = 5;
+/** Bounded window for pair-workflow derivation (documented, not a lifetime total). */
+export const OPERATIONS_REVIEW_WINDOW_LIMIT = 200;
 
 export interface OperationsIntegrationView {
   source: string;
@@ -79,6 +82,11 @@ export interface PortfolioOperationsModel {
   };
   reviewPreview: OperationsReviewPreviewView[];
   recentActivity: OperationsRecentRunView[];
+  reviewWorkflow: {
+    pendingPairs: number;
+    decidedPairs: number;
+    totalPairs: number;
+  };
   availableActions: Array<{ type: string }>;
   limitations: string[];
 }
@@ -110,6 +118,7 @@ export async function composePortfolioOperations(
     allocation: GetPortfolioAllocationUseCase;
     assets: IAssetRepository;
     runs: IIntegrationRunRepository;
+    decisions: IReconciliationDecisionRepository;
   },
   params: { portfolioId: string; userId: string },
 ): Promise<PortfolioOperationsModel> {
@@ -120,7 +129,7 @@ export async function composePortfolioOperations(
     throw new EntityNotFoundError('Portfolio', params.portfolioId);
   }
 
-  const [settings, quality, recentRuns] = await Promise.all([
+  const [settings, quality, recentRuns, windowRuns] = await Promise.all([
     deps.settings.getSettings(params.userId, params.portfolioId),
     composePortfolioDataQuality(
       {
@@ -133,7 +142,39 @@ export async function composePortfolioOperations(
       params,
     ),
     deps.runs.listRecentByPortfolioIds([params.portfolioId], OPERATIONS_RECENT_RUN_LIMIT),
+    deps.runs.listRecentByPortfolioIds([params.portfolioId], OPERATIONS_REVIEW_WINDOW_LIMIT),
   ]);
+
+  // Pair workflow over the bounded review window: which actionable runs
+  // still have undecided pairs. Legacy aggregate runs without links are
+  // excluded by construction (no pairs, never pending).
+  const actionableRunIds = new Set(
+    deriveReviewItems(windowRuns.map(toDerivationInput)).map((item) => item.runId),
+  );
+  const windowRunIds = windowRuns
+    .filter((row) => actionableRunIds.has(row.id))
+    .map((row) => row.id);
+  const [linkCounts, windowDecisions] = await Promise.all([
+    deps.runs.countLinksByRunIds(windowRunIds, params.portfolioId),
+    deps.decisions.listByRunIds(windowRunIds, params.portfolioId),
+  ]);
+  const decidedByRun = new Map<string, number>();
+  for (const decision of windowDecisions) {
+    decidedByRun.set(
+      decision.integrationRunId,
+      (decidedByRun.get(decision.integrationRunId) ?? 0) + 1,
+    );
+  }
+  let pendingPairs = 0;
+  let decidedPairs = 0;
+  let totalPairs = 0;
+  for (const entry of linkCounts) {
+    const total = entry.count;
+    const decided = Math.min(decidedByRun.get(entry.runId) ?? 0, total);
+    totalPairs += total;
+    decidedPairs += decided;
+    pendingPairs += total - decided;
+  }
 
   const integrations: OperationsIntegrationView[] = settings.sources.map((source) => ({
     source: source.source,
@@ -216,6 +257,7 @@ export async function composePortfolioOperations(
     },
     reviewPreview,
     recentActivity,
+    reviewWorkflow: { pendingPairs, decidedPairs, totalPairs },
     availableActions: [
       { type: 'VIEW_REVIEWS' },
       { type: 'VIEW_DATA_QUALITY' },

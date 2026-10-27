@@ -56,22 +56,28 @@ export class IntegrationReviewsController {
   @ApiQuery({ name: 'severity', required: false, enum: ['REVIEW', 'WARNING', 'ERROR'] })
   @ApiQuery({ name: 'portfolioId', required: false, description: 'Scope to one portfolio' })
   @ApiQuery({ name: 'source', required: false, enum: ['B3', 'CSV', 'MANUAL'] })
+  @ApiQuery({
+    name: 'state',
+    required: false,
+    enum: ['PENDING', 'RESOLVED', 'ALL'],
+    description:
+      'Workflow filter on pair decisions. Absent preserves current behavior (all actionable).',
+  })
   @ApiResponse({ status: 200, description: 'Cursor-paginated review items' })
   async listReviews(
     @Query(new ZodValidationPipe(IntegrationReviewListQuerySchema))
     query: IntegrationReviewListQuery,
     @CurrentPrincipal() principal: AuthenticatedPrincipal,
   ) {
-    const { items, portfolioNames, hasMore, nextCursor } = await this.reviewService.listReviews(
-      principal.userId,
-      {
+    const { items, portfolioNames, hasMore, nextCursor, workflow } =
+      await this.reviewService.listReviews(principal.userId, {
         limit: query.limit,
         cursor: query.cursor ?? null,
         severity: query.severity ?? null,
         portfolioId: query.portfolioId ?? null,
         source: query.source ?? null,
-      },
-    );
+        state: query.state ?? null,
+      });
     const data = items.map((item) =>
       mapIntegrationReviewToResponse(item, portfolioNames.get(item.portfolioId) ?? null),
     );
@@ -82,6 +88,7 @@ export class IntegrationReviewsController {
         cursor: query.cursor ?? null,
         nextCursor,
         hasMore,
+        workflow,
       },
     };
   }
@@ -117,11 +124,15 @@ export class IntegrationReviewsController {
     return {
       data: {
         item: detail.item
-          ? mapIntegrationReviewToResponse(detail.item, detail.portfolioName)
+          ? mapIntegrationReviewToResponse(
+              { ...detail.item, pairReview: detail.pairReview },
+              detail.portfolioName,
+            )
           : null,
         state: detail.state,
         resolvedReason: detail.resolvedReason,
         portfolioName: detail.portfolioName,
+        pairReview: detail.pairReview,
         linkedTransactions: detail.linkedTransactions,
         linkedTransactionsTruncated: detail.linkedTransactionsTruncated,
         limitations: detail.limitations,

@@ -62,6 +62,7 @@ interface ReviewDetailData {
   portfolioName: string | null;
   linkedTransactions: LinkedTransactionView[];
   linkedTransactionsTruncated: boolean;
+  pairReview: { status: string; totalPairs: number; decidedPairs: number };
   limitations: string[];
 }
 
@@ -137,6 +138,28 @@ function ReviewDetailContent() {
               <strong>{item ? describeImportRunSource(item.source, null) : 'Execução'}</strong>
               {item ? ` · ${item.status}` : ''} · Situação:{' '}
               {data.state === 'ACTIONABLE' ? 'Aguardando revisão' : 'Resolvida'}
+            </p>
+            <p style={{ fontSize: '0.8125rem', color: colors.textSecondary, margin: '0 0 4px' }}>
+              Reconciliação detectada:{' '}
+              {(
+                [
+                  ['DIVERGENT', item?.metrics.divergent ?? 0],
+                  ['MISSING_LOCAL', item?.metrics.missingLocal ?? 0],
+                  ['MISSING_SOURCE', item?.metrics.missingSource ?? 0],
+                  ['UNRESOLVED', item?.metrics.unresolved ?? 0],
+                ] as Array<[string, number]>
+              )
+                .filter(([, count]) => count > 0)
+                .map(([state]) => describeReconciliationState(state))
+                .join('; ') || 'sem divergências'}
+              {' · '}Revisão:{' '}
+              {data.pairReview.status === 'RESOLVED'
+                ? 'Concluída'
+                : data.pairReview.status === 'PARTIALLY_RESOLVED'
+                  ? `Parcial (${data.pairReview.decidedPairs} de ${data.pairReview.totalPairs} pares revisados)`
+                  : data.pairReview.status === 'PENDING'
+                    ? `Pendente (${data.pairReview.totalPairs} ${data.pairReview.totalPairs === 1 ? 'par' : 'pares'} para revisar)`
+                    : 'Não acionável para este item'}
             </p>
 
             {item && (
