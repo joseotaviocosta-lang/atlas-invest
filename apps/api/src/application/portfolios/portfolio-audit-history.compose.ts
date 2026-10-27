@@ -11,6 +11,7 @@ import type {
 import type {
   ComposeAuditHistoryParams,
   OperationalAuditActor,
+  OperationalAuditEventType,
   OperationalAuditHistoryResult,
   OperationalAuditItem,
 } from './portfolio-audit-history.types';
@@ -69,7 +70,7 @@ export function mapAuditActor(
   if (lower.startsWith('op_') || lower.startsWith('operator:')) {
     return { kind: 'OPERATOR', label: 'Operador' };
   }
-  return { kind: 'USER', label: 'Usuário' };
+  return null;
 }
 
 export async function composePortfolioAuditHistory(
@@ -232,12 +233,11 @@ export async function composePortfolioAuditHistory(
 
   // Map Integration Runs
   for (const run of runRows) {
-    const occurredAtDate = run.completedAt ?? run.createdAt;
     const status = run.status.toUpperCase();
-
-    let eventType: OperationalAuditItem['eventType'] = 'IMPORT_STARTED';
-    let title = 'Importação iniciada';
-    let description = `Importação via ${run.source} iniciada.`;
+    let eventType: OperationalAuditEventType;
+    let title: string;
+    let description: string;
+    let reason: string | null = null;
 
     if (status === 'COMPLETED') {
       eventType = 'IMPORT_COMPLETED';
@@ -247,34 +247,33 @@ export async function composePortfolioAuditHistory(
       }`;
     } else if (status === 'PARTIAL') {
       eventType = 'IMPORT_PARTIAL';
-      title = 'Importação parcial';
+      title = 'Importação concluída parcialmente';
       description = `A importação via ${run.source} foi processada parcialmente com ${run.confirmed} registros confirmados.`;
+      if (run.errorCode) {
+        reason = `Código: ${run.errorCode}`;
+      }
     } else if (status === 'FAILED') {
       eventType = 'IMPORT_FAILED';
-      title = 'Importação falhou';
-      description = `A importação via ${run.source} falhou${
-        run.errorMessage ? `: ${run.errorMessage}` : '.'
-      }`;
-    } else if (status === 'AWAITING_REVIEW') {
-      eventType = 'IMPORT_AWAITING_REVIEW';
-      title = 'Importação aguardando revisão';
-      description = `A importação via ${run.source} requer revisão manual de pendências.`;
+      title = 'Importação não concluída';
+      description = `A importação via ${run.source} falhou.`;
+      if (run.errorCode) {
+        reason = `Falha (${run.errorCode})${run.errorMessage ? `: ${run.errorMessage.slice(0, 150)}` : ''}`;
+      } else if (run.errorMessage) {
+        reason = run.errorMessage.slice(0, 150);
+      }
+    } else {
+      // Non-terminal runs (STARTED, AWAITING_REVIEW, CONFIRMING, etc.) are in-flight
+      // and do not represent a terminal/completed operational change event.
+      continue;
     }
 
-    const hasReview = status === 'AWAITING_REVIEW';
-    const entity = hasReview
-      ? {
-          type: 'REVIEW' as const,
-          id: run.id,
-          label: 'Ver revisão',
-          routeHref: `/reviews/${run.id}`,
-        }
-      : {
-          type: 'INTEGRATION_RUN' as const,
-          id: run.id,
-          label: 'Ver execução',
-          routeHref: `/portfolio/import?portfolioId=${portfolioId}&runId=${run.id}`,
-        };
+    const occurredAtDate = run.completedAt ?? run.createdAt;
+    const entity = {
+      type: 'INTEGRATION_RUN' as const,
+      id: run.id,
+      label: 'Ver execução',
+      routeHref: `/portfolio/import?portfolioId=${portfolioId}&runId=${run.id}`,
+    };
 
     const actor: OperationalAuditActor | null =
       run.trigger === 'SCHEDULED' ? { kind: 'SYSTEM', label: 'Sistema' } : null;
@@ -290,13 +289,14 @@ export async function composePortfolioAuditHistory(
       description,
       actor,
       entity,
-      reason: run.errorMessage ? run.errorMessage.trim() : null,
+      reason,
       metadata: {
         source: run.source,
         provider: run.provider,
         status: run.status,
         recordsFetched: run.recordsFetched,
         confirmed: run.confirmed,
+        errorCode: run.errorCode ?? undefined,
       },
     });
   }

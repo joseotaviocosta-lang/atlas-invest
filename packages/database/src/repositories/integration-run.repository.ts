@@ -412,6 +412,7 @@ export class IntegrationRunRepository implements IIntegrationRunRepository {
       const rows = await this.prisma.integrationRun.findMany({
         where: {
           portfolioId,
+          status: { in: ['COMPLETED', 'PARTIAL', 'FAILED'] },
           ...(options.cursor ? { createdAt: { lte: options.cursor.createdAt } } : {}),
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],

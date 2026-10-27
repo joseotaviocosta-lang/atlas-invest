@@ -97,6 +97,32 @@ function categoryBadgeVariant(category: string): 'warning' | 'primary' | 'defaul
   }
 }
 
+function eventBadgeLabel(eventType: string): string | null {
+  switch (eventType) {
+    case 'IMPORT_COMPLETED':
+      return 'Concluída';
+    case 'IMPORT_PARTIAL':
+      return 'Parcial';
+    case 'IMPORT_FAILED':
+      return 'Não concluída';
+    default:
+      return null;
+  }
+}
+
+function eventBadgeVariant(eventType: string): 'success' | 'warning' | 'negative' | 'neutral' {
+  switch (eventType) {
+    case 'IMPORT_COMPLETED':
+      return 'success';
+    case 'IMPORT_PARTIAL':
+      return 'warning';
+    case 'IMPORT_FAILED':
+      return 'negative';
+    default:
+      return 'neutral';
+  }
+}
+
 export function PortfolioAuditTimeline({ portfolioId }: { portfolioId: string }) {
   const [selectedCategory, setSelectedCategory] = useState<AuditCategoryFilter>('ALL');
 
@@ -258,6 +284,11 @@ export function PortfolioAuditTimeline({ portfolioId }: { portfolioId: string })
                   <Badge variant={categoryBadgeVariant(item.category)}>
                     {categoryBadgeLabel(item.category)}
                   </Badge>
+                  {eventBadgeLabel(item.eventType) && (
+                    <Badge variant={eventBadgeVariant(item.eventType)}>
+                      {eventBadgeLabel(item.eventType)}
+                    </Badge>
+                  )}
                   <time
                     dateTime={item.occurredAt}
                     style={{ fontSize: '0.8125rem', color: colors.textSecondary }}

@@ -3,9 +3,7 @@ export type OperationalAuditEventType =
   | 'RECONCILIATION_DECISION_RECORDED'
   | 'IMPORT_COMPLETED'
   | 'IMPORT_PARTIAL'
-  | 'IMPORT_FAILED'
-  | 'IMPORT_AWAITING_REVIEW'
-  | 'IMPORT_STARTED';
+  | 'IMPORT_FAILED';
 
 export type OperationalAuditCategory = 'ALL' | 'RECTIFICATIONS' | 'RECONCILIATIONS' | 'IMPORTS';
 

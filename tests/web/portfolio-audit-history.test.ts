@@ -3,13 +3,13 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 /**
- * Phase 5S-E (web) — operational audit trail and change history surface.
+ * Phase 5S-E-R1 (web) — operational audit trail and change history surface.
  *
  * Verifies that the history page integrates the "Atividade" sub-tab alongside
  * the financial "Operações" ledger history, that PortfolioAuditTimeline consumes
  * the factual read-only endpoint, and that operations center previews activities.
  */
-describe('Phase 5S-E: operational audit history web surface', () => {
+describe('Phase 5S-E-R1: operational audit history web surface', () => {
   const historyPage = fs.readFileSync(
     path.join(process.cwd(), 'apps/web/src/app/(app)/portfolio/history/page.tsx'),
     'utf8',
@@ -77,5 +77,14 @@ describe('Phase 5S-E: operational audit history web surface', () => {
       '/portfolio/history?portfolioId=${portfolioId}&view=activity',
     );
     expect(operationsSection).toContain('Ver histórico de alterações →');
+  });
+
+  it('renders visually distinct badges for import statuses without false-positive success colors for FAILED', () => {
+    expect(auditTimeline).toContain("case 'IMPORT_COMPLETED':");
+    expect(auditTimeline).toContain("case 'IMPORT_PARTIAL':");
+    expect(auditTimeline).toContain("case 'IMPORT_FAILED':");
+    // Ensure IMPORT_FAILED maps to negative, not success
+    expect(auditTimeline).toMatch(/case 'IMPORT_FAILED':\s*return 'negative';/);
+    expect(auditTimeline).toMatch(/case 'IMPORT_COMPLETED':\s*return 'success';/);
   });
 });

@@ -304,6 +304,78 @@ describe('API Integration: portfolio audit history (Phase 5S-E)', () => {
     expect(ids1).not.toContain(ids2[0]);
   });
 
+  it('returns factual IMPORT_PARTIAL and IMPORT_FAILED events and skips in-flight runs', async () => {
+    const t1 = new Date('2026-10-10T10:00:00.000Z');
+    const t2 = new Date('2026-10-10T11:00:00.000Z');
+    const t3 = new Date('2026-10-10T12:00:00.000Z');
+
+    // 1. In-flight run (STARTED)
+    await prisma.integrationRun.create({
+      data: {
+        id: randomUUID(),
+        portfolioId,
+        source: 'B3',
+        status: 'STARTED',
+        recordsFetched: 0,
+        confirmed: 0,
+        createdAt: t3,
+      },
+    });
+
+    // 2. Partial run (PARTIAL)
+    const partialId = randomUUID();
+    await prisma.integrationRun.create({
+      data: {
+        id: partialId,
+        portfolioId,
+        source: 'CEI_CSV',
+        status: 'PARTIAL',
+        recordsFetched: 10,
+        confirmed: 8,
+        partial: true,
+        errorCode: 'PARTIAL_PARSE',
+        createdAt: t2,
+        completedAt: t2,
+      },
+    });
+
+    // 3. Failed run (FAILED)
+    const failedId = randomUUID();
+    await prisma.integrationRun.create({
+      data: {
+        id: failedId,
+        portfolioId,
+        source: 'B3',
+        status: 'FAILED',
+        recordsFetched: 0,
+        confirmed: 0,
+        errorCode: 'TIMEOUT',
+        errorMessage: 'Network timeout during B3 sync',
+        createdAt: t1,
+        completedAt: t1,
+      },
+    });
+
+    const res = await request(app.getHttpServer())
+      .get(auditUrl())
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(200);
+
+    // Only 2 terminal runs returned (in-flight STARTED is skipped)
+    expect(res.body.data).toHaveLength(2);
+
+    const partItem = res.body.data.find((d: { id: string }) => d.id === `run:${partialId}`);
+    expect(partItem).toBeDefined();
+    expect(partItem.eventType).toBe('IMPORT_PARTIAL');
+    expect(partItem.title).toBe('Importação concluída parcialmente');
+
+    const failItem = res.body.data.find((d: { id: string }) => d.id === `run:${failedId}`);
+    expect(failItem).toBeDefined();
+    expect(failItem.eventType).toBe('IMPORT_FAILED');
+    expect(failItem.title).toBe('Importação não concluída');
+    expect(failItem.reason).toContain('TIMEOUT');
+  });
+
   it('enforces portfolio ownership and returns 404 for foreign portfolios', async () => {
     const foreignPortfolioId = randomUUID();
     const foreignUserId = randomUUID();
