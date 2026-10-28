@@ -369,6 +369,7 @@ export function describeOperationsStatus(status: string): string {
 
 /** Operations attention codes -> neutral pt-BR labels. Display only. */
 export function describeOperationsAttention(code: string): string {
+  if (code === 'SYNC_INTERRUPTED') return 'Sincronização interrompida';
   if (code === 'SYNC_FAILED') return 'Sincronização falhou';
   if (code === 'SYNC_PARTIAL') return 'Sincronização parcial';
   if (code === 'CONNECTION_NEEDS_REAUTH') return 'Conexão precisa de nova autorização';
@@ -382,6 +383,8 @@ export function describeOperationsAttention(code: string): string {
 
 /** Operations attention detail -> factual impact + safe next step. */
 export function describeOperationsAttentionDetail(code: string): string {
+  if (code === 'SYNC_INTERRUPTED')
+    return 'A última sincronização foi interrompida. Ver o histórico para conferir ou tentar novamente.';
   if (code === 'SYNC_FAILED')
     return 'A última sincronização falhou. Ver o histórico de execuções para conferir.';
   if (code === 'SYNC_PARTIAL')
@@ -408,6 +411,25 @@ export function describeOperationsDomain(domain: string): string {
   if (domain === 'RECONCILIATION') return 'Reconciliação';
   if (domain === 'DATA_QUALITY') return 'Qualidade dos dados';
   return domain;
+}
+
+/** Operational recovery state labels (neutral pt-BR). */
+export function describeRecoveryState(state: string): string {
+  if (state === 'RETRY_AVAILABLE') return 'Repetição disponível';
+  if (state === 'REVIEW_REQUIRED') return 'Revisão necessária';
+  if (state === 'INTERRUPTED') return 'Interrompida';
+  if (state === 'BLOCKED') return 'Bloqueada';
+  if (state === 'UNSUPPORTED') return 'Não suportada';
+  return 'Concluída';
+}
+
+/** Operational recovery action labels. */
+export function describeRecoveryAction(action: string): string {
+  if (action === 'RETRY') return 'Tentar novamente';
+  if (action === 'VIEW_REVIEW') return 'Revisar';
+  if (action === 'VIEW_RUN') return 'Ver detalhes';
+  if (action === 'VIEW_IMPORT') return 'Ir para importações';
+  return '';
 }
 
 /** Insights-specific limitations (read-only analytics; no judgment). */

@@ -11,3 +11,4 @@ export * from './integration-worker.service';
 export * from './integration-review.service';
 export * from './integration-settings.service';
 export * from './integration-connection.service';
+export * from './retry-portfolio-import.use-case';

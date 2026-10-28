@@ -163,6 +163,14 @@ interface ImportRunItem {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  recovery?: {
+    recoveryState: string;
+    recommendedAction: string;
+    canRetry: boolean;
+    canResume: boolean;
+    requiresReview: boolean;
+    reason: string;
+  };
 }
 
 const CSV_TEMPLATE = [
@@ -964,6 +972,20 @@ function ImportHubContent() {
     [runs, selectedRunId],
   );
 
+  const retryMutation = useMutation({
+    mutationFn: async (runId: string) => {
+      const res = await apiClient.post<{
+        data: { originalRunId: string; newRunId: string; status: string; message: string };
+      }>(`/api/v1/portfolios/${activePortfolioId}/imports/runs/${runId}/retry`);
+      return res.data;
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['import-runs', activePortfolioId] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio-operations', activePortfolioId] });
+      setSelectedRunId(res.newRunId);
+    },
+  });
+
   const previewMutation = useMutation({
     mutationFn: async () => {
       const res = await apiClient.post<{ data: PreviewResponse }>(
@@ -1418,6 +1440,46 @@ function ImportHubContent() {
                   ? 'Nova sincronização disponível: revise os registros acima. A importação continua sendo feita por você — nada foi gravado no livro-razão.'
                   : 'Revise os registros acima antes de confirmar. Nada foi gravado no livro-razão.'}
               </p>
+            ) : null}
+            {selectedRun.recovery?.recoveryState === 'INTERRUPTED' ? (
+              <div style={{ marginTop: `${spacing.sm}px` }}>
+                <Badge variant="warning">Interrompida</Badge>
+                <p style={{ fontSize: '0.875rem', color: colors.warning, margin: '4px 0 0' }}>
+                  {selectedRun.recovery.reason}
+                </p>
+              </div>
+            ) : null}
+            {selectedRun.recovery?.canRetry ? (
+              <div style={{ marginTop: `${spacing.sm}px` }}>
+                <Button
+                  variant="primary"
+                  onClick={() => retryMutation.mutate(selectedRun.id)}
+                  disabled={retryMutation.isPending}
+                  aria-label="Tentar novamente"
+                >
+                  {retryMutation.isPending ? 'Tentando novamente...' : 'Tentar novamente'}
+                </Button>
+                {retryMutation.isError ? (
+                  <p style={{ fontSize: '0.8125rem', color: colors.negative, margin: '4px 0 0' }}>
+                    Não foi possível repetir a sincronização. Tente novamente.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            {selectedRun.recovery && !selectedRun.recovery.canRetry && selectedRun.status === 'FAILED' ? (
+              <p style={{ fontSize: '0.8125rem', color: colors.textSecondary, margin: '4px 0 0' }}>
+                {selectedRun.recovery.reason}
+              </p>
+            ) : null}
+            {selectedRun.recovery?.requiresReview ? (
+              <div style={{ marginTop: `${spacing.sm}px` }}>
+                <Link
+                  href={`/reviews?portfolioId=${activePortfolioId}`}
+                  style={{ fontSize: '0.875rem', color: colors.accent, textDecoration: 'none' }}
+                >
+                  Revisar pendências desta execução →
+                </Link>
+              </div>
             ) : null}
             <div style={{ marginTop: `${spacing.sm}px` }}>
               <Button

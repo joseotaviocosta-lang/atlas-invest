@@ -77,6 +77,22 @@ interface PortfolioOperationsData {
     unsupported: number;
     structural: number;
   };
+  recovery?: {
+    interruptedCount: number;
+    retryableCount: number;
+    reviewRequiredCount: number;
+    items: Array<{
+      runId: string;
+      source: string;
+      status: string;
+      recoveryState: string;
+      recommendedAction: string;
+      canRetry: boolean;
+      canResume: boolean;
+      requiresReview: boolean;
+      reason: string;
+    }>;
+  };
   reviewPreview: Array<{
     source: string;
     status: string;
@@ -283,6 +299,38 @@ export function PortfolioOperationsSection({ portfolioId }: { portfolioId: strin
               </Link>
             </div>
           )}
+
+          {data.recovery &&
+            (data.recovery.interruptedCount > 0 || data.recovery.retryableCount > 0) && (
+              <div data-testid="operations-recovery">
+                <h4 style={{ fontSize: '0.875rem', margin: '12px 0 4px' }}>
+                  Recuperação operacional
+                </h4>
+                {data.recovery.interruptedCount > 0 && (
+                  <p style={{ fontSize: '0.8125rem', color: colors.warning, margin: '0 0 4px' }}>
+                    {data.recovery.interruptedCount}{' '}
+                    {data.recovery.interruptedCount === 1
+                      ? 'sincronização foi interrompida'
+                      : 'sincronizações foram interrompidas'}{' '}
+                    antes de concluir.
+                  </p>
+                )}
+                {data.recovery.retryableCount > 0 && (
+                  <p style={{ fontSize: '0.8125rem', color: colors.textSecondary, margin: '0 0 4px' }}>
+                    {data.recovery.retryableCount}{' '}
+                    {data.recovery.retryableCount === 1
+                      ? 'execução pode ser repetida'
+                      : 'execuções podem ser repetidas'}.
+                  </p>
+                )}
+                <Link
+                  href={`/portfolio/import?portfolioId=${portfolioId}#import-history`}
+                  aria-label="Ver histórico para recuperação"
+                >
+                  Ver histórico de execuções →
+                </Link>
+              </div>
+            )}
 
           {data.recentActivity.length > 0 && (
             <div data-testid="operations-recent-runs">

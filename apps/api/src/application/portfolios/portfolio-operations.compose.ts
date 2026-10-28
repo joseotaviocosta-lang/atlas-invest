@@ -13,9 +13,12 @@ import {
   buildOperationsAttention,
   deriveMaintenanceAction,
   deriveOperationsStatus,
+  deriveOperationalRecovery,
   previewAttention,
+  summarizeOperationalRecovery,
   type OperationsAttentionItem,
   type OperationsStatus,
+  type OperationalRecoverySummary,
 } from '@atlas/portfolio-strategy';
 import type { IntegrationSettingsService } from '../imports/integration-settings.service';
 import type { GetPortfolioAllocationUseCase } from '../valuation/get-portfolio-allocation.use-case';
@@ -104,6 +107,7 @@ export interface PortfolioOperationsModel {
     unsupported: number;
     structural: number;
   };
+  recovery: OperationalRecoverySummary;
   availableActions: Array<{ type: string }>;
   limitations: string[];
 }
@@ -236,6 +240,23 @@ export async function composePortfolioOperations(
     pendingPairs += total - decided;
   }
 
+  const now = new Date();
+  const recovery = summarizeOperationalRecovery(
+    recentRuns.map((r) => ({
+      id: r.id,
+      portfolioId: r.portfolioId,
+      source: r.source,
+      status: r.status,
+      trigger: r.trigger,
+      errorCode: r.errorCode,
+      errorMessage: r.errorMessage,
+      startedAt: r.startedAt,
+      completedAt: r.completedAt,
+      partial: r.partial,
+    })),
+    now,
+  );
+
   const integrations: OperationsIntegrationView[] = settings.sources.map((source) => ({
     source: source.source,
     provider: source.provider,
@@ -260,11 +281,24 @@ export async function composePortfolioOperations(
   const attention = buildOperationsAttention({
     latestRuns: settings.sources
       .filter((source) => source.lastRun !== null)
-      .map((source) => ({
-        source: source.source,
-        status: source.lastRun!.status,
-        at: source.lastRun!.createdAt.toISOString(),
-      })),
+      .map((source) => {
+        const rec = deriveOperationalRecovery(
+          {
+            id: source.lastRun!.id ?? '',
+            portfolioId: params.portfolioId,
+            source: source.source,
+            status: source.lastRun!.status,
+            startedAt: source.lastRun!.startedAt ?? source.lastRun!.createdAt,
+          },
+          now,
+        );
+        return {
+          source: source.source,
+          status: source.lastRun!.status,
+          at: source.lastRun!.createdAt.toISOString(),
+          recoveryState: rec.recoveryState,
+        };
+      }),
     connections: settings.sources.map((source) => ({
       source: source.source,
       state: source.connection.state,
@@ -280,6 +314,21 @@ export async function composePortfolioOperations(
     // facts are already covered by the reconciliation summary above.
     qualityIssues: quality.positions.flatMap((row) => row.issues),
   });
+
+  if (
+    recovery.interruptedCount > 0 &&
+    !attention.some((item) => item.code === 'SYNC_INTERRUPTED')
+  ) {
+    attention.push({
+      code: 'SYNC_INTERRUPTED',
+      domain: 'SYNC',
+      severity: 'REVIEW',
+      count: recovery.interruptedCount,
+      facts: { source: null, assetId: null, at: null },
+      actions: [{ type: 'VIEW_RUN_HISTORY' }],
+    });
+  }
+
   const attentionPreview = previewAttention(attention, OPERATIONS_ATTENTION_PREVIEW_LIMIT);
 
   const reviewPreview: OperationsReviewPreviewView[] = deriveReviewItems(
@@ -305,7 +354,7 @@ export async function composePortfolioOperations(
 
   return {
     portfolioId: params.portfolioId,
-    generatedAt: new Date().toISOString(),
+    generatedAt: now.toISOString(),
     status: deriveOperationsStatus(attention),
     attention: attentionPreview,
     integrations,
@@ -320,6 +369,7 @@ export async function composePortfolioOperations(
     activityPreview: auditResult.items,
     reviewWorkflow: { pendingPairs, decidedPairs, totalPairs },
     maintenance: summarizeMaintenance(quality),
+    recovery,
     availableActions: [
       { type: 'VIEW_REVIEWS' },
       { type: 'VIEW_DATA_QUALITY' },

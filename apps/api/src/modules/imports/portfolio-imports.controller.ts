@@ -22,6 +22,7 @@ import {
 import {
   ConfirmPortfolioImportUseCase,
   PreviewPortfolioImportUseCase,
+  RetryPortfolioImportUseCase,
   IntegrationRunService,
   IntegrationScheduleService,
 } from '../../application/imports';
@@ -55,6 +56,8 @@ export class PortfolioImportsController {
     private readonly previewUseCase: PreviewPortfolioImportUseCase,
     @Inject(ConfirmPortfolioImportUseCase)
     private readonly confirmUseCase: ConfirmPortfolioImportUseCase,
+    @Inject(RetryPortfolioImportUseCase)
+    private readonly retryUseCase: RetryPortfolioImportUseCase,
     @Inject(IntegrationRunService)
     private readonly runService: IntegrationRunService,
     @Inject(IntegrationScheduleService)
@@ -143,7 +146,7 @@ export class PortfolioImportsController {
       limit: query.limit,
       cursor: query.cursor ?? null,
     });
-    const data = rows.map(mapIntegrationRunToResponse);
+    const data = rows.map((row) => mapIntegrationRunToResponse(row));
     return {
       data,
       meta: {
@@ -173,6 +176,31 @@ export class PortfolioImportsController {
   ) {
     const run = await this.runService.getRun(portfolioId, runId, principal.userId);
     return { data: mapIntegrationRunToResponse(run) };
+  }
+
+  @Post('runs/:runId/retry')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Retry an interrupted or failed import/sync run',
+    description:
+      'Creates a new attempt without mutating or deleting the original run. Idempotent against double clicks; rejects non-retryable runs.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the target portfolio' })
+  @ApiParam({ name: 'runId', description: 'UUID of the integration run to retry' })
+  @ApiResponse({ status: 200, description: 'New run attempt initiated' })
+  @ApiResponse({ status: 400, description: 'Run is not retryable' })
+  @ApiResponse({ status: 404, description: 'Portfolio or run not found' })
+  async retryRun(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Param('runId', UUIDParamPipe) runId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.retryUseCase.execute({
+      portfolioId,
+      runId,
+      userId: principal.userId,
+    });
+    return { data: result };
   }
 
   @Get('schedules')

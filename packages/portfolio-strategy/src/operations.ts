@@ -71,6 +71,7 @@ export interface LatestRunInput {
   source: string;
   status: string;
   at: string | null;
+  recoveryState?: string | null;
 }
 
 export interface ConnectionInput {
@@ -135,7 +136,16 @@ export function buildOperationsAttention(
   const items: OperationsAttentionItem[] = [];
 
   for (const run of input.latestRuns) {
-    if (run.status === 'FAILED') {
+    if (run.recoveryState === 'INTERRUPTED' || run.status === 'INTERRUPTED') {
+      items.push({
+        code: 'SYNC_INTERRUPTED',
+        domain: 'SYNC',
+        severity: 'REVIEW',
+        count: 1,
+        facts: { source: run.source, assetId: null, at: run.at },
+        actions: [{ type: 'VIEW_RUN_HISTORY' }],
+      });
+    } else if (run.status === 'FAILED') {
       items.push({
         code: 'SYNC_FAILED',
         domain: 'SYNC',

@@ -13,3 +13,4 @@ export * from './data-quality';
 export * from './maintenance';
 export * from './operations';
 export * from './reconciliation';
+export * from './recovery';

@@ -1,4 +1,5 @@
 import type { IntegrationRunRow } from '@atlas/database';
+import { deriveOperationalRecovery } from '@atlas/portfolio-strategy';
 
 export interface IntegrationRunResponse {
   id: string;
@@ -36,6 +37,14 @@ export interface IntegrationRunResponse {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  recovery?: {
+    recoveryState: string;
+    recommendedAction: string;
+    canRetry: boolean;
+    canResume: boolean;
+    requiresReview: boolean;
+    reason: string;
+  };
 }
 
 /**
@@ -43,7 +52,12 @@ export interface IntegrationRunResponse {
  * metadata only: no fingerprints, no raw payloads, no secrets, no ledger
  * internals.
  */
-export function mapIntegrationRunToResponse(row: IntegrationRunRow): IntegrationRunResponse {
+export function mapIntegrationRunToResponse(
+  row: IntegrationRunRow,
+  now?: Date,
+): IntegrationRunResponse {
+  const clock = now instanceof Date ? now : new Date();
+  const recovery = deriveOperationalRecovery(row, clock);
   return {
     id: row.id,
     portfolioId: row.portfolioId,
@@ -84,5 +98,13 @@ export function mapIntegrationRunToResponse(row: IntegrationRunRow): Integration
     completedAt: row.completedAt ? row.completedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    recovery: {
+      recoveryState: recovery.recoveryState,
+      recommendedAction: recovery.recommendedAction,
+      canRetry: recovery.canRetry,
+      canResume: recovery.canResume,
+      requiresReview: recovery.requiresReview,
+      reason: recovery.reason,
+    },
   };
 }
