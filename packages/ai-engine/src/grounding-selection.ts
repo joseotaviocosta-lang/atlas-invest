@@ -85,6 +85,24 @@ const INTENT_CATEGORY_FAMILIES: Readonly<
     'EVENT_INCOME',
     'EVENT_CORPORATE_ACTION',
   ] as const),
+  EXPLAIN_TAX: Object.freeze([
+    'OVERVIEW',
+    'TAX_LIABILITY',
+    'TAX_CATEGORY',
+    'TAX_LOSS_BALANCE',
+  ] as const),
+  EXPLAIN_OPERATIONS: Object.freeze([
+    'OVERVIEW',
+    'OPERATIONAL_AUDIT',
+    'RECTIFICATION',
+    'RECONCILIATION',
+  ] as const),
+  EXPLAIN_ALLOCATION: Object.freeze(['OVERVIEW', 'ASSET_ALLOCATION'] as const),
+  EXPLAIN_CONTRIBUTION: Object.freeze([
+    'OVERVIEW',
+    'CONTRIBUTION_GOAL',
+    'CONTRIBUTION_PLAN',
+  ] as const),
 });
 
 /**
@@ -110,6 +128,16 @@ const FALLBACK_CATEGORIES: readonly GroundedFactCategory[] = Object.freeze([
   'EVENT_TRANSACTION',
   'EVENT_INCOME',
   'EVENT_CORPORATE_ACTION',
+  'TAX_LIABILITY',
+  'TAX_CATEGORY',
+  'TAX_LOSS_BALANCE',
+  'OPERATIONAL_AUDIT',
+  'RECTIFICATION',
+  'RECONCILIATION',
+  'CONTRIBUTION_GOAL',
+  'CONTRIBUTION_PLAN',
+  'MARKET_QUOTE',
+  'MARKET_DATA_GAP',
 ]);
 
 export type GroundingAnswerability = 'ANSWERABLE' | 'LIMITED' | 'UNAVAILABLE';

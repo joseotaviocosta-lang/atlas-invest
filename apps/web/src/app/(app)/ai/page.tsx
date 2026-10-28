@@ -18,17 +18,51 @@ import {
   AiStreamProgressStage,
 } from '@atlas/ui';
 
-// Multi-turn grounded conversation experience with streaming (Phase 3U), maintaining backward compatibility with /ai/explain endpoints.
+// Multi-turn grounded conversation experience with streaming (Phase 3U, Phase 5U), maintaining backward compatibility with /ai/explain endpoints.
 
 const STARTER_QUESTIONS = [
+  'Explique minha carteira',
+  'Explique meu imposto',
+  'Explique esta pendência',
+  'Explique minha alocação',
+  'Explique meu planejamento',
   'Como foi o desempenho da minha carteira no período?',
   'Como minha carteira se compara ao Ibovespa?',
   'Explique o risco histórico da minha carteira.',
   'O que significa o cenário de queda de 10%?',
   'Há dados incompletos na minha carteira?',
+  'Por que minha rentabilidade está incompleta?',
+  'Quanto vale minha carteira em reais e dólares?',
+];
+
+const TAX_STARTER_QUESTIONS = [
+  'Explique meu imposto',
+  'Tenho imposto a pagar?',
+  'Qual é o DARF deste mês?',
+  'Tenho prejuízo a compensar?',
+];
+
+const OPERATIONS_STARTER_QUESTIONS = [
+  'Explique esta pendência',
+  'O que aconteceu com esta operação retificada?',
+  'Quais foram as últimas decisões de reconciliação?',
+  'Qual é o estado da auditoria operacional?',
+];
+
+const ALLOCATION_STARTER_QUESTIONS = [
+  'Explique minha alocação',
+  'Onde está minha maior concentração?',
+  'Como está dividida minha carteira por classe?',
+];
+
+const CONTRIBUTION_STARTER_QUESTIONS = [
+  'Explique meu planejamento',
+  'Como está minha meta de aporte?',
+  'Quanto aportei este mês e qual a aderência?',
 ];
 
 const ASSET_STARTER_QUESTIONS = [
+  'Explique esta posição',
   'Qual é meu preço médio neste ativo?',
   'Quantas cotas ou ações eu possuo?',
   'Qual é o valor atual de mercado da posição?',
@@ -95,6 +129,19 @@ function AIContent() {
 
   const [timelineScope, setTimelineScope] = useState<TimelineScopeState | null>(
     initialTimelineScope,
+  );
+  const [domainScope, setDomainScope] = useState<
+    'TAX' | 'OPERATIONS' | 'ALLOCATION' | 'CONTRIBUTION' | null
+  >(
+    scopeParam === 'tax'
+      ? 'TAX'
+      : scopeParam === 'operations'
+        ? 'OPERATIONS'
+        : scopeParam === 'allocation'
+          ? 'ALLOCATION'
+          : scopeParam === 'contribution'
+            ? 'CONTRIBUTION'
+            : null,
   );
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(portfolioIdParam);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -188,6 +235,12 @@ function AIContent() {
     },
   });
 
+  const activePortfolioName = useMemo(() => {
+    if (!portfolios || portfolios.length === 0) return 'Principal';
+    const found = portfolios.find((p) => p.id === activePortfolioId);
+    return found ? found.name : 'Principal';
+  }, [portfolios, activePortfolioId]);
+
   // Resolve current active scope
   const currentScope = useMemo(() => {
     if (timelineScope) {
@@ -211,8 +264,30 @@ function AIContent() {
         assetId: assetScope.assetId,
       };
     }
+    if (domainScope === 'TAX') {
+      return { type: 'TAX' as const };
+    }
+    if (domainScope === 'OPERATIONS') {
+      return { type: 'OPERATIONS' as const };
+    }
+    if (domainScope === 'ALLOCATION') {
+      return { type: 'ALLOCATION' as const };
+    }
+    if (domainScope === 'CONTRIBUTION') {
+      return { type: 'CONTRIBUTION' as const };
+    }
     return undefined;
-  }, [timelineScope, assetScope]);
+  }, [timelineScope, assetScope, domainScope]);
+
+  const activeStarterQuestions = useMemo(() => {
+    if (timelineScope) return TIMELINE_STARTER_QUESTIONS;
+    if (assetScope) return ASSET_STARTER_QUESTIONS;
+    if (domainScope === 'TAX') return TAX_STARTER_QUESTIONS;
+    if (domainScope === 'OPERATIONS') return OPERATIONS_STARTER_QUESTIONS;
+    if (domainScope === 'ALLOCATION') return ALLOCATION_STARTER_QUESTIONS;
+    if (domainScope === 'CONTRIBUTION') return CONTRIBUTION_STARTER_QUESTIONS;
+    return STARTER_QUESTIONS;
+  }, [timelineScope, assetScope, domainScope]);
 
   // Backward-compatible non-streaming fallback mutation
   const sendMessageMutation = useMutation({
@@ -484,6 +559,74 @@ function AIContent() {
             height: '100%',
           }}
         >
+          {/* AI Context Indicator & Source Provenance (Phase 5U, Step 47, 77, 78) */}
+          <div
+            style={{
+              padding: `${spacing.xs}px ${spacing.sm}px`,
+              borderRadius: `${borderRadius.sm}px`,
+              backgroundColor: colors.surfaceElevated,
+              border: `1px solid ${colors.border}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: `${spacing.sm}px`,
+              flexWrap: 'wrap',
+              gap: `${spacing.xs}px`,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.xs}px` }}>
+              <Badge variant="info">
+                {domainScope === 'TAX'
+                  ? 'Fiscal'
+                  : domainScope === 'OPERATIONS'
+                    ? 'Operações'
+                    : domainScope === 'ALLOCATION'
+                      ? 'Alocação'
+                      : domainScope === 'CONTRIBUTION'
+                        ? 'Planejamento'
+                        : assetScope
+                          ? `Ativo: ${assetScope.symbol}`
+                          : timelineScope
+                            ? 'Linha do Tempo'
+                            : 'Geral'}
+              </Badge>
+              <span style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+                Carteira: <strong style={{ color: colors.textPrimary }}>{activePortfolioName}</strong>
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>
+                Baseado em dados do Atlas:
+              </span>
+              <a href="/portfolio" style={{ textDecoration: 'none' }}>
+                <Chip label="Carteira" />
+              </a>
+              <a href="/tax" style={{ textDecoration: 'none' }}>
+                <Chip label="Fiscal" />
+              </a>
+              <a href="/market" style={{ textDecoration: 'none' }}>
+                <Chip label="Mercado" />
+              </a>
+              <a href="/portfolio/operations" style={{ textDecoration: 'none' }}>
+                <Chip label="Histórico" />
+              </a>
+              {(domainScope || assetScope || timelineScope) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setDomainScope(null);
+                    setAssetScope(null);
+                    setTimelineScope(null);
+                  }}
+                  style={{ fontSize: '0.6875rem', padding: '1px 6px', marginLeft: '4px' }}
+                >
+                  Limpar
+                </Button>
+              )}
+            </div>
+          </div>
+
           {/* Scrollable message thread */}
           <div
             style={{
@@ -519,8 +662,8 @@ function AIContent() {
                       marginBottom: `${spacing.base}px`,
                     }}
                   >
-                    Pergunte sobre sua carteira: rentabilidade, benchmarks, risco histórico,
-                    estresse ou dados incompletos.
+                    Pergunte sobre sua carteira: rentabilidade, impostos apurados, histórico de operações,
+                    alocação ou dados incompletos.
                   </p>
 
                   <div
@@ -531,12 +674,7 @@ function AIContent() {
                       justifyContent: 'center',
                     }}
                   >
-                    {(timelineScope
-                      ? TIMELINE_STARTER_QUESTIONS
-                      : assetScope
-                        ? ASSET_STARTER_QUESTIONS
-                        : STARTER_QUESTIONS
-                    ).map((q) => (
+                    {activeStarterQuestions.map((q) => (
                       <Chip
                         key={q}
                         label={q}
@@ -745,6 +883,77 @@ function AIContent() {
                             • {lim}
                           </span>
                         ))}
+                      </div>
+                    )}
+
+                    {/* Deep links to product surfaces (Phase 5U, Step 48) */}
+                    {!msg.isUser && msg.hasEvidence && (
+                      <div
+                        style={{
+                          marginTop: `${spacing.sm}px`,
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: `${spacing.xs}px`,
+                        }}
+                      >
+                        {msg.evidence.some((e) =>
+                          ['TAX_LIABILITY', 'TAX_CATEGORY', 'TAX_LOSS_BALANCE'].includes(
+                            e.category,
+                          ),
+                        ) && (
+                          <a href="/tax" style={{ textDecoration: 'none' }}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              style={{ fontSize: '0.6875rem', padding: '2px 8px' }}
+                            >
+                              Ver painel fiscal →
+                            </Button>
+                          </a>
+                        )}
+                        {msg.evidence.some((e) =>
+                          ['OPERATIONAL_AUDIT', 'RECTIFICATION', 'RECONCILIATION'].includes(
+                            e.category,
+                          ),
+                        ) && (
+                          <a href="/portfolio/operations" style={{ textDecoration: 'none' }}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              style={{ fontSize: '0.6875rem', padding: '2px 8px' }}
+                            >
+                              Ver histórico e auditoria →
+                            </Button>
+                          </a>
+                        )}
+                        {msg.evidence.some((e) =>
+                          ['ASSET_POSITION', 'ASSET_IDENTITY', 'ASSET_ALLOCATION'].includes(
+                            e.category,
+                          ),
+                        ) && (
+                          <a href="/portfolio" style={{ textDecoration: 'none' }}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              style={{ fontSize: '0.6875rem', padding: '2px 8px' }}
+                            >
+                              Ver carteira →
+                            </Button>
+                          </a>
+                        )}
+                        {msg.evidence.some((e) =>
+                          ['MARKET_QUOTE', 'MARKET_DATA_GAP'].includes(e.category),
+                        ) && (
+                          <a href="/market" style={{ textDecoration: 'none' }}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              style={{ fontSize: '0.6875rem', padding: '2px 8px' }}
+                            >
+                              Ver mercado →
+                            </Button>
+                          </a>
+                        )}
                       </div>
                     )}
                   </div>

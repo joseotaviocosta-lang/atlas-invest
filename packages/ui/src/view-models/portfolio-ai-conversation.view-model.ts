@@ -116,6 +116,38 @@ const METRIC_LABELS: Record<string, string> = {
   DIFFERENCE: 'Diferença vs Benchmark',
   STRESSED_VALUE: 'Valor Estressado (Cenário)',
   ESTIMATED_IMPACT: 'Impacto Estimado (Cenário)',
+  // Tax (Phase 5U)
+  TAX_DUE: 'Imposto Devido (DARF)',
+  GROSS_SALES: 'Vendas Brutas no Mês',
+  TAXABLE_RESULT: 'Resultado Tributável',
+  REALIZED_LOSS: 'Prejuízo Realizado',
+  LOSS_APPLIED: 'Prejuízo Compensado',
+  CLOSING_LOSS_BALANCE: 'Prejuízo a Compensar',
+  WITHHOLDING_APPLIED: 'IRRF Compensado',
+  DARF_STATUS: 'Situação do DARF',
+  DARF_DUE_DATE: 'Vencimento do DARF',
+  DARF_BAR_CODE: 'Código de Barras',
+  EXEMPTION_APPLIED: 'Isenção de R$ 20k',
+  COMPLIANCE_STATUS: 'Situação Fiscal',
+  COMPETENCE: 'Competência',
+  // Operations & Audit (Phase 5U)
+  RECTIFICATION_COUNT: 'Operações Retificadas',
+  LAST_RECTIFICATION_DATE: 'Data da Última Retificação',
+  LAST_RECTIFICATION_REASON: 'Motivo da Retificação',
+  RECONCILIATION_PENDING_COUNT: 'Pendências de Reconciliação',
+  LAST_RECONCILIATION_DECISION: 'Última Decisão de Reconciliação',
+  OPERATIONAL_RECOVERY_STATUS: 'Estado de Recuperação',
+  // Contribution (Phase 5U)
+  MONTHLY_CONTRIBUTION_GOAL: 'Meta Mensal de Aporte',
+  ACTUAL_CONTRIBUTIONS: 'Aportes Realizados',
+  CONTRIBUTION_ADHERENCE: 'Aderência à Meta',
+  CONTRIBUTION_STATUS: 'Situação do Aporte',
+  // Market (Phase 5U)
+  QUOTE_PRICE: 'Cotação de Fechamento',
+  QUOTE_DATE: 'Data da Cotação',
+  QUOTE_FRESHNESS: 'Atualização da Cotação',
+  FUNDAMENTALS_AVAILABLE: 'Disponibilidade de Fundamentos',
+  NEWS_AVAILABLE: 'Disponibilidade de Notícias',
 };
 
 export function mapToAiConversationListItemVM(
