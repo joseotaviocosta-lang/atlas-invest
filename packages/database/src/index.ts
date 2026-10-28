@@ -1,4 +1,4 @@
-export const DATABASE_VERSION = '0.1.0';
+export const DATABASE_VERSION = '0.2.0';
 
 // Errors
 export * from './errors';
@@ -11,3 +11,6 @@ export * from './repositories';
 
 // Client Management
 export * from './client';
+
+// Backup & Recovery Verification Drills
+export * from './backup';

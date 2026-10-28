@@ -1,6 +1,6 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
-import { logger } from '@atlas/logger';
+import { logger, telemetry } from '@atlas/logger';
 
 @Injectable()
 export class HttpLoggingMiddleware implements NestMiddleware {
@@ -14,10 +14,19 @@ export class HttpLoggingMiddleware implements NestMiddleware {
         (res.getHeader('x-request-id') as string) ||
         'unknown';
 
+      const route = req.baseUrl ? `${req.baseUrl}${req.path}` : req.path || req.url;
+
+      // Telemetry recording with strict failure isolation
+      try {
+        telemetry.recordRequest(req.method, route, res.statusCode, duration);
+      } catch {
+        // Silently isolate telemetry failures from affecting request response
+      }
+
       const logContext = {
         requestId,
         method: req.method,
-        route: req.baseUrl ? `${req.baseUrl}${req.path}` : req.path || req.url,
+        route,
         status: res.statusCode,
         duration,
       };

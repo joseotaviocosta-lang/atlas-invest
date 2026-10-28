@@ -9,6 +9,8 @@
     "migrate": "prisma migrate deploy",
     "migrate:dev": "prisma migrate dev",
     "seed": "tsx prisma/seed.ts",
+    "backup": "tsx scripts/backup.ts",
+    "restore:verify": "tsx scripts/restore-verify.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -1,4 +1,4 @@
-export const LOGGER_VERSION = '0.1.0';
+export const LOGGER_VERSION = '0.2.0';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -7,6 +7,7 @@ export interface LogContext {
 }
 
 const SENSITIVE_KEYS = new Set([
+  // Passwords & Secrets
   'password',
   'passwd',
   'newpassword',
@@ -34,14 +35,72 @@ const SENSITIVE_KEYS = new Set([
   'bearer',
   'bearertoken',
   'bearer_token',
-  'patrimonio',
-  'saldo',
-  'balance',
+  'apikey',
+  'api_key',
+  'client_secret',
+  'clientsecret',
+
+  // Sensitive PII
   'cpf',
   'cnpj',
   'credit_card',
-  'apikey',
-  'api_key',
+  'creditcard',
+  'card_number',
+  'cardnumber',
+  'cvv',
+  'cvc',
+
+  // Financial Balances & Totals (Zero raw floats or financial amounts in logs)
+  'patrimonio',
+  'patrimonio_total',
+  'patrimoniototal',
+  'saldo',
+  'balance',
+  'portfolio_balance',
+  'total_balance',
+  'total_cost',
+  'totalcost',
+  'average_cost',
+  'averagecost',
+  'realized_gain',
+  'realizedgain',
+  'unrealized_gain',
+  'unrealizedgain',
+  'rendimento',
+
+  // AI Prompts, Grounding Facts & Private Context (Zero PII or private context leakage)
+  'prompt',
+  'prompts',
+  'systemprompt',
+  'system_prompt',
+  'ai_context',
+  'aicontext',
+  'groundingcontext',
+  'grounding_context',
+  'grounding_facts',
+  'groundingfacts',
+  'private_context',
+  'privatecontext',
+  'explanation_context',
+  'explanationcontext',
+  'user_query',
+  'userquery',
+
+  // Raw payloads & File import content
+  'filecontent',
+  'file_content',
+  'file_data',
+  'filedata',
+  'content_base64',
+  'contentbase64',
+  'rawpayload',
+  'raw_payload',
+  'importpayload',
+  'import_payload',
+  'financialpayload',
+  'financial_payload',
+
+  // Database Connection Strings
   'database_url',
   'databaseurl',
   'db_url',
@@ -52,6 +111,35 @@ const SENSITIVE_KEYS = new Set([
   'datasourceurl',
 ]);
 
+const CONNECTION_STRING_REGEX = /^(postgres|postgresql|mysql|mongodb):\/\/[^:]+:[^@]+@/i;
+
+function sanitizeValue(value: unknown): unknown {
+  if (value === null || value === undefined) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    if (CONNECTION_STRING_REGEX.test(value)) {
+      return '[REDACTED]';
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      if (typeof item === 'string' && CONNECTION_STRING_REGEX.test(item)) {
+        return '[REDACTED]';
+      }
+      if (item && typeof item === 'object' && !Array.isArray(item)) {
+        return sanitizeContext(item as LogContext);
+      }
+      return item;
+    });
+  }
+  if (typeof value === 'object') {
+    return sanitizeContext(value as LogContext);
+  }
+  return value;
+}
+
 export function sanitizeContext(context?: LogContext): LogContext | undefined {
   if (!context) return undefined;
 
@@ -61,15 +149,8 @@ export function sanitizeContext(context?: LogContext): LogContext | undefined {
     const lowerKey = key.toLowerCase();
     if (SENSITIVE_KEYS.has(lowerKey)) {
       sanitized[key] = '[REDACTED]';
-    } else if (
-      typeof value === 'string' &&
-      /^(postgres|postgresql|mysql|mongodb):\/\/[^:]+:[^@]+@/i.test(value)
-    ) {
-      sanitized[key] = '[REDACTED]';
-    } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-      sanitized[key] = sanitizeContext(value as LogContext);
     } else {
-      sanitized[key] = value;
+      sanitized[key] = sanitizeValue(value);
     }
   }
 
@@ -140,3 +221,405 @@ export class Logger {
 }
 
 export const logger = new Logger();
+
+// ============================================================================
+// IN-MEMORY VENDOR-NEUTRAL TELEMETRY COLLECTOR
+// Zero database tables, zero vendor lock-in, safe bounded ring buffers
+// ============================================================================
+
+export type ProviderStatus = 'ok' | 'error' | 'timeout' | 'degraded';
+export type JobStatus = 'completed' | 'failed';
+export type RetryOutcome = 'success' | 'exhausted';
+export type NotificationSourceStatus = 'ok' | 'error' | 'degraded';
+
+interface InternalProviderStats {
+  totalCalls: number;
+  successCount: number;
+  failureCount: number;
+  latencies: number[];
+  lastStatus: ProviderStatus;
+  degraded: boolean;
+  lastErrorClass?: string;
+}
+
+interface InternalJobStats {
+  total: number;
+  completed: number;
+  failed: number;
+  latencies: number[];
+}
+
+interface InternalRetryStats {
+  totalAttempts: number;
+  successCount: number;
+  exhaustedCount: number;
+}
+
+interface InternalNotificationSourceStats {
+  status: NotificationSourceStatus;
+  lastCheckedAt: string;
+  errorClass?: string;
+}
+
+const MAX_LATENCY_SAMPLES = 500;
+const UUID_REGEX = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const NUMERIC_ID_REGEX = /\/\d+(\/|$)/g;
+
+function normalizeRoute(route: string): string {
+  if (!route) return '/';
+  // Strip query string
+  const cleanRoute = route.split('?')[0] ?? '/';
+  // Replace UUIDs with :id
+  let normalized = cleanRoute.replace(UUID_REGEX, ':id');
+  // Replace trailing/inline numeric segments with :id
+  normalized = normalized.replace(NUMERIC_ID_REGEX, '/:id$1');
+  return normalized;
+}
+
+function calculatePercentile(values: number[], percentile: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.ceil((percentile / 100) * sorted.length) - 1;
+  const safeIndex = Math.max(0, Math.min(index, sorted.length - 1));
+  return sorted[safeIndex] ?? 0;
+}
+
+function calculateAverage(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sum = values.reduce((acc, val) => acc + val, 0);
+  return Math.round((sum / values.length) * 100) / 100;
+}
+
+export interface TelemetrySnapshot {
+  uptimeSeconds: number;
+  timestamp: string;
+  requests: {
+    total: number;
+    statusBuckets: {
+      '2xx': number;
+      '3xx': number;
+      '4xx': number;
+      '5xx': number;
+    };
+    avgDurationMs: number;
+    p95DurationMs: number;
+    errorRate: number;
+    routes: Record<string, number>;
+  };
+  database: {
+    totalQueries: number;
+    successCount: number;
+    failureCount: number;
+    avgLatencyMs: number;
+    p95LatencyMs: number;
+  };
+  providers: Record<
+    string,
+    {
+      totalCalls: number;
+      successRate: number;
+      avgDurationMs: number;
+      lastStatus: ProviderStatus;
+      degraded: boolean;
+      lastErrorClass?: string;
+    }
+  >;
+  jobs: Record<
+    string,
+    {
+      total: number;
+      completed: number;
+      failed: number;
+      avgDurationMs: number;
+    }
+  >;
+  retries: Record<
+    string,
+    {
+      totalAttempts: number;
+      successCount: number;
+      exhaustedCount: number;
+    }
+  >;
+  notificationSources: Record<
+    string,
+    {
+      status: NotificationSourceStatus;
+      lastCheckedAt: string;
+      errorClass?: string;
+    }
+  >;
+}
+
+export class TelemetryCollector {
+  private startTime = Date.now();
+
+  // Requests
+  private requestCount = 0;
+  private statusBuckets = {
+    '2xx': 0,
+    '3xx': 0,
+    '4xx': 0,
+    '5xx': 0,
+  };
+  private requestLatencies: number[] = [];
+  private routeCounts: Record<string, number> = {};
+
+  // Database
+  private dbQueries = 0;
+  private dbSuccesses = 0;
+  private dbFailures = 0;
+  private dbLatencies: number[] = [];
+
+  // External Providers
+  private providerStats: Map<string, InternalProviderStats> = new Map();
+
+  // Jobs
+  private jobStats: Map<string, InternalJobStats> = new Map();
+
+  // Retries
+  private retryStats: Map<string, InternalRetryStats> = new Map();
+
+  // Notification Sources
+  private notificationSourceStats: Map<string, InternalNotificationSourceStats> = new Map();
+
+  recordRequest(method: string, rawRoute: string, statusCode: number, durationMs: number): void {
+    try {
+      this.requestCount++;
+      const safeMethod = typeof method === 'string' ? method.toUpperCase() : 'UNKNOWN';
+      const normalized = normalizeRoute(rawRoute);
+      const routeKey = `${safeMethod} ${normalized}`;
+      this.routeCounts[routeKey] = (this.routeCounts[routeKey] || 0) + 1;
+
+      if (statusCode >= 500) {
+        this.statusBuckets['5xx']++;
+      } else if (statusCode >= 400) {
+        this.statusBuckets['4xx']++;
+      } else if (statusCode >= 300) {
+        this.statusBuckets['3xx']++;
+      } else {
+        this.statusBuckets['2xx']++;
+      }
+
+      if (this.requestLatencies.length >= MAX_LATENCY_SAMPLES) {
+        this.requestLatencies.shift();
+      }
+      this.requestLatencies.push(typeof durationMs === 'number' ? durationMs : 0);
+    } catch {
+      // Isolate telemetry error
+    }
+  }
+
+  recordDbLatency(durationMs: number, success = true): void {
+    try {
+      this.dbQueries++;
+      if (success) {
+        this.dbSuccesses++;
+      } else {
+        this.dbFailures++;
+      }
+
+      if (this.dbLatencies.length >= MAX_LATENCY_SAMPLES) {
+        this.dbLatencies.shift();
+      }
+      this.dbLatencies.push(typeof durationMs === 'number' ? durationMs : 0);
+    } catch {
+      // Isolate telemetry error
+    }
+  }
+
+  recordProviderCall(
+    provider: string,
+    _operation: string,
+    status: ProviderStatus,
+    durationMs: number,
+    errorClass?: string,
+  ): void {
+    try {
+      const key = (provider || 'unknown').toLowerCase();
+      let stats = this.providerStats.get(key);
+      if (!stats) {
+        stats = {
+          totalCalls: 0,
+          successCount: 0,
+          failureCount: 0,
+          latencies: [],
+          lastStatus: status,
+          degraded: false,
+        };
+        this.providerStats.set(key, stats);
+      }
+
+      stats.totalCalls++;
+      if (status === 'ok') {
+        stats.successCount++;
+        stats.degraded = false;
+      } else {
+        stats.failureCount++;
+        stats.degraded = true;
+        stats.lastErrorClass = errorClass;
+      }
+      stats.lastStatus = status;
+
+      if (stats.latencies.length >= MAX_LATENCY_SAMPLES) {
+        stats.latencies.shift();
+      }
+      stats.latencies.push(typeof durationMs === 'number' ? durationMs : 0);
+    } catch {
+      // Isolate telemetry error
+    }
+  }
+
+  recordJob(jobType: string, status: JobStatus, durationMs: number): void {
+    try {
+      const key = jobType || 'unknown';
+      let stats = this.jobStats.get(key);
+      if (!stats) {
+        stats = { total: 0, completed: 0, failed: 0, latencies: [] };
+        this.jobStats.set(key, stats);
+      }
+      stats.total++;
+      if (status === 'completed') {
+        stats.completed++;
+      } else {
+        stats.failed++;
+      }
+      if (stats.latencies.length >= MAX_LATENCY_SAMPLES) {
+        stats.latencies.shift();
+      }
+      stats.latencies.push(typeof durationMs === 'number' ? durationMs : 0);
+    } catch {
+      // Isolate telemetry error
+    }
+  }
+
+  recordRetry(action: string, outcome: RetryOutcome, attempts = 1): void {
+    try {
+      const key = action || 'unknown';
+      let stats = this.retryStats.get(key);
+      if (!stats) {
+        stats = { totalAttempts: 0, successCount: 0, exhaustedCount: 0 };
+        this.retryStats.set(key, stats);
+      }
+      stats.totalAttempts += attempts || 1;
+      if (outcome === 'success') {
+        stats.successCount++;
+      } else {
+        stats.exhaustedCount++;
+      }
+    } catch {
+      // Isolate telemetry error
+    }
+  }
+
+  recordNotificationSource(
+    source: string,
+    status: NotificationSourceStatus,
+    errorClass?: string,
+  ): void {
+    try {
+      this.notificationSourceStats.set(source || 'unknown', {
+        status,
+        lastCheckedAt: new Date().toISOString(),
+        errorClass,
+      });
+    } catch {
+      // Isolate telemetry error
+    }
+  }
+
+  getSnapshot(): TelemetrySnapshot {
+    const uptimeSeconds = Math.floor((Date.now() - this.startTime) / 1000);
+    const totalRequests = this.requestCount;
+    const errorRate = totalRequests > 0 ? this.statusBuckets['5xx'] / totalRequests : 0;
+
+    const providersSnapshot: TelemetrySnapshot['providers'] = {};
+    for (const [key, stats] of this.providerStats.entries()) {
+      providersSnapshot[key] = {
+        totalCalls: stats.totalCalls,
+        successRate: stats.totalCalls > 0 ? stats.successCount / stats.totalCalls : 1,
+        avgDurationMs: calculateAverage(stats.latencies),
+        lastStatus: stats.lastStatus,
+        degraded: stats.degraded,
+        lastErrorClass: stats.lastErrorClass,
+      };
+    }
+
+    const jobsSnapshot: TelemetrySnapshot['jobs'] = {};
+    for (const [key, stats] of this.jobStats.entries()) {
+      jobsSnapshot[key] = {
+        total: stats.total,
+        completed: stats.completed,
+        failed: stats.failed,
+        avgDurationMs: calculateAverage(stats.latencies),
+      };
+    }
+
+    const retriesSnapshot: TelemetrySnapshot['retries'] = {};
+    for (const [key, stats] of this.retryStats.entries()) {
+      retriesSnapshot[key] = {
+        totalAttempts: stats.totalAttempts,
+        successCount: stats.successCount,
+        exhaustedCount: stats.exhaustedCount,
+      };
+    }
+
+    const notificationSourcesSnapshot: TelemetrySnapshot['notificationSources'] = {};
+    for (const [key, stats] of this.notificationSourceStats.entries()) {
+      notificationSourcesSnapshot[key] = {
+        status: stats.status,
+        lastCheckedAt: stats.lastCheckedAt,
+        errorClass: stats.errorClass,
+      };
+    }
+
+    return {
+      uptimeSeconds,
+      timestamp: new Date().toISOString(),
+      requests: {
+        total: totalRequests,
+        statusBuckets: { ...this.statusBuckets },
+        avgDurationMs: calculateAverage(this.requestLatencies),
+        p95DurationMs: calculatePercentile(this.requestLatencies, 95),
+        errorRate: Math.round(errorRate * 10000) / 10000,
+        routes: { ...this.routeCounts },
+      },
+      database: {
+        totalQueries: this.dbQueries,
+        successCount: this.dbSuccesses,
+        failureCount: this.dbFailures,
+        avgLatencyMs: calculateAverage(this.dbLatencies),
+        p95LatencyMs: calculatePercentile(this.dbLatencies, 95),
+      },
+      providers: providersSnapshot,
+      jobs: jobsSnapshot,
+      retries: retriesSnapshot,
+      notificationSources: notificationSourcesSnapshot,
+    };
+  }
+
+  isAnyProviderDegraded(): boolean {
+    for (const stats of this.providerStats.values()) {
+      if (stats.degraded) return true;
+    }
+    return false;
+  }
+
+  reset(): void {
+    this.startTime = Date.now();
+    this.requestCount = 0;
+    this.statusBuckets = { '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0 };
+    this.requestLatencies = [];
+    this.routeCounts = {};
+    this.dbQueries = 0;
+    this.dbSuccesses = 0;
+    this.dbFailures = 0;
+    this.dbLatencies = [];
+    this.providerStats.clear();
+    this.jobStats.clear();
+    this.retryStats.clear();
+    this.notificationSourceStats.clear();
+  }
+}
+
+export const telemetry = new TelemetryCollector();
