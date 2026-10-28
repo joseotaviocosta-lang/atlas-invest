@@ -108,13 +108,32 @@ export function deriveOperationalRecovery(
       recoveryState: 'REVIEW_REQUIRED',
       recommendedAction: 'VIEW_REVIEW',
       canRetry: false,
-      canResume: true,
+      canResume: false,
       requiresReview: true,
       reason: 'Execução aguarda revisão humana antes de ser confirmada no livro-razão.',
     };
   }
 
-  if (status === 'STARTED' || status === 'CONFIRMING') {
+  // Phase 5S-F-R1: CONFIRMING has no dedicated transition timestamp in the database.
+  // Using startedAt would evaluate stale age against run start rather than confirmation start
+  // (STATE_AGE_BUG_CONFIRMED). Without a persisted confirmation timestamp, stale age detection
+  // is unsupported (CONFIRMING_STALE_DETECTION_UNSUPPORTED). It remains in-flight.
+  if (status === 'CONFIRMING') {
+    return {
+      runId,
+      portfolioId,
+      source,
+      status,
+      recoveryState: 'NONE',
+      recommendedAction: 'NONE',
+      canRetry: false,
+      canResume: false,
+      requiresReview: false,
+      reason: 'Execução em processo de confirmação no livro-razão.',
+    };
+  }
+
+  if (status === 'STARTED') {
     const elapsedMs = now.getTime() - startedAt.getTime();
     if (elapsedMs > INTERRUPTED_RUN_TIMEOUT_MS) {
       if (source === 'B3') {
@@ -158,23 +177,26 @@ export function deriveOperationalRecovery(
     };
   }
 
+  // Phase 5S-F-R1: PARTIAL is a terminal outcome. Terminal runs do not appear in ReviewInbox.
+  // Exposing VIEW_REVIEW produces a false/dead-end navigation. Direct to VIEW_RUN factually.
   if (status === 'PARTIAL') {
     return {
       runId,
       portfolioId,
       source,
       status,
-      recoveryState: 'REVIEW_REQUIRED',
-      recommendedAction: 'VIEW_REVIEW',
+      recoveryState: 'NONE',
+      recommendedAction: 'VIEW_RUN',
       canRetry: false,
       canResume: false,
-      requiresReview: true,
-      reason: 'A execução foi concluída parcialmente. Revise os dados importados e as pendências.',
+      requiresReview: false,
+      reason: 'A execução foi concluída parcialmente.',
     };
   }
 
   if (status === 'FAILED') {
-    if (errorCode === 'INTEGRATION.SCHEDULED_SYNC_FAILED' || (source === 'B3' && !errorCode?.includes('BLOCKED') && !errorCode?.includes('UNSUPPORTED') && !errorCode?.includes('NO_ACCOUNT'))) {
+    // Only strictly known transient error codes permit automated retry
+    if (errorCode === 'INTEGRATION.SCHEDULED_SYNC_FAILED') {
       return {
         runId,
         portfolioId,
@@ -312,3 +334,4 @@ export function summarizeOperationalRecovery(
     items,
   };
 }
+

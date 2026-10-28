@@ -54,3 +54,4 @@ describe('Phase 5S-F: Operational Reliability & Recovery Web Surface', () => {
     expect(importPage).toContain('Revisar pendências desta execução →');
   });
 });
+

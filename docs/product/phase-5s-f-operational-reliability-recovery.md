@@ -122,17 +122,24 @@ Endpoint: `POST /api/v1/portfolios/:portfolioId/imports/runs/:runId/retry`
    - Retry never mutates, edits, or deletes the original failed/interrupted run.
    - The historical record remains intact for auditing.
    - The retry initiates a fresh run that starts in `STARTED` and transitions to `AWAITING_REVIEW`.
+   - Lineage is documentary: ephemeral response association `{ originalRunId, newRunId }` returned to the caller.
 2. **Zero Direct Ledger Writes:**
    - Sincronização background/retry is preview-only (`ledgerWrites = 0`).
    - The investor confirms candidate transactions through the existing canonical review flow.
-3. **Single-Flight Concurrency Protection:**
-   - Double-clicks or simultaneous requests for the same `(portfolioId, runId)` are serialized via a single-flight mutex.
-   - Concurrent calls await the in-flight attempt and return the exact same new run ID (`runsBefore + 1`).
+3. **Multi-Instance Single-Flight Protection (Phase 5S-F-R1):**
+   - Double-clicks within the same instance are serialized via an in-memory single-flight mutex.
+   - Concurrent calls across multiple API instances are coordinated via PostgreSQL advisory lock (`pg_try_advisory_xact_lock`).
+   - Concurrent callers observe and return the single factual newly-created run attempt (`effective attempts = 1`).
 4. **Anti-Enumeration Ownership:**
    - Cross-portfolio or unowned run retry attempts fail with `404 Not Found` (never revealing run existence via `403`).
 5. **Scheduler Overlap Safety:**
    - `IntegrationSchedulerService.tick` verifies `findActiveBySchedule(schedule.id)` before enqueuing.
    - Active running jobs prevent duplicate scheduling (`skippedOverlap >= 1`, `enqueued = 0`).
+   - Database constraint `@@unique([scheduleId, scheduledFor])` absorbs concurrent dual ticks cleanly.
+6. **State-Age & Action Fidelity (Phase 5S-F-R1):**
+   - `AWAITING_REVIEW`: `canResume: false`, `requiresReview: true`, `recommendedAction: 'VIEW_REVIEW'`.
+   - `CONFIRMING`: Without a dedicated persisted start timestamp, staleness detection by age is unsupported (`CONFIRMING_STALE_DETECTION_UNSUPPORTED`). Treated as in-flight (`NONE`).
+   - `PARTIAL`: Terminal status, not present in Review Inbox. Directed factually to `VIEW_RUN`.
 
 ---
 
@@ -140,7 +147,8 @@ Endpoint: `POST /api/v1/portfolios/:portfolioId/imports/runs/:runId/retry`
 
 1. **In-Memory Payloads (CSV):**
    - Raw CSV file payloads are not persisted in the database. When a CSV import fails or is interrupted, automated background retry without the file is not possible. The investor must re-select the file in the Import Workspace.
-2. **No Distributed Distributed Lock Infrastructure:**
-   - Single-flight protection is process-bound, backed by the PostgreSQL unique index `(portfolio_id, provider, external_id)` on the transaction ledger.
+2. **Dedicated Transition Timestamp Gap:**
+   - `IntegrationRun` lacks a dedicated `confirming_started_at` column. Consequently, stale age detection for `CONFIRMING` is unsupported without schema migrations.
 3. **Real B3 Integration Stays Blocked:**
    - Simulated provider scenarios (`SNAPSHOT_1`) remain offline, deterministic, and credential-free. `CERT_ACCESS_BLOCKED` remains in force.
+

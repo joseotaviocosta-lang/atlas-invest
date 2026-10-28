@@ -12,6 +12,16 @@ import {
   seedBaseFixtures,
 } from './setup';
 import { IntegrationSchedulerService } from '../../apps/api/src/application/imports/integration-scheduler.service';
+import { RetryPortfolioImportUseCase } from '../../apps/api/src/application/imports/retry-portfolio-import.use-case';
+import { SourceSyncExecutorRegistry } from '../../apps/api/src/application/imports/source-sync-executor';
+import { IntegrationConnectionService } from '../../apps/api/src/application/imports/integration-connection.service';
+import {
+  PORTFOLIO_REPOSITORY,
+  INTEGRATION_RUN_REPOSITORY,
+  INTEGRATION_SCHEDULE_REPOSITORY,
+  INTEGRATION_JOB_REPOSITORY,
+  PRISMA_CLIENT,
+} from '../../apps/api/src/database/tokens';
 
 /**
  * Phase 5S-F — Operational Reliability & Recovery API Integration Tests.
@@ -332,5 +342,179 @@ describe('API Integration: Operational Reliability & Recovery (Phase 5S-F)', () 
     // Should skip due to overlap
     expect(tickResult.skippedOverlap).toBeGreaterThanOrEqual(1);
     expect(tickResult.enqueued).toBe(0);
+  });
+
+  it('cross-process retry safety: independent use case instances produce exactly 1 effective attempt (T7/T8)', async () => {
+    const failedRun = await prisma.integrationRun.create({
+      data: {
+        id: randomUUID(),
+        portfolioId,
+        source: 'B3',
+        provider: 'B3',
+        environment: 'SIMULATED',
+        status: 'FAILED',
+        errorCode: 'INTEGRATION.SCHEDULED_SYNC_FAILED',
+        errorMessage: 'Temporary network issue',
+        startedAt: new Date(Date.now() - 5 * 60 * 1000),
+        completedAt: new Date(Date.now() - 4 * 60 * 1000),
+      },
+    });
+
+    const portfolios = app.get(PORTFOLIO_REPOSITORY);
+    const runs = app.get(INTEGRATION_RUN_REPOSITORY);
+    const registry = app.get(SourceSyncExecutorRegistry);
+    const atlasPrisma = app.get(PRISMA_CLIENT);
+
+    // Two independent use case instances simulating two separate API processes
+    // (each has its own internal in-memory retryLocks map)
+    const useCaseA = new RetryPortfolioImportUseCase(portfolios, runs, registry, atlasPrisma);
+    const useCaseB = new RetryPortfolioImportUseCase(portfolios, runs, registry, atlasPrisma);
+
+    const runsBefore = await prisma.integrationRun.count({ where: { portfolioId } });
+
+    // Concurrent execution across the two independent instances
+    const [resultA, resultB] = await Promise.all([
+      useCaseA.execute({ portfolioId, runId: failedRun.id, userId }),
+      useCaseB.execute({ portfolioId, runId: failedRun.id, userId }),
+    ]);
+
+    // Both instances return the exact same new attempt identity
+    expect(resultA.newRunId).toBe(resultB.newRunId);
+
+    // Exactly ONE new attempt was created in the database across both processes
+    const runsAfter = await prisma.integrationRun.count({ where: { portfolioId } });
+    expect(runsAfter).toBe(runsBefore + 1);
+
+    // T8: Restart / subsequent call check — calling retry again returns existing attempt without creating another run
+    const useCaseC = new RetryPortfolioImportUseCase(portfolios, runs, registry, atlasPrisma);
+    const resultAfterRestart = await useCaseC.execute({ portfolioId, runId: failedRun.id, userId });
+    expect(resultAfterRestart.newRunId).toBe(resultA.newRunId);
+    const runsAfterRestart = await prisma.integrationRun.count({ where: { portfolioId } });
+    expect(runsAfterRestart).toBe(runsBefore + 1);
+  });
+
+  it('scheduler dual tick race: two concurrent ticks create exactly one job (T11)', async () => {
+    // Create authorized connection
+    await prisma.integrationConnection.create({
+      data: {
+        id: randomUUID(),
+        portfolioId,
+        source: 'B3',
+        provider: 'SIMULATED',
+        environment: 'SIMULATED',
+        status: 'AUTHORIZED',
+        authorizedAt: new Date(),
+      },
+    });
+
+    const dueSlot = new Date('2026-10-28T22:00:00.000Z');
+    const schedule = await prisma.integrationSchedule.create({
+      data: {
+        id: randomUUID(),
+        portfolioId,
+        source: 'B3',
+        provider: 'SIMULATED',
+        environment: 'SIMULATED',
+        cadence: 'DAILY',
+        hourLocal: 19,
+        minuteLocal: 0,
+        timezone: 'America/Sao_Paulo',
+        enabled: true,
+        nextRunAt: dueSlot,
+      },
+    });
+
+    const schedules = app.get(INTEGRATION_SCHEDULE_REPOSITORY);
+    const jobs = app.get(INTEGRATION_JOB_REPOSITORY);
+    const connections = app.get(IntegrationConnectionService);
+
+    const schedulerA = app.get(IntegrationSchedulerService);
+    const schedulerB = new IntegrationSchedulerService(schedules, jobs, connections);
+
+    const tickTime = new Date('2026-10-28T22:05:00.000Z');
+
+    // Run dual tick concurrently
+    const [tickA, tickB] = await Promise.all([
+      schedulerA.tick(tickTime),
+      schedulerB.tick(tickTime),
+    ]);
+
+    // Exactly one job exists in database for this (scheduleId, scheduledFor)
+    const jobsCount = await prisma.integrationJob.count({
+      where: { scheduleId: schedule.id, scheduledFor: dueSlot },
+    });
+    expect(jobsCount).toBe(1);
+
+    // One scheduler enqueued, the other detected already enqueued
+    expect(tickA.enqueued + tickB.enqueued).toBe(1);
+    expect(tickA.alreadyEnqueued + tickB.alreadyEnqueued).toBe(1);
+  });
+
+  it('worker attempt fencing: superseded worker cannot finalize after lease expiration (T12)', async () => {
+    const jobs = app.get(INTEGRATION_JOB_REPOSITORY);
+
+    const schedule = await prisma.integrationSchedule.create({
+      data: {
+        id: randomUUID(),
+        portfolioId,
+        source: 'B3',
+        provider: 'SIMULATED',
+        environment: 'SIMULATED',
+        cadence: 'DAILY',
+        hourLocal: 10,
+        minuteLocal: 0,
+        timezone: 'America/Sao_Paulo',
+        enabled: true,
+      },
+    });
+
+    const scheduledFor = new Date('2026-10-28T13:00:00.000Z');
+
+    // Ensure job exists in PENDING
+    const { row: job } = await jobs.ensure({
+      scheduleId: schedule.id,
+      portfolioId,
+      source: 'B3',
+      environment: 'SIMULATED',
+      scheduledFor,
+    });
+
+    // Worker 1 claims the job at T0 (claim increments attempt from initial 1 to 2)
+    const t0 = new Date('2026-10-28T13:05:00.000Z');
+    const claim1 = await jobs.claimDue(t0, 5000); // 5 sec lease
+    expect(claim1).not.toBeNull();
+    expect(claim1!.id).toBe(job.id);
+    expect(claim1!.attempt).toBe(2);
+
+    // Lease expires at T0 + 10s. Worker 2 claims the job (attempt incremented to 3)
+    const t1 = new Date('2026-10-28T13:05:10.000Z');
+    const claim2 = await jobs.claimDue(t1, 5000);
+    expect(claim2).not.toBeNull();
+    expect(claim2!.id).toBe(job.id);
+    expect(claim2!.attempt).toBe(3);
+
+    // Worker 1 (stale attempt = 2) tries to finalize markSucceeded
+    await expect(
+      jobs.markSucceeded({
+        id: job.id,
+        portfolioId,
+        attempt: 2, // Stale attempt!
+        runId: randomUUID(),
+      }),
+    ).rejects.toThrow();
+
+    // The job in DB is still RUNNING at attempt 3 (Worker 1 was completely fenced out)
+    const currentJob = await prisma.integrationJob.findUnique({ where: { id: job.id } });
+    expect(currentJob!.status).toBe('RUNNING');
+    expect(currentJob!.attempt).toBe(3);
+
+    // Worker 2 (active attempt = 3) can finalize successfully
+    const successResult = await jobs.markSucceeded({
+      id: job.id,
+      portfolioId,
+      attempt: 3,
+      runId: randomUUID(),
+    });
+    expect(successResult.status).toBe('SUCCEEDED');
   });
 });
