@@ -2416,7 +2416,7 @@ export interface IIntegrationRunRepository {
     portfolioId: string,
     options: {
       limit: number;
-      cursor?: { createdAt: Date } | null;
+      cursor?: { completedAt?: Date; createdAt?: Date } | null;
     },
   ): Promise<IntegrationRunRow[]>;
   countByPortfolio(portfolioId: string): Promise<number>;

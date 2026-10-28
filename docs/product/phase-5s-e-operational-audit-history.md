@@ -21,9 +21,13 @@ It solves the user and operator challenge of understanding **what happened, when
   - Contains administrative and operational lifecycle events: `TRANSACTION_RECTIFIED`, `RECONCILIATION_DECISION_RECORDED`, `IMPORT_COMPLETED`, `IMPORT_PARTIAL`, and `IMPORT_FAILED`.
   - Derived on-the-fly across persisted operational tables without mutating or polluting the financial ledger.
 
-### 2.2 Strict Zero Synthetic Data & No Inferred Facts Policy
+### 2.2 Strict Zero Synthetic Data & Terminal Timestamp Fidelity
+- Every terminal event MUST have a factual timestamp:
+  - `TRANSACTION_RECTIFIED`: `decidedAt`
+  - `RECONCILIATION_DECISION_RECORDED`: `decidedAt`
+  - `IMPORT_*`: strictly `completedAt` (never `createdAt` as conclusion time; `updatedAt` prohibited)
 - If an operational event does not possess an actor, reason, timestamp, or source persisted reliably in the database, the system outputs `null` and the UI renders `"Autor não disponível"` or `"Sem justificativa informada"`.
-- Missing historical facts are never synthesized, guessed, or backfilled artificially.
+- If a legacy terminal integration run lacks `completedAt`, it is safely omitted from the chronological feed (never fabricating a terminal timestamp).
 - In-flight runs (`STARTED`, `CONFIRMING`, `AWAITING_REVIEW`) are not transformed into synthetic start events (`IMPORT_STARTED` is rejected).
 - Connection state transitions are not retroactively fabricated since no event log table exists for integration connections.
 
@@ -72,15 +76,15 @@ Browser Web Client (/portfolio/history?view=activity)
 
 ---
 
-## 4. Multi-Source Event Taxonomy (R1 Aligned)
+## 4. Multi-Source Event Taxonomy (R2 Aligned)
 
-| Event Type | Category | Source Persistence Model | Target Type | Persisted Values / Metadata | User Display Copy |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `TRANSACTION_RECTIFIED` | `RECTIFICATIONS` | `TransactionRectificationRecord` | `TRANSACTION` | `mode`: `RECTIFY` \| `CANCEL`<br>`reason`: persisted reason string<br>`targetTxId`: replacement or original | Title: "Operação retificada" / "Operação cancelada"<br>Motivo: string exata do banco |
-| `RECONCILIATION_DECISION_RECORDED` | `RECONCILIATIONS` | `ReconciliationDecisionRecord` | `REVIEW` | `decision`: `CONFIRM_MATCH` \| `NOT_A_MATCH`<br>`source`: provider source<br>`integrationRunId`: run UUID | Title: "Reconciliação revisada"<br>Motivo: "Correspondência confirmada" / "Marcado como não correspondente" |
-| `IMPORT_COMPLETED` | `IMPORTS` | `IntegrationRun` (`status = 'COMPLETED'`) | `INTEGRATION_RUN` | `source`, `provider`, `recordsFetched`, `confirmed` | Title: "Importação concluída"<br>Badge: "Concluída" (success) |
-| `IMPORT_PARTIAL` | `IMPORTS` | `IntegrationRun` (`status = 'PARTIAL'`) | `INTEGRATION_RUN` | `source`, `confirmed`, `errorCode` | Title: "Importação concluída parcialmente"<br>Badge: "Parcial" (warning) |
-| `IMPORT_FAILED` | `IMPORTS` | `IntegrationRun` (`status = 'FAILED'`) | `INTEGRATION_RUN` | `source`, `errorCode`, `errorMessage` (sanitized) | Title: "Importação não concluída"<br>Badge: "Não concluída" (negative) |
+| Event Type | Category | Source Persistence Model | Target Type | Persisted Values / Metadata | Source Timestamp | User Display Copy |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `TRANSACTION_RECTIFIED` | `RECTIFICATIONS` | `TransactionRectificationRecord` | `TRANSACTION` | `mode`: `RECTIFY` \| `CANCEL`<br>`reason`: persisted reason string<br>`targetTxId`: replacement or original | `decidedAt` | Title: "Operação retificada" / "Operação cancelada"<br>Motivo: string exata do banco |
+| `RECONCILIATION_DECISION_RECORDED` | `RECONCILIATIONS` | `ReconciliationDecisionRecord` | `REVIEW` | `decision`: `CONFIRM_MATCH` \| `NOT_A_MATCH`<br>`source`: provider source<br>`integrationRunId`: run UUID | `decidedAt` | Title: "Reconciliação revisada"<br>Motivo: "Correspondência confirmada" / "Marcado como não correspondente" |
+| `IMPORT_COMPLETED` | `IMPORTS` | `IntegrationRun` (`status = 'COMPLETED'`) | `INTEGRATION_RUN` | `source`, `provider`, `recordsFetched`, `confirmed` | `completedAt` (required) | Title: "Importação concluída"<br>Badge: "Concluída" (success) |
+| `IMPORT_PARTIAL` | `IMPORTS` | `IntegrationRun` (`status = 'PARTIAL'`) | `INTEGRATION_RUN` | `source`, `confirmed`, `errorCode` | `completedAt` (required) | Title: "Importação concluída parcialmente"<br>Badge: "Parcial" (warning) |
+| `IMPORT_FAILED` | `IMPORTS` | `IntegrationRun` (`status = 'FAILED'`) | `INTEGRATION_RUN` | `source`, `errorCode`, `errorMessage` (sanitized) | `completedAt` (required) | Title: "Importação não concluída"<br>Badge: "Não concluída" (negative) |
 
 ---
 
@@ -118,6 +122,7 @@ Browser Web Client (/portfolio/history?view=activity)
 
 | Action / Entity | Persisted History Available? | Current Audit Status | Future Roadmap Phase |
 | :--- | :--- | :--- | :--- |
+| **Legacy Terminal Runs without `completedAt`** | `completedAt = null` | Omitted from chronological activity feed (zero timestamp fabrication) | Phase 5S-F |
 | **Integration Connection State Changes** | No (only `authorizedAt`, `revokedAt`, `lastCheckedAt` on current row) | Omitted from audit feed (no event log table) | Phase 5S-F (Operational Reliability) |
 | **Portfolio Settings Changes** | No (only `updatedAt` on `portfolios` row) | Omitted from audit feed | Future Settings Audit Trail |
 | **Account Creation / Archival** | No (only `status` on `accounts` row) | Omitted from audit feed | Future Accounts History |
@@ -129,24 +134,26 @@ Browser Web Client (/portfolio/history?view=activity)
 
 ### 8.1 Automated Test Execution Summary
 - **Unit & Strategy Tests:**
-  - `tests/portfolio-strategy/portfolio-audit-history.test.ts`: **12/12 PASS**
+  - `tests/portfolio-strategy/portfolio-audit-history.test.ts`: **16/16 PASS**
     - Multi-source composition & global sorting
-    - Step 31: `COMPLETED` -> `IMPORT_COMPLETED`
-    - Step 32: `PARTIAL` -> `IMPORT_PARTIAL`
-    - Step 33: `FAILED` -> `IMPORT_FAILED`
-    - Step 34: Non-terminal runs skipped (zero synthetic start)
-    - Step 35: Reconciliation enum fidelity (`CONFIRM_MATCH` / `NOT_A_MATCH`)
-    - Step 36, 37, 38: Actor fidelity ("Você", `null`, never false system)
-    - Step 39: Zero raw principal IDs leaked
-    - Step 41, 42: Timestamp ordering & deterministic tie-break
-    - Step 43: Pagination across sources (zero duplicates, zero gaps)
-    - Step 44: Category filter `IMPORTS` covering all 3 run states
-    - Step 45: Operations preview limit <= 5
+    - Step 16: `COMPLETED` strictly uses `completedAt` (T2), not `createdAt` (T1)
+    - Step 17: `PARTIAL` strictly uses `completedAt` (T2), not `createdAt` (T1)
+    - Step 18: `FAILED` strictly uses `completedAt` (T2), not `createdAt` (T1)
+    - Step 19: Terminal run lacking `completedAt` is omitted from feed
+    - Non-terminal runs skipped (zero synthetic start)
+    - Reconciliation enum fidelity (`CONFIRM_MATCH` / `NOT_A_MATCH`)
+    - Actor fidelity ("Você", `null`, never false system)
+    - Zero raw principal IDs leaked
+    - Timestamp ordering & deterministic tie-break
+    - Pagination across sources (zero duplicates, zero gaps)
+    - Category filter `IMPORTS` covering all 3 run states
+    - Operations preview limit <= 5
 - **Web Interface Tests:**
   - `tests/web/portfolio-audit-history.test.ts`: **8/8 PASS** (navigation sub-tabs, react query endpoint consumption, category filters, empty state, actor sanitization, reason note box, operations preview, semantic status badges).
 - **API Integration Tests:**
-  - `tests/api/portfolio-audit-history.test.ts`: **6/6 PASS** (unauthenticated 401, foreign portfolio 404, unified multi-source feed, stable cursor pagination, category filtering, factual partial/failed handling).
+  - `tests/api/portfolio-audit-history.test.ts`: **7/7 PASS** (unauthenticated 401, foreign portfolio 404, unified multi-source feed, stable cursor pagination, category filtering, factual partial/failed handling, omission of runs lacking completedAt).
 - **Regression Suite:**
+  - `tests/api/integration-runs.test.ts`: **10/10 PASS**
   - `tests/api/portfolio-operations.test.ts`: **3/3 PASS**
   - `tests/api/portfolio-maintenance.test.ts`: **4/4 PASS**
   - `tests/api/transaction-rectification.test.ts`: **5/5 PASS**

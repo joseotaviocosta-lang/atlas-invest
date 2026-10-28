@@ -404,18 +404,20 @@ export class IntegrationRunRepository implements IIntegrationRunRepository {
     portfolioId: string,
     options: {
       limit: number;
-      cursor?: { createdAt: Date } | null;
+      cursor?: { completedAt?: Date; createdAt?: Date } | null;
     },
   ): Promise<IntegrationRunRow[]> {
     const take = Math.min(200, Math.max(1, Math.floor(options.limit)));
+    const cursorDate = options.cursor?.completedAt ?? options.cursor?.createdAt;
     try {
       const rows = await this.prisma.integrationRun.findMany({
         where: {
           portfolioId,
           status: { in: ['COMPLETED', 'PARTIAL', 'FAILED'] },
-          ...(options.cursor ? { createdAt: { lte: options.cursor.createdAt } } : {}),
+          completedAt: { not: null },
+          ...(cursorDate ? { completedAt: { lte: cursorDate } } : {}),
         },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        orderBy: [{ completedAt: 'desc' }, { id: 'desc' }],
         take,
       });
       return rows.map((row) => this.map(row));

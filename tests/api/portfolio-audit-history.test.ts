@@ -243,6 +243,7 @@ describe('API Integration: portfolio audit history (Phase 5S-E)', () => {
         recordsFetched: 3,
         confirmed: 3,
         createdAt: runDate,
+        completedAt: runDate,
       },
     });
 
@@ -275,6 +276,7 @@ describe('API Integration: portfolio audit history (Phase 5S-E)', () => {
           recordsFetched: 1,
           confirmed: 1,
           createdAt: d,
+          completedAt: d,
         },
       });
     }
@@ -374,6 +376,31 @@ describe('API Integration: portfolio audit history (Phase 5S-E)', () => {
     expect(failItem.eventType).toBe('IMPORT_FAILED');
     expect(failItem.title).toBe('Importação não concluída');
     expect(failItem.reason).toContain('TIMEOUT');
+  });
+
+  it('Step 19: omits terminal runs lacking completedAt from API feed', async () => {
+    const legacyRunId = randomUUID();
+    const t = new Date('2026-10-10T10:00:00.000Z');
+    await prisma.integrationRun.create({
+      data: {
+        id: legacyRunId,
+        portfolioId,
+        source: 'B3',
+        status: 'FAILED',
+        recordsFetched: 0,
+        confirmed: 0,
+        createdAt: t,
+        completedAt: null, // lacks terminal timestamp
+      },
+    });
+
+    const res = await request(app.getHttpServer())
+      .get(auditUrl())
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(200);
+
+    const legacyItem = res.body.data.find((d: { id: string }) => d.id === `run:${legacyRunId}`);
+    expect(legacyItem).toBeUndefined();
   });
 
   it('enforces portfolio ownership and returns 404 for foreign portfolios', async () => {

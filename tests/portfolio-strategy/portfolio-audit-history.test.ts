@@ -73,12 +73,15 @@ describe('Operational Audit History Composition (Phase 5S-E-R1)', () => {
       listByPortfolio: async () => ({ rows: [], hasMore: false }),
       countByPortfolio: async () => 0,
       listForAudit: async (_pid, opts) => {
-        let filtered = runs.filter((r) => ['COMPLETED', 'PARTIAL', 'FAILED'].includes(r.status));
-        if (opts.cursor) {
-          filtered = filtered.filter((r) => r.createdAt <= opts.cursor!.createdAt);
+        let filtered = runs.filter(
+          (r) => ['COMPLETED', 'PARTIAL', 'FAILED'].includes(r.status) && r.completedAt !== null,
+        );
+        const cursorDate = opts.cursor?.completedAt ?? opts.cursor?.createdAt;
+        if (cursorDate) {
+          filtered = filtered.filter((r) => r.completedAt! <= cursorDate);
         }
         filtered.sort(
-          (a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id),
+          (a, b) => b.completedAt!.getTime() - a.completedAt!.getTime() || b.id.localeCompare(a.id),
         );
         return filtered.slice(0, opts.limit);
       },
@@ -805,5 +808,177 @@ describe('Operational Audit History Composition (Phase 5S-E-R1)', () => {
 
     expect(preview.items).toHaveLength(5);
     expect(preview.meta.limit).toBe(5);
+  });
+
+  describe('Phase 5S-E-R2: Terminal Timestamp Fidelity', () => {
+    const tCreated = new Date('2026-10-15T10:00:00.000Z');
+    const tCompleted = new Date('2026-10-15T10:30:00.000Z');
+
+    it('Step 16: COMPLETED integration run strictly uses completedAt, not createdAt', async () => {
+      const run: IntegrationRunRow = {
+        id: 'run-c',
+        portfolioId,
+        source: 'CEI_CSV',
+        provider: 'MANUAL',
+        environment: 'PROD',
+        fileName: 'notas.csv',
+        sourceAsOf: null,
+        status: 'COMPLETED',
+        recordsFetched: 10,
+        recordsNormalized: 10,
+        newCandidates: 10,
+        exactDuplicates: 0,
+        probableDuplicates: 0,
+        conflicts: 0,
+        unsupported: 0,
+        invalid: 0,
+        confirmed: 10,
+        ignored: 0,
+        reconciliation: null,
+        partial: false,
+        errorCode: null,
+        errorMessage: null,
+        trigger: 'MANUAL',
+        startedAt: tCreated,
+        completedAt: tCompleted,
+        createdAt: tCreated,
+        updatedAt: tCompleted,
+      };
+
+      const { rectRepo, decRepo, runRepo } = createMockRepos({ runs: [run] });
+      const result = await composePortfolioAuditHistory(
+        { rectifications: rectRepo, decisions: decRepo, runs: runRepo },
+        { portfolioId, currentUserId },
+      );
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].occurredAt).toBe(tCompleted.toISOString());
+      expect(result.items[0].occurredAt).not.toBe(tCreated.toISOString());
+    });
+
+    it('Step 17: PARTIAL integration run strictly uses completedAt, not createdAt', async () => {
+      const run: IntegrationRunRow = {
+        id: 'run-p',
+        portfolioId,
+        source: 'B3',
+        provider: 'API',
+        environment: 'PROD',
+        fileName: null,
+        sourceAsOf: null,
+        status: 'PARTIAL',
+        recordsFetched: 10,
+        recordsNormalized: 8,
+        newCandidates: 8,
+        exactDuplicates: 0,
+        probableDuplicates: 0,
+        conflicts: 0,
+        unsupported: 2,
+        invalid: 0,
+        confirmed: 8,
+        ignored: 0,
+        reconciliation: null,
+        partial: true,
+        errorCode: null,
+        errorMessage: null,
+        trigger: 'MANUAL',
+        startedAt: tCreated,
+        completedAt: tCompleted,
+        createdAt: tCreated,
+        updatedAt: tCompleted,
+      };
+
+      const { rectRepo, decRepo, runRepo } = createMockRepos({ runs: [run] });
+      const result = await composePortfolioAuditHistory(
+        { rectifications: rectRepo, decisions: decRepo, runs: runRepo },
+        { portfolioId, currentUserId },
+      );
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].occurredAt).toBe(tCompleted.toISOString());
+      expect(result.items[0].occurredAt).not.toBe(tCreated.toISOString());
+    });
+
+    it('Step 18: FAILED integration run strictly uses completedAt, not createdAt', async () => {
+      const run: IntegrationRunRow = {
+        id: 'run-f',
+        portfolioId,
+        source: 'B3',
+        provider: 'API',
+        environment: 'PROD',
+        fileName: null,
+        sourceAsOf: null,
+        status: 'FAILED',
+        recordsFetched: 0,
+        recordsNormalized: 0,
+        newCandidates: 0,
+        exactDuplicates: 0,
+        probableDuplicates: 0,
+        conflicts: 0,
+        unsupported: 0,
+        invalid: 0,
+        confirmed: 0,
+        ignored: 0,
+        reconciliation: null,
+        partial: false,
+        errorCode: 'TIMEOUT',
+        errorMessage: 'Network timeout',
+        trigger: 'SCHEDULED',
+        startedAt: tCreated,
+        completedAt: tCompleted,
+        createdAt: tCreated,
+        updatedAt: tCompleted,
+      };
+
+      const { rectRepo, decRepo, runRepo } = createMockRepos({ runs: [run] });
+      const result = await composePortfolioAuditHistory(
+        { rectifications: rectRepo, decisions: decRepo, runs: runRepo },
+        { portfolioId, currentUserId },
+      );
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].occurredAt).toBe(tCompleted.toISOString());
+      expect(result.items[0].occurredAt).not.toBe(tCreated.toISOString());
+    });
+
+    it('Step 19: terminal integration run lacking completedAt is omitted (never fabricates completion time)', async () => {
+      const runLegacy: IntegrationRunRow = {
+        id: 'run-legacy-no-completed',
+        portfolioId,
+        source: 'B3',
+        provider: 'API',
+        environment: 'PROD',
+        fileName: null,
+        sourceAsOf: null,
+        status: 'FAILED',
+        recordsFetched: 0,
+        recordsNormalized: 0,
+        newCandidates: 0,
+        exactDuplicates: 0,
+        probableDuplicates: 0,
+        conflicts: 0,
+        unsupported: 0,
+        invalid: 0,
+        confirmed: 0,
+        ignored: 0,
+        reconciliation: null,
+        partial: false,
+        errorCode: 'UNKNOWN',
+        errorMessage: null,
+        trigger: 'MANUAL',
+        startedAt: tCreated,
+        completedAt: null, // Legacy row lacking terminal timestamp
+        createdAt: tCreated,
+        updatedAt: tCreated,
+      };
+
+      const { rectRepo, decRepo, runRepo } = createMockRepos({ runs: [runLegacy] });
+      const result = await composePortfolioAuditHistory(
+        { rectifications: rectRepo, decisions: decRepo, runs: runRepo },
+        { portfolioId, currentUserId },
+      );
+
+      // Must be omitted from chronological feed; createdAt must NEVER be fabricated as terminal time
+      expect(result.items).toHaveLength(0);
+    });
   });
 });

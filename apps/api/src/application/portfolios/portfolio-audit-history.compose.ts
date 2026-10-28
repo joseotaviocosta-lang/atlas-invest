@@ -106,7 +106,7 @@ export async function composePortfolioAuditHistory(
     shouldFetchRuns
       ? deps.runs.listForAudit(portfolioId, {
           limit: takePerSource,
-          cursor: parsedCursor ? { createdAt: parsedCursor.occurredAt } : null,
+          cursor: parsedCursor ? { completedAt: parsedCursor.occurredAt } : null,
         })
       : Promise.resolve([] as IntegrationRunRow[]),
   ]);
@@ -233,6 +233,14 @@ export async function composePortfolioAuditHistory(
 
   // Map Integration Runs
   for (const run of runRows) {
+    // Phase 5S-E-R2: Terminal Timestamp Fidelity.
+    // Every terminal event MUST have a factual completion timestamp.
+    // If completedAt is missing (e.g. legacy/corrupt row), omit the row from chronological feed.
+    // Never fallback to createdAt as a substitute for completion time.
+    if (!run.completedAt) {
+      continue;
+    }
+
     const status = run.status.toUpperCase();
     let eventType: OperationalAuditEventType;
     let title: string;
@@ -267,7 +275,7 @@ export async function composePortfolioAuditHistory(
       continue;
     }
 
-    const occurredAtDate = run.completedAt ?? run.createdAt;
+    const occurredAtDate = run.completedAt;
     const entity = {
       type: 'INTEGRATION_RUN' as const,
       id: run.id,

@@ -44,7 +44,7 @@ The audit feed (`GET /api/v1/portfolios/:portfolioId/audit-history`) was systema
 ### Issue D: Timestamp Fidelity
 - `TRANSACTION_RECTIFIED`: Uses `decidedAt` (exact instant of user/operator rectification).
 - `RECONCILIATION_DECISION_RECORDED`: Uses `decidedAt` (exact instant of match review).
-- `IMPORT_COMPLETED`, `IMPORT_PARTIAL`, `IMPORT_FAILED`: Uses `completedAt ?? createdAt` (instant of execution conclusion; never `updatedAt`).
+- `IMPORT_COMPLETED`, `IMPORT_PARTIAL`, `IMPORT_FAILED`: Uses `completedAt` (instant of execution conclusion; never `updatedAt` and never `createdAt` as conclusion time; rows lacking `completedAt` are safely omitted per Phase 5S-E-R2).
 
 ### Issue E: Pagination & Cursor Stability
 - Item composite IDs are strictly derived from source record UUIDs (`rect:${id}`, `decision:${id}`, `run:${id}`).
