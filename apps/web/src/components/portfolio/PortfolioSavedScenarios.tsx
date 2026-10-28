@@ -358,7 +358,11 @@ export function PortfolioSavedScenarios({ portfolioId }: { portfolioId: string |
     if (typeof window !== 'undefined' && window.innerWidth <= 768) {
       setTimeout(() => {
         const el = document.getElementById('scenario-detail-section');
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        const prefersReduced =
+          typeof window !== 'undefined' &&
+          window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+        if (el)
+          el.scrollIntoView({ behavior: prefersReduced ? 'auto' : 'smooth', block: 'nearest' });
       }, 100);
     }
   };

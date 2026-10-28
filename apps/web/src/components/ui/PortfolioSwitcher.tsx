@@ -32,6 +32,7 @@ export function PortfolioSwitcher({
 }: PortfolioSwitcherProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const selected = portfolios.find((p) => p.id === selectedPortfolioId) || portfolios[0];
 
@@ -44,6 +45,7 @@ export function PortfolioSwitcher({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsOpen(false);
+        triggerRef.current?.focus();
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -61,6 +63,7 @@ export function PortfolioSwitcher({
   return (
     <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
         aria-haspopup="listbox"

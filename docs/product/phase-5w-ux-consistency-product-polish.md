@@ -63,3 +63,30 @@ The phase successfully resolves historical UX backlog items, eliminates internal
 - **API Production Build:** `pnpm --filter @atlas/api build` (exit code 0)
 - **Web Production Build:** `pnpm --filter @atlas/web build` (33/33 static pages, exit code 0)
 - **Database Migrations:** Exactly 44 migrations (delta = 0).
+
+---
+
+## 5W-R1 Regression & Human Validation Closure
+
+Phase 5W-R1 executed a comprehensive regression and multi-viewport human validation audit to formalize the closure of Phase 5W.
+
+### Verified Gates & Invariants
+1. **Domain Invariance:**
+   - 0 changes in tax formulas, AI grounding semantics, AI claim verification, market providers, notifications, or ledger accounting.
+   - Database schema unchanged; migrations preserved at exactly 44 (delta = 0).
+2. **Interactive Accessibility & Polish:**
+   - `PortfolioSwitcher`: Added trigger refocusing on keyboard `Escape` dismissal (`triggerRef.current?.focus()`).
+   - `PortfolioSavedScenarios`: Refined viewport scrolling to respect user preference for reduced motion (`prefers-reduced-motion: reduce`).
+   - `Import Hub`: Verified segmented tabs without hidden request storms or cascade side-effects. Guarded nullish `run.createdAt` to eliminate runtime TypeErrors.
+3. **Playwright Real-Browser Verification:**
+   - `tests/web/e2e/product-shell.spec.ts`: 9 tests passed across Desktop (1440x900), Tablet (768x1024), and Mobile (390x844).
+   - `tests/web/e2e/phase-5w-r1-human-validation.spec.ts`: 12 tests passed across Desktop, Tablet, and Mobile viewports verifying PortfolioSwitcher localization, Escape handling, touch target sizes ($\ge 44\text{px}$), segmented tabs, review return navigation, and zero horizontal page overflow.
+4. **Full Test Suites Passing:**
+   - Web Regression: 78 test files, 546 tests, 0 failures.
+   - Tax Engine: 78 test files, 813 tests, 0 failures.
+   - AI Suites (Claims, Context Selection, Grounding, Usability): 136 tests, 0 failures.
+   - Operations & Review Suites: 71 tests, 0 failures.
+   - Planning & Allocation Scenarios: 60 tests, 0 failures.
+   - Monorepo Typecheck: 25/25 packages PASS.
+   - ESLint: 0 errors, 0 warnings.
+

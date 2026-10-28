@@ -34,6 +34,7 @@ describe('Phase 5W: UX Consistency & Product Polish', () => {
   it('PortfolioSwitcher respects touch targets and keyboard accessibility', () => {
     expect(switcher).toContain('minHeight: 44');
     expect(switcher).toContain("e.key === 'Escape'");
+    expect(switcher).toContain('triggerRef.current?.focus()');
   });
 
   it('ReviewDetailPage provides explicit top back-to-review navigation', () => {
@@ -52,10 +53,11 @@ describe('Phase 5W: UX Consistency & Product Polish', () => {
     expect(importPage).toContain("activeSection === 'import'");
   });
 
-  it('PortfolioSavedScenarios provides mobile anchor for inspection', () => {
+  it('PortfolioSavedScenarios provides mobile anchor for inspection and respects reduced motion', () => {
     expect(scenarios).toContain('id="scenario-detail-section"');
     expect(scenarios).toContain('scrollIntoView');
     expect(scenarios).toContain('scrollMarginTop');
+    expect(scenarios).toContain('prefers-reduced-motion');
   });
 
   it('Tabs enforces comfortable touch target for mobile interaction', () => {

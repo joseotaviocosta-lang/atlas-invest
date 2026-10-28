@@ -1346,7 +1346,7 @@ function ImportHubContent() {
                     type="button"
                     onClick={() => setSelectedRunId(isSelected ? null : run.id)}
                     aria-expanded={isSelected}
-                    aria-label={`Ver detalhes da execução ${describeImportRunSource(run.source, run.fileName)} de ${formatCivilDateDisplay(run.createdAt.slice(0, 10))}`}
+                    aria-label={`Ver detalhes da execução ${describeImportRunSource(run.source, run.fileName)} de ${run.createdAt ? formatCivilDateDisplay(run.createdAt.slice(0, 10)) : '—'}`}
                     style={{
                       display: 'flex',
                       flexDirection: 'column',
@@ -1380,7 +1380,7 @@ function ImportHubContent() {
                       {run.partial ? <Badge variant="warning">Parcial</Badge> : null}
                     </span>
                     <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
-                      {formatCivilDateDisplay(run.createdAt.slice(0, 10))}
+                      {run.createdAt ? formatCivilDateDisplay(run.createdAt.slice(0, 10)) : '—'}
                       {run.sourceAsOf
                         ? ` · dados de ${formatCivilDateDisplay(run.sourceAsOf)}`
                         : ''}

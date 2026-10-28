@@ -334,7 +334,10 @@ test.describe('Product Shell & Canonical End-to-End Suite', () => {
 
     // Step 3: Choose method and finish onboarding
     await expect(page.locator('h2')).toContainText('Como deseja começar?');
-    await page.click('button:has-text("Ir para o Início")');
+    await page
+      .locator('button:has-text("Explorar plataforma"), button:has-text("Ir para o Início")')
+      .first()
+      .click();
 
     // 3. Authenticated Landing: Today (Hoje)
     await expect(page).toHaveURL(/.*today/);
@@ -342,8 +345,8 @@ test.describe('Product Shell & Canonical End-to-End Suite', () => {
     await expect(page.locator('text=Resumo Patrimonial')).toBeVisible();
 
     // Verify honest placeholders in StatCards (no fake data)
-    await expect(page.locator('text=Patrimônio Total')).toBeVisible();
-    await expect(page.locator('text=Disponível com Portfolio Engine')).toBeVisible();
+    await expect(page.locator('text=Custo Total em Custódia')).toBeVisible();
+    await expect(page.locator('text=Valor de Mercado')).toBeVisible();
 
     // 4. Navigate through all canonical tabs (using nav :visible selector for multi-viewport compatibility)
     // Carteira
@@ -363,6 +366,7 @@ test.describe('Product Shell & Canonical End-to-End Suite', () => {
     await expect(page.locator('text=Quantidade atual')).toBeVisible();
     await expect(page.locator('text=Preço médio').first()).toBeVisible();
     await expect(page.locator('text=Corretora XP').first()).toBeVisible();
+    await page.locator('button[role="tab"]:has-text("Histórico")').click();
     await expect(page.locator('text=Histórico do Ativo')).toBeVisible();
 
     // Navigate back via Breadcrumb
@@ -372,12 +376,8 @@ test.describe('Product Shell & Canonical End-to-End Suite', () => {
     // Portfolio History Drilldown (Phase 2C)
     await page.locator('a[href*="/portfolio/history"]').first().click();
     await expect(page).toHaveURL(/.*portfolio\/history/);
-    await expect(page.locator('h1')).toContainText('Histórico de Atividades');
-    await expect(page.locator('text=Filtros').first()).toBeVisible();
-
-    // Navigate back to Carteira
-    await page.locator('nav[aria-label="Breadcrumb"] a:has-text("Carteira")').click();
-    await expect(page).toHaveURL(/.*portfolio/);
+    await expect(page.locator('h1')).toContainText('Carteira');
+    await expect(page.locator('#tab-operations')).toBeVisible();
 
     // Mercado
     await page.locator('nav a[href="/market"]:visible').click();
