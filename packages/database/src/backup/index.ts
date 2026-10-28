@@ -37,6 +37,7 @@ export interface RestoreInvariants {
   userCount: number;
   notificationsIntact: boolean;
   auditHistoryIntact: boolean;
+  privacyTablesIntact: boolean;
 }
 
 export interface RestoreDrillResult {
@@ -224,7 +225,7 @@ export async function verifyBackupChecksum(
  * 2. Creates a clean isolated database `atlas_restore_drill_<timestamp>`.
  * 3. Restores the dump into the isolated database.
  * 4. Connects via Prisma and validates financial ledger invariants:
- *    - 44 database migrations applied and verified.
+ *    - 45 database migrations applied and verified.
  *    - Tables structure and counts.
  *    - Ledger transaction amounts and decimals integrity.
  *    - Rectification links.
@@ -318,7 +319,7 @@ export async function runRestoreVerificationDrill(
 
     let invariants: RestoreInvariants;
     try {
-      // Invariant 1: Exactly 44 migrations applied
+      // Invariant 1: Exactly 45 migrations applied (Phase 6B)
       const migrationRows = await tempPrisma.$queryRawUnsafe<{ count: string | number | bigint }[]>(
         'SELECT COUNT(*) as count FROM _prisma_migrations WHERE finished_at IS NOT NULL',
       );
@@ -381,6 +382,19 @@ export async function runRestoreVerificationDrill(
       );
       const auditHistoryIntact = runTxRows[0] !== undefined;
 
+      // Invariant 9: Phase 6B Privacy and DSR Schema Intact
+      const consentRows = await tempPrisma.$queryRawUnsafe<{ count: string | number | bigint }[]>(
+        'SELECT COUNT(*) as count FROM user_consents',
+      );
+      const dsrRows = await tempPrisma.$queryRawUnsafe<{ count: string | number | bigint }[]>(
+        'SELECT COUNT(*) as count FROM data_subject_requests',
+      );
+      const docRows = await tempPrisma.$queryRawUnsafe<{ count: string | number | bigint }[]>(
+        'SELECT COUNT(*) as count FROM legal_document_acceptances',
+      );
+      const privacyTablesIntact =
+        consentRows[0] !== undefined && dsrRows[0] !== undefined && docRows[0] !== undefined;
+
       invariants = {
         migrationCount,
         tableCount,
@@ -392,6 +406,7 @@ export async function runRestoreVerificationDrill(
         userCount,
         notificationsIntact,
         auditHistoryIntact,
+        privacyTablesIntact,
       };
     } finally {
       await tempPrisma.$disconnect();
@@ -427,10 +442,11 @@ export async function runRestoreVerificationDrill(
     const rtoMs = Date.now() - drillStartTime;
     const isSuccess =
       checksumResult.valid &&
-      invariants.migrationCount === 44 &&
+      invariants.migrationCount === 45 &&
       invariants.ledgerIntegrity &&
       invariants.notificationsIntact &&
-      invariants.auditHistoryIntact;
+      invariants.auditHistoryIntact &&
+      invariants.privacyTablesIntact;
 
     return {
       success: isSuccess,

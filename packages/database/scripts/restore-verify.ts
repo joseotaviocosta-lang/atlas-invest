@@ -11,7 +11,7 @@ async function main() {
     console.info(`- Drill Overall Status: ${result.success ? 'PASS' : 'FAIL'}`);
     console.info('\n--- ASSERTED FINANCIAL & SCHEMA INVARIANTS ---');
     console.info(
-      `- Migrations Applied:    ${result.invariants.migrationCount} / 44 (Expected: 44)`,
+      `- Migrations Applied:    ${result.invariants.migrationCount} / 45 (Expected: 45)`,
     );
     console.info(`- Tables Verified:       ${result.invariants.tableCount}`);
     console.info(`- Ledger Transactions:   ${result.invariants.transactionCount}`);
@@ -27,6 +27,9 @@ async function main() {
     );
     console.info(
       `- Audit Trail Schema:    ${result.invariants.auditHistoryIntact ? 'PASS' : 'FAIL'}`,
+    );
+    console.info(
+      `- Privacy & DSR Schema:  ${result.invariants.privacyTablesIntact ? 'PASS' : 'FAIL'}`,
     );
     console.info('----------------------------------------------');
 

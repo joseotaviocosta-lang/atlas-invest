@@ -35,7 +35,7 @@ describe('Phase 6A: Production Reliability & Observability', () => {
       expect(res.headers['x-request-id']).toBe(traceId);
     });
 
-    it('GET /ready: returns 200 with database connected and 44 migrations up_to_date', async () => {
+    it('GET /ready: returns 200 with database connected and 45 migrations up_to_date', async () => {
       const res = await request(app.getHttpServer()).get('/ready');
 
       expect(res.status).toBe(200);
@@ -43,7 +43,7 @@ describe('Phase 6A: Production Reliability & Observability', () => {
       expect(res.body.database).toBe('connected');
       expect(res.body.checks).toBeDefined();
       expect(res.body.checks.database).toBe('connected');
-      expect(res.body.checks.migrations.applied).toBeGreaterThanOrEqual(44);
+      expect(res.body.checks.migrations.applied).toBeGreaterThanOrEqual(45);
       expect(res.body.checks.migrations.status).toBe('up_to_date');
       expect(res.headers['x-request-id']).toBeDefined();
     });

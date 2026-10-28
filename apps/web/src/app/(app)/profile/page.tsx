@@ -165,8 +165,8 @@ export default function ProfilePage() {
                 Privacidade de Dados Financeiros
               </div>
               <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '2px' }}>
-                Seus dados patrimoniais e fiscais são estritamente isolados e nunca compartilhados entre
-                diferentes investidores.
+                Seus dados patrimoniais e fiscais são estritamente isolados e nunca compartilhados
+                entre diferentes investidores.
               </div>
             </div>
             <Badge variant="primary">ATIVO</Badge>
@@ -194,6 +194,46 @@ export default function ProfilePage() {
             </div>
             <Badge variant="positive">SEGURO</Badge>
           </div>
+        </div>
+      </Card>
+
+      {/* Privacy and LGPD Rights Center */}
+      <Card style={{ marginBottom: `${spacing.xl}px`, padding: `${spacing.xl}px` }}>
+        <SectionHeader
+          title="Privacidade e Direitos do Titular (LGPD)"
+          description="Gestão de consentimentos, exportação completa de dados e transparência de processamento"
+        />
+
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: `${spacing.md}px`,
+            padding: `${spacing.md}px`,
+            borderRadius: `${borderRadius.md}px`,
+            backgroundColor: colors.surfaceElevated,
+            border: `1px solid ${colors.border}`,
+            marginTop: `${spacing.md}px`,
+          }}
+        >
+          <div style={{ maxWidth: '540px' }}>
+            <div style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
+              Central de Privacidade e LGPD
+            </div>
+            <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '2px' }}>
+              Exerça seus direitos sob a Lei 13.709/2018: exportação de dados contábeis, controle
+              granular de consentimentos, solicitações formais e registro de retenção.
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => router.push('/profile/privacy')}
+            style={{ minHeight: '44px' }}
+          >
+            Acessar Central de Privacidade
+          </Button>
         </div>
       </Card>
 

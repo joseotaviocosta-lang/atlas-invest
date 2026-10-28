@@ -74,6 +74,7 @@ export interface UserRecord {
   timezone: string;
   baseCurrency: string;
   emailVerifiedAt: Date | null;
+  deactivatedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -2581,4 +2582,173 @@ export interface IWatchlistRepository {
   listByUser(userId: string): Promise<WatchlistItemRow[]>;
   isWatched(userId: string, assetId: string): Promise<boolean>;
   findByUserAndAsset(userId: string, assetId: string): Promise<WatchlistItemRow | null>;
+}
+
+// ============================================================================
+// Phase 6B — LGPD & Legal Privacy Interfaces
+// ============================================================================
+
+export type LegalDocumentType = 'TERMS_OF_SERVICE' | 'PRIVACY_POLICY';
+
+export interface LegalDocumentMetadata {
+  readonly type: LegalDocumentType;
+  readonly title: string;
+  readonly version: string;
+  readonly effectiveDate: string;
+  readonly draftWatermark: string;
+  readonly legalNotice: string;
+}
+
+export interface LegalDocumentAcceptanceRecord {
+  readonly id: string;
+  readonly userId: string;
+  readonly documentType: string;
+  readonly documentVersion: string;
+  readonly acceptedAt: Date;
+  readonly clientIp?: string | null;
+  readonly userAgent?: string | null;
+  readonly createdAt: Date;
+}
+
+export type ConsentPurpose =
+  | 'AI_GROUNDED_EXPLANATIONS'
+  | 'PRODUCT_COMMUNICATIONS'
+  | 'ANALYTICS_TELEMETRY'
+  | 'INTEGRATION_AUTOMATION';
+
+export interface UserConsentRecord {
+  readonly id: string;
+  readonly userId: string;
+  readonly purpose: string;
+  readonly granted: boolean;
+  readonly grantedAt: Date | null;
+  readonly revokedAt: Date | null;
+  readonly clientIp?: string | null;
+  readonly userAgent?: string | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+export type DataSubjectRequestType =
+  | 'ACCESS'
+  | 'EXPORT'
+  | 'CORRECTION'
+  | 'DELETION'
+  | 'ANONYMIZATION'
+  | 'PORTABILITY'
+  | 'CONSENT_REVOCATION'
+  | 'SHARING_INFO';
+
+export type DataSubjectRequestStatus =
+  | 'PENDING'
+  | 'IN_REVIEW'
+  | 'COMPLETED'
+  | 'REJECTED'
+  | 'PENDING_LEGAL_RETENTION_REVIEW';
+
+export interface DataSubjectRequestRecord {
+  readonly id: string;
+  readonly userId: string;
+  readonly type: string;
+  readonly status: string;
+  readonly details?: string | null;
+  readonly responseNotes?: string | null;
+  readonly requestedAt: Date;
+  readonly completedAt?: Date | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+export interface UserDataExport {
+  readonly exportedAt: string;
+  readonly schemaVersion: string;
+  readonly retentionNotice: string;
+  readonly user: {
+    readonly id: string;
+    readonly email: string;
+    readonly name: string;
+    readonly locale: string;
+    readonly timezone: string;
+    readonly baseCurrency: string;
+    readonly emailVerifiedAt: Date | null;
+    readonly deactivatedAt: Date | null;
+    readonly createdAt: Date;
+    readonly updatedAt: Date;
+  };
+  readonly portfolios: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly baseCurrency: string;
+    readonly createdAt: Date;
+    readonly accounts: readonly {
+      readonly id: string;
+      readonly name: string;
+      readonly institutionName?: string;
+      readonly createdAt: Date;
+    }[];
+  }[];
+  readonly transactionLedger: readonly {
+    readonly id: string;
+    readonly portfolioId: string;
+    readonly accountId: string;
+    readonly type: string;
+    readonly tradeDate: string;
+    readonly settlementDate: string;
+    readonly quantity: string;
+    readonly unitPrice: string;
+    readonly totalAmount: string;
+    readonly currency: string;
+    readonly ticker?: string;
+    readonly assetName?: string;
+  }[];
+  readonly consents: readonly UserConsentRecord[];
+  readonly legalAcceptances: readonly LegalDocumentAcceptanceRecord[];
+  readonly dataSubjectRequests: readonly DataSubjectRequestRecord[];
+  readonly watchlists: readonly {
+    readonly assetId: string;
+    readonly ticker?: string;
+    readonly name?: string;
+    readonly createdAt: Date;
+  }[];
+}
+
+export interface IPrivacyRepository {
+  recordAcceptance(data: {
+    userId: string;
+    documentType: string;
+    documentVersion: string;
+    clientIp?: string | null;
+    userAgent?: string | null;
+  }): Promise<LegalDocumentAcceptanceRecord>;
+
+  listAcceptances(userId: string): Promise<LegalDocumentAcceptanceRecord[]>;
+
+  getLatestAcceptance(
+    userId: string,
+    documentType: string,
+  ): Promise<LegalDocumentAcceptanceRecord | null>;
+
+  upsertConsent(data: {
+    userId: string;
+    purpose: string;
+    granted: boolean;
+    clientIp?: string | null;
+    userAgent?: string | null;
+  }): Promise<UserConsentRecord>;
+
+  listConsents(userId: string): Promise<UserConsentRecord[]>;
+
+  createRequest(data: {
+    userId: string;
+    type: string;
+    details?: string | null;
+    status?: string;
+    responseNotes?: string | null;
+  }): Promise<DataSubjectRequestRecord>;
+
+  listRequests(userId: string): Promise<DataSubjectRequestRecord[]>;
+
+  deactivateAccount(userId: string): Promise<{ deactivated: boolean; message: string }>;
+
+  exportUserData(userId: string): Promise<UserDataExport>;
 }

@@ -23,6 +23,7 @@ import { IngestionModule } from './ingestion/ingestion.module';
 import { WatchlistModule } from './modules/watchlist/watchlist.module';
 import { MarketModule } from './modules/market/market.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { PrivacyModule } from './modules/privacy/privacy.module';
 import {
   RequestIdMiddleware,
   UnifiedAnnualNoStoreMiddleware,
@@ -59,6 +60,7 @@ import {
     WatchlistModule,
     MarketModule,
     NotificationsModule,
+    PrivacyModule,
   ],
 
   providers: [

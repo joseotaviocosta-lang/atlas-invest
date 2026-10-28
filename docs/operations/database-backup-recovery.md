@@ -24,10 +24,10 @@ Durante qualquer procedimento de backup ou restauração, o sistema deve garanti
 2. **Precisão Arbitrária e Zero Floats:**
    - Todas as colunas financeiras e quantitativas (`amount`, `quantity`, `balance`) utilizam precisão `numeric(38,18)`.
    - Nenhum valor numérico pode sofrer truncamento, conversão para IEEE-754 float ou corrupção de casas decimais no dump/restore.
-3. **44 Migrations do Prisma:**
-   - O banco restaurado deve conter exatamente as 44 migrations aplicadas na tabela `_prisma_migrations`, sem pendências ou flags de rollback.
-4. **Links de Retificação e Decisões de Conciliação:**
-   - As tabelas `transaction_rectifications` e `reconciliation_decisions` devem manter integridade referencial com os IDs de transação e runs de integração correspondentes.
+3. **45 Migrations do Prisma (Fase 6B):**
+   - O banco restaurado deve conter exatamente as 45 migrations aplicadas na tabela `_prisma_migrations`, sem pendências ou flags de rollback.
+4. **Links de Retificação, Conciliação e Conformidade LGPD:**
+   - As tabelas `transaction_rectifications`, `reconciliation_decisions`, `legal_document_acceptances`, `user_consents` e `data_subject_requests` devem manter integridade referencial com os IDs correspondentes.
 
 ---
 
@@ -58,10 +58,11 @@ pnpm db:restore:verify
 2. Cria dinamicamente um banco temporário isolado (`atlas_restore_drill_<timestamp>`).
 3. Restaura o arquivo de backup para dentro desse banco temporário.
 4. Conecta via Prisma e executa uma bateria exaustiva de validação de integridade:
-   - Contagem de migrations aplicadas ($= 44$).
-   - Contagem de tabelas públicas ($\ge 61$).
+   - Contagem de migrations aplicadas ($= 45$).
+   - Contagem de tabelas públicas ($\ge 64$).
    - Integridade das transações do ledger (sem campos nulos ou corrupção decimal).
    - Vínculos de retificações e conciliações.
+   - Tabelas de consentimento, DSR e aceites de documentos (LGPD).
    - Itens de watchlist, contas e usuários.
 5. Mede o tempo decorrido (RTO).
 6. Destrói (`DROP DATABASE`) o banco temporário de forma limpa.
@@ -97,7 +98,7 @@ cat backups/atlas_backup_<TARGET>.sql | docker exec -i atlas_postgres psql -U at
 
 ```bash
 docker exec atlas_postgres psql -U atlas -d atlas_restored -c "SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL;"
-# Esperado: 44
+# Esperado: 45
 
 docker exec atlas_postgres psql -U atlas -d atlas_restored -c "SELECT count(*) FROM transactions WHERE amount IS NULL OR quantity IS NULL;"
 # Esperado: 0
@@ -117,3 +118,9 @@ Para a operação plena em larga escala além do beta atual:
    - _Ação Futura:_ Configurar arquivamento contínuo de Write-Ahead Logs (WAL) via `pgBackRest` ou `WAL-G` para viabilizar recuperação para qualquer segundo específico (RPO $\le 1\text{h}$).
 3. **Gap 3: Política de Autorização Humana para Sobrescrita**
    - É estritamente proibido qualquer script automatizado executar `DROP DATABASE` ou sobrescrita do banco de produção principal sem autorização dual de operadores (Quorum de 2 engenheiros).
+4. **Gap 4: Reconciliação Pós-Restauração de Direitos e Consentimentos LGPD (`POST_RESTORE_PRIVACY_RECONCILIATION_GAP`)**
+   - _Risco Legal:_ Quando um backup gerado no timestamp $T_0$ é restaurado após um incidente no timestamp $T_1$, quaisquer consentimentos revogados (`revoked_at`), contas desativadas (`deactivated_at`) ou solicitações de titulares (DSR) registradas entre $T_0$ e $T_1$ podem ser inadvertidamente revertidos para o estado anterior.
+   - _Procedimento Operacional Mandatório de Reconciliação:_
+     1. Antes de autorizar tráfego na base restaurada, o operador deve consultar os logs imutáveis de auditoria (`@atlas/logger` / log streaming central) do intervalo $[T_0, T_1]$ filtrando por rotas de privacidade (`/api/v1/privacy/*`).
+     2. Reaplicar via script idempotente todas as revogações de consentimento (`user_consents.revoked_at`), desativações de conta (`users.deactivated_at`) e solicitações DSR (`data_subject_requests`) emitidas no intervalo.
+     3. Confirmar que nenhum processamento ou comunicação baseado em consentimento ocorra até a conclusão desta reconciliação.

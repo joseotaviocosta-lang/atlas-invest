@@ -47,6 +47,7 @@ import {
   ContributionPlanLinkRepository,
   ContributionGoalRepository,
   WatchlistRepository,
+  PrivacyRepository,
 } from '@atlas/database';
 import {
   PRISMA_CLIENT,
@@ -96,6 +97,7 @@ import {
   CALENDAR_REPOSITORY,
   MACRO_REPOSITORY,
   WATCHLIST_REPOSITORY,
+  PRIVACY_REPOSITORY,
 } from './tokens';
 
 type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
@@ -337,6 +339,11 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
       useFactory: (prisma: AtlasPrismaClient) => new WatchlistRepository(prisma),
       inject: [PRISMA_CLIENT],
     },
+    {
+      provide: PRIVACY_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new PrivacyRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
   ],
   exports: [
     PRISMA_CLIENT,
@@ -386,6 +393,7 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     CALENDAR_REPOSITORY,
     MACRO_REPOSITORY,
     WATCHLIST_REPOSITORY,
+    PRIVACY_REPOSITORY,
   ],
 })
 export class DatabaseModule {}

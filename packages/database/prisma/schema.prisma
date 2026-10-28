@@ -5,6 +5,7 @@ datasource db {
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/@prisma/client"
 }
 
 model User {
@@ -18,6 +19,8 @@ model User {
   emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(6)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  deactivatedAt            DateTime? @map("deactivated_at") @db.Timestamptz(6)
 
   portfolios               Portfolio[]
   sessions                 Session[]
@@ -43,6 +46,9 @@ model User {
   taxReminderPreferences   TaxComplianceReminderPreferenceRecord?
   taxPeriodCloseRecords    TaxCompliancePeriodCloseRecord[]
   watchlistItems           WatchlistItem[]
+  legalDocumentAcceptances LegalDocumentAcceptance[]
+  userConsents             UserConsent[]
+  dataSubjectRequests      DataSubjectRequest[]
 
   @@map("users")
 }
@@ -1583,4 +1589,65 @@ model WatchlistItem {
   @@index([userId], map: "watchlist_items_user_idx")
   @@index([assetId], map: "watchlist_items_asset_idx")
   @@map("watchlist_items")
+}
+
+/// Phase 6B — LGPD & Legal Document Acceptance
+/// Versioned acceptance tracking for Terms of Service and Privacy Policy.
+model LegalDocumentAcceptance {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  documentType    String   @map("document_type") @db.VarChar(50)
+  documentVersion String   @map("document_version") @db.VarChar(20)
+  acceptedAt      DateTime @default(now()) @map("accepted_at") @db.Timestamptz(6)
+  clientIp        String?  @map("client_ip") @db.VarChar(45)
+  userAgent       String?  @map("user_agent") @db.VarChar(500)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "legal_doc_acceptances_user_idx")
+  @@index([documentType, documentVersion], map: "legal_doc_acceptances_doc_ver_idx")
+  @@map("legal_document_acceptances")
+}
+
+/// Phase 6B — LGPD User Consents
+/// Granular consent tracking with explicit grant and revocation timestamps.
+model UserConsent {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  purpose   String    @db.VarChar(100)
+  granted   Boolean   @default(false)
+  grantedAt DateTime? @map("granted_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  clientIp  String?   @map("client_ip") @db.VarChar(45)
+  userAgent String?   @map("user_agent") @db.VarChar(500)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, purpose], map: "user_consents_user_purpose_uniq")
+  @@index([userId], map: "user_consents_user_idx")
+  @@map("user_consents")
+}
+
+/// Phase 6B — LGPD Data Subject Requests (DSR)
+/// Formal tracking of investor data rights requests (access, export, rectification, deletion, anonymization, revocation).
+model DataSubjectRequest {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  type           String    @db.VarChar(50)
+  status         String    @default("PENDING") @db.VarChar(50)
+  details        String?   @db.VarChar(2000)
+  responseNotes  String?   @map("response_notes") @db.VarChar(2000)
+  requestedAt    DateTime  @default(now()) @map("requested_at") @db.Timestamptz(6)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "dsr_user_idx")
+  @@index([status], map: "dsr_status_idx")
+  @@map("data_subject_requests")
 }
