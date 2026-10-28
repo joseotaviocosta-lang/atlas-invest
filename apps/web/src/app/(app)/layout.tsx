@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useHydrated } from '@/lib/use-hydrated';
 import { OfflineBanner, Avatar, Badge } from '@/components/ui';
 import { apiClient } from '@/api/client';
+import { NotificationCenterPopover } from '@/components/notifications/NotificationCenterPopover';
 import { colors, borderRadius, spacing, CANONICAL_NAV_ITEMS } from '@atlas/ui';
 
 function PendingReviewsLink() {
@@ -279,6 +280,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.base}px` }}>
+            <NotificationCenterPopover />
             <PendingReviewsLink />
             <Link
               href="/profile"

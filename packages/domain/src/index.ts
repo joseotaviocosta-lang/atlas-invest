@@ -20,3 +20,6 @@ export * from './entities/portfolio';
 // Ledger & Transactions
 export * from './ledger/types';
 export * from './ledger/transaction';
+
+// Notifications
+export * from './notifications/types';

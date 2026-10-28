@@ -22,6 +22,7 @@ import { MacroModule } from './modules/macro/macro.module';
 import { IngestionModule } from './ingestion/ingestion.module';
 import { WatchlistModule } from './modules/watchlist/watchlist.module';
 import { MarketModule } from './modules/market/market.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import {
   RequestIdMiddleware,
   UnifiedAnnualNoStoreMiddleware,
@@ -57,6 +58,7 @@ import {
     IngestionModule,
     WatchlistModule,
     MarketModule,
+    NotificationsModule,
   ],
 
   providers: [
