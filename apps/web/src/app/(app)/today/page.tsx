@@ -20,8 +20,10 @@ import {
   borderRadius,
   formatCurrency,
   formatPercentage,
+  formatDate,
   formatPlanDate,
   getTodayCivilDateString,
+  type RawTaxObligation,
 } from '@atlas/ui';
 import { apiClient } from '@/api/client';
 import {
@@ -59,8 +61,7 @@ export default function TodayPage() {
   const [selectedPortfolioId, setSelectedPortfolioId] = React.useState<string | null>(null);
 
   const firstName = user?.name ? user.name.split(' ')[0] : 'Investidor';
-  const activePortfolio =
-    portfolios.find((p) => p.id === selectedPortfolioId) || portfolios[0];
+  const activePortfolio = portfolios.find((p) => p.id === selectedPortfolioId) || portfolios[0];
   const activePortfolioId = activePortfolio?.id;
   const today = getTodayCivilDateString();
 
@@ -156,6 +157,22 @@ export default function TodayPage() {
   const currentMonthRow =
     goalInsightsData?.data?.timeline.find((row) => row.month === currentMonthKey) ?? null;
   const currentGoal = goalInsightsData?.data?.goal ?? null;
+
+  // Fiscal obligation query (compact preview of next tax duty on Today)
+  const { data: taxObligationData } = useQuery<{ data: RawTaxObligation | null }>({
+    queryKey: ['fiscal-monthly-obligation', currentMonthKey],
+    queryFn: async () => {
+      try {
+        return await apiClient.get<{ data: RawTaxObligation }>(
+          `/api/v1/fiscal/monthly/${currentMonthKey}/obligation`,
+        );
+      } catch {
+        return { data: null };
+      }
+    },
+    staleTime: 60 * 1000,
+  });
+  const taxObligation = taxObligationData?.data ?? null;
 
   // 1. Ledger state query (Source of truth for cost basis & proventos)
   const { data: stateData } = useQuery<{
@@ -526,6 +543,57 @@ export default function TodayPage() {
             aria-label="Ver calendário de aportes"
           >
             <Button size="sm">Ver calendário</Button>
+          </Link>
+        </div>
+      ) : null}
+
+      {/* Fiscal Next Obligation Callout (strictly factual, only when pending DARF exists) */}
+      {taxObligation &&
+      taxObligation.principalAmount &&
+      taxObligation.principalAmount.amount !== '0.00' &&
+      taxObligation.status !== 'PAID' &&
+      taxObligation.status !== 'NO_PAYMENT_DUE' ? (
+        <div
+          style={{
+            padding: `${spacing.base}px ${spacing.xl}px`,
+            borderRadius: `${borderRadius.lg}px`,
+            backgroundColor: colors.surface,
+            border: `1px solid ${taxObligation.status === 'OVERDUE' ? colors.negative : colors.border}`,
+            marginBottom: `${spacing.xl}px`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: `${spacing.base}px`,
+            flexWrap: 'wrap',
+          }}
+          data-testid="today-tax-obligation-callout"
+        >
+          <div>
+            <div
+              style={{
+                fontWeight: 600,
+                color: colors.textPrimary,
+                fontSize: '0.9375rem',
+                marginBottom: '2px',
+              }}
+            >
+              {taxObligation.status === 'OVERDUE'
+                ? 'DARF em atraso'
+                : taxObligation.status === 'DUE'
+                  ? 'DARF vence hoje'
+                  : 'Próxima obrigação tributária'}
+            </div>
+            <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+              DARF 6015 ({taxObligation.competence}):{' '}
+              {formatCurrency(
+                taxObligation.principalAmount.amount,
+                taxObligation.principalAmount.currency,
+              )}
+              {taxObligation.dueDate ? ` · Vencimento em ${formatDate(taxObligation.dueDate)}` : ''}
+            </div>
+          </div>
+          <Link href="/tax" aria-label="Ver detalhes no Fiscal">
+            <Button size="sm">Ver no Fiscal →</Button>
           </Link>
         </div>
       ) : null}
