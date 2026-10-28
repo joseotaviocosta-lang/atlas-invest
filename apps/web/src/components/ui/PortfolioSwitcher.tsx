@@ -9,6 +9,14 @@ export interface PortfolioOption {
   type: string;
 }
 
+export const PORTFOLIO_TYPE_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  PERSONAL: 'Pessoal',
+  FAMILY: 'Familiar',
+  INDIVIDUAL: 'Individual',
+  COMPANY: 'Empresarial',
+  SIMULATION: 'Simulação',
+});
+
 export interface PortfolioSwitcherProps {
   portfolios: PortfolioOption[];
   selectedPortfolioId: string | null;
@@ -33,8 +41,17 @@ export function PortfolioSwitcher({
         setIsOpen(false);
       }
     };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   if (!portfolios.length) {
@@ -61,6 +78,7 @@ export function PortfolioSwitcher({
           fontWeight: 600,
           cursor: 'pointer',
           outline: 'none',
+          minHeight: 44,
         }}
       >
         <span
@@ -121,10 +139,13 @@ export function PortfolioSwitcher({
                   cursor: 'pointer',
                   textAlign: 'left',
                   width: '100%',
+                  minHeight: 44,
                 }}
               >
                 <span>{item.name}</span>
-                <span style={{ fontSize: '0.6875rem', color: colors.textMuted }}>{item.type}</span>
+                <span style={{ fontSize: '0.6875rem', color: colors.textMuted }}>
+                  {PORTFOLIO_TYPE_LABELS[item.type] || item.type}
+                </span>
               </button>
             );
           })}
@@ -156,6 +177,7 @@ export function PortfolioSwitcher({
                   fontWeight: 600,
                   cursor: 'pointer',
                   width: '100%',
+                  minHeight: 44,
                 }}
               >
                 + Nova Carteira

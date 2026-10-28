@@ -91,6 +91,7 @@ export function Tabs({ tabs, activeTab, onTabChange }: BaseTabsProps) {
               whiteSpace: 'nowrap',
               transition: 'all 0.15s ease',
               outline: 'none',
+              minHeight: 44,
             }}
           >
             {tab.label}

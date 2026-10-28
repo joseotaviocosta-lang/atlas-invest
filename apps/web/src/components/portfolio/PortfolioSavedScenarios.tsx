@@ -355,6 +355,12 @@ export function PortfolioSavedScenarios({ portfolioId }: { portfolioId: string |
 
   const openDetail = (scenario: SavedScenarioDto) => {
     setOpenId(scenario.id);
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      setTimeout(() => {
+        const el = document.getElementById('scenario-detail-section');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 100);
+    }
   };
 
   const startEdit = (scenario: SavedScenarioDto) => {
@@ -786,7 +792,13 @@ export function PortfolioSavedScenarios({ portfolioId }: { portfolioId: string |
 
           {openId && detail ? (
             <div
-              style={{ marginTop: 16, borderTop: `1px solid ${colors.border}`, paddingTop: 12 }}
+              id="scenario-detail-section"
+              style={{
+                marginTop: 16,
+                borderTop: `1px solid ${colors.border}`,
+                paddingTop: 12,
+                scrollMarginTop: 80,
+              }}
               data-testid="scenario-detail"
             >
               <h4 style={{ fontSize: '0.9375rem', fontWeight: 700, margin: '0 0 4px' }}>

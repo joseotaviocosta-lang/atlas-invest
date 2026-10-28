@@ -123,6 +123,24 @@ function ReviewDetailContent() {
         title="Detalhe da revisão"
         subtitle="Comparação entre fonte e Atlas para esta execução."
         breadcrumb="Carteira / Pendências / Detalhe"
+        action={
+          <Link
+            href="/reviews"
+            aria-label="Voltar para Fila de Revisão"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              color: colors.accent,
+              textDecoration: 'none',
+              minHeight: 44,
+            }}
+          >
+            ← Voltar para Fila de Revisão
+          </Link>
+        }
       />
       <Card style={{ padding: `${spacing.base}px` }}>
         {detailQuery.isLoading ? (
