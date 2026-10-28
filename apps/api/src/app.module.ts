@@ -20,6 +20,8 @@ import { FxModule } from './modules/fx/fx.module';
 import { CalendarsModule } from './modules/calendars/calendars.module';
 import { MacroModule } from './modules/macro/macro.module';
 import { IngestionModule } from './ingestion/ingestion.module';
+import { WatchlistModule } from './modules/watchlist/watchlist.module';
+import { MarketModule } from './modules/market/market.module';
 import {
   RequestIdMiddleware,
   UnifiedAnnualNoStoreMiddleware,
@@ -53,6 +55,8 @@ import {
     CalendarsModule,
     MacroModule,
     IngestionModule,
+    WatchlistModule,
+    MarketModule,
   ],
 
   providers: [

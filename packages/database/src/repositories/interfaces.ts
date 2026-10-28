@@ -2555,3 +2555,30 @@ export interface ITransactionRectificationRepository {
     portfolioId: string,
   ): Promise<string | null>;
 }
+
+// ============================================================================
+// Phase 5T — Watchlist Interfaces
+// ============================================================================
+
+export interface WatchlistItemRow {
+  readonly id: string;
+  readonly userId: string;
+  readonly assetId: string;
+  readonly createdAt: Date;
+  readonly asset?: {
+    readonly id: string;
+    readonly ticker: string;
+    readonly name: string;
+    readonly type: string;
+    readonly currency: string;
+    readonly exchange: string;
+  };
+}
+
+export interface IWatchlistRepository {
+  add(userId: string, assetId: string): Promise<WatchlistItemRow>;
+  remove(userId: string, assetId: string): Promise<boolean>;
+  listByUser(userId: string): Promise<WatchlistItemRow[]>;
+  isWatched(userId: string, assetId: string): Promise<boolean>;
+  findByUserAndAsset(userId: string, assetId: string): Promise<WatchlistItemRow | null>;
+}

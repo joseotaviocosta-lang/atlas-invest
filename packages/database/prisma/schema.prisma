@@ -42,6 +42,7 @@ model User {
   taxNotificationEvents    TaxComplianceNotificationEventRecord[]
   taxReminderPreferences   TaxComplianceReminderPreferenceRecord?
   taxPeriodCloseRecords    TaxCompliancePeriodCloseRecord[]
+  watchlistItems           WatchlistItem[]
 
   @@map("users")
 }
@@ -163,6 +164,7 @@ model Asset {
   fiiTaxEligibilityFacts  FiiTaxEligibilityFactRecord[]
   annualOpeningPositions  AnnualOpeningPositionInputRecord[]
   marketQuotes            MarketQuoteRecord[]
+  watchlistItems          WatchlistItem[]
 
   @@unique([ticker, exchange])
   @@index([ticker])
@@ -1562,4 +1564,23 @@ model ReconciliationDecisionRecord {
   @@unique([portfolioId, integrationRunId, sourceItemKey, localTransactionId], map: "reconciliation_decision_pair_uniq")
   @@index([integrationRunId], map: "reconciliation_decision_run_idx")
   @@map("reconciliation_decisions")
+}
+
+
+/// Phase 5T — Investor Asset Watchlist.
+/// User-scoped watchlist for asset tracking and market intelligence discovery.
+/// Idempotent via (userId, assetId) unique constraint.
+model WatchlistItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  assetId   String   @map("asset_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, assetId], map: "watchlist_items_user_asset_uniq")
+  @@index([userId], map: "watchlist_items_user_idx")
+  @@index([assetId], map: "watchlist_items_asset_idx")
+  @@map("watchlist_items")
 }

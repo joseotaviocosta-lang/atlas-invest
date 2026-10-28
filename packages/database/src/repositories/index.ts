@@ -47,3 +47,4 @@ export * from './benchmark-observation.repository';
 export * from './fx-observation.repository';
 export * from './calendar.repository';
 export * from './macro.repository';
+export * from './watchlist.repository';

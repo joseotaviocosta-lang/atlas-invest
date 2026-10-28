@@ -54,6 +54,7 @@ export * from './view-models/review-inbox.view-model';
 export * from './view-models/portfolio-review.view-model';
 export * from './view-models/allocation-scenario.view-model';
 export * from './view-models/integration-settings.view-model';
+export * from './view-models/market-intelligence.view-model';
 
 import { colors } from './tokens/colors';
 import { spacing } from './tokens/spacing';
