@@ -108,6 +108,39 @@ describe('Phase 6A: Production Reliability & Observability', () => {
       expect(snapshot.requests.routes['GET /api/v1/portfolios/:id/transactions']).toBe(2);
     });
 
+    it('normalizes ticker/asset slugs, hex hashes and enforces strict cardinality cap', () => {
+      telemetry.recordRequest(
+        'GET',
+        '/api/v1/portfolios/c0a80123-4567-89ab-cdef-0123456789ab/positions/PETR4/intelligence',
+        200,
+        10,
+      );
+      telemetry.recordRequest('GET', '/api/v1/assets/VALE3', 200, 12);
+      telemetry.recordRequest('GET', '/api/v1/quote/ITUB4', 200, 8);
+
+      const snapshot = telemetry.getSnapshot();
+      expect(
+        snapshot.requests.routes['GET /api/v1/portfolios/:id/positions/:id/intelligence'],
+      ).toBe(1);
+      expect(snapshot.requests.routes['GET /api/v1/assets/:id']).toBe(1);
+      expect(snapshot.requests.routes['GET /api/v1/quote/:id']).toBe(1);
+
+      // Verify cardinality ceiling prevents unbounded route key growth
+      for (let i = 0; i < 150; i++) {
+        telemetry.recordRequest('GET', `/api/v1/random-fuzz-route-${i}`, 200, 5);
+      }
+      const cappedSnapshot = telemetry.getSnapshot();
+      const distinctRoutes = Object.keys(cappedSnapshot.requests.routes);
+      expect(distinctRoutes.length).toBeLessThanOrEqual(101);
+      expect(cappedSnapshot.requests.routes['GET /OTHER']).toBeGreaterThan(0);
+    });
+
+    it('sanitizes errorClass preventing punctuation, paths, and arbitrary strings', () => {
+      telemetry.recordProviderCall('brapi', 'quote', 'error', 500, 'Network/Timeout/Error:404');
+      const snapshot = telemetry.getSnapshot();
+      expect(snapshot.providers['brapi'].lastErrorClass).toBe('NetworkTimeoutError404');
+    });
+
     it('records database latency and computes p95 and average accurately', () => {
       telemetry.recordDbLatency(10, true);
       telemetry.recordDbLatency(20, true);
@@ -239,6 +272,38 @@ describe('Phase 6A: Production Reliability & Observability', () => {
       expect(connList[1]).toBe('safe-connection-alias');
       expect((connList[2] as Record<string, unknown>).nestedSecret).toBe('[REDACTED]');
     });
+
+    it('masks database connection strings inside Error message and stack', () => {
+      const err = new Error(
+        'Failed to connect to postgresql://atlas:secretpass@127.0.0.1:5432/atlas_prod',
+      );
+      const sanitized = sanitizeContext({ err });
+      expect(sanitized).toBeDefined();
+      const sanitizedErr = sanitized!.err as { message: string; stack?: string };
+      expect(sanitizedErr.message).not.toContain('secretpass');
+      expect(sanitizedErr.message).toContain('[REDACTED]');
+      if (sanitizedErr.stack) {
+        expect(sanitizedErr.stack).not.toContain('secretpass');
+      }
+    });
+
+    it('validateProductionSecrets fails fast on test database or weak secrets in production', async () => {
+      const { validateProductionSecrets } = await import('../../apps/api/src/main');
+      const originalEnv = process.env.NODE_ENV;
+      const originalDb = process.env.DATABASE_URL;
+
+      try {
+        process.env.NODE_ENV = 'production';
+        process.env.JWT_ACCESS_SECRET = 'a'.repeat(32);
+        process.env.REFRESH_TOKEN_PEPPER = 'b'.repeat(32);
+        process.env.PASSWORD_RESET_PEPPER = 'c'.repeat(32);
+        process.env.DATABASE_URL = 'postgresql://atlas:atlas@localhost:5433/atlas_test';
+
+        expect(() => validateProductionSecrets()).toThrow('DATABASE_URL in production');
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+        process.env.DATABASE_URL = originalDb;
+      }
+    });
   });
 });
-

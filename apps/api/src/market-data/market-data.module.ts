@@ -38,6 +38,11 @@ function createMarketDataProvider(): MarketDataProvider {
   if (providerName === 'BRAPI') {
     return new BrapiProviderAdapter({ token, timeoutMs });
   }
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      `Security invariant violated: Market data provider '${providerName}' is invalid. Fallback to InMemoryMarketDataProvider is strictly prohibited in production.`,
+    );
+  }
   return new InMemoryMarketDataProvider();
 }
 
@@ -67,6 +72,11 @@ function createHistoricalProvider(
   if (providerName === 'STOOQ') {
     return new StooqHistoricalMarketDataProvider({ timeoutMs, maxLookbackDays: maxLookback });
   }
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      `Security invariant violated: Historical market data provider '${providerName}' is invalid. Fallback to InMemoryHistoricalMarketDataProvider is strictly prohibited in production.`,
+    );
+  }
   return new InMemoryHistoricalMarketDataProvider({ maxLookbackDays: maxLookback });
 }
 
@@ -92,6 +102,11 @@ function createHistoricalIngestionProvider(): HistoricalMarketDataProvider {
   if (providerName === 'STOOQ') {
     return new StooqHistoricalMarketDataProvider({ timeoutMs, maxLookbackDays: maxLookback });
   }
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      `Security invariant violated: Ingestion market data provider '${providerName}' is invalid. Fallback to InMemoryHistoricalMarketDataProvider is strictly prohibited in production.`,
+    );
+  }
   return new InMemoryHistoricalMarketDataProvider({ maxLookbackDays: maxLookback });
 }
 
@@ -113,6 +128,11 @@ function createBenchmarkProvider(
   }
   if (providerName === 'YAHOO') {
     return new YahooBenchmarkDataProvider({ timeoutMs, maxLookbackDays: maxLookback });
+  }
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      `Security invariant violated: Benchmark data provider '${providerName}' is invalid. Fallback to InMemoryBenchmarkDataProvider is strictly prohibited in production.`,
+    );
   }
   return new InMemoryBenchmarkDataProvider({ maxLookbackDays: maxLookback });
 }
@@ -137,6 +157,11 @@ function createRateBenchmarkProvider(
   }
   if (providerName === 'BCB') {
     return new BcbRateBenchmarkDataProvider({ timeoutMs });
+  }
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      `Security invariant violated: Rate benchmark data provider '${providerName}' is invalid. Fallback to InMemoryRateBenchmarkDataProvider is strictly prohibited in production.`,
+    );
   }
   return new InMemoryRateBenchmarkDataProvider();
 }

@@ -10,7 +10,9 @@ async function main() {
     console.info(`- Isolated database:    ${result.tempDatabaseName}`);
     console.info(`- Drill Overall Status: ${result.success ? 'PASS' : 'FAIL'}`);
     console.info('\n--- ASSERTED FINANCIAL & SCHEMA INVARIANTS ---');
-    console.info(`- Migrations Applied:    ${result.invariants.migrationCount} / 44 (Expected: 44)`);
+    console.info(
+      `- Migrations Applied:    ${result.invariants.migrationCount} / 44 (Expected: 44)`,
+    );
     console.info(`- Tables Verified:       ${result.invariants.tableCount}`);
     console.info(`- Ledger Transactions:   ${result.invariants.transactionCount}`);
     console.info(
@@ -20,6 +22,12 @@ async function main() {
     console.info(`- Reconciliations:       ${result.invariants.reconciliationDecisionCount}`);
     console.info(`- Watchlists:            ${result.invariants.watchlistCount}`);
     console.info(`- Users:                 ${result.invariants.userCount}`);
+    console.info(
+      `- Notifications Schema:  ${result.invariants.notificationsIntact ? 'PASS' : 'FAIL'}`,
+    );
+    console.info(
+      `- Audit Trail Schema:    ${result.invariants.auditHistoryIntact ? 'PASS' : 'FAIL'}`,
+    );
     console.info('----------------------------------------------');
 
     if (!result.success) {

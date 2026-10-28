@@ -111,7 +111,7 @@ const SENSITIVE_KEYS = new Set([
   'datasourceurl',
 ]);
 
-const CONNECTION_STRING_REGEX = /^(postgres|postgresql|mysql|mongodb):\/\/[^:]+:[^@]+@/i;
+const CONNECTION_STRING_REGEX = /(postgres|postgresql|mysql|mongodb):\/\/[^:]+:[^@]+@[^\s"']+/gi;
 
 function sanitizeValue(value: unknown): unknown {
   if (value === null || value === undefined) {
@@ -119,20 +119,40 @@ function sanitizeValue(value: unknown): unknown {
   }
   if (typeof value === 'string') {
     if (CONNECTION_STRING_REGEX.test(value)) {
-      return '[REDACTED]';
+      return value.replace(CONNECTION_STRING_REGEX, '[REDACTED]');
     }
     return value;
   }
   if (Array.isArray(value)) {
     return value.map((item) => {
       if (typeof item === 'string' && CONNECTION_STRING_REGEX.test(item)) {
-        return '[REDACTED]';
+        return item.replace(CONNECTION_STRING_REGEX, '[REDACTED]');
       }
       if (item && typeof item === 'object' && !Array.isArray(item)) {
         return sanitizeContext(item as LogContext);
       }
       return item;
     });
+  }
+  if (value instanceof Error) {
+    const safeMsg = value.message.replace(CONNECTION_STRING_REGEX, '[REDACTED]');
+    const safeStack = value.stack
+      ? value.stack.replace(CONNECTION_STRING_REGEX, '[REDACTED]')
+      : undefined;
+    const errorObj: Record<string, unknown> = {
+      name: value.name,
+      message: safeMsg,
+      stack: safeStack,
+    };
+    for (const [k, v] of Object.entries(value)) {
+      const lower = k.toLowerCase();
+      if (SENSITIVE_KEYS.has(lower)) {
+        errorObj[k] = '[REDACTED]';
+      } else {
+        errorObj[k] = sanitizeValue(v);
+      }
+    }
+    return errorObj;
   }
   if (typeof value === 'object') {
     return sanitizeContext(value as LogContext);
@@ -184,12 +204,13 @@ export class Logger {
 
   private formatMessage(level: LogLevel, message: string, context?: LogContext): string {
     const timestamp = new Date().toISOString();
+    const safeMessage = message.replace(CONNECTION_STRING_REGEX, '[REDACTED]');
     const sanitized = sanitizeContext(context);
     const payload = {
       timestamp,
       level,
       service: this.service,
-      message,
+      message: safeMessage,
       ...(sanitized ? { context: sanitized } : {}),
     };
     return JSON.stringify(payload);
@@ -262,7 +283,10 @@ interface InternalNotificationSourceStats {
 }
 
 const MAX_LATENCY_SAMPLES = 500;
+const MAX_UNIQUE_ROUTES = 100;
 const UUID_REGEX = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const HEX_HASH_REGEX = /\/[0-9a-f]{32,64}(\/|$)/gi;
+const PARAM_SEGMENT_REGEX = /\/(assets|positions|quote|quotes|items)\/[A-Za-z0-9_.-]{2,16}(\/|$)/gi;
 const NUMERIC_ID_REGEX = /\/\d+(\/|$)/g;
 
 function normalizeRoute(route: string): string {
@@ -271,9 +295,19 @@ function normalizeRoute(route: string): string {
   const cleanRoute = route.split('?')[0] ?? '/';
   // Replace UUIDs with :id
   let normalized = cleanRoute.replace(UUID_REGEX, ':id');
+  // Replace hex tokens/hashes with :id
+  normalized = normalized.replace(HEX_HASH_REGEX, '/:id$1');
+  // Replace asset/position/quote slugs with :id
+  normalized = normalized.replace(PARAM_SEGMENT_REGEX, '/$1/:id$2');
   // Replace trailing/inline numeric segments with :id
   normalized = normalized.replace(NUMERIC_ID_REGEX, '/:id$1');
   return normalized;
+}
+
+function sanitizeErrorClass(errorClass?: string): string | undefined {
+  if (!errorClass) return undefined;
+  const sanitized = errorClass.replace(/[^A-Za-z0-9_]/g, '').slice(0, 32);
+  return sanitized.length > 0 ? sanitized : 'OperationalError';
 }
 
 function calculatePercentile(values: number[], percentile: number): number {
@@ -389,7 +423,15 @@ export class TelemetryCollector {
       const safeMethod = typeof method === 'string' ? method.toUpperCase() : 'UNKNOWN';
       const normalized = normalizeRoute(rawRoute);
       const routeKey = `${safeMethod} ${normalized}`;
-      this.routeCounts[routeKey] = (this.routeCounts[routeKey] || 0) + 1;
+      if (
+        !this.routeCounts[routeKey] &&
+        Object.keys(this.routeCounts).length >= MAX_UNIQUE_ROUTES
+      ) {
+        this.routeCounts[`${safeMethod} /OTHER`] =
+          (this.routeCounts[`${safeMethod} /OTHER`] || 0) + 1;
+      } else {
+        this.routeCounts[routeKey] = (this.routeCounts[routeKey] || 0) + 1;
+      }
 
       if (statusCode >= 500) {
         this.statusBuckets['5xx']++;
@@ -457,7 +499,7 @@ export class TelemetryCollector {
       } else {
         stats.failureCount++;
         stats.degraded = true;
-        stats.lastErrorClass = errorClass;
+        stats.lastErrorClass = sanitizeErrorClass(errorClass);
       }
       stats.lastStatus = status;
 
@@ -521,7 +563,7 @@ export class TelemetryCollector {
       this.notificationSourceStats.set(source || 'unknown', {
         status,
         lastCheckedAt: new Date().toISOString(),
-        errorClass,
+        errorClass: sanitizeErrorClass(errorClass),
       });
     } catch {
       // Isolate telemetry error

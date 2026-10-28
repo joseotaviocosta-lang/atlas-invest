@@ -37,7 +37,10 @@ describe('Phase 6A: Database Backup & Isolated Restore Drill Invariants', () => 
     // Simulated corruption in temporary copy
     const tamperedPath = `${backup.filePath}.tampered.sql`;
     const originalContent = fs.readFileSync(backup.filePath);
-    fs.writeFileSync(tamperedPath, Buffer.concat([originalContent, Buffer.from('-- CORRUPTION\n')]));
+    fs.writeFileSync(
+      tamperedPath,
+      Buffer.concat([originalContent, Buffer.from('-- CORRUPTION\n')]),
+    );
     const tamperedChecksumPath = `${tamperedPath}.sha256`;
     fs.writeFileSync(tamperedChecksumPath, `${backup.checksum}  ${path.basename(tamperedPath)}\n`);
 
@@ -64,6 +67,7 @@ describe('Phase 6A: Database Backup & Isolated Restore Drill Invariants', () => 
     expect(drill.invariants.tableCount).toBe(61);
     expect(drill.invariants.ledgerIntegrity).toBe(true);
     expect(drill.invariants.userCount).toBeGreaterThanOrEqual(1);
+    expect(drill.invariants.notificationsIntact).toBe(true);
+    expect(drill.invariants.auditHistoryIntact).toBe(true);
   }, 60000);
 });
-

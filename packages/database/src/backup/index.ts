@@ -35,6 +35,8 @@ export interface RestoreInvariants {
   reconciliationDecisionCount: number;
   watchlistCount: number;
   userCount: number;
+  notificationsIntact: boolean;
+  auditHistoryIntact: boolean;
 }
 
 export interface RestoreDrillResult {
@@ -317,9 +319,9 @@ export async function runRestoreVerificationDrill(
     let invariants: RestoreInvariants;
     try {
       // Invariant 1: Exactly 44 migrations applied
-      const migrationRows = await tempPrisma.$queryRawUnsafe<
-        { count: string | number | bigint }[]
-      >('SELECT COUNT(*) as count FROM _prisma_migrations WHERE finished_at IS NOT NULL');
+      const migrationRows = await tempPrisma.$queryRawUnsafe<{ count: string | number | bigint }[]>(
+        'SELECT COUNT(*) as count FROM _prisma_migrations WHERE finished_at IS NOT NULL',
+      );
       const migrationCount = migrationRows[0] ? Number(migrationRows[0].count) : 0;
 
       // Invariant 2: Table count in schema public
@@ -354,9 +356,9 @@ export async function runRestoreVerificationDrill(
       const reconciliationDecisionCount = reconRows[0] ? Number(reconRows[0].count) : 0;
 
       // Invariant 6: Watchlists
-      const watchlistRows = await tempPrisma.$queryRawUnsafe<
-        { count: string | number | bigint }[]
-      >('SELECT COUNT(*) as count FROM watchlist_items');
+      const watchlistRows = await tempPrisma.$queryRawUnsafe<{ count: string | number | bigint }[]>(
+        'SELECT COUNT(*) as count FROM watchlist_items',
+      );
       const watchlistCount = watchlistRows[0] ? Number(watchlistRows[0].count) : 0;
 
       // Invariant 7: Users
@@ -364,6 +366,20 @@ export async function runRestoreVerificationDrill(
         'SELECT COUNT(*) as count FROM users',
       );
       const userCount = userRows[0] ? Number(userRows[0].count) : 0;
+
+      // Invariant 8: Derived Features Smoke (Notifications & Audit History)
+      const notifRows = await tempPrisma.$queryRawUnsafe<{ count: string | number | bigint }[]>(
+        'SELECT COUNT(*) as count FROM operational_alert_events',
+      );
+      const taxNotifRows = await tempPrisma.$queryRawUnsafe<{ count: string | number | bigint }[]>(
+        'SELECT COUNT(*) as count FROM tax_compliance_notification_events',
+      );
+      const notificationsIntact = notifRows[0] !== undefined && taxNotifRows[0] !== undefined;
+
+      const runTxRows = await tempPrisma.$queryRawUnsafe<{ count: string | number | bigint }[]>(
+        'SELECT COUNT(*) as count FROM integration_run_transactions',
+      );
+      const auditHistoryIntact = runTxRows[0] !== undefined;
 
       invariants = {
         migrationCount,
@@ -374,6 +390,8 @@ export async function runRestoreVerificationDrill(
         reconciliationDecisionCount,
         watchlistCount,
         userCount,
+        notificationsIntact,
+        auditHistoryIntact,
       };
     } finally {
       await tempPrisma.$disconnect();
@@ -408,7 +426,11 @@ export async function runRestoreVerificationDrill(
 
     const rtoMs = Date.now() - drillStartTime;
     const isSuccess =
-      checksumResult.valid && invariants.migrationCount === 44 && invariants.ledgerIntegrity;
+      checksumResult.valid &&
+      invariants.migrationCount === 44 &&
+      invariants.ledgerIntegrity &&
+      invariants.notificationsIntact &&
+      invariants.auditHistoryIntact;
 
     return {
       success: isSuccess,
@@ -445,4 +467,3 @@ export async function runRestoreVerificationDrill(
     throw drillError;
   }
 }
-

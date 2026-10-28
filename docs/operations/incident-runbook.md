@@ -6,12 +6,12 @@ Este documento define a taxonomia de severidade, os fluxos de triagem e os proce
 
 ## 1. Classificação de Severidade de Incidentes
 
-| Nível | Definição | Critérios Exemplares | SLA de Resposta |
-|---|---|---|---|
-| **SEV-1 (Crítico)** | Indisponibilidade total do sistema ou risco iminente de corrupção de dados | - API retornando 503 no `/ready`<br>- PostgreSQL inalcançável<br>- Invariante de integridade do ledger rompida | Imediato (< 15 min) |
-| **SEV-2 (Alto)** | Degradação severa de funcionalidade primária sem perda de dados | - Todos os provedores de mercado indisponíveis (`status: degraded`)<br>- Spike de erros 5xx > 5% no `/metrics`<br>- Pipeline de importação de notas travado | < 1 hora |
-| **SEV-3 (Médio)** | Degradação pontual ou falha de serviço auxiliar com fallback ativo | - Provedor de IA lento ou com timeout<br>- Job de atualização cadastral com retry esgotado<br>- P95 de queries de banco > 500ms | < 4 horas |
-| **SEV-4 (Baixo)** | Anomalia menor, erro estético ou alerta de baixa criticidade | - Alerta de log mascarado isolado<br>- Discrepância cosmética de label em ambiente desktop | Próximo ciclo regular |
+| Nível               | Definição                                                                  | Critérios Exemplares                                                                                                                                        | SLA de Resposta       |
+| ------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| **SEV-1 (Crítico)** | Indisponibilidade total do sistema ou risco iminente de corrupção de dados | - API retornando 503 no `/ready`<br>- PostgreSQL inalcançável<br>- Invariante de integridade do ledger rompida                                              | Imediato (< 15 min)   |
+| **SEV-2 (Alto)**    | Degradação severa de funcionalidade primária sem perda de dados            | - Todos os provedores de mercado indisponíveis (`status: degraded`)<br>- Spike de erros 5xx > 5% no `/metrics`<br>- Pipeline de importação de notas travado | < 1 hora              |
+| **SEV-3 (Médio)**   | Degradação pontual ou falha de serviço auxiliar com fallback ativo         | - Provedor de IA lento ou com timeout<br>- Job de atualização cadastral com retry esgotado<br>- P95 de queries de banco > 500ms                             | < 4 horas             |
+| **SEV-4 (Baixo)**   | Anomalia menor, erro estético ou alerta de baixa criticidade               | - Alerta de log mascarado isolado<br>- Discrepância cosmética de label em ambiente desktop                                                                  | Próximo ciclo regular |
 
 ---
 
@@ -36,30 +36,39 @@ Quando um alerta disparar ou um investidor reportar problema, seguir esta ordem 
 ```
 
 ### 2.1 Inspeção de Telemetria sem Vendor Lock-in
+
 A API expõe o estado agregado em memória via:
+
 ```bash
 curl http://localhost:3001/metrics
 ```
+
 Permite verificar imediatamente:
+
 - `requests.errorRate`: percentual de chamadas 5xx.
 - `database.avgLatencyMs` e `database.p95LatencyMs`: lentidão no PostgreSQL.
 - `providers`: taxa de sucesso de cada provedor externo (HG Brasil, Brapi, BCB, Gemini).
 - `retries`: contagem de retentativas esgotadas.
 
 ### 2.2 Rastreamento por `x-request-id`
+
 Todo erro técnico registrado nos logs do `@atlas/logger` contém o identificador correlacionado `requestId`.
 Para rastrear a causa raiz de um erro retornado ao usuário:
+
 ```bash
 grep "requestId\":\"<UUID>" /var/log/atlas/api.log
 ```
-*Lembrete: Os logs são estritamente sanitizados e nunca contêm senhas, saldos, CPFs ou payloads brutos.*
+
+_Lembrete: Os logs são estritamente sanitizados e nunca contêm senhas, saldos, CPFs ou payloads brutos._
 
 ---
 
 ## 3. Procedimentos por Cenário de Falha
 
 ### Cenário A: PostgreSQL Inacessível (SEV-1)
+
 **Sintoma:** `/ready` responde `503 Service Unavailable` com `database: 'disconnected'`.
+
 1. **Verificar processo e contêiner:**
    ```bash
    docker ps | grep atlas_postgres
@@ -68,7 +77,7 @@ grep "requestId\":\"<UUID>" /var/log/atlas/api.log
    ```sql
    SELECT count(*), state FROM pg_stat_activity GROUP BY state;
    ```
-   *Se o limite de conexões (`max_connections`) estiver esgotado, inspecionar vazamento de PrismaClient ou pools órfãos.*
+   _Se o limite de conexões (`max_connections`) estiver esgotado, inspecionar vazamento de PrismaClient ou pools órfãos._
 3. **Reiniciar o serviço PostgreSQL se o processo estiver congelado:**
    ```bash
    docker restart atlas_postgres
@@ -81,7 +90,9 @@ grep "requestId\":\"<UUID>" /var/log/atlas/api.log
 ---
 
 ### Cenário B: Provedores Externos Indisponíveis (SEV-2)
+
 **Sintoma:** `/ready` responde `200 OK` com `status: 'degraded'`.
+
 1. **Consultar o breakdown no `/ready?telemetry=true`:**
    Inspecionar o bloco `providers` para identificar se é BRAPI, HG Brasil, BCB ou Gemini.
 2. **Estratégia de Sobrevivência:**
@@ -94,7 +105,9 @@ grep "requestId\":\"<UUID>" /var/log/atlas/api.log
 ---
 
 ### Cenário C: Job de Importação ou Conciliação Travado (SEV-2)
+
 **Sintoma:** Transações de importação ficam em status pendente sem avanço.
+
 1. **Inspecionar a tabela de runs de integração:**
    ```sql
    SELECT id, status, started_at FROM integration_runs WHERE status = 'IN_PROGRESS';
@@ -115,4 +128,3 @@ grep "requestId\":\"<UUID>" /var/log/atlas/api.log
 3. **Rollback de Banco de Dados:**
    - **PROIBIDO** executar `prisma migrate reset` ou comandos destrutivos em bases ativas.
    - Caso uma migration falhe durante a aplicação, aplicar correção via migration de compensação ou restaurar a partir do snapshot pré-deploy verificado via `pnpm db:restore:verify`.
-

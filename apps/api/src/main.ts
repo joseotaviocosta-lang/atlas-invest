@@ -54,6 +54,18 @@ export function validateProductionSecrets(): void {
         );
       }
     }
+
+    const dbUrl = process.env.DATABASE_URL;
+    if (
+      !dbUrl ||
+      dbUrl.includes('atlas_test') ||
+      dbUrl.includes('127.0.0.1:5433') ||
+      dbUrl.includes('localhost:5433')
+    ) {
+      throw new Error(
+        'Security invariant violated: DATABASE_URL in production must point to a dedicated production database, not atlas_test or port 5433.',
+      );
+    }
   }
 }
 
