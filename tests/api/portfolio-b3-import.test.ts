@@ -78,6 +78,56 @@ async function createMultiAssetInstitutionB3XlsxBase64(): Promise<string> {
   return Buffer.from(arrayBuffer).toString('base64');
 }
 
+async function create59RowB3XlsxBase64(): Promise<string> {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Negociação');
+  ws.addRow([
+    'Data do Negócio',
+    'Tipo de Movimentação',
+    'Mercado',
+    'Prazo/Vencimento',
+    'Instituição',
+    'Código de Negociação',
+    'Quantidade',
+    'Preço',
+    'Valor',
+  ]);
+  // 58 XP rows with legal name variations (with dot and without dot)
+  const tickers = ['ITSA4', 'JHSF3', 'BBAS3', 'EZTC3', 'PETR4', 'VALE3', 'HGLG11', 'IRIM11'];
+  for (let i = 1; i <= 58; i++) {
+    const ticker = tickers[i % tickers.length]!;
+    // Alternate broker name syntax like real B3 files
+    const broker = i % 2 === 0 ? 'XP INVESTIMENTOS CCTVM S/A.' : 'XP INVESTIMENTOS CCTVM S/A';
+    const op = i % 5 === 0 ? 'Venda' : 'Compra';
+    ws.addRow([
+      `15/01/2026`,
+      op,
+      'Mercado à Vista',
+      '-',
+      broker,
+      ticker,
+      10 * i,
+      10.0 + (i % 5),
+      (10 * i) * (10.0 + (i % 5)),
+    ]);
+  }
+  // 1 Nubank row
+  ws.addRow([
+    '20/01/2026',
+    'Compra',
+    'Mercado à Vista',
+    '-',
+    'NU INVESTIMENTOS S.A. - CTVM',
+    'ROXO34',
+    100,
+    15.0,
+    1500,
+  ]);
+
+  const arrayBuffer = await wb.xlsx.writeBuffer();
+  return Buffer.from(arrayBuffer).toString('base64');
+}
+
 async function createB3MovementXlsxBase64(): Promise<string> {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Movimentação');
@@ -509,6 +559,173 @@ describe('API Integration: Native B3 XLSX Import', () => {
       // Zero transactions
       const txCount = await prisma.transaction.count({ where: { portfolioId: emptyPortfolio.id } });
       expect(txCount).toBe(0);
+    });
+
+    it('synchronizes batch account resolution: 58 XP rows + 1 Nubank row transition from NEEDS_REVIEW to READY upon account creation', async () => {
+      // 1. Create a brand new empty portfolio with 0 accounts
+      const user = await prisma.user.findFirst();
+      const testPortfolio = await prisma.portfolio.create({
+        data: {
+          id: '59595959-5959-4959-8959-000000000059',
+          userId: user!.id,
+          name: 'Carteira 59 Linhas',
+          baseCurrency: 'BRL',
+          type: 'PERSONAL',
+          status: 'ACTIVE',
+        },
+      });
+
+      // Ensure institutions XP and Nubank exist in the institution catalog
+      let xpInst = await prisma.institution.findFirst({ where: { name: 'XP Investimentos' } });
+      if (!xpInst) {
+        xpInst = await prisma.institution.create({
+          data: {
+            id: 'b0000000-0000-4000-8000-000000000010',
+            name: 'XP Investimentos',
+            type: 'BROKER',
+            country: 'BR',
+          },
+        });
+      }
+      let nuInst = await prisma.institution.findFirst({ where: { name: 'Nubank / NuInvest' } });
+      if (!nuInst) {
+        nuInst = await prisma.institution.create({
+          data: {
+            id: 'b0000000-0000-4000-8000-000000000020',
+            name: 'Nubank / NuInvest',
+            type: 'BROKER',
+            country: 'BR',
+          },
+        });
+      }
+
+      const base64Content = await create59RowB3XlsxBase64();
+
+      // Step 1: Initial preview with 0 accounts in portfolio
+      const preview1 = await request(app.getHttpServer())
+        .post(`/api/v1/portfolios/${testPortfolio.id}/imports/preview`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          sourceType: 'B3_NEGOTIATION_XLSX',
+          fileName: 'negociacao-59.xlsx',
+          content: base64Content,
+        })
+        .expect(200);
+
+      const d1 = preview1.body.data;
+      expect(d1.summary.totalRows).toBe(59);
+      expect(d1.summary.ready).toBe(0);
+      expect(d1.summary.needsReview).toBe(59);
+      expect(d1.summary.duplicates).toBe(0);
+
+      // Verify institution summary has 58 XP and 1 Nubank
+      const xpInstSummary1 = d1.institutionSummary.find((i: UniqueInstitutionSummary) => i.normalizedName === 'XP Investimentos');
+      expect(xpInstSummary1).toBeDefined();
+      expect(xpInstSummary1.rowCount).toBe(58);
+      expect(xpInstSummary1.status).toBe('NEEDS_ACCOUNT');
+
+      const nuInstSummary1 = d1.institutionSummary.find((i: UniqueInstitutionSummary) => i.normalizedName === 'Nubank / NuInvest');
+      expect(nuInstSummary1).toBeDefined();
+      expect(nuInstSummary1.rowCount).toBe(1);
+      expect(nuInstSummary1.status).toBe('NEEDS_ACCOUNT');
+
+      // Verify every candidate carries normalizedInstitution
+      expect(d1.candidates.every((c: { normalizedInstitution?: string }) => Boolean(c.normalizedInstitution))).toBe(true);
+
+      // Step 2: Create XP account in the portfolio
+      const xpAccountRes = await request(app.getHttpServer())
+        .post(`/api/v1/portfolios/${testPortfolio.id}/accounts`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          name: 'XP Investimentos',
+          institutionId: xpInst.id,
+          currency: 'BRL',
+        })
+        .expect(201);
+      const xpAccount = xpAccountRes.body.data;
+
+      // Re-run preview after XP account creation
+      const preview2 = await request(app.getHttpServer())
+        .post(`/api/v1/portfolios/${testPortfolio.id}/imports/preview`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          sourceType: 'B3_NEGOTIATION_XLSX',
+          fileName: 'negociacao-59.xlsx',
+          content: base64Content,
+        })
+        .expect(200);
+
+      const d2 = preview2.body.data;
+      expect(d2.summary.totalRows).toBe(59);
+      expect(d2.summary.ready).toBe(58); // All 58 XP rows are now READY!
+      expect(d2.summary.needsReview).toBe(1); // Only the 1 Nubank row remains
+      expect(d2.summary.duplicates).toBe(0);
+
+      const xpInstSummary2 = d2.institutionSummary.find((i: UniqueInstitutionSummary) => i.normalizedName === 'XP Investimentos');
+      expect(xpInstSummary2.status).toBe('RESOLVED');
+      expect(xpInstSummary2.matchedAccountId).toBe(xpAccount.id);
+
+      const nuInstSummary2 = d2.institutionSummary.find((i: UniqueInstitutionSummary) => i.normalizedName === 'Nubank / NuInvest');
+      expect(nuInstSummary2.status).toBe('NEEDS_ACCOUNT');
+
+      // Step 3: Create Nubank account in the portfolio
+      const nuAccountRes = await request(app.getHttpServer())
+        .post(`/api/v1/portfolios/${testPortfolio.id}/accounts`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          name: 'Nubank / NuInvest',
+          institutionId: nuInst.id,
+          currency: 'BRL',
+        })
+        .expect(201);
+      const nuAccount = nuAccountRes.body.data;
+
+      // Re-run preview after Nubank account creation
+      const preview3 = await request(app.getHttpServer())
+        .post(`/api/v1/portfolios/${testPortfolio.id}/imports/preview`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          sourceType: 'B3_NEGOTIATION_XLSX',
+          fileName: 'negociacao-59.xlsx',
+          content: base64Content,
+        })
+        .expect(200);
+
+      const d3 = preview3.body.data;
+      expect(d3.summary.totalRows).toBe(59);
+      expect(d3.summary.ready).toBe(59); // All 59 rows are READY!
+      expect(d3.summary.needsReview).toBe(0);
+      expect(d3.summary.duplicates).toBe(0);
+
+      const xpInstSummary3 = d3.institutionSummary.find((i: UniqueInstitutionSummary) => i.normalizedName === 'XP Investimentos');
+      expect(xpInstSummary3.status).toBe('RESOLVED');
+      const nuInstSummary3 = d3.institutionSummary.find((i: UniqueInstitutionSummary) => i.normalizedName === 'Nubank / NuInvest');
+      expect(nuInstSummary3.status).toBe('RESOLVED');
+
+      // Invariant: zero ledger writes before confirmation
+      const txCountBeforeConfirm = await prisma.transaction.count({ where: { portfolioId: testPortfolio.id } });
+      expect(txCountBeforeConfirm).toBe(0);
+
+      // Step 4: Confirm import without overrides (clean execution)
+      const confirmRes = await request(app.getHttpServer())
+        .post(`/api/v1/portfolios/${testPortfolio.id}/imports/confirm`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          sourceType: 'B3_NEGOTIATION_XLSX',
+          fileName: 'negociacao-59.xlsx',
+          content: base64Content,
+          runId: d3.runId,
+          decisions: [],
+        })
+        .expect(201);
+
+      expect(confirmRes.body.data.created).toBe(59);
+
+      // Step 5: Verify ledger transactions
+      const txs = await prisma.transaction.findMany({ where: { portfolioId: testPortfolio.id } });
+      expect(txs).toHaveLength(59);
+      expect(txs.filter((t) => t.accountId === xpAccount.id)).toHaveLength(58);
+      expect(txs.filter((t) => t.accountId === nuAccount.id)).toHaveLength(1);
     });
   });
 });

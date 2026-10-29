@@ -49,4 +49,31 @@ describe('Web Import Hub: Native B3 XLSX Integration', () => {
     expect(src).toContain('handleCreateAccountForInstitution');
     expect(src).toContain('Usar esta conta para todas as operações desta instituição');
   });
+
+  it('derives single source of truth summary ensuring found equation holds', () => {
+    const src = page();
+    expect(src).toContain('const derivedSummary = useMemo');
+    expect(src).toContain('(derivedSummary ?? preview.summary).ready');
+    expect(src).toContain('(derivedSummary ?? preview.summary).needsReview');
+  });
+
+  it('handles batch account resolution idempotency and re-triggers preview mutation', () => {
+    const src = page();
+    expect(src).toContain('// 1. Idempotency / Duplicate Guard: reuse account if already exists');
+    expect(src).toContain('await previewMutation.mutateAsync()');
+  });
+
+  it('checks full institution resolution to prevent misleading success badges', () => {
+    const src = page();
+    expect(src).toContain('const isFullyResolved =');
+    expect(src).toContain('isFullyResolved && resolvedAccount ?');
+    expect(src).toContain('operações com conta');
+  });
+
+  it('displays resolved account in row table and hides redundant dropdown', () => {
+    const src = page();
+    expect(src).toContain('Conta:');
+    expect(src).toContain('resolvedAccountObj.name');
+    expect(src).toContain('alterar');
+  });
 });

@@ -92,6 +92,7 @@ interface PreviewCandidate {
   currency: string;
   brokerLabel?: string;
   accountLabel?: string;
+  normalizedInstitution?: string;
   externalId?: string;
   status: 'READY' | 'DUPLICATE' | 'AMBIGUOUS_ASSET' | 'INVALID' | 'UNSUPPORTED' | 'NEEDS_REVIEW';
   issues: PreviewIssue[];
@@ -941,6 +942,7 @@ function ImportHubContent() {
   const [skipRows, setSkipRows] = useState<Set<number>>(new Set());
   const [assetOverrides, setAssetOverrides] = useState<Record<number, string>>({});
   const [accountOverrides, setAccountOverrides] = useState<Record<number, string>>({});
+  const [editingAccountRows, setEditingAccountRows] = useState<Set<number>>(new Set());
   const [forceRows, setForceRows] = useState<Set<number>>(new Set());
   const [fileError, setFileError] = useState<string | null>(null);
   const [b3ModalOpen, setB3ModalOpen] = useState(false);
@@ -1087,6 +1089,50 @@ function ImportHubContent() {
     [effectiveRows, skipRows, assetOverrides, accountOverrides, forceRows],
   );
 
+  const derivedSummary = useMemo(() => {
+    const previewData = previewMutation.data ?? null;
+    if (!previewData) return null;
+
+    let ready = 0;
+    let needsReview = 0;
+    let duplicates = 0;
+    let invalid = 0;
+    let unsupported = 0;
+
+    for (const row of effectiveRows) {
+      const status = row.candidate.status;
+      const effectiveState = row.effective.state;
+
+      if (status === 'INVALID') {
+        invalid += 1;
+      } else if (status === 'UNSUPPORTED') {
+        unsupported += 1;
+      } else if (status === 'DUPLICATE') {
+        duplicates += 1;
+      } else if (effectiveState === 'importable') {
+        ready += 1;
+      } else if (effectiveState === 'blocked') {
+        needsReview += 1;
+      } else if (effectiveState === 'skipped') {
+        if (status === 'READY') {
+          ready += 1;
+        } else {
+          needsReview += 1;
+        }
+      }
+    }
+
+    return {
+      totalRows: previewData.candidates.length,
+      ready,
+      duplicates,
+      needsReview,
+      invalid,
+      unsupported,
+      ambiguousAssets: previewData.summary.ambiguousAssets,
+    };
+  }, [previewMutation.data, effectiveRows]);
+
   const handleBatchAssetMap = (ticker: string, assetId: string) => {
     if (!previewMutation.data) return;
     const matchingRowNumbers = previewMutation.data.candidates
@@ -1102,14 +1148,24 @@ function ImportHubContent() {
     });
   };
 
-  const handleBatchAccountMap = (rawInstitutionName: string, accountId: string) => {
+  const handleBatchAccountMap = (instOrName: UniqueInstitutionSummary | string, accountId: string) => {
     if (!previewMutation.data) return;
+    const normalized = typeof instOrName === 'string' ? instOrName.trim().toLowerCase() : instOrName.normalizedName.trim().toLowerCase();
+    const raw = typeof instOrName === 'string' ? instOrName.trim().toLowerCase() : instOrName.rawName.trim().toLowerCase();
+
     const matchingRowNumbers = previewMutation.data.candidates
-      .filter(
-        (c) =>
-          (c.brokerLabel?.trim() || '') === rawInstitutionName.trim() ||
-          (c.accountLabel?.trim() || '') === rawInstitutionName.trim(),
-      )
+      .filter((c) => {
+        const rowBroker = (c.brokerLabel?.trim() || '').toLowerCase();
+        const rowAccount = (c.accountLabel?.trim() || '').toLowerCase();
+        const rowNormalized = (c.normalizedInstitution?.trim() || '').toLowerCase();
+        return (
+          (rowNormalized !== '' && rowNormalized === normalized) ||
+          rowBroker === normalized ||
+          rowBroker === raw ||
+          rowAccount === normalized ||
+          rowAccount === raw
+        );
+      })
       .map((c) => c.rowNumber);
 
     setAccountOverrides((previous) => {
@@ -1125,33 +1181,51 @@ function ImportHubContent() {
 
   const handleCreateAccountForInstitution = async (inst: UniqueInstitutionSummary) => {
     if (!activePortfolioId) return;
-    setCreatingAccountFor(inst.rawName);
+    setCreatingAccountFor(inst.normalizedName);
     try {
-      const instId =
-        inst.institutionId ||
-        institutions.find(
-          (i) =>
-            i.name.toLowerCase() === inst.normalizedName.toLowerCase() ||
-            i.name.toLowerCase().includes(inst.normalizedName.toLowerCase()),
-        )?.id;
+      // 1. Idempotency / Duplicate Guard: reuse account if already exists in this portfolio
+      const existingAccount = accounts.find(
+        (a) =>
+          a.name.toLowerCase() === inst.normalizedName.toLowerCase() ||
+          (inst.institutionId && a.institutionId === inst.institutionId),
+      );
 
-      if (!instId) {
-        setFileError(
-          `Instituição "${inst.normalizedName}" não encontrada no catálogo para criação automática.`,
+      let targetAccountId = existingAccount?.id;
+
+      if (!targetAccountId) {
+        const instId =
+          inst.institutionId ||
+          institutions.find(
+            (i) =>
+              i.name.toLowerCase() === inst.normalizedName.toLowerCase() ||
+              i.name.toLowerCase().includes(inst.normalizedName.toLowerCase()),
+          )?.id;
+
+        if (!instId) {
+          setFileError(
+            `Instituição "${inst.normalizedName}" não encontrada no catálogo para criação automática.`,
+          );
+          return;
+        }
+
+        const res = await apiClient.post<{ data: AccountOption }>(
+          `/api/v1/portfolios/${activePortfolioId}/accounts`,
+          {
+            name: inst.normalizedName,
+            institutionId: instId,
+            currency: 'BRL',
+          },
         );
-        return;
+        targetAccountId = res.data.id;
       }
 
-      const res = await apiClient.post<{ data: AccountOption }>(
-        `/api/v1/portfolios/${activePortfolioId}/accounts`,
-        {
-          name: inst.normalizedName,
-          institutionId: instId,
-          currency: 'BRL',
-        },
-      );
       await queryClient.invalidateQueries({ queryKey: ['portfolio-accounts', activePortfolioId] });
-      handleBatchAccountMap(inst.rawName, res.data.id);
+
+      // Apply batch mapping to all rows of this institution
+      handleBatchAccountMap(inst, targetAccountId);
+
+      // Re-run preview against API so the server recognizes the newly created account in context.accounts
+      await previewMutation.mutateAsync();
     } catch (err: unknown) {
       setFileError(err instanceof Error ? err.message : 'Falha ao criar conta para a instituição.');
     } finally {
@@ -1251,6 +1325,7 @@ function ImportHubContent() {
     setSkipRows(new Set());
     setAssetOverrides({});
     setAccountOverrides({});
+    setEditingAccountRows(new Set());
     setForceRows(new Set());
     previewMutation.reset();
     confirmMutation.reset();
@@ -1690,6 +1765,7 @@ function ImportHubContent() {
                 setSkipRows(new Set());
                 setAssetOverrides({});
                 setAccountOverrides({});
+                setEditingAccountRows(new Set());
                 setForceRows(new Set());
                 previewMutation.reset();
                 confirmMutation.reset();
@@ -1802,12 +1878,14 @@ function ImportHubContent() {
           <Card style={{ padding: `${spacing.base}px`, marginBottom: `${spacing.base}px` }}>
             <SectionHeader title="3. Revisar análise" />
             <p style={{ fontSize: '0.875rem' }} aria-live="polite">
-              {preview.summary.totalRows} operações encontradas · {preview.summary.ready} prontas ·{' '}
-              {preview.summary.duplicates} duplicadas · {preview.summary.needsReview} precisam de
-              revisão · {preview.summary.invalid} inválidas · {preview.summary.unsupported} não
-              suportadas
-              {preview.summary.ambiguousAssets > 0
-                ? ` · ${preview.summary.ambiguousAssets} com ativo ambíguo`
+              {(derivedSummary ?? preview.summary).totalRows} operações encontradas ·{' '}
+              {(derivedSummary ?? preview.summary).ready} prontas ·{' '}
+              {(derivedSummary ?? preview.summary).duplicates} duplicadas ·{' '}
+              {(derivedSummary ?? preview.summary).needsReview} precisam de revisão ·{' '}
+              {(derivedSummary ?? preview.summary).invalid} inválidas ·{' '}
+              {(derivedSummary ?? preview.summary).unsupported} não suportadas
+              {(derivedSummary ?? preview.summary).ambiguousAssets > 0
+                ? ` · ${(derivedSummary ?? preview.summary).ambiguousAssets} com ativo ambíguo`
                 : ''}
             </p>
             <p style={{ fontSize: '0.875rem', fontWeight: 600 }} aria-live="polite">
@@ -1957,21 +2035,42 @@ function ImportHubContent() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {preview.institutionSummary.map((inst) => {
-                    const sampleCandidate = preview.candidates.find(
-                      (c) =>
-                        (c.brokerLabel?.trim() || '') === inst.rawName ||
-                        (c.accountLabel?.trim() || '') === inst.rawName,
-                    );
-                    const currentAccountId =
-                      (sampleCandidate && accountOverrides[sampleCandidate.rowNumber]) ||
+                    const normInst = inst.normalizedName.trim().toLowerCase();
+                    const rawInst = inst.rawName.trim().toLowerCase();
+
+                    const matchingCandidates = preview.candidates.filter((c) => {
+                      const rowBroker = (c.brokerLabel?.trim() || '').toLowerCase();
+                      const rowAccount = (c.accountLabel?.trim() || '').toLowerCase();
+                      const rowNormalized = (c.normalizedInstitution?.trim() || '').toLowerCase();
+                      return (
+                        (rowNormalized !== '' && rowNormalized === normInst) ||
+                        rowBroker === normInst ||
+                        rowBroker === rawInst ||
+                        rowAccount === normInst ||
+                        rowAccount === rawInst
+                      );
+                    });
+
+                    const resolvedCandidates = matchingCandidates.filter((c) => {
+                      const accId = accountOverrides[c.rowNumber] || c.accountId;
+                      return Boolean(accId);
+                    });
+
+                    const isFullyResolved =
+                      matchingCandidates.length > 0 &&
+                      resolvedCandidates.length === matchingCandidates.length;
+
+                    const sampleAccId =
+                      (matchingCandidates[0] && accountOverrides[matchingCandidates[0].rowNumber]) ||
+                      matchingCandidates[0]?.accountId ||
                       inst.matchedAccountId;
-                    const resolvedAccount = currentAccountId
-                      ? accounts.find((a) => a.id === currentAccountId)
+                    const resolvedAccount = sampleAccId
+                      ? accounts.find((a) => a.id === sampleAccId)
                       : null;
 
                     return (
                       <div
-                        key={inst.rawName}
+                        key={inst.normalizedName}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -1987,7 +2086,7 @@ function ImportHubContent() {
                           <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>
                             {inst.normalizedName}{' '}
                             <span style={{ fontWeight: 400, color: colors.textSecondary }}>
-                              — {inst.rowCount} operações
+                              — {matchingCandidates.length || inst.rowCount} operações
                             </span>
                           </div>
                           {inst.rawName !== inst.normalizedName && (
@@ -1996,8 +2095,12 @@ function ImportHubContent() {
                             </div>
                           )}
                           <div style={{ marginTop: 4 }}>
-                            {resolvedAccount ? (
+                            {isFullyResolved && resolvedAccount ? (
                               <Badge variant="success">Conta resolvida: {resolvedAccount.name}</Badge>
+                            ) : resolvedCandidates.length > 0 ? (
+                              <Badge variant="warning">
+                                {resolvedCandidates.length} de {matchingCandidates.length} operações com conta
+                              </Badge>
                             ) : (
                               <Badge variant="warning">Conta não definida</Badge>
                             )}
@@ -2017,13 +2120,13 @@ function ImportHubContent() {
                             value={resolvedAccount ? resolvedAccount.id : ''}
                             onChange={(event) => {
                               if (event.target.value) {
-                                handleBatchAccountMap(inst.rawName, event.target.value);
+                                handleBatchAccountMap(inst, event.target.value);
                               }
                             }}
                             style={{ minHeight: 40, fontSize: '0.8125rem' }}
                           >
                             <option value="">
-                              {resolvedAccount
+                              {isFullyResolved && resolvedAccount
                                 ? 'Trocar conta para todas…'
                                 : 'Selecionar conta para todas…'}
                             </option>
@@ -2034,14 +2137,14 @@ function ImportHubContent() {
                             ))}
                           </select>
 
-                          {!resolvedAccount && (
+                          {!isFullyResolved && (
                             <Button
                               variant="secondary"
                               onClick={() => void handleCreateAccountForInstitution(inst)}
-                              disabled={creatingAccountFor === inst.rawName}
+                              disabled={creatingAccountFor === inst.normalizedName}
                               style={{ minHeight: 40, fontSize: '0.8125rem' }}
                             >
-                              {creatingAccountFor === inst.rawName
+                              {creatingAccountFor === inst.normalizedName
                                 ? 'Criando conta…'
                                 : `+ Criar conta "${inst.normalizedName}"`}
                             </Button>
@@ -2083,18 +2186,46 @@ function ImportHubContent() {
                     const systemHandled =
                       !skipped &&
                       (candidate.status === 'DUPLICATE' || candidate.status === 'UNSUPPORTED');
+
+                    const effectiveAccountId = accountOverrides[rowNumber] ?? candidate.accountId;
+                    const effectiveAssetId = assetOverrides[rowNumber] ?? candidate.assetId;
+                    const isAccountResolved = Boolean(effectiveAccountId);
+                    const isAssetResolved = Boolean(effectiveAssetId);
+
                     const needsAsset =
+                      !isAssetResolved &&
                       (candidate.status === 'NEEDS_REVIEW' ||
-                        candidate.status === 'AMBIGUOUS_ASSET') &&
-                      candidate.assetId === null;
+                        candidate.status === 'AMBIGUOUS_ASSET');
                     const needsAccount =
+                      (!isAccountResolved || editingAccountRows.has(rowNumber)) &&
                       (candidate.status === 'NEEDS_REVIEW' ||
-                        candidate.status === 'AMBIGUOUS_ASSET') &&
-                      candidate.accountId === null;
+                        candidate.status === 'AMBIGUOUS_ASSET');
+
+                    const resolvedAccountObj = effectiveAccountId
+                      ? accounts.find((a) => a.id === effectiveAccountId)
+                      : null;
+
                     const sameTickerAssets = assets.filter(
                       (asset) => asset.ticker === candidate.ticker,
                     );
                     const assetOptions = sameTickerAssets.length > 0 ? sameTickerAssets : assets;
+
+                    // Filter out issues that are resolved by overrides
+                    const activeIssues = candidate.issues.filter((issue) => {
+                      if (
+                        isAccountResolved &&
+                        (issue.code === 'ACCOUNT_REQUIRED' || issue.code === 'ACCOUNT_NOT_FOUND')
+                      ) {
+                        return false;
+                      }
+                      if (
+                        isAssetResolved &&
+                        (issue.code === 'UNKNOWN_ASSET' || issue.code === 'AMBIGUOUS_ASSET')
+                      ) {
+                        return false;
+                      }
+                      return true;
+                    });
                     return (
                       <tr key={rowNumber} style={{ borderTop: `1px solid ${colors.border}` }}>
                         <td style={{ padding: 8 }}>{rowNumber}</td>
@@ -2128,9 +2259,13 @@ function ImportHubContent() {
                           {formatCurrency(candidate.fees, candidate.currency)}
                         </td>
                         <td style={{ padding: 8 }}>
-                          <span>{STATUS_LABEL[candidate.status]}</span>
+                          <span>
+                            {effectiveState === 'importable'
+                              ? 'Pronta'
+                              : STATUS_LABEL[candidate.status]}
+                          </span>
                           <div style={{ fontWeight: 600 }}>{EFFECTIVE_LABEL[effectiveState]}</div>
-                          {candidate.issues.map((issue) => (
+                          {activeIssues.map((issue) => (
                             <div
                               key={issue.code}
                               style={{ color: colors.textSecondary, fontSize: '0.75rem' }}
@@ -2138,6 +2273,35 @@ function ImportHubContent() {
                               {issue.message}
                             </div>
                           ))}
+                          {resolvedAccountObj && !editingAccountRows.has(rowNumber) && (
+                            <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: 4 }}>
+                              Conta:{' '}
+                              <strong style={{ color: colors.textPrimary }}>
+                                {resolvedAccountObj.name}
+                              </strong>
+                              {accountOverrides[rowNumber] ? (
+                                <span style={{ color: colors.accent, marginLeft: 4 }}>(manual)</span>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setEditingAccountRows((prev) => new Set(prev).add(rowNumber))
+                                }
+                                style={{
+                                  fontSize: '0.75rem',
+                                  color: colors.accent,
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: '0 4px',
+                                  marginLeft: 6,
+                                  cursor: 'pointer',
+                                  textDecoration: 'underline',
+                                }}
+                              >
+                                alterar
+                              </button>
+                            </div>
+                          )}
                           {needsAsset && (
                             <div style={{ marginTop: 4 }}>
                               <select
@@ -2183,13 +2347,19 @@ function ImportHubContent() {
                             <div style={{ marginTop: 4 }}>
                               <select
                                 aria-label={`Conta da linha ${rowNumber}`}
-                                value={accountOverrides[rowNumber] ?? ''}
-                                onChange={(event) =>
+                                value={effectiveAccountId ?? ''}
+                                onChange={(event) => {
+                                  const val = event.target.value;
                                   setAccountOverrides((previous) => ({
                                     ...previous,
-                                    [rowNumber]: event.target.value,
-                                  }))
-                                }
+                                    [rowNumber]: val,
+                                  }));
+                                  setEditingAccountRows((prev) => {
+                                    const next = new Set(prev);
+                                    next.delete(rowNumber);
+                                    return next;
+                                  });
+                                }}
                                 style={{ minHeight: 44, width: '100%' }}
                               >
                                 <option value="">Selecionar conta…</option>
@@ -2199,13 +2369,16 @@ function ImportHubContent() {
                                   </option>
                                 ))}
                               </select>
-                              {accountOverrides[rowNumber] && (
+                              {effectiveAccountId && (
                                 <button
                                   type="button"
                                   onClick={() =>
                                     handleBatchAccountMap(
-                                      candidate.brokerLabel ?? candidate.accountLabel ?? '',
-                                      accountOverrides[rowNumber]!,
+                                      candidate.normalizedInstitution ??
+                                        candidate.brokerLabel ??
+                                        candidate.accountLabel ??
+                                        '',
+                                      effectiveAccountId,
                                     )
                                   }
                                   style={{
@@ -2289,6 +2462,7 @@ function ImportHubContent() {
                   setSkipRows(new Set());
                   setAssetOverrides({});
                   setAccountOverrides({});
+                  setEditingAccountRows(new Set());
                   setForceRows(new Set());
                 }}
               >

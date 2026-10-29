@@ -133,6 +133,7 @@ export interface NormalizedCandidate {
   currency: string;
   brokerLabel?: string;
   accountLabel?: string;
+  normalizedInstitution?: string;
   externalId?: string;
   notes?: string;
   /**

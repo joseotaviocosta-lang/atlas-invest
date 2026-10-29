@@ -381,7 +381,7 @@ export class PreviewPortfolioImportUseCase {
         accountMatch = resolveAccount(candidate.accountLabel, context.accounts);
       }
 
-      return classifyOne({
+      const classified = classifyOne({
         portfolioId: command.portfolioId,
         provider: context.provider,
         candidate,
@@ -390,6 +390,16 @@ export class PreviewPortfolioImportUseCase {
         defaultAccountId: context.defaultAccountId,
         existing: context.existing,
       });
+
+      const instLabel = candidate.accountLabel?.trim() || candidate.brokerLabel?.trim();
+      const normalizedInstitution =
+        candidate.normalizedInstitution ??
+        (instLabel ? normalizeB3InstitutionName(instLabel) : undefined);
+
+      return {
+        ...classified,
+        normalizedInstitution,
+      };
     });
 
     // Unique Asset Summary
@@ -425,10 +435,16 @@ export class PreviewPortfolioImportUseCase {
     for (const candidate of candidates) {
       const rawName =
         candidate.accountLabel?.trim() || candidate.brokerLabel?.trim() || 'Não identificada';
-      const normalizedName = normalizeB3InstitutionName(rawName);
+      const normalizedName = candidate.normalizedInstitution || normalizeB3InstitutionName(rawName);
       const existing = institutionSummaryMap.get(normalizedName);
       if (existing) {
         existing.rowCount += 1;
+        if (!existing.matchedAccountId && candidate.accountId) {
+          const matchedAccount = context.accounts.find((a) => a.id === candidate.accountId);
+          existing.matchedAccountId = candidate.accountId;
+          existing.matchedAccountName = matchedAccount?.name ?? null;
+          existing.status = 'RESOLVED';
+        }
       } else {
         const instCatalog = context.institutions.find(
           (i) =>

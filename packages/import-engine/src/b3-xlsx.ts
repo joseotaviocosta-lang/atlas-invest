@@ -16,6 +16,7 @@
 import ExcelJS from 'exceljs';
 import { LocalDate } from '@atlas/domain';
 import { normalizeDecimalString } from './normalize';
+import { normalizeB3InstitutionName } from './b3-institutions';
 import {
   MAX_IMPORT_BYTES,
   MAX_IMPORT_ROWS,
@@ -470,6 +471,7 @@ export async function parseB3NegotiationXlsx(
         currency: 'BRL',
         brokerLabel: broker !== '' ? broker : undefined,
         accountLabel: broker !== '' ? broker : undefined,
+        normalizedInstitution: broker !== '' ? normalizeB3InstitutionName(broker) : undefined,
         externalId: undefined,
         notes,
         status,
