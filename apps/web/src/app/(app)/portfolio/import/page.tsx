@@ -129,6 +129,9 @@ interface UniqueInstitutionSummary {
   matchedAccountId: string | null;
   matchedAccountName: string | null;
   rowCount: number;
+  operationCount?: number;
+  uniqueAssetCount?: number;
+  rawNames?: string[];
   status: 'RESOLVED' | 'NEEDS_ACCOUNT' | 'AMBIGUOUS';
 }
 
@@ -1152,6 +1155,7 @@ function ImportHubContent() {
     if (!previewMutation.data) return;
     const normalized = typeof instOrName === 'string' ? instOrName.trim().toLowerCase() : instOrName.normalizedName.trim().toLowerCase();
     const raw = typeof instOrName === 'string' ? instOrName.trim().toLowerCase() : instOrName.rawName.trim().toLowerCase();
+    const rawNames = typeof instOrName !== 'string' && instOrName.rawNames ? instOrName.rawNames.map((n) => n.toLowerCase()) : [];
 
     const matchingRowNumbers = previewMutation.data.candidates
       .filter((c) => {
@@ -1160,10 +1164,13 @@ function ImportHubContent() {
         const rowNormalized = (c.normalizedInstitution?.trim() || '').toLowerCase();
         return (
           (rowNormalized !== '' && rowNormalized === normalized) ||
+          (rawNames.length > 0 && (rawNames.includes(rowBroker) || rawNames.includes(rowAccount))) ||
           rowBroker === normalized ||
           rowBroker === raw ||
           rowAccount === normalized ||
-          rowAccount === raw
+          rowAccount === raw ||
+          (normalized.includes('xp') && (rowBroker.includes('xp') || rowAccount.includes('xp'))) ||
+          (normalized.includes('nu') && (rowBroker.includes('nu') || rowAccount.includes('nu')))
         );
       })
       .map((c) => c.rowNumber);
@@ -2037,6 +2044,7 @@ function ImportHubContent() {
                   {preview.institutionSummary.map((inst) => {
                     const normInst = inst.normalizedName.trim().toLowerCase();
                     const rawInst = inst.rawName.trim().toLowerCase();
+                    const rawNames = inst.rawNames ? inst.rawNames.map((n) => n.toLowerCase()) : [];
 
                     const matchingCandidates = preview.candidates.filter((c) => {
                       const rowBroker = (c.brokerLabel?.trim() || '').toLowerCase();
@@ -2044,10 +2052,13 @@ function ImportHubContent() {
                       const rowNormalized = (c.normalizedInstitution?.trim() || '').toLowerCase();
                       return (
                         (rowNormalized !== '' && rowNormalized === normInst) ||
+                        (rawNames.length > 0 && (rawNames.includes(rowBroker) || rawNames.includes(rowAccount))) ||
                         rowBroker === normInst ||
                         rowBroker === rawInst ||
                         rowAccount === normInst ||
-                        rowAccount === rawInst
+                        rowAccount === rawInst ||
+                        (normInst.includes('xp') && (rowBroker.includes('xp') || rowAccount.includes('xp'))) ||
+                        (normInst.includes('nu') && (rowBroker.includes('nu') || rowAccount.includes('nu')))
                       );
                     });
 
@@ -2068,6 +2079,9 @@ function ImportHubContent() {
                       ? accounts.find((a) => a.id === sampleAccId)
                       : null;
 
+                    const totalOps = inst.operationCount ?? inst.rowCount;
+                    const uniqueAssets = inst.uniqueAssetCount;
+
                     return (
                       <div
                         key={inst.normalizedName}
@@ -2086,7 +2100,10 @@ function ImportHubContent() {
                           <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>
                             {inst.normalizedName}{' '}
                             <span style={{ fontWeight: 400, color: colors.textSecondary }}>
-                              — {matchingCandidates.length || inst.rowCount} operações
+                              — {totalOps} {totalOps === 1 ? 'operação' : 'operações'}
+                              {uniqueAssets !== undefined
+                                ? ` · ${uniqueAssets} ${uniqueAssets === 1 ? 'ativo único' : 'ativos únicos'}`
+                                : ''}
                             </span>
                           </div>
                           {inst.rawName !== inst.normalizedName && (

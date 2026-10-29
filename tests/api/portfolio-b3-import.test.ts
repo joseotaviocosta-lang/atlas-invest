@@ -622,12 +622,22 @@ describe('API Integration: Native B3 XLSX Import', () => {
       const xpInstSummary1 = d1.institutionSummary.find((i: UniqueInstitutionSummary) => i.normalizedName === 'XP Investimentos');
       expect(xpInstSummary1).toBeDefined();
       expect(xpInstSummary1.rowCount).toBe(58);
+      expect(xpInstSummary1.operationCount).toBe(58);
+      expect(xpInstSummary1.uniqueAssetCount).toBe(8);
+      expect(xpInstSummary1.rawNames).toContain('xp investimentos cctvm s/a.');
+      expect(xpInstSummary1.rawNames).toContain('xp investimentos cctvm s/a');
       expect(xpInstSummary1.status).toBe('NEEDS_ACCOUNT');
 
       const nuInstSummary1 = d1.institutionSummary.find((i: UniqueInstitutionSummary) => i.normalizedName === 'Nubank / NuInvest');
       expect(nuInstSummary1).toBeDefined();
       expect(nuInstSummary1.rowCount).toBe(1);
+      expect(nuInstSummary1.operationCount).toBe(1);
+      expect(nuInstSummary1.uniqueAssetCount).toBe(1);
       expect(nuInstSummary1.status).toBe('NEEDS_ACCOUNT');
+
+      // Global invariant: sum of operationCount equals total rows
+      const totalOps = d1.institutionSummary.reduce((sum: number, i: UniqueInstitutionSummary) => sum + i.operationCount, 0);
+      expect(totalOps).toBe(59);
 
       // Verify every candidate carries normalizedInstitution
       expect(d1.candidates.every((c: { normalizedInstitution?: string }) => Boolean(c.normalizedInstitution))).toBe(true);

@@ -181,6 +181,9 @@ export interface UniqueInstitutionSummary {
   matchedAccountId: string | null;
   matchedAccountName: string | null;
   rowCount: number;
+  operationCount: number;
+  uniqueAssetCount: number;
+  rawNames?: string[];
   status: 'RESOLVED' | 'NEEDS_ACCOUNT' | 'AMBIGUOUS';
 }
 

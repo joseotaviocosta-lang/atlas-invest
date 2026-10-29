@@ -76,4 +76,12 @@ describe('Web Import Hub: Native B3 XLSX Integration', () => {
     expect(src).toContain('resolvedAccountObj.name');
     expect(src).toContain('alterar');
   });
+
+  it('separates operations count and unique asset count in institution summary without conflation', () => {
+    const src = page();
+    expect(src).toContain('const totalOps = inst.operationCount ?? inst.rowCount');
+    expect(src).toContain('const uniqueAssets = inst.uniqueAssetCount');
+    expect(src).toContain("— {totalOps} {totalOps === 1 ? 'operação' : 'operações'}");
+    expect(src).toContain("ativo único");
+  });
 });

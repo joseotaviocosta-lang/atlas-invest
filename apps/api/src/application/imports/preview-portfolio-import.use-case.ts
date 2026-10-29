@@ -431,19 +431,32 @@ export class PreviewPortfolioImportUseCase {
     );
 
     // Unique Institution Summary (grouped by normalized institution name)
-    const institutionSummaryMap = new Map<string, UniqueInstitutionSummary>();
+    const institutionSummaryMap = new Map<
+      string,
+      {
+        summary: UniqueInstitutionSummary;
+        tickers: Set<string>;
+        rawNames: Set<string>;
+      }
+    >();
+
     for (const candidate of candidates) {
       const rawName =
         candidate.accountLabel?.trim() || candidate.brokerLabel?.trim() || 'Não identificada';
       const normalizedName = candidate.normalizedInstitution || normalizeB3InstitutionName(rawName);
+      const ticker = candidate.ticker?.trim().toUpperCase();
+
       const existing = institutionSummaryMap.get(normalizedName);
       if (existing) {
-        existing.rowCount += 1;
-        if (!existing.matchedAccountId && candidate.accountId) {
+        existing.summary.rowCount += 1;
+        existing.summary.operationCount += 1;
+        if (ticker) existing.tickers.add(ticker);
+        existing.rawNames.add(rawName.toLowerCase());
+        if (!existing.summary.matchedAccountId && candidate.accountId) {
           const matchedAccount = context.accounts.find((a) => a.id === candidate.accountId);
-          existing.matchedAccountId = candidate.accountId;
-          existing.matchedAccountName = matchedAccount?.name ?? null;
-          existing.status = 'RESOLVED';
+          existing.summary.matchedAccountId = candidate.accountId;
+          existing.summary.matchedAccountName = matchedAccount?.name ?? null;
+          existing.summary.status = 'RESOLVED';
         }
       } else {
         const instCatalog = context.institutions.find(
@@ -454,20 +467,36 @@ export class PreviewPortfolioImportUseCase {
         const matchedAccount = candidate.accountId
           ? context.accounts.find((a) => a.id === candidate.accountId)
           : null;
+        const tickers = new Set<string>();
+        if (ticker) tickers.add(ticker);
+        const rawNames = new Set<string>();
+        rawNames.add(rawName.toLowerCase());
+
         institutionSummaryMap.set(normalizedName, {
-          rawName,
-          normalizedName,
-          institutionId: instCatalog?.id ?? null,
-          matchedAccountId: candidate.accountId ?? null,
-          matchedAccountName: matchedAccount?.name ?? null,
-          rowCount: 1,
-          status: candidate.accountId ? 'RESOLVED' : 'NEEDS_ACCOUNT',
+          summary: {
+            rawName,
+            normalizedName,
+            institutionId: instCatalog?.id ?? null,
+            matchedAccountId: candidate.accountId ?? null,
+            matchedAccountName: matchedAccount?.name ?? null,
+            rowCount: 1,
+            operationCount: 1,
+            uniqueAssetCount: 1,
+            status: candidate.accountId ? 'RESOLVED' : 'NEEDS_ACCOUNT',
+          },
+          tickers,
+          rawNames,
         });
       }
     }
-    const institutionSummary = Array.from(institutionSummaryMap.values()).sort(
-      (a, b) => b.rowCount - a.rowCount,
-    );
+
+    const institutionSummary = Array.from(institutionSummaryMap.values())
+      .map((entry) => {
+        entry.summary.uniqueAssetCount = entry.tickers.size;
+        entry.summary.rawNames = Array.from(entry.rawNames);
+        return entry.summary;
+      })
+      .sort((a, b) => b.operationCount - a.operationCount);
 
     return {
       sourceType: command.sourceType,
