@@ -84,4 +84,18 @@ describe('Web Import Hub: Native B3 XLSX Integration', () => {
     expect(src).toContain("— {totalOps} {totalOps === 1 ? 'operação' : 'operações'}");
     expect(src).toContain("ativo único");
   });
+
+  it('supports B3_ANNUAL_REPORT_XLSX sourceType detection and payload construction', () => {
+    const src = page();
+    expect(src).toContain("setSourceType('B3_ANNUAL_REPORT_XLSX')");
+    expect(src).toContain('Área do Investidor B3 — Relatório Consolidado Anual (Posição Inicial)');
+    expect(src).toContain("sourceType === 'B3_ANNUAL_REPORT_XLSX'");
+    expect(src).toContain("{ sourceType: 'B3_ANNUAL_REPORT_XLSX' as const }");
+  });
+
+  it('renders detailed validation issues in ErrorState when API validation fails', () => {
+    const src = page();
+    expect(src).toContain('previewMutation.error.details');
+    expect(src).toContain('previewMutation.error.message');
+  });
 });

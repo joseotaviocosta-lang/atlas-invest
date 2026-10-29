@@ -192,4 +192,36 @@ describe('B3 Annual Consolidated Report Parser (Opening Position Baseline)', () 
 
     await expect(parseB3AnnualReportXlsx(buffer)).rejects.toThrow(B3XlsxParseError);
   });
+
+  it('verifies real 2024 annual report if present in downloads', async () => {
+    const fs = await import('node:fs');
+    const filePath = 'C:\\Users\\joseo\\Downloads\\relatorio-consolidado-anual-2024.xlsx';
+    if (!fs.existsSync(filePath)) return;
+
+    const buffer = fs.readFileSync(filePath);
+    const candidates = await parseB3AnnualReportXlsx(buffer, {
+      fileName: 'relatorio-consolidado-anual-2024.xlsx',
+    });
+
+    expect(candidates.length).toBeGreaterThan(0);
+    const uniqueTickers = new Set(candidates.map((c) => c.ticker));
+    expect(uniqueTickers.size).toBeGreaterThanOrEqual(30);
+
+    const stbp3 = candidates.find((c) => c.ticker === 'STBP3');
+    expect(stbp3).toBeDefined();
+    expect(stbp3!.quantity).toBe('700');
+    expect(stbp3!.tradeDate).toBe('2024-12-31');
+
+    const sapr4 = candidates.find((c) => c.ticker === 'SAPR4');
+    expect(sapr4).toBeDefined();
+    expect(sapr4!.quantity).toBe('3300');
+
+    const itsa4 = candidates.find((c) => c.ticker === 'ITSA4');
+    expect(itsa4).toBeDefined();
+    expect(itsa4!.quantity).toBe('1161.3');
+
+    const jhsf3 = candidates.find((c) => c.ticker === 'JHSF3');
+    expect(jhsf3).toBeDefined();
+    expect(jhsf3!.quantity).toBe('600');
+  });
 });

@@ -132,7 +132,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     // Safe logging: log full technical details with requestId on the server, avoiding sensitive payload dumps
     const logDetail =
-      exception instanceof Error ? exception.stack || exception.message : String(exception);
+      exception instanceof ZodError
+        ? JSON.stringify(exception.errors)
+        : exception instanceof Error
+          ? exception.stack || exception.message
+          : String(exception);
     console.error(
       `[${new Date().toISOString()}] [${requestId}] ${request.method} ${request.url} -> ${statusCode} (${errorCode}): ${logDetail}`,
     );

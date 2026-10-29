@@ -1060,7 +1060,7 @@ function ImportHubContent() {
           provider: provider.trim() === '' ? (sourceType !== 'GENERIC_CSV' ? 'B3' : 'CSV') : provider.trim(),
           fileName: fileName === '' ? (sourceType === 'B3_ANNUAL_REPORT_XLSX' ? 'anual.xlsx' : sourceType === 'B3_NEGOTIATION_XLSX' ? 'negociacao.xlsx' : 'importacao.csv') : fileName,
           content,
-          ...(defaultAccountId === '' ? {} : { defaultAccountId }),
+          ...(defaultAccountId ? { defaultAccountId } : {}),
         },
       );
       if (res.data.sourceType === 'B3_ANNUAL_REPORT_XLSX') {
@@ -1287,7 +1287,7 @@ function ImportHubContent() {
           provider: provider.trim() === '' ? (sourceType !== 'GENERIC_CSV' ? 'B3' : 'CSV') : provider.trim(),
           fileName: previewData.fileName,
           content,
-          ...(defaultAccountId === '' ? {} : { defaultAccountId }),
+          ...(defaultAccountId ? { defaultAccountId } : {}),
           decisions,
           ...(previewData.runId ? { runId: previewData.runId } : {}),
         },
@@ -1893,7 +1893,14 @@ function ImportHubContent() {
                 title="Não foi possível analisar o arquivo"
                 message={
                   previewMutation.error instanceof ApiError
-                    ? previewMutation.error.message
+                    ? previewMutation.error.details && Array.isArray(previewMutation.error.details)
+                      ? `${previewMutation.error.message}: ${(
+                          previewMutation.error.details as Array<{ path?: string; message?: string }>
+                        )
+                          .map((d) => (d.path ? `${d.path}: ${d.message ?? ''}` : d.message ?? ''))
+                          .filter(Boolean)
+                          .join('; ')}`
+                      : previewMutation.error.message
                     : 'Tente novamente com o modelo Atlas.'
                 }
                 onRetry={() => previewMutation.mutate()}

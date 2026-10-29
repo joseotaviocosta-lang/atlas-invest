@@ -886,6 +886,31 @@ describe('API Integration: Native B3 XLSX Import', () => {
       const reData = rePreviewRes.body.data;
       expect(reData.summary.duplicates).toBe(5);
       expect(reData.summary.ready).toBe(0);
+
+      // 4. Resilient validation: accepts empty/null defaultAccountId & provider without 400
+      await request(app.getHttpServer())
+        .post(`/api/v1/portfolios/${portfolioId}/imports/preview`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          sourceType: 'B3_ANNUAL_REPORT_XLSX',
+          provider: '',
+          fileName: 'relatorio-consolidado-anual-2024.xlsx',
+          content: annualBase64,
+          defaultAccountId: '',
+        })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/portfolios/${portfolioId}/imports/preview`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          sourceType: 'B3_ANNUAL_REPORT_XLSX',
+          provider: null,
+          fileName: 'relatorio-consolidado-anual-2024.xlsx',
+          content: annualBase64,
+          defaultAccountId: null,
+        })
+        .expect(200);
     });
   });
 });

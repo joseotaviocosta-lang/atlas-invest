@@ -6,10 +6,17 @@ const MAX_CONTENT_CHARS = 3 * 1024 * 1024;
 
 export const PreviewPortfolioImportBodySchema = z.object({
   sourceType: z.enum(['GENERIC_CSV', 'B3_NEGOTIATION_XLSX', 'B3_ANNUAL_REPORT_XLSX']),
-  provider: z.string().trim().min(1).max(100).optional(),
+  provider: z
+    .string()
+    .trim()
+    .max(100)
+    .nullish()
+    .transform((val) => val || undefined),
   fileName: z.string().trim().min(1).max(255),
   content: z.string().min(1).max(MAX_CONTENT_CHARS),
-  defaultAccountId: UUIDSchema.optional(),
+  defaultAccountId: UUIDSchema.or(z.literal(''))
+    .nullish()
+    .transform((val) => val || undefined),
 });
 
 export type PreviewPortfolioImportBody = z.infer<typeof PreviewPortfolioImportBodySchema>;
