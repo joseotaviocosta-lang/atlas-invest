@@ -30,6 +30,11 @@ import {
   PortfolioValuationResponse,
   valuationQueryKey,
 } from '@/components/portfolio/PortfolioValuation';
+import {
+  portfolioReviewQueryKey,
+  PortfolioReviewDto,
+  unwrapReview,
+} from '@/components/portfolio/PortfolioReviewSection';
 
 interface IncomeSummaryItem {
   currency: string;
@@ -79,22 +84,20 @@ export default function TodayPage() {
   const pendingCount = pendingData?.pendingCount ?? 0;
 
   // Portfolio review summary (derived decision support — compact on Today).
-  const { data: reviewData } = useQuery<{
-    data: {
-      portfolioId: string;
-      summary: { attentionCount: number; dataNote: string | null };
-      isEmpty: boolean;
-    };
-  }>({
-    queryKey: ['portfolio-review', activePortfolioId],
+  const { data: rawReviewData } = useQuery<unknown>({
+    queryKey: activePortfolioId ? portfolioReviewQueryKey(activePortfolioId) : ['portfolio-review', 'none'],
     queryFn: async () => {
-      if (!activePortfolioId) return { data: null } as never;
-      return apiClient.get(`/api/v1/portfolios/${activePortfolioId}/review`);
+      if (!activePortfolioId) return null;
+      const res = await apiClient.get<{ data: PortfolioReviewDto }>(
+        `/api/v1/portfolios/${activePortfolioId}/review`,
+      );
+      return res.data;
     },
     enabled: Boolean(activePortfolioId),
     staleTime: 60 * 1000,
   });
-  const reviewAttentionCount = reviewData?.data?.summary.attentionCount ?? 0;
+  const reviewData = unwrapReview(rawReviewData);
+  const reviewAttentionCount = reviewData?.summary?.attentionCount ?? 0;
 
   // Allocation strategy compact summary (declared targets vs current).
   const { data: strategyData } = useQuery<{

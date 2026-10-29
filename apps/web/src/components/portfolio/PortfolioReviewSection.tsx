@@ -61,6 +61,22 @@ export function portfolioReviewQueryKey(portfolioId: string) {
   return ['portfolio-review', portfolioId];
 }
 
+export function unwrapReview(payload: unknown): PortfolioReviewDto | null {
+  if (!payload || typeof payload !== 'object') return null;
+  if ('summary' in payload && typeof (payload as { summary: unknown }).summary === 'object') {
+    return payload as PortfolioReviewDto;
+  }
+  if (
+    'data' in payload &&
+    payload.data &&
+    typeof payload.data === 'object' &&
+    'summary' in (payload.data as object)
+  ) {
+    return payload.data as PortfolioReviewDto;
+  }
+  return null;
+}
+
 function severityVariant(severity: string): 'info' | 'warning' | 'neutral' {
   if (severity === 'WARNING' || severity === 'REVIEW') return 'warning';
   if (severity === 'INFO') return 'info';
@@ -75,17 +91,21 @@ function toneColor(tone: ReviewSignalTone): string {
   return colors.textSecondary;
 }
 
-function summaryText(review: PortfolioReviewDto): string {
-  if (review.isEmpty && review.signals.length === 0) {
-    return 'Sua carteira ainda não possui ativos suficientes para gerar uma revisão.';
+export function summaryText(review?: PortfolioReviewDto | null): string {
+  if (!review || !review.summary || review.isEmpty) {
+    return 'Sua carteira ainda não possui dados suficientes para gerar uma revisão.';
   }
-  if (review.summary.attentionCount === 0) {
+  const attention = review.summary.attentionCount;
+  if (attention === undefined || attention === null) {
+    return 'Sua carteira ainda não possui dados suficientes para gerar uma revisão.';
+  }
+  if (attention === 0) {
     return 'Nenhum ponto relevante identificado com os dados disponíveis.';
   }
-  if (review.summary.attentionCount === 1) {
+  if (attention === 1) {
     return '1 ponto merece revisão.';
   }
-  return `${review.summary.attentionCount} pontos merecem revisão.`;
+  return `${attention} pontos merecem revisão.`;
 }
 
 /**
@@ -97,7 +117,7 @@ function summaryText(review: PortfolioReviewDto): string {
  * existing feature — no new pages, no advice.
  */
 export function PortfolioReviewSection({ portfolioId }: { portfolioId: string }) {
-  const { data, isLoading, isError, refetch } = useQuery<PortfolioReviewDto>({
+  const { data, isLoading, isError, refetch } = useQuery<unknown>({
     queryKey: portfolioId ? portfolioReviewQueryKey(portfolioId) : ['portfolio-review', 'none'],
     queryFn: async () => {
       const res = await apiClient.get<{ data: PortfolioReviewDto }>(
@@ -118,7 +138,7 @@ export function PortfolioReviewSection({ portfolioId }: { portfolioId: string })
     );
   }
 
-  if (isError || !data) {
+  if (isError) {
     return (
       <Card style={{ padding: `${spacing.base}px`, marginBottom: `${spacing.base}px` }}>
         <SectionHeader title="Revisão da carteira" />
@@ -131,14 +151,23 @@ export function PortfolioReviewSection({ portfolioId }: { portfolioId: string })
     );
   }
 
+  const review = unwrapReview(data);
+  const signals = review?.signals ?? [];
+  const hasReviewData = review !== null && review.summary !== null && review.summary !== undefined;
+  const isPortfolioEmpty = review ? review.isEmpty : true;
+  const isNoReviewData = !hasReviewData || isPortfolioEmpty;
+
   return (
     <Card style={{ padding: `${spacing.base}px`, marginBottom: `${spacing.base}px` }}>
       <SectionHeader
         title="Revisão da carteira"
-        description={summaryText(data)}
+        description={summaryText(review)}
         action={
-          data.summary.attentionCount > 0 ? (
-            <Link href={`/reviews?portfolioId=${data.portfolioId}`} aria-label="Ver pendências">
+          review && review.summary && review.summary.attentionCount > 0 ? (
+            <Link
+              href={`/reviews?portfolioId=${review.portfolioId || portfolioId}`}
+              aria-label="Ver pendências"
+            >
               <Button size="sm" variant="outline">
                 Ver pendências
               </Button>
@@ -146,34 +175,52 @@ export function PortfolioReviewSection({ portfolioId }: { portfolioId: string })
           ) : undefined
         }
       />
-      {data.summary.dataNote !== null ? (
+      {review && !isNoReviewData && review.summary?.dataNote !== null && review.summary?.dataNote !== undefined ? (
         <p
           style={{ fontSize: '0.875rem', color: colors.textSecondary, margin: `${spacing.sm}px 0` }}
         >
-          Cobertura de preços: {formatPercentage(data.summary.dataNote, { showSign: false })} — as
+          Cobertura de preços: {formatPercentage(review.summary.dataNote, { showSign: false })} — as
           análises abaixo consideram apenas o valor com preço disponível.
         </p>
       ) : null}
-      {data.signals.length === 0 ? (
-        <EmptyState
-          title="Nenhum ponto relevante identificado"
-          description={
-            data.isEmpty
-              ? 'Adicione movimentações para começar a acompanhar seus ativos.'
-              : 'Com os dados disponíveis, não há itens que precisem da sua atenção.'
-          }
-          actionLabel={data.isEmpty ? 'Adicionar operação' : undefined}
-          onAction={
-            data.isEmpty
-              ? () => {
-                  window.location.href = `/portfolio?tab=operations&portfolioId=${data.portfolioId}`;
-                }
-              : undefined
-          }
-        />
+      {signals.length === 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.sm}px` }}>
+          <EmptyState
+            title={isNoReviewData ? 'Nenhuma revisão disponível' : 'Nenhum ponto relevante identificado'}
+            description={
+              isNoReviewData
+                ? 'Sua carteira ainda não possui dados suficientes para gerar uma revisão. Adicione ou importe investimentos para começar.'
+                : 'Com os dados disponíveis, não há itens que precisem da sua atenção.'
+            }
+            actionLabel={isNoReviewData ? 'Importar investimentos' : undefined}
+            onAction={
+              isNoReviewData
+                ? () => {
+                    window.location.href = `/portfolio/import?portfolioId=${review?.portfolioId || portfolioId}`;
+                  }
+                : undefined
+            }
+          />
+          {isNoReviewData ? (
+            <div
+              style={{
+                textAlign: 'center',
+                marginTop: `-${spacing.xs}px`,
+                marginBottom: `${spacing.sm}px`,
+              }}
+            >
+              <Link
+                href={`/portfolio?tab=operations&portfolioId=${review?.portfolioId || portfolioId}`}
+                style={{ fontSize: '0.875rem', color: colors.accent, textDecoration: 'none' }}
+              >
+                Adicionar operação
+              </Link>
+            </div>
+          ) : null}
+        </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.sm}px` }}>
-          {data.signals.map((signal) => {
+          {signals.map((signal) => {
             const presentation = describeReviewSignal(signal.code);
             return (
               <div
@@ -220,7 +267,7 @@ export function PortfolioReviewSection({ portfolioId }: { portfolioId: string })
                     {line.text}
                   </span>
                 ))}
-                {signal.action.kind === 'ROUTE' && signal.action.href ? (
+                {signal.action?.kind === 'ROUTE' && signal.action.href ? (
                   <span style={{ display: 'flex', gap: `${spacing.sm}px`, flexWrap: 'wrap' }}>
                     <Link
                       href={signal.action.href}
@@ -231,7 +278,7 @@ export function PortfolioReviewSection({ portfolioId }: { portfolioId: string })
                       </Button>
                     </Link>
                     <Link
-                      href={`/portfolio/review?portfolioId=${portfolioId}&signal=${signal.id}&period=1A`}
+                      href={`/portfolio/review?portfolioId=${review?.portfolioId || portfolioId}&signal=${signal.id}&period=1A`}
                       aria-label={`Ver detalhes de ${describeReviewSignal(signal.code).label}`}
                     >
                       <Button size="sm" variant="outline" style={{ minHeight: 44 }}>
@@ -242,7 +289,7 @@ export function PortfolioReviewSection({ portfolioId }: { portfolioId: string })
                 ) : (
                   <span>
                     <Link
-                      href={`/portfolio/review?portfolioId=${portfolioId}&signal=${signal.id}&period=1A`}
+                      href={`/portfolio/review?portfolioId=${review?.portfolioId || portfolioId}&signal=${signal.id}&period=1A`}
                       aria-label={`Ver detalhes de ${describeReviewSignal(signal.code).label}`}
                     >
                       <Button size="sm" variant="outline" style={{ minHeight: 44 }}>

@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { describeReviewSignal, buildReviewSignalTitle, buildReviewSignalLines } from '@atlas/ui';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import {
+  summaryText,
+  unwrapReview,
+  portfolioReviewQueryKey,
+  type PortfolioReviewDto,
+} from '@/components/portfolio/PortfolioReviewSection';
 
 /**
  * Phase 5Q-A — review presentation contract (pure view-model + web surface).
@@ -233,5 +239,160 @@ describe('Phase 5Q-A: review presentation', () => {
 
   it('never mixes floats into presentation math', () => {
     expect(section).not.toMatch(/parseFloat|Math\.pow|Math\.sqrt/);
+  });
+});
+
+describe('Hotfix: Empty portfolio & defensive review state handling', () => {
+  const section = fs.readFileSync(
+    path.join(process.cwd(), 'apps/web/src/components/portfolio/PortfolioReviewSection.tsx'),
+    'utf8',
+  );
+  const today = fs.readFileSync(
+    path.join(process.cwd(), 'apps/web/src/app/(app)/today/page.tsx'),
+    'utf8',
+  );
+  const portfolioPage = fs.readFileSync(
+    path.join(process.cwd(), 'apps/web/src/app/(app)/portfolio/page.tsx'),
+    'utf8',
+  );
+
+  const mockBaseReview: PortfolioReviewDto = {
+    portfolioId: 'port-123',
+    asOf: { generatedAt: '2026-10-29T10:00:00.000Z', marketDataAsOf: null },
+    summary: { attentionCount: 0, dataNote: null },
+    dataQuality: {
+      valuationCoveragePercent: '0',
+      totalPositions: 0,
+      valuedPositions: 0,
+      unvaluedPositions: 0,
+      stalePositions: 0,
+      missingPrices: 0,
+      reconciliation: { divergent: 0, missingLocal: 0, missingSource: 0, unresolved: 0 },
+      partialRuns: 0,
+      pendingReviews: 0,
+    },
+    signals: [],
+    isEmpty: true,
+  };
+
+  describe('summaryText', () => {
+    it('handles review undefined without runtime exception', () => {
+      expect(summaryText(undefined)).toBe(
+        'Sua carteira ainda não possui dados suficientes para gerar uma revisão.',
+      );
+    });
+
+    it('handles review null without runtime exception', () => {
+      expect(summaryText(null)).toBe(
+        'Sua carteira ainda não possui dados suficientes para gerar uma revisão.',
+      );
+    });
+
+    it('handles review with summary missing or null without exception', () => {
+      const corruptReview = { ...mockBaseReview, summary: undefined } as unknown as PortfolioReviewDto;
+      expect(summaryText(corruptReview)).toBe(
+        'Sua carteira ainda não possui dados suficientes para gerar uma revisão.',
+      );
+
+      const nullSummaryReview = { ...mockBaseReview, summary: null } as unknown as PortfolioReviewDto;
+      expect(summaryText(nullSummaryReview)).toBe(
+        'Sua carteira ainda não possui dados suficientes para gerar uma revisão.',
+      );
+    });
+
+    it('handles empty portfolio (isEmpty: true) by returning insufficient data copy', () => {
+      const emptyReview: PortfolioReviewDto = {
+        ...mockBaseReview,
+        isEmpty: true,
+        summary: { attentionCount: 0, dataNote: '0' },
+      };
+      expect(summaryText(emptyReview)).toBe(
+        'Sua carteira ainda não possui dados suficientes para gerar uma revisão.',
+      );
+    });
+
+    it('handles populated portfolio with attentionCount = 0 as no relevant items', () => {
+      const populatedZeroReview: PortfolioReviewDto = {
+        ...mockBaseReview,
+        isEmpty: false,
+        summary: { attentionCount: 0, dataNote: '100.00' },
+      };
+      expect(summaryText(populatedZeroReview)).toBe(
+        'Nenhum ponto relevante identificado com os dados disponíveis.',
+      );
+    });
+
+    it('handles populated portfolio with attentionCount = 1', () => {
+      const populatedOneReview: PortfolioReviewDto = {
+        ...mockBaseReview,
+        isEmpty: false,
+        summary: { attentionCount: 1, dataNote: '100.00' },
+      };
+      expect(summaryText(populatedOneReview)).toBe('1 ponto merece revisão.');
+    });
+
+    it('handles populated portfolio with attentionCount > 1', () => {
+      const populatedManyReview: PortfolioReviewDto = {
+        ...mockBaseReview,
+        isEmpty: false,
+        summary: { attentionCount: 4, dataNote: '85.00' },
+      };
+      expect(summaryText(populatedManyReview)).toBe('4 pontos merecem revisão.');
+    });
+  });
+
+  describe('unwrapReview', () => {
+    it('unwraps direct PortfolioReviewDto object', () => {
+      const result = unwrapReview(mockBaseReview);
+      expect(result).toBe(mockBaseReview);
+    });
+
+    it('unwraps nested { data: PortfolioReviewDto } envelope from cache or Axios response', () => {
+      const wrapped = { data: mockBaseReview };
+      const result = unwrapReview(wrapped);
+      expect(result).toEqual(mockBaseReview);
+    });
+
+    it('returns null on null or undefined input', () => {
+      expect(unwrapReview(null)).toBeNull();
+      expect(unwrapReview(undefined)).toBeNull();
+    });
+
+    it('returns null on non-review objects without summary', () => {
+      expect(unwrapReview({ foo: 'bar' })).toBeNull();
+      expect(unwrapReview({ data: { foo: 'bar' } })).toBeNull();
+    });
+  });
+
+  describe('query key and cache contract harmonization', () => {
+    it('produces identical query keys between portfolio review section and today page', () => {
+      expect(portfolioReviewQueryKey('port-abc')).toEqual(['portfolio-review', 'port-abc']);
+      expect(today).toContain('portfolioReviewQueryKey');
+      expect(today).toContain('unwrapReview');
+      expect(section).toContain('unwrapReview');
+    });
+  });
+
+  describe('semantic empty state classification and actionable CTAs', () => {
+    it('distinguishes NO_REVIEW_DATA / empty portfolio from zero attention in the review section', () => {
+      // Empty / no review state
+      expect(section).toContain('Nenhuma revisão disponível');
+      expect(section).toContain(
+        'Sua carteira ainda não possui dados suficientes para gerar uma revisão. Adicione ou importe investimentos para começar.',
+      );
+      // Actionable CTAs
+      expect(section).toContain('Importar investimentos');
+      expect(section).toContain('/portfolio/import?portfolioId=');
+      expect(section).toContain('Adicionar operação');
+      expect(section).toContain('/portfolio?tab=operations&portfolioId=');
+
+      // Populated with 0 attention
+      expect(section).toContain('Nenhum ponto relevante identificado');
+      expect(section).toContain('Com os dados disponíveis, não há itens que precisem da sua atenção.');
+    });
+
+    it('renders PortfolioReviewSection cleanly on the portfolio page', () => {
+      expect(portfolioPage).toContain('<PortfolioReviewSection portfolioId={activePortfolio.id} />');
+    });
   });
 });
