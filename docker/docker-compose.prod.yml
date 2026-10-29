@@ -1,0 +1,94 @@
+# ============================================================================
+# Project Atlas — Production-Like Docker Compose Stack
+# Multi-container topology for local verification and single-host staging
+# ============================================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: atlas_prod_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-atlas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-atlas_secure_password_placeholder}
+      POSTGRES_DB: ${POSTGRES_DB:-atlas_production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-atlas} -d ${POSTGRES_DB:-atlas_production}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    container_name: atlas_prod_api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      API_PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas_secure_password_placeholder}@db:5432/${POSTGRES_DB:-atlas_production}?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-placeholder_jwt_access_secret_min_32_characters_long_for_prod}
+      REFRESH_TOKEN_PEPPER: ${REFRESH_TOKEN_PEPPER:-placeholder_refresh_token_pepper_min_32_characters_for_prod}
+      PASSWORD_RESET_PEPPER: ${PASSWORD_RESET_PEPPER:-placeholder_password_reset_pepper_min_32_characters_prod}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://app.atlasinvest.com.br,http://localhost}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-RESEND}
+      RESEND_API_KEY: ${RESEND_API_KEY:-re_placeholder_api_key}
+      EMAIL_FROM: ${EMAIL_FROM:-Atlas Invest <no-reply@atlasinvest.com.br>}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://app.atlasinvest.com.br}
+      ALLOW_PUBLIC_REGISTRATION: ${ALLOW_PUBLIC_REGISTRATION:-false}
+      MARKET_DATA_PROVIDER: ${MARKET_DATA_PROVIDER:-BRAPI}
+      BRAPI_API_KEY: ${BRAPI_API_KEY:-brapi_placeholder_api_key}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-placeholder_openai_api_key}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    container_name: atlas_prod_web
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://app.atlasinvest.com.br}
+      API_INTERNAL_URL: http://api:3001
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/login || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  proxy:
+    image: caddy:2-alpine
+    container_name: atlas_prod_proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+

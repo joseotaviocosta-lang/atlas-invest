@@ -1,0 +1,57 @@
+# ============================================================================
+# Project Atlas — Production Caddyfile Reverse Proxy
+# Automatic HTTPS, HTTP/2, HTTP/3, Zero-Buffer SSE, and 1MB Upload Ceiling
+# ============================================================================
+
+{
+    email {$ACME_EMAIL:admin@atlasinvest.com.br}
+    admin off
+}
+
+{$APP_PUBLIC_DOMAIN:app.atlasinvest.com.br} {
+    # Step 31: Enforce 1MB request body limit aligned with API express.json ceiling
+    request_body {
+        max_size 1MB
+    }
+
+    # Security Headers
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    }
+
+    # API & Probes Upstream
+    handle /api/* {
+        reverse_proxy api:3001 {
+            # Step 28: Zero-buffer SSE streaming for AI responses
+            flush_interval -1
+        }
+    }
+
+    handle /health {
+        reverse_proxy api:3001
+    }
+
+    handle /ready {
+        reverse_proxy api:3001
+    }
+
+    handle /metrics {
+        reverse_proxy api:3001
+    }
+
+    # Web Frontend Upstream
+    handle /* {
+        reverse_proxy web:3000
+    }
+
+    # Structured JSON Access Logging
+    log {
+        output stdout
+        format json
+    }
+}
+

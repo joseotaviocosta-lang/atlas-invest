@@ -104,7 +104,7 @@ describe('Phase 4L.1V-C3-R1: Production Readiness Evidence Closure & Provider Ga
         Array<{ migration_name: string; rolled_back_at: Date | null }>
       >('SELECT migration_name, rolled_back_at FROM _prisma_migrations ORDER BY started_at ASC');
 
-      expect(migrationRows.length).toBe(41);
+      expect(migrationRows.length).toBe(45);
       for (const row of migrationRows) {
         expect(row.rolled_back_at).toBeNull();
       }
@@ -264,7 +264,7 @@ describe('Phase 4L.1V-C3-R1: Production Readiness Evidence Closure & Provider Ga
       expect(pfCount).toBe(1);
       expect(accCount).toBe(1);
       expect(txCount).toBe(3);
-      expect(migrationsCount.length).toBe(41);
+      expect(migrationsCount.length).toBe(45);
 
       // 7. Validate that restored data performs mathematically identical PortfolioReplay
       const restoredTransactions = await targetPrisma.transaction.findMany({
@@ -341,12 +341,15 @@ describe('Phase 4L.1V-C3-R1: Production Readiness Evidence Closure & Provider Ga
       const origAccess = process.env.JWT_ACCESS_SECRET;
       const origRefresh = process.env.REFRESH_TOKEN_PEPPER;
       const origReset = process.env.PASSWORD_RESET_PEPPER;
+      const origDb = process.env.DATABASE_URL;
 
       try {
         process.env.NODE_ENV = 'production';
         process.env.JWT_ACCESS_SECRET = 'a'.repeat(32);
         process.env.REFRESH_TOKEN_PEPPER = 'b'.repeat(32);
         process.env.PASSWORD_RESET_PEPPER = 'c'.repeat(32);
+        process.env.DATABASE_URL =
+          'postgresql://atlas:atlas@prod-db.atlas.internal:5432/atlas_prod';
 
         expect(() => validateProductionSecrets()).not.toThrow();
       } finally {
@@ -354,6 +357,7 @@ describe('Phase 4L.1V-C3-R1: Production Readiness Evidence Closure & Provider Ga
         process.env.JWT_ACCESS_SECRET = origAccess;
         process.env.REFRESH_TOKEN_PEPPER = origRefresh;
         process.env.PASSWORD_RESET_PEPPER = origReset;
+        process.env.DATABASE_URL = origDb;
       }
     });
   });

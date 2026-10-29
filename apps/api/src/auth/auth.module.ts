@@ -4,10 +4,8 @@ import { AuthController } from './auth.controller';
 import { PASSWORD_HASHER } from './services/password-hasher.interface';
 import { Argon2PasswordHasher } from './services/argon2-password-hasher.service';
 import { TokenService } from './services/token.service';
-import {
-  PASSWORD_RESET_NOTIFIER,
-  InMemoryPasswordResetNotifier,
-} from './services/password-reset-notifier.interface';
+import { PASSWORD_RESET_NOTIFIER } from './services/password-reset-notifier.interface';
+import { createPasswordResetNotifier } from './services/email/email-notifier.factory';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import {
   RegisterUserUseCase,
@@ -40,7 +38,7 @@ const USE_CASES = [
     TokenService,
     {
       provide: PASSWORD_RESET_NOTIFIER,
-      useClass: InMemoryPasswordResetNotifier,
+      useFactory: () => createPasswordResetNotifier(),
     },
     JwtAuthGuard,
     ...USE_CASES,

@@ -6,6 +6,7 @@ import {
   PASSWORD_RESET_NOTIFIER,
   PasswordResetNotifier,
 } from '../../auth/services/password-reset-notifier.interface';
+import { Logger } from '@atlas/logger';
 
 export interface ForgotPasswordDto {
   email: string;
@@ -13,6 +14,8 @@ export interface ForgotPasswordDto {
 
 @Injectable()
 export class ForgotPasswordUseCase {
+  private readonly logger = new Logger({ service: 'ForgotPasswordUseCase' });
+
   constructor(
     @Inject(USER_REPOSITORY)
     private readonly userRepository: IUserRepository,
@@ -39,7 +42,17 @@ export class ForgotPasswordUseCase {
         expiresAt,
       });
 
-      await this.notifier.sendResetEmail(user.email, rawToken);
+      try {
+        await this.notifier.sendResetEmail(user.email, rawToken);
+      } catch (err: unknown) {
+        // Step 10 & 9: Delivery failure is factually observable in server logs,
+        // sanitized without raw token, while maintaining anti-enumeration for the client.
+        this.logger.error('Failed to dispatch password reset email', {
+          userId: user.id,
+          recipient: user.email,
+          error: err instanceof Error ? err.message : 'Unknown error',
+        });
+      }
     }
 
     // Always return generic accepted: true to prevent user enumeration
