@@ -239,6 +239,8 @@ const sellHandler: TransactionHandler<TradeTransaction> = {
         currentQuantity: currentQty.toString(),
         attemptedDeduction: tx.quantity.toString(),
         resultingQuantity: resultingQty.toString(),
+        transactionId: String(tx.id),
+        tradeDate: tx.tradeDate.toString(),
       });
     }
 
@@ -472,6 +474,8 @@ const transferOutHandler: TransactionHandler<TransferTransaction> = {
         currentQuantity: currentQty.toString(),
         attemptedDeduction: tx.quantity.toString(),
         resultingQuantity: resultingQty.toString(),
+        transactionId: String(tx.id),
+        tradeDate: tx.tradeDate.toString(),
       });
     }
 

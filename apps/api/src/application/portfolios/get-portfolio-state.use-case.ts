@@ -1,14 +1,15 @@
 import {
   Inject,
   Injectable,
+  Optional,
   BadRequestException,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { IPortfolioRepository, ITransactionRepository } from '@atlas/database';
+import { IPortfolioRepository, ITransactionRepository, IAssetRepository } from '@atlas/database';
 import { LocalDate } from '@atlas/domain';
-import { replayPortfolio, PortfolioReplayError } from '@atlas/portfolio-engine';
-import { PORTFOLIO_REPOSITORY, TRANSACTION_REPOSITORY } from '../../database/tokens';
+import { replayPortfolio, PortfolioReplayError, NegativePositionError } from '@atlas/portfolio-engine';
+import { PORTFOLIO_REPOSITORY, TRANSACTION_REPOSITORY, ASSET_REPOSITORY } from '../../database/tokens';
 import { PortfolioStateReadModel } from './read-models';
 import { PortfolioReadModelMapper } from './mappers/portfolio-read-model.mapper';
 
@@ -25,6 +26,9 @@ export class GetPortfolioStateUseCase {
     private readonly portfolioRepository: IPortfolioRepository,
     @Inject(TRANSACTION_REPOSITORY)
     private readonly transactionRepository: ITransactionRepository,
+    @Optional()
+    @Inject(ASSET_REPOSITORY)
+    private readonly assetRepository?: IAssetRepository,
   ) {}
 
   async execute(params: GetPortfolioStateParams): Promise<PortfolioStateReadModel> {
@@ -76,6 +80,39 @@ export class GetPortfolioStateUseCase {
         asOfLocalDate ? asOfLocalDate.toString() : null,
       );
     } catch (err: unknown) {
+      if (err instanceof NegativePositionError) {
+        let ticker = err.assetId;
+        try {
+          if (this.assetRepository) {
+            const asset = await this.assetRepository.findById(err.assetId);
+            if (asset?.ticker) ticker = asset.ticker;
+          }
+        } catch {
+          // fallback to assetId
+        }
+        const dateStr = err.tradeDate ?? '';
+        const formattedDate = dateStr.includes('-')
+          ? dateStr.split('-').reverse().join('/')
+          : dateStr;
+        const formattedDatePart = formattedDate ? ` em ${formattedDate}` : '';
+        const userMessage = `Venda de ${err.attemptedDeduction} ${ticker}${formattedDatePart} sem posição anterior registrada.`;
+
+        throw new UnprocessableEntityException({
+          message: userMessage,
+          code: 'PORTFOLIO.REPLAY_FAILED',
+          details: {
+            reason: 'NEGATIVE_POSITION',
+            assetId: err.assetId,
+            ticker,
+            accountId: err.accountId,
+            currentQuantity: err.currentQuantity,
+            attemptedDeduction: err.attemptedDeduction,
+            resultingQuantity: err.resultingQuantity,
+            transactionId: err.transactionId,
+            tradeDate: err.tradeDate,
+          },
+        });
+      }
       if (err instanceof PortfolioReplayError) {
         throw new UnprocessableEntityException({
           message: err.message,

@@ -109,6 +109,20 @@ interface CatalogAssetDto {
   name: string;
 }
 
+function isNegativePositionError(err: ApiError | null): boolean {
+  if (!err) return false;
+  if (err.message && err.message.includes('sem posição anterior')) return true;
+  if (
+    typeof err.details === 'object' &&
+    err.details !== null &&
+    'reason' in err.details &&
+    (err.details as { reason: string }).reason === 'NEGATIVE_POSITION'
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function PortfolioPageContent() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -1007,7 +1021,9 @@ function PortfolioPageContent() {
                           message={
                             isHistorical
                               ? 'O servidor não conseguiu reconstruir o estado histórico. Tente outra data ou volte para hoje.'
-                              : 'Não foi possível reconstruir os dados desta carteira. Tente novamente ou revise o histórico de movimentações.'
+                              : isNegativePositionError(stateError)
+                                ? `${stateError?.message}\n\nPara completar a carteira:\n• importe uma posição inicial anterior a esta data; ou\n• importe histórico anterior.`
+                                : 'Não foi possível reconstruir os dados desta carteira. Tente novamente ou revise o histórico de movimentações.'
                           }
                           onRetry={() => refetchState()}
                         />
@@ -1387,8 +1403,16 @@ function PortfolioPageContent() {
             ) : isStateError && !stateData ? (
               <Card style={{ padding: `${spacing.xl}px` }}>
                 <ErrorState
-                  title="Falha ao carregar posições"
-                  message="Ocorreu um erro ao consultar as posições da carteira."
+                  title={
+                    isNegativePositionError(stateError)
+                      ? 'Inconsistência na Reconstituição da Carteira'
+                      : 'Falha ao carregar posições'
+                  }
+                  message={
+                    isNegativePositionError(stateError)
+                      ? `${stateError?.message}\n\nPara completar a carteira:\n• importe uma posição inicial anterior a esta data; ou\n• importe histórico anterior.`
+                      : 'Ocorreu um erro ao consultar as posições da carteira.'
+                  }
                   onRetry={() => refetchState()}
                 />
               </Card>

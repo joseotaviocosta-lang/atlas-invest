@@ -54,6 +54,8 @@ export class NegativePositionError extends PortfolioReplayError {
   readonly currentQuantity: string;
   readonly attemptedDeduction: string;
   readonly resultingQuantity: string;
+  readonly transactionId?: string;
+  readonly tradeDate?: string;
 
   constructor(props: {
     portfolioId: string;
@@ -62,6 +64,8 @@ export class NegativePositionError extends PortfolioReplayError {
     currentQuantity: string;
     attemptedDeduction: string;
     resultingQuantity: string;
+    transactionId?: string;
+    tradeDate?: string;
   }) {
     super(
       `Negative position violation: Account '${props.accountId}' holds '${props.currentQuantity}' units of asset '${props.assetId}', but transaction attempted to deduct '${props.attemptedDeduction}', resulting in invalid negative quantity '${props.resultingQuantity}'. Long-only policy violated.`,
@@ -73,6 +77,8 @@ export class NegativePositionError extends PortfolioReplayError {
     this.currentQuantity = props.currentQuantity;
     this.attemptedDeduction = props.attemptedDeduction;
     this.resultingQuantity = props.resultingQuantity;
+    this.transactionId = props.transactionId;
+    this.tradeDate = props.tradeDate;
   }
 }
 

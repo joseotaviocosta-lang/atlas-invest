@@ -8,7 +8,7 @@ import {
   PersistenceError,
 } from '@atlas/database';
 import { DomainError } from '@atlas/domain';
-import { PortfolioReplayError } from '@atlas/portfolio-engine';
+import { PortfolioReplayError, NegativePositionError } from '@atlas/portfolio-engine';
 
 const HTTP_STATUS_NAMES: Record<number, string> = {
   400: 'Bad Request',
@@ -64,6 +64,18 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       statusCode = HttpStatus.UNPROCESSABLE_ENTITY;
       errorCode = 'PORTFOLIO.REPLAY_FAILED';
       message = exception.message;
+      if (exception instanceof NegativePositionError) {
+        details = {
+          reason: 'NEGATIVE_POSITION',
+          assetId: exception.assetId,
+          accountId: exception.accountId,
+          currentQuantity: exception.currentQuantity,
+          attemptedDeduction: exception.attemptedDeduction,
+          resultingQuantity: exception.resultingQuantity,
+          transactionId: exception.transactionId,
+          tradeDate: exception.tradeDate,
+        };
+      }
     } else if (exception instanceof DomainError) {
       statusCode = HttpStatus.BAD_REQUEST;
       errorCode = exception.code;
@@ -83,6 +95,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         // ever leave the API in error bodies. Never ids, payloads or secrets.
         if (typeof obj['effectiveTransactionId'] === 'string') {
           details = { effectiveTransactionId: obj['effectiveTransactionId'] };
+        } else if (obj['code'] === 'PORTFOLIO.REPLAY_FAILED' && typeof obj['details'] === 'object' && obj['details'] !== null) {
+          details = obj['details'];
         }
       }
       errorCode =
