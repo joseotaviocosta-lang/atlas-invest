@@ -96,11 +96,13 @@ export function PortfolioSummaryCards({
             </span>
           ) : (
             realizedResult.map((res) => {
-              const amountColor = res.isPositive
-                ? colors.positive
-                : res.isNegative
-                  ? colors.negative
-                  : colors.textPrimary;
+              const amountColor = res.isIncomplete
+                ? colors.textMuted
+                : res.isPositive
+                  ? colors.positive
+                  : res.isNegative
+                    ? colors.negative
+                    : colors.textPrimary;
 
               return (
                 <div key={res.currency}>
@@ -131,7 +133,18 @@ export function PortfolioSummaryCards({
                       {res.currency}
                     </span>
                   </div>
-                  {res.formattedPercentage && (
+                  {res.isIncomplete && (
+                    <span
+                      style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        color: colors.warning,
+                      }}
+                    >
+                      Cálculo incompleto
+                    </span>
+                  )}
+                  {!res.isIncomplete && res.formattedPercentage && (
                     <span
                       style={{
                         fontSize: '0.75rem',

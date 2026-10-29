@@ -35,18 +35,25 @@ export function PortfolioSummaryCards({
           <Text style={[styles.mainValue, { color: themeTokens.colors.textMuted }]}>—</Text>
         ) : (
           realizedResult.map((res) => {
-            const amountColor = res.isPositive
-              ? themeTokens.colors.success
-              : res.isNegative
-                ? themeTokens.colors.danger
-                : themeTokens.colors.text;
+            const amountColor = res.isIncomplete
+              ? themeTokens.colors.textMuted
+              : res.isPositive
+                ? themeTokens.colors.success
+                : res.isNegative
+                  ? themeTokens.colors.danger
+                  : themeTokens.colors.text;
 
             return (
               <View key={res.currency} style={styles.currencyRow}>
                 <Text style={[styles.mainValue, { color: amountColor }]}>
                   {res.formattedAmount}
                 </Text>
-                {res.formattedPercentage && (
+                {res.isIncomplete && (
+                  <Text style={[styles.percentage, { color: themeTokens.colors.warning }]}>
+                    Cálculo incompleto
+                  </Text>
+                )}
+                {!res.isIncomplete && res.formattedPercentage && (
                   <Text style={[styles.percentage, { color: amountColor }]}>
                     {res.formattedPercentage}
                   </Text>

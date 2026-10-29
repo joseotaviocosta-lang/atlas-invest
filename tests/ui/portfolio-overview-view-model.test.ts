@@ -352,5 +352,74 @@ describe('UI View Model: Portfolio Overview (Phase 2A)', () => {
       expect(pos.totalCost).toBe('R$ 123.456.789.012,34');
       expect(pos.averageCost).toBe('R$ 1.234,56');
     });
+
+    it('distinguishes incomplete realized result from true zero realized result', () => {
+      // 1. Incomplete realized result (e.g. baseline disposal with unknown acquisition cost)
+      const incompleteState: PortfolioStateDto = {
+        portfolioId: samplePortfolioId,
+        asOfDate: null,
+        completeness: { costBasis: 'INCOMPLETE' },
+        positions: [],
+        accounts: [],
+        realizedSummaries: [
+          {
+            currency: 'BRL',
+            status: 'INCOMPLETE',
+            grossProceeds: { amount: '5000.00', currency: 'BRL' },
+            sellingCosts: { amount: '10.00', currency: 'BRL' },
+            netProceeds: { amount: '4990.00', currency: 'BRL' },
+            costBasisRemoved: null,
+            realizedGainLoss: null,
+            realizedReturnPercentage: null,
+            disposalCount: 2,
+          },
+        ],
+        incomeSummaries: [],
+        cashFlowSummaries: [],
+      };
+
+      const incompleteVm = mapToPortfolioOverviewViewModel(incompleteState, null, null);
+      expect(incompleteVm.summaryCards.realizedResult).toHaveLength(1);
+      const item = incompleteVm.summaryCards.realizedResult[0]!;
+      expect(item.formattedAmount).toBe('—');
+      expect(item.formattedAmount).not.toBe('R$ 0,00');
+      expect(item.isIncomplete).toBe(true);
+      expect(item.isComplete).toBe(false);
+      expect(item.isZero).toBe(false);
+      expect(item.completenessLabel).toBe('Cálculo incompleto');
+
+      // 2. True zero realized result (known cost basis, exactly breakeven)
+      const trueZeroState: PortfolioStateDto = {
+        portfolioId: samplePortfolioId,
+        asOfDate: null,
+        completeness: { costBasis: 'COMPLETE' },
+        positions: [],
+        accounts: [],
+        realizedSummaries: [
+          {
+            currency: 'BRL',
+            status: 'KNOWN',
+            grossProceeds: { amount: '1000.00', currency: 'BRL' },
+            sellingCosts: { amount: '0.00', currency: 'BRL' },
+            netProceeds: { amount: '1000.00', currency: 'BRL' },
+            costBasisRemoved: { amount: '1000.00', currency: 'BRL' },
+            realizedGainLoss: { amount: '0.00', currency: 'BRL' },
+            realizedReturnPercentage: '0.00',
+            disposalCount: 1,
+          },
+        ],
+        incomeSummaries: [],
+        cashFlowSummaries: [],
+      };
+
+      const trueZeroVm = mapToPortfolioOverviewViewModel(trueZeroState, null, null);
+      expect(trueZeroVm.summaryCards.realizedResult).toHaveLength(1);
+      const zeroItem = trueZeroVm.summaryCards.realizedResult[0]!;
+      expect(zeroItem.formattedAmount).toBe('R$ 0,00');
+      expect(zeroItem.isIncomplete).toBe(false);
+      expect(zeroItem.isComplete).toBe(true);
+      expect(zeroItem.isZero).toBe(true);
+      expect(zeroItem.completenessLabel).toBeNull();
+    });
   });
 });

@@ -213,6 +213,12 @@ export class PortfolioHistoryItemSwaggerDto {
   @ApiProperty({ type: String, nullable: true, example: 'e0000000-0000-4000-8000-000000000001' })
   assetId!: string | null;
 
+  @ApiProperty({ type: String, nullable: true, required: false, example: 'ITSA4' })
+  assetTicker?: string | null;
+
+  @ApiProperty({ type: String, nullable: true, required: false, example: 'Itaúsa PN' })
+  assetName?: string | null;
+
   @ApiProperty({ type: String, nullable: true, example: 'BRL' })
   currency!: string | null;
 

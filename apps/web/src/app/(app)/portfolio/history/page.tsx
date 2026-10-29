@@ -25,6 +25,12 @@ import {
 } from '@/components/portfolio';
 import { Card, Skeleton, ErrorState } from '@/components/ui';
 
+interface CatalogAssetDto {
+  id: string;
+  ticker: string;
+  name: string;
+}
+
 function PortfolioHistoryContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -147,14 +153,63 @@ function PortfolioHistoryContent() {
     staleTime: 30_000,
   });
 
+  // 6. Fetch assets catalog to enrich tickers and names
+  const { data: assetsCatalog = [] } = useQuery<CatalogAssetDto[], ApiError>({
+    queryKey: ['assets-catalog'],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get<{ data: CatalogAssetDto[] }>('/api/v1/assets');
+        return res.data || [];
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 300_000,
+  });
+
+  const assetsMetaMap = useMemo(() => {
+    const map: Record<string, AssetMeta> = {};
+    for (const asset of assetsCatalog) {
+      map[asset.id] = {
+        id: asset.id,
+        ticker: asset.ticker,
+        name: asset.name,
+      };
+    }
+    if (stateData?.positions) {
+      for (const pos of stateData.positions) {
+        const existing = map[pos.assetId];
+        if (!existing) {
+          map[pos.assetId] = {
+            id: pos.assetId,
+            ticker: pos.ticker || 'Ativo',
+            name: pos.assetName || pos.ticker || 'Ativo',
+            currency: pos.currency,
+          };
+        } else if (pos.ticker || pos.assetName) {
+          map[pos.assetId] = {
+            id: pos.assetId,
+            ticker: existing.ticker || pos.ticker || 'Ativo',
+            name: existing.name || pos.assetName || pos.ticker || 'Ativo',
+            currency: pos.currency || existing.currency,
+          };
+        }
+      }
+    }
+    return map;
+  }, [assetsCatalog, stateData]);
+
   // Extract open assets from state to populate the asset filter dropdown
   const filterAssets = useMemo(() => {
     if (!stateData?.positions) return [];
-    return stateData.positions.map((p) => ({
-      id: p.assetId,
-      ticker: p.assetId.slice(0, 8),
-    }));
-  }, [stateData]);
+    return stateData.positions.map((p) => {
+      const meta = assetsMetaMap[p.assetId];
+      return {
+        id: p.assetId,
+        ticker: meta?.ticker || p.ticker || 'Ativo',
+      };
+    });
+  }, [stateData, assetsMetaMap]);
 
   // Aggregate loaded pages into single array for the presentation view-model
   const historyItems = useMemo(() => {
@@ -171,20 +226,6 @@ function PortfolioHistoryContent() {
     hasMore: false,
     totalCount: historyItems.length,
   };
-
-  const assetsMetaMap = useMemo(() => {
-    const map: Record<string, AssetMeta> = {};
-    if (stateData?.positions) {
-      for (const pos of stateData.positions) {
-        map[pos.assetId] = {
-          id: pos.assetId,
-          ticker: pos.assetId.slice(0, 8),
-          currency: pos.currency,
-        };
-      }
-    }
-    return map;
-  }, [stateData]);
 
   // Pure presentation view model
   const activityViewModel = useMemo(() => {

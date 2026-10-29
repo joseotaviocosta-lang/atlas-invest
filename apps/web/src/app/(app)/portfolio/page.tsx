@@ -67,6 +67,8 @@ import {
   isNonNegativeDecimalString,
   CIVIL_DATE_RE,
   moneyAmountOf,
+  formatOperationTypeLabel,
+  isOpeningPositionTransaction,
 } from '@/lib/operation-entry';
 
 const PORTFOLIO_TYPE_LABELS: Record<PortfolioType, string> = {
@@ -1753,7 +1755,7 @@ function PortfolioPageContent() {
                               color: colors.textPrimary,
                             }}
                           >
-                            {OPERATION_TYPE_LABELS[tx.type] ?? tx.type} •{' '}
+                            {formatOperationTypeLabel(tx)} •{' '}
                             {assetLabelById.get(tx.assetId ?? '') ?? 'Ativo'}
                           </div>
                           <div
@@ -1782,8 +1784,16 @@ function PortfolioPageContent() {
                         <div
                           style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px` }}
                         >
-                          <Badge variant={tx.type === 'SELL' ? 'warning' : 'primary'}>
-                            {OPERATION_TYPE_LABELS[tx.type] ?? tx.type}
+                          <Badge
+                            variant={
+                              tx.type === 'SELL'
+                                ? 'warning'
+                                : isOpeningPositionTransaction(tx)
+                                  ? 'neutral'
+                                  : 'primary'
+                            }
+                          >
+                            {formatOperationTypeLabel(tx)}
                           </Badge>
                           {tx.notes?.includes('[COMPENSAÇÃO') && (
                             <Badge variant="warning">Compensação</Badge>

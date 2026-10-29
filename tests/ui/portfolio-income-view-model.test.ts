@@ -262,7 +262,26 @@ describe('UI View Model: Portfolio Income (Phase 2D)', () => {
       });
 
       expect(vm.groups[0].items[0].canNavigateToAsset).toBe(true);
-      expect(vm.groups[0].items[0].assetTicker).toBe(assetPetr4.slice(0, 8));
+      // Regression (post-baseline hotfix): raw internal IDs must never leak as
+      // user-facing labels. Without asset metadata the ticker falls back to a
+      // safe label while routing still uses the internal assetId.
+      expect(vm.groups[0].items[0].assetId).toBe(assetPetr4);
+      expect(vm.groups[0].items[0].assetTicker).toBe('Ativo não identificado');
+      expect(vm.groups[0].items[0].assetTicker).not.toBe(assetPetr4.slice(0, 8));
+    });
+
+    it('prefers server-enriched ticker over internal assetId', () => {
+      const items = [
+        makeHistoryItem({ assetId: assetPetr4, assetTicker: 'PETR4', assetName: 'Petrobras PN' }),
+      ];
+      const vm = buildPortfolioIncomeViewModel({
+        portfolioId: samplePortfolioId,
+        historyItems: items,
+        pagination: makePagination(),
+      });
+
+      expect(vm.groups[0].items[0].assetTicker).toBe('PETR4');
+      expect(vm.groups[0].items[0].assetId).toBe(assetPetr4);
     });
   });
 });

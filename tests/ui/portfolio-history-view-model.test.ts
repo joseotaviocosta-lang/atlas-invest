@@ -685,5 +685,104 @@ describe('Portfolio Activity View Model (Fase 2C)', () => {
       expect(items[3]!.kindLabel).toBe('Transferência de saída');
       expect(items[3]!.kindLabel).not.toMatch(/aporte|retirada/i);
     });
+
+    it('distinguishes opening position baseline from normal custody transfer', () => {
+      const historyItems: PortfolioHistoryItemDto[] = [
+        {
+          id: 'tr_opening',
+          kind: 'TRANSFER',
+          transactionId: 'tx-opening-1',
+          tradeDate: '2024-12-31',
+          accountId: 'acc-1',
+          assetId: 'asset-petr4',
+          currency: 'BRL',
+          details: {
+            type: 'TRANSFER_IN',
+            quantity: '700',
+            isOpeningPosition: true,
+            costBasisStatus: 'INCOMPLETE',
+          },
+        },
+        {
+          id: 'tr_normal',
+          kind: 'TRANSFER',
+          transactionId: 'tx-transfer-normal',
+          tradeDate: '2025-06-15',
+          accountId: 'acc-1',
+          assetId: 'asset-petr4',
+          currency: 'BRL',
+          details: {
+            type: 'TRANSFER_IN',
+            quantity: '100',
+            isOpeningPosition: false,
+          },
+        },
+      ];
+
+      const vm = buildPortfolioActivityViewModel({
+        portfolioId: 'port-1',
+        historyItems,
+        pagination: defaultPagination,
+        portfolioState: mockPortfolioState,
+        accountsMeta,
+        assetsMeta,
+      });
+
+      const items = vm.groups.flatMap((g) => g.items);
+      const opening = items.find((i) => i.id === 'tr_opening')!;
+      const normal = items.find((i) => i.id === 'tr_normal')!;
+
+      expect(opening.kindLabel).toBe('Posição inicial');
+      expect(opening.statusBadgeLabel).toBe('Custo incompleto');
+
+      expect(normal.kindLabel).toBe('Transferência de entrada');
+    });
+
+    it('renders ticker/name instead of UUID fragment, and falls back safely without leaking raw UUIDs', () => {
+      const historyItems: PortfolioHistoryItemDto[] = [
+        {
+          id: 'rd_known_asset',
+          kind: 'REALIZED_DISPOSAL',
+          transactionId: 'tx-rd-1',
+          tradeDate: '2026-09-18',
+          accountId: 'acc-1',
+          assetId: 'asset-petr4',
+          currency: 'BRL',
+          details: { quantity: '50' },
+        },
+        {
+          id: 'rd_unidentified_asset',
+          kind: 'REALIZED_DISPOSAL',
+          transactionId: 'tx-rd-2',
+          tradeDate: '2026-09-18',
+          accountId: 'acc-1',
+          assetId: '304ca9c7-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+          currency: 'BRL',
+          details: { quantity: '10' },
+        },
+      ];
+
+      const vm = buildPortfolioActivityViewModel({
+        portfolioId: 'port-1',
+        historyItems,
+        pagination: defaultPagination,
+        portfolioState: mockPortfolioState,
+        accountsMeta,
+        assetsMeta,
+      });
+
+      const items = vm.groups[0]!.items;
+
+      // Known asset: renders PETR4 and preserves navigation by assetId
+      expect(items[0]!.assetTicker).toBe('PETR4');
+      expect(items[0]!.assetId).toBe('asset-petr4');
+      expect(items[0]!.canNavigateToAsset).toBe(true);
+
+      // Unidentified asset: renders fallback and NEVER raw truncated UUID (304ca9c7)
+      expect(items[1]!.assetTicker).toBe('Ativo não identificado');
+      expect(items[1]!.assetTicker).not.toContain('304ca9c7');
+      expect(items[1]!.assetName).toBe('Ativo não identificado');
+      expect(items[1]!.assetId).toBe('304ca9c7-bbbb-4ccc-8ddd-eeeeeeeeeeee');
+    });
   });
 });

@@ -188,8 +188,11 @@ export function buildPortfolioCashFlowViewModel(
       : null;
     const accountName = accountMap.get(item.accountId) || `Conta ${item.accountId.slice(0, 8)}`;
     const asset = item.assetId ? assetMap.get(item.assetId) || null : null;
-    const assetTicker = asset?.ticker || (item.assetId ? item.assetId.slice(0, 8) : null);
-    const assetName = asset?.name || assetTicker;
+    const assetTicker =
+      asset?.ticker ||
+      item.assetTicker ||
+      (item.assetId ? 'Ativo não identificado' : null);
+    const assetName = asset?.name || item.assetName || assetTicker;
     const formattedTradeDate = formatDate(item.tradeDate);
 
     let secondaryContext: string | null = null;

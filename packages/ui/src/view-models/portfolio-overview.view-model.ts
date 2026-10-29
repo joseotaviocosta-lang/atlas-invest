@@ -135,6 +135,9 @@ export interface RealizedResultCardItem {
   readonly formattedPercentage: string | null;
   readonly disposalCount: number;
   readonly status: 'KNOWN' | 'INCOMPLETE';
+  readonly isComplete: boolean;
+  readonly isIncomplete: boolean;
+  readonly completenessLabel: string | null;
 }
 
 export interface IncomeReceivedCardItem {
@@ -300,24 +303,37 @@ export function mapToPortfolioOverviewViewModel(
 
   // Summary Card 1: Realized Result per currency (from official API summaries)
   const realizedResult: RealizedResultCardItem[] = state.realizedSummaries.map((summary) => {
-    const amountStr = summary.realizedGainLoss?.amount ?? '0';
-    const isNegative = amountStr.startsWith('-');
-    const isZero = amountStr === '0' || amountStr === '0.00' || /^0+(\.0+)?$/.test(amountStr);
-    const isPositive = !isNegative && !isZero;
+    const isCostIncomplete = summary.status === 'INCOMPLETE' || summary.realizedGainLoss === null;
+    const amountStr = summary.realizedGainLoss?.amount ?? null;
+    const isNegative = !isCostIncomplete && amountStr !== null && amountStr.startsWith('-');
+    const isZero =
+      !isCostIncomplete &&
+      amountStr !== null &&
+      (amountStr === '0' || amountStr === '0.00' || /^0+(\.0+)?$/.test(amountStr));
+    const isPositive = !isCostIncomplete && !isNegative && !isZero;
 
-    const formattedPercentage = summary.realizedReturnPercentage
-      ? formatPercentage(summary.realizedReturnPercentage, { showSign: true })
-      : null;
+    const formattedAmount =
+      isCostIncomplete || amountStr === null
+        ? '—'
+        : formatCurrency(amountStr, summary.currency);
+
+    const formattedPercentage =
+      !isCostIncomplete && summary.realizedReturnPercentage
+        ? formatPercentage(summary.realizedReturnPercentage, { showSign: true })
+        : null;
 
     return {
       currency: summary.currency,
-      formattedAmount: formatCurrency(amountStr, summary.currency),
+      formattedAmount,
       isPositive,
       isNegative,
       isZero,
       formattedPercentage,
       disposalCount: summary.disposalCount,
       status: summary.status,
+      isComplete: !isCostIncomplete,
+      isIncomplete: isCostIncomplete,
+      completenessLabel: isCostIncomplete ? 'Cálculo incompleto' : null,
     };
   });
   realizedResult.sort((a, b) => a.currency.localeCompare(b.currency));

@@ -191,8 +191,14 @@ export function buildPortfolioActivityViewModel(
     const details = item.details || {};
     const accountName = resolveAccountName(item.accountId);
     const asset = item.assetId ? assetMap.get(item.assetId) || null : null;
-    const assetTicker = asset?.ticker || (item.assetId ? item.assetId.slice(0, 8) : null);
-    const assetName = asset?.name || assetTicker;
+    const assetTicker =
+      asset?.ticker ||
+      item.assetTicker ||
+      (item.assetId ? 'Ativo não identificado' : null);
+    const assetName =
+      asset?.name ||
+      item.assetName ||
+      assetTicker;
     const canNavigateToAsset = item.assetId ? openAssetIds.has(item.assetId) : false;
     const formattedTradeDate = formatDate(item.tradeDate);
 
@@ -445,15 +451,21 @@ export function buildPortfolioActivityViewModel(
           counterpartyAccountId?: string | null;
           quantity?: string;
           costBasisStatus?: 'KNOWN' | 'INCOMPLETE';
+          isOpeningPosition?: boolean;
         };
 
         const isTransferIn = tr.type === 'TRANSFER_IN';
-        const kindLabel = isTransferIn ? 'Transferência de entrada' : 'Transferência de saída';
+        const isOpeningPosition = Boolean(tr.isOpeningPosition);
+        const kindLabel = isOpeningPosition
+          ? 'Posição inicial'
+          : isTransferIn
+            ? 'Transferência de entrada'
+            : 'Transferência de saída';
         const isUnmatched = tr.status === 'UNMATCHED';
         const isCostBasisIncomplete = tr.costBasisStatus === 'INCOMPLETE';
 
         let statusBadgeLabel: string | null = null;
-        let badgeVariant: ActivityBadgeVariant = 'info';
+        let badgeVariant: ActivityBadgeVariant = isOpeningPosition ? 'neutral' : 'info';
 
         if (isUnmatched) {
           statusBadgeLabel = 'Transferência incompleta';

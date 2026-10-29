@@ -26,7 +26,62 @@ export const OPERATION_TYPE_LABELS: Record<string, string> = {
   DIVIDEND: 'Dividendo',
   JCP: 'Juros sobre Capital Próprio',
   FII_INCOME: 'Rendimento FII',
+  TRANSFER_IN: 'Transferência de entrada',
+  TRANSFER_OUT: 'Transferência de saída',
+  SPLIT: 'Desdobramento',
+  REVERSE_SPLIT: 'Grupamento',
+  BONUS: 'Bonificação',
+  AMORTIZATION: 'Amortização',
+  SUBSCRIPTION: 'Subscrição',
+  DEPOSIT: 'Depósito',
+  WITHDRAWAL: 'Retirada',
+  FEE: 'Taxa',
+  TAX: 'Tributo',
 };
+
+/**
+ * Determine if a transaction is an opening position baseline from B3 or other annual reports.
+ *
+ * Provenance is notes-based: the B3 annual-report importer persists candidates
+ * with `rawOperation: 'POSICAO_INICIAL'` and notes `Posição em DD/MM/AAAA ...`,
+ * and confirm-portfolio-import appends those notes to
+ * `Importado de <arquivo> (linha N) — ...`. `TransactionSource` carries only
+ * 'B3' (never a per-report source), so source alone cannot identify baselines.
+ */
+export function isOpeningPositionTransaction(tx: {
+  type: string;
+  notes?: string | null;
+  source?: string | null;
+  provider?: string | null;
+}): boolean {
+  if (tx.type !== 'TRANSFER_IN') return false;
+  const notes = tx.notes ?? '';
+  return (
+    notes.includes('Posição em') ||
+    notes.includes('Posição inicial') ||
+    notes.includes('Posição Inicial') ||
+    notes.includes('relatorio-consolidado-anual') ||
+    notes.includes('Posição de Abertura')
+  );
+}
+
+/**
+ * Human-readable operation label respecting opening position provenance.
+ */
+export function formatOperationTypeLabel(tx: {
+  type: string;
+  notes?: string | null;
+  source?: string | null;
+  provider?: string | null;
+}): string {
+  if (tx.type === 'TRANSFER_IN') {
+    return isOpeningPositionTransaction(tx) ? 'Posição inicial' : 'Transferência de entrada';
+  }
+  if (tx.type === 'TRANSFER_OUT') {
+    return 'Transferência de saída';
+  }
+  return OPERATION_TYPE_LABELS[tx.type] ?? tx.type;
+}
 
 export const OPERATION_CURRENCY_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'BRL', label: 'BRL — Real brasileiro' },

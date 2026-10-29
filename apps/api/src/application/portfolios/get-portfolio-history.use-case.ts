@@ -1,6 +1,7 @@
 import {
   Inject,
   Injectable,
+  Optional,
   BadRequestException,
   NotFoundException,
   UnprocessableEntityException,
@@ -10,6 +11,7 @@ import {
   ITransactionRepository,
   IAccountRepository,
   ITransactionRectificationRepository,
+  IAssetRepository,
 } from '@atlas/database';
 import { LocalDate } from '@atlas/domain';
 import { replayPortfolio, PortfolioReplayError } from '@atlas/portfolio-engine';
@@ -18,6 +20,7 @@ import {
   TRANSACTION_REPOSITORY,
   TRANSACTION_RECTIFICATION_REPOSITORY,
   ACCOUNT_REPOSITORY,
+  ASSET_REPOSITORY,
 } from '../../database/tokens';
 import { attachRectificationBadges } from '../transactions/transaction-rectification.view';
 import { PortfolioHistoryReadModel } from './read-models';
@@ -54,6 +57,9 @@ export class GetPortfolioHistoryUseCase {
     private readonly rectifications: ITransactionRectificationRepository,
     @Inject(ACCOUNT_REPOSITORY)
     private readonly accountRepository: IAccountRepository,
+    @Optional()
+    @Inject(ASSET_REPOSITORY)
+    private readonly assetRepository?: IAssetRepository,
   ) {}
 
   async execute(params: GetPortfolioHistoryParams): Promise<PortfolioHistoryReadModel> {
@@ -164,17 +170,66 @@ export class GetPortfolioHistoryUseCase {
       });
 
       // 8. Attach rectification badges (bounded batch over the page).
-      const badges = await attachRectificationBadges(
-        { rectifications: this.rectifications },
-        params.portfolioId,
-        history.items.map((item) => item.transactionId),
+      const badges =
+        this.rectifications && typeof this.rectifications.listByOriginalTransactionIds === 'function'
+          ? await attachRectificationBadges(
+              { rectifications: this.rectifications },
+              params.portfolioId,
+              history.items.map((item) => item.transactionId),
+            )
+          : new Map();
+
+      // 9. Batch asset lookup to enrich items with ticker & assetName (no N+1).
+      const uniqueAssetIds = Array.from(
+        new Set(
+          history.items
+            .map((item) => item.assetId)
+            .filter((id): id is string => Boolean(id)),
+        ),
       );
+      const assets =
+        uniqueAssetIds.length > 0 && this.assetRepository
+          ? await this.assetRepository.findByIds(uniqueAssetIds)
+          : [];
+      const assetMap = new Map<string, (typeof assets)[number]>(
+        assets.map((a) => [String(a.id), a]),
+      );
+      const txMap = new Map<string, (typeof transactions)[number]>(
+        transactions.map((t) => [String(t.id), t]),
+      );
+
       return {
         ...history,
-        items: history.items.map((item) => ({
-          ...item,
-          rectification: badges.get(item.transactionId) ?? null,
-        })),
+        items: history.items.map((item) => {
+          const asset = item.assetId ? assetMap.get(item.assetId) : null;
+          const tx = txMap.get(item.transactionId);
+          // Opening baseline legs are TRANSFER_IN only (rawOperation POSICAO_INICIAL
+          // from B3 annual reports). The direction guard prevents ever mislabeling
+          // a TRANSFER_OUT as "Posição inicial"; provenance comes from import notes
+          // (buildNotes appends the candidate notes incl. "Posição em DD/MM/AAAA").
+          const transferDirection = (item.details as { type?: unknown }).type;
+          const isOpening =
+            item.kind === 'TRANSFER' &&
+            transferDirection === 'TRANSFER_IN' &&
+            Boolean(
+              tx &&
+                (tx.notes?.includes('Posição em') ||
+                  tx.notes?.includes('Posição inicial') ||
+                  tx.notes?.includes('Posição Inicial') ||
+                  tx.notes?.includes('relatorio-consolidado-anual') ||
+                  tx.notes?.includes('Posição de Abertura')),
+            );
+
+          return {
+            ...item,
+            assetTicker: asset?.ticker ?? null,
+            assetName: asset?.name ?? null,
+            rectification: badges.get(item.transactionId) ?? null,
+            details: isOpening
+              ? { ...item.details, isOpeningPosition: true }
+              : item.details,
+          };
+        }),
       };
     } catch (err: unknown) {
       if (err instanceof PortfolioReplayError) {

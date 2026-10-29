@@ -123,7 +123,7 @@ function PortfolioIncomeContent() {
 
   const filterAssets = useMemo(() => {
     if (!stateData?.positions) return [];
-    return stateData.positions.map((p) => ({ id: p.assetId, ticker: p.assetId.slice(0, 8) }));
+    return stateData.positions.map((p) => ({ id: p.assetId, ticker: p.ticker || 'Ativo' }));
   }, [stateData]);
 
   const historyItems = useMemo(() => {
@@ -156,7 +156,8 @@ function PortfolioIncomeContent() {
       for (const pos of stateData.positions) {
         map[pos.assetId] = {
           id: pos.assetId,
-          ticker: pos.assetId.slice(0, 8),
+          ticker: pos.ticker || 'Ativo',
+          name: pos.assetName || pos.ticker || 'Ativo',
           currency: pos.currency,
         };
       }

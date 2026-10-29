@@ -184,4 +184,77 @@ describe('Web: Portfolio Overview Integration & Replay Consumption (Phase 2A)', 
       expect(apiErr.code).toBe('PORTFOLIO.REPLAY_FAILED');
     }
   });
+
+  it('guarantees incomplete realized disposal never renders as R$ 0,00 in summary cards', () => {
+    const incompleteRealizedState: PortfolioStateDto = {
+      portfolioId,
+      asOfDate: null,
+      completeness: { costBasis: 'INCOMPLETE' },
+      positions: [],
+      accounts: [],
+      realizedSummaries: [
+        {
+          currency: 'BRL',
+          status: 'INCOMPLETE',
+          grossProceeds: { amount: '12000.00', currency: 'BRL' },
+          sellingCosts: { amount: '25.00', currency: 'BRL' },
+          netProceeds: { amount: '11975.00', currency: 'BRL' },
+          costBasisRemoved: null,
+          realizedGainLoss: null,
+          realizedReturnPercentage: null,
+          disposalCount: 3,
+        },
+      ],
+      incomeSummaries: [],
+      cashFlowSummaries: [],
+    };
+
+    const vm = mapToPortfolioOverviewViewModel(incompleteRealizedState, null, null);
+    expect(vm.summaryCards.realizedResult).toHaveLength(1);
+    const item = vm.summaryCards.realizedResult[0]!;
+
+    expect(item.formattedAmount).toBe('—');
+    expect(item.formattedAmount).not.toBe('R$ 0,00');
+    expect(item.isIncomplete).toBe(true);
+    expect(item.completenessLabel).toBe('Cálculo incompleto');
+  });
+
+  it('formats operation labels distinguishing opening positions from standard transfers', async () => {
+    const { formatOperationTypeLabel, isOpeningPositionTransaction } = await import(
+      '@/lib/operation-entry'
+    );
+
+    const openingTx = {
+      type: 'TRANSFER_IN',
+      notes: 'Importado de relatorio-consolidado-anual-2024.xlsx (linha 1) — Posição em 31/12/2024',
+      source: 'B3',
+      provider: 'B3',
+    };
+
+    const normalTransferTx = {
+      type: 'TRANSFER_IN',
+      notes: 'Transferência de custódia entre contas',
+      source: 'MANUAL',
+      provider: 'MANUAL',
+    };
+
+    const transferOutTx = {
+      type: 'TRANSFER_OUT',
+      notes: 'Saída de custódia',
+    };
+
+    const buyTx = {
+      type: 'BUY',
+      notes: null,
+    };
+
+    expect(isOpeningPositionTransaction(openingTx)).toBe(true);
+    expect(formatOperationTypeLabel(openingTx)).toBe('Posição inicial');
+
+    expect(isOpeningPositionTransaction(normalTransferTx)).toBe(false);
+    expect(formatOperationTypeLabel(normalTransferTx)).toBe('Transferência de entrada');
+
+    expect(formatOperationTypeLabel(transferOutTx)).toBe('Transferência de saída');
+    expect(formatOperationTypeLabel(buyTx)).toBe('Compra');
+  });
 });

@@ -105,6 +105,8 @@ export interface PortfolioHistoryItemReadModel {
   readonly tradeDate: string;
   readonly accountId: string;
   readonly assetId: string | null;
+  readonly assetTicker?: string | null;
+  readonly assetName?: string | null;
   readonly currency: string | null;
   readonly details: Record<string, unknown>;
   readonly rectification?: {
