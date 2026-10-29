@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { scenario } from '../scenario-builder';
 import { NegativePositionError } from '@atlas/portfolio-engine';
-import { ASSET_PETR4, ACCOUNT_XP } from '../fixtures/assets';
+import { ASSET_PETR4 } from '../fixtures/assets';
 import { Quantity } from '@atlas/domain';
 
 describe('Historical Baseline & Movement Reconstruction Principles (Step 31)', () => {

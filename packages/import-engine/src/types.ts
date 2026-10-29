@@ -6,7 +6,11 @@
  * Dates are civil `YYYY-MM-DD` strings (never timezone-shifted Timestamps).
  */
 
-export const SUPPORTED_IMPORT_SOURCES = ['GENERIC_CSV', 'B3_NEGOTIATION_XLSX'] as const;
+export const SUPPORTED_IMPORT_SOURCES = [
+  'GENERIC_CSV',
+  'B3_NEGOTIATION_XLSX',
+  'B3_ANNUAL_REPORT_XLSX',
+] as const;
 export type SupportedImportSource = (typeof SUPPORTED_IMPORT_SOURCES)[number];
 
 export type B3LayoutType =

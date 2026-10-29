@@ -14,7 +14,7 @@
  */
 
 import ExcelJS from 'exceljs';
-import { LocalDate } from '@atlas/domain';
+import { LocalDate, Quantity } from '@atlas/domain';
 import { normalizeDecimalString } from './normalize';
 import { normalizeB3InstitutionName } from './b3-institutions';
 import {
@@ -234,9 +234,8 @@ export async function detectB3XlsxLayout(buffer: Buffer): Promise<B3LayoutDetect
     return {
       isB3: true,
       layout: 'B3_ANNUAL_REPORT',
-      detectedName: 'Área do Investidor B3 — Relatório Consolidado Anual',
-      isSupported: false,
-      reason: 'Arquivo B3 reconhecido (Relatório Consolidado Anual), mas este tipo ainda não é suportado para importação.',
+      detectedName: 'Área do Investidor B3 — Relatório Consolidado Anual (Posição Inicial)',
+      isSupported: true,
     };
   }
 
@@ -483,6 +482,331 @@ export async function parseB3NegotiationXlsx(
   if (candidates.length === 0) {
     throw new B3XlsxParseError(
       'Arquivo de Negociação B3 sem linhas de dados para importar.',
+    );
+  }
+
+  return candidates;
+}
+
+export interface ParseB3AnnualReportOptions {
+  maxRows?: number;
+  fileName?: string;
+  referenceDate?: string;
+}
+
+export async function parseB3AnnualReportXlsx(
+  buffer: Buffer,
+  options: ParseB3AnnualReportOptions = {},
+): Promise<NormalizedCandidate[]> {
+  const maxRows = options.maxRows ?? MAX_IMPORT_ROWS;
+
+  if (buffer.length > MAX_IMPORT_BYTES) {
+    throw new B3XlsxParseError(
+      `Arquivo excede o limite de ${MAX_IMPORT_BYTES / 1024 / 1024} MB por importação.`,
+    );
+  }
+
+  const detection = await detectB3XlsxLayout(buffer);
+  if (!detection.isB3 || detection.layout !== 'B3_ANNUAL_REPORT') {
+    throw new B3XlsxParseError(
+      detection.reason ?? 'Arquivo Excel não reconhecido como Relatório Consolidado Anual da B3.',
+    );
+  }
+
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+
+  // 1. Determine baseline effective date (31/12/YYYY)
+  let effectiveDate = '2024-12-31';
+  if (options.referenceDate) {
+    effectiveDate = options.referenceDate;
+  } else if (options.fileName) {
+    const yearMatch = options.fileName.match(/(20\d{2})/);
+    if (yearMatch) {
+      effectiveDate = `${yearMatch[1]}-12-31`;
+    }
+  } else {
+    // Scan date cells in loan sheet to detect year
+    for (const ws of workbook.worksheets) {
+      if (normalizeHeaderString(ws.name).includes('posicaoemprestimos')) {
+        for (let r = 2; r <= Math.min(20, ws.rowCount); r++) {
+          const row = ws.getRow(r);
+          row.eachCell((cell) => {
+            const val = extractCellValue(cell);
+            const m = val.match(/(20\d{2})/);
+            if (m) {
+              effectiveDate = `${m[1]}-12-31`;
+            }
+          });
+          if (effectiveDate !== '2024-12-31') break;
+        }
+      }
+    }
+  }
+
+  interface BaselineItem {
+    ticker: string;
+    productName: string;
+    brokerLabel: string;
+    accountLabel?: string;
+    normalQty: Quantity;
+    loanedQty: Quantity;
+    hasNormalCustody: boolean;
+    hasLoanedCustody: boolean;
+  }
+
+  const itemsMap = new Map<string, BaselineItem>();
+
+  const extractCleanTicker = (raw: string): string | null => {
+    const trimmed = raw.trim().toUpperCase();
+    if (!trimmed || trimmed === 'TOTAL' || trimmed === 'SUBTOTAL' || trimmed.startsWith('RESUMO')) {
+      return null;
+    }
+    const match = trimmed.match(/^([A-Z0-9]{3,10})/);
+    return match ? match[1]! : null;
+  };
+
+  // 2. Parse normal custody sheets: Posição - Ações, Posição - BDR, Posição - Fundos
+  const normalSheetNames = ['posicaoacoes', 'posicaobdr', 'posicaofundos'];
+  for (const ws of workbook.worksheets) {
+    const normSheetName = normalizeHeaderString(ws.name);
+    if (!normalSheetNames.some((ns) => normSheetName.includes(ns))) {
+      continue;
+    }
+
+    let colTicker = -1;
+    let colProd = -1;
+    let colInst = -1;
+    let colAcc = -1;
+    let colQty = -1;
+
+    for (let r = 1; r <= Math.min(5, ws.rowCount); r++) {
+      const row = ws.getRow(r);
+      const cells: Array<{ col: number; norm: string }> = [];
+      row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+        cells.push({ col: colNumber, norm: normalizeHeaderString(extractCellValue(cell)) });
+      });
+
+      const foundTicker = cells.find(
+        (c) => c.norm === 'codigodenegociacao' || c.norm === 'codigo' || c.norm === 'produto',
+      );
+      const foundInst = cells.find((c) => c.norm === 'instituicao');
+      const foundQty = cells.find(
+        (c) => c.norm === 'quantidade' || c.norm === 'quantidadedisponivel',
+      );
+
+      if (foundTicker && foundInst && foundQty) {
+        colTicker = foundTicker.col;
+        colInst = foundInst.col;
+        colQty = foundQty.col;
+        const prodCell = cells.find((c) => c.norm === 'produto');
+        if (prodCell) colProd = prodCell.col;
+        const accCell = cells.find((c) => c.norm === 'conta');
+        if (accCell) colAcc = accCell.col;
+        break;
+      }
+    }
+
+    if (colTicker === -1 || colInst === -1 || colQty === -1) {
+      continue;
+    }
+
+    for (let r = 2; r <= ws.rowCount; r++) {
+      const row = ws.getRow(r);
+      const rawTickerCell = extractCellValue(row.getCell(colTicker));
+      const rawProdCell = colProd !== -1 ? extractCellValue(row.getCell(colProd)) : '';
+      const rawInstCell = extractCellValue(row.getCell(colInst));
+      const rawAccCell = colAcc !== -1 ? extractCellValue(row.getCell(colAcc)) : '';
+      const rawQtyCell = extractCellValue(row.getCell(colQty));
+
+      const ticker = extractCleanTicker(rawTickerCell) ?? extractCleanTicker(rawProdCell);
+      if (!ticker) continue;
+
+      const qtyStr = parseB3Decimal(rawQtyCell);
+      if (!qtyStr) continue;
+
+      let qty: Quantity;
+      try {
+        qty = Quantity.from(qtyStr);
+      } catch {
+        continue;
+      }
+      if (qty.compare(Quantity.zero()) <= 0) continue;
+
+      const brokerLabel = rawInstCell.trim() || 'B3';
+      const normInst = normalizeB3InstitutionName(brokerLabel);
+      const key = `${ticker}::${normInst}`;
+
+      let item = itemsMap.get(key);
+      if (!item) {
+        item = {
+          ticker,
+          productName: rawProdCell.trim() || ticker,
+          brokerLabel,
+          accountLabel: rawAccCell.trim() !== '' && rawAccCell.trim() !== '-' ? rawAccCell.trim() : undefined,
+          normalQty: qty,
+          loanedQty: Quantity.zero(),
+          hasNormalCustody: true,
+          hasLoanedCustody: false,
+        };
+        itemsMap.set(key, item);
+      } else {
+        item.normalQty = item.normalQty.add(qty);
+        item.hasNormalCustody = true;
+        if (!item.accountLabel && rawAccCell.trim() !== '' && rawAccCell.trim() !== '-') {
+          item.accountLabel = rawAccCell.trim();
+        }
+      }
+    }
+  }
+
+  // 3. Parse loan sheet: Posição - Empréstimos
+  for (const ws of workbook.worksheets) {
+    const normSheetName = normalizeHeaderString(ws.name);
+    if (!normSheetName.includes('posicaoemprestimos')) {
+      continue;
+    }
+
+    let colProd = -1;
+    let colInst = -1;
+    let colNat = -1;
+    let colQty = -1;
+
+    for (let r = 1; r <= Math.min(5, ws.rowCount); r++) {
+      const row = ws.getRow(r);
+      const cells: Array<{ col: number; norm: string }> = [];
+      row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+        cells.push({ col: colNumber, norm: normalizeHeaderString(extractCellValue(cell)) });
+      });
+
+      const foundProd = cells.find((c) => c.norm === 'produto');
+      const foundInst = cells.find((c) => c.norm === 'instituicao');
+      const foundNat = cells.find((c) => c.norm === 'natureza');
+      const foundQty = cells.find((c) => c.norm === 'quantidade');
+
+      if (foundProd && foundInst && foundNat && foundQty) {
+        colProd = foundProd.col;
+        colInst = foundInst.col;
+        colNat = foundNat.col;
+        colQty = foundQty.col;
+        break;
+      }
+    }
+
+    if (colProd === -1 || colInst === -1 || colNat === -1 || colQty === -1) {
+      continue;
+    }
+
+    for (let r = 2; r <= ws.rowCount; r++) {
+      const row = ws.getRow(r);
+      const rawProdCell = extractCellValue(row.getCell(colProd));
+      const rawInstCell = extractCellValue(row.getCell(colInst));
+      const rawNatCell = extractCellValue(row.getCell(colNat));
+      const rawQtyCell = extractCellValue(row.getCell(colQty));
+
+      if (normalizeHeaderString(rawNatCell) !== 'doador') {
+        continue;
+      }
+
+      const ticker = extractCleanTicker(rawProdCell);
+      if (!ticker) continue;
+
+      const qtyStr = parseB3Decimal(rawQtyCell);
+      if (!qtyStr) continue;
+
+      let qty: Quantity;
+      try {
+        qty = Quantity.from(qtyStr);
+      } catch {
+        continue;
+      }
+      if (qty.compare(Quantity.zero()) <= 0) continue;
+
+      const brokerLabel = rawInstCell.trim() || 'B3';
+      const normInst = normalizeB3InstitutionName(brokerLabel);
+      const key = `${ticker}::${normInst}`;
+
+      let item = itemsMap.get(key);
+      if (!item) {
+        item = {
+          ticker,
+          productName: rawProdCell.trim() || ticker,
+          brokerLabel,
+          accountLabel: undefined,
+          normalQty: Quantity.zero(),
+          loanedQty: qty,
+          hasNormalCustody: false,
+          hasLoanedCustody: true,
+        };
+        itemsMap.set(key, item);
+      } else {
+        item.loanedQty = item.loanedQty.add(qty);
+        item.hasLoanedCustody = true;
+      }
+    }
+  }
+
+  if (itemsMap.size === 0) {
+    throw new B3XlsxParseError(
+      'Relatório Consolidado Anual B3 sem posições de custódia para importar.',
+    );
+  }
+
+  // 4. Sort deterministically: ticker ASC, broker ASC
+  const sortedItems = Array.from(itemsMap.values()).sort((a, b) => {
+    const tCmp = a.ticker.localeCompare(b.ticker);
+    if (tCmp !== 0) return tCmp;
+    return a.brokerLabel.localeCompare(b.brokerLabel);
+  });
+
+  const [y, m, d] = effectiveDate.split('-');
+  const formattedCivilDate = `${d}/${m}/${y}`;
+
+  const candidates: NormalizedCandidate[] = [];
+  let rowSeq = 0;
+
+  for (const item of sortedItems) {
+    const totalQty = item.normalQty.add(item.loanedQty);
+    if (totalQty.compare(Quantity.zero()) <= 0) {
+      continue;
+    }
+
+    rowSeq++;
+    if (rowSeq > maxRows) {
+      throw new B3XlsxParseError(
+        `Arquivo excede o limite de ${maxRows} linhas por importação.`,
+      );
+    }
+
+    let custodyDetail = '';
+    if (item.hasLoanedCustody && item.hasNormalCustody) {
+      custodyDetail = ` (Custódia: ${item.normalQty.value} + Empréstimo Doador: ${item.loanedQty.value})`;
+    } else if (item.hasLoanedCustody && !item.hasNormalCustody) {
+      custodyDetail = ` (Empréstimo Doador: ${item.loanedQty.value})`;
+    }
+
+    const notes = `Posição em ${formattedCivilDate}${custodyDetail} | Custo de aquisição fiscal a informar`;
+
+    candidates.push(
+      Object.freeze({
+        rowNumber: rowSeq,
+        tradeDate: effectiveDate,
+        settlementDate: undefined,
+        ticker: item.ticker,
+        operation: 'TRANSFER_IN',
+        rawOperation: 'POSICAO_INICIAL',
+        quantity: totalQty.value,
+        unitPrice: '0',
+        fees: '0',
+        currency: 'BRL',
+        brokerLabel: item.brokerLabel,
+        accountLabel: item.accountLabel ?? item.brokerLabel,
+        normalizedInstitution: normalizeB3InstitutionName(item.brokerLabel),
+        externalId: undefined,
+        notes,
+        status: 'READY',
+        issues: [],
+      }),
     );
   }
 

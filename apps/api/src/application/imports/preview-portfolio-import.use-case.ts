@@ -29,6 +29,7 @@ import {
   parseCsv,
   detectB3XlsxLayout,
   parseB3NegotiationXlsx,
+  parseB3AnnualReportXlsx,
   B3XlsxParseError,
   resolveAccount,
   resolveAsset,
@@ -119,7 +120,10 @@ export class PreviewPortfolioImportUseCase {
     const conflicts = preview.candidates.filter(
       (candidate) => candidate.duplicate === 'CONFLICT',
     ).length;
-    const isB3 = command.sourceType === 'B3_NEGOTIATION_XLSX' || context.provider.includes('B3');
+    const isB3 =
+      command.sourceType === 'B3_NEGOTIATION_XLSX' ||
+      command.sourceType === 'B3_ANNUAL_REPORT_XLSX' ||
+      context.provider.includes('B3');
     const run = await this.runService.startRun({
       portfolioId: command.portfolioId,
       userId: command.userId,
@@ -173,7 +177,10 @@ export class PreviewPortfolioImportUseCase {
     let normalized: NormalizedCandidate[];
     let defaultProviderName = 'CSV';
 
-    if (command.sourceType === 'B3_NEGOTIATION_XLSX') {
+    if (
+      command.sourceType === 'B3_NEGOTIATION_XLSX' ||
+      command.sourceType === 'B3_ANNUAL_REPORT_XLSX'
+    ) {
       const buffer = Buffer.from(command.content, 'base64');
       if (buffer.length > MAX_IMPORT_BYTES) {
         throw new ImportValidationError(
@@ -182,17 +189,28 @@ export class PreviewPortfolioImportUseCase {
       }
 
       const detection = await detectB3XlsxLayout(buffer);
-      if (!detection.isB3 || detection.layout !== 'B3_NEGOTIATION') {
+      if (!detection.isB3 || !detection.isSupported) {
         throw new ImportValidationError(
           detection.reason ?? 'Arquivo Excel não reconhecido como formato oficial da B3.',
         );
       }
 
       try {
-        normalized = await parseB3NegotiationXlsx(buffer, {
-          today: this.clock.today(),
-          maxRows: MAX_IMPORT_ROWS,
-        });
+        if (detection.layout === 'B3_NEGOTIATION') {
+          normalized = await parseB3NegotiationXlsx(buffer, {
+            today: this.clock.today(),
+            maxRows: MAX_IMPORT_ROWS,
+          });
+        } else if (detection.layout === 'B3_ANNUAL_REPORT') {
+          normalized = await parseB3AnnualReportXlsx(buffer, {
+            fileName: command.fileName,
+            maxRows: MAX_IMPORT_ROWS,
+          });
+        } else {
+          throw new ImportValidationError(
+            `Layout B3 "${detection.detectedName}" ainda não é suportado para importação.`,
+          );
+        }
       } catch (error: unknown) {
         if (error instanceof B3XlsxParseError) {
           throw new ImportValidationError(error.message);
@@ -364,9 +382,17 @@ export class PreviewPortfolioImportUseCase {
           account: explicitAccount,
           candidates: [],
         };
-      } else if (command.sourceType === 'B3_NEGOTIATION_XLSX' || candidate.accountLabel || candidate.brokerLabel) {
+      } else if (
+        command.sourceType === 'B3_NEGOTIATION_XLSX' ||
+        command.sourceType === 'B3_ANNUAL_REPORT_XLSX' ||
+        candidate.accountLabel ||
+        candidate.brokerLabel
+      ) {
         // Deterministic B3 Institution to Account resolution
-        const instLabel = candidate.accountLabel?.trim() || candidate.brokerLabel?.trim();
+        const instLabel =
+          candidate.normalizedInstitution?.trim() ||
+          candidate.brokerLabel?.trim() ||
+          candidate.accountLabel?.trim();
         const matched = matchAccountForB3Institution(
           instLabel,
           context.accounts,

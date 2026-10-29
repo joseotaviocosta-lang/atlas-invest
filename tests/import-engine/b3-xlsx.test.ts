@@ -120,8 +120,8 @@ describe('B3 XLSX Import: Layout Detection & Negotiation Parser', () => {
       const result = await detectB3XlsxLayout(buffer);
       expect(result.isB3).toBe(true);
       expect(result.layout).toBe('B3_ANNUAL_REPORT');
-      expect(result.isSupported).toBe(false);
-      expect(result.reason).toContain('Arquivo B3 reconhecido (Relatório Consolidado Anual), mas este tipo ainda não é suportado');
+      expect(result.isSupported).toBe(true);
+      expect(result.detectedName).toContain('Relatório Consolidado Anual');
     });
 
     it('rejects non-B3 spreadsheet as UNKNOWN', async () => {

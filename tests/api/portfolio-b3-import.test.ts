@@ -738,4 +738,154 @@ describe('API Integration: Native B3 XLSX Import', () => {
       expect(txs.filter((t) => t.accountId === nuAccount.id)).toHaveLength(1);
     });
   });
+
+  describe('B3 Annual Consolidated Report Import (Opening Position Baseline)', () => {
+    it('previews and confirms B3 Annual Report establishing baseline custody via TRANSFER_IN at 31/12/2024', async () => {
+      let xpInst = await prisma.institution.findFirst({ where: { name: 'XP Investimentos' } });
+      if (!xpInst) {
+        xpInst = await prisma.institution.create({
+          data: {
+            id: 'b0000000-0000-4000-8000-000000000010',
+            name: 'XP Investimentos',
+            type: 'BROKER',
+            country: 'BR',
+          },
+        });
+      }
+      let nuInst = await prisma.institution.findFirst({ where: { name: 'Nubank / NuInvest' } });
+      if (!nuInst) {
+        nuInst = await prisma.institution.create({
+          data: {
+            id: 'b0000000-0000-4000-8000-000000000020',
+            name: 'Nubank / NuInvest',
+            type: 'BROKER',
+            country: 'BR',
+          },
+        });
+      }
+
+      // Accounts in portfolio via API
+      await request(app.getHttpServer())
+        .post(`/api/v1/portfolios/${portfolioId}/accounts`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          name: 'XP Investimentos',
+          institutionId: xpInst.id,
+          currency: 'BRL',
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/portfolios/${portfolioId}/accounts`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          name: 'Nubank / NuInvest',
+          institutionId: nuInst.id,
+          currency: 'BRL',
+        })
+        .expect(201);
+
+      // Create annual report workbook with normal + loaned custody
+      const wb = new ExcelJS.Workbook();
+      const wsAcoes = wb.addWorksheet('Posição - Ações');
+      wsAcoes.addRow(['Produto', 'Instituição', 'Conta', 'Código de Negociação', 'Quantidade']);
+      wsAcoes.addRow(['ITSA4 - ITAUSA S.A.', 'XP INVESTIMENTOS CCTVM S/A', '395072', 'ITSA4', '1.161,3']);
+      wsAcoes.addRow(['SAPR4 - SANEPAR', 'XP INVESTIMENTOS CCTVM S/A', '395072', 'SAPR4', '3300']);
+      wsAcoes.addRow(['HYPE3 - HYPERA S.A.', 'XP INVESTIMENTOS CCTVM S/A', '395072', 'HYPE3', '116']);
+      wsAcoes.addRow(['Total', '', '', '', '4577.3']);
+
+      const wsBdr = wb.addWorksheet('Posição - BDR');
+      wsBdr.addRow(['Produto', 'Instituição', 'Conta', 'Código de Negociação', 'Quantidade']);
+      wsBdr.addRow(['ROXO34 - NU HOLDINGS', 'NU INVEST CORRETORA DE VALORES S.A.', '2542008', 'ROXO34', '499']);
+
+      const wsEmp = wb.addWorksheet('Posição - Empréstimos');
+      wsEmp.addRow(['Produto', 'Instituição', 'Natureza', 'Quantidade', 'Preço de Fechamento']);
+      wsEmp.addRow(['HYPE3 - HYPERA S.A.', 'XP INVESTIMENTOS CCTVM S/A', 'Doador', '84', '29.50']);
+      wsEmp.addRow(['STBP3 - SANTOS BRASIL', 'XP INVESTIMENTOS CCTVM S/A', 'Doador', '700', '12.80']);
+
+      const arrayBuffer = await wb.xlsx.writeBuffer();
+      const annualBase64 = Buffer.from(arrayBuffer).toString('base64');
+
+      // 1. Preview
+      const previewRes = await request(app.getHttpServer())
+        .post(`/api/v1/portfolios/${portfolioId}/imports/preview`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          sourceType: 'B3_ANNUAL_REPORT_XLSX',
+          fileName: 'relatorio-consolidado-anual-2024.xlsx',
+          content: annualBase64,
+        })
+        .expect(200);
+
+      const previewData = previewRes.body.data;
+      expect(previewData.summary.totalRows).toBe(5); // ITSA4, SAPR4, HYPE3, ROXO34, STBP3
+      expect(previewData.summary.ready).toBe(5);
+      expect(previewData.summary.needsReview).toBe(0);
+      expect(previewData.summary.duplicates).toBe(0);
+
+      // Verify STBP3: 700 (loaned only)
+      const stbp3 = previewData.candidates.find((c: { ticker: string }) => c.ticker === 'STBP3')!;
+      expect(stbp3.operation).toBe('TRANSFER_IN');
+      expect(stbp3.quantity).toBe('700');
+      expect(stbp3.tradeDate).toBe('2024-12-31');
+      expect(stbp3.status).toBe('READY');
+      expect(stbp3.notes).toContain('(Empréstimo Doador: 700)');
+
+      // Verify HYPE3: 116 + 84 = 200
+      const hype3 = previewData.candidates.find((c: { ticker: string }) => c.ticker === 'HYPE3')!;
+      expect(hype3.operation).toBe('TRANSFER_IN');
+      expect(hype3.quantity).toBe('200');
+      expect(hype3.notes).toContain('(Custódia: 116 + Empréstimo Doador: 84)');
+
+      // Verify ITSA4: fractional 1161.3
+      const itsa4 = previewData.candidates.find((c: { ticker: string }) => c.ticker === 'ITSA4')!;
+      expect(itsa4.quantity).toBe('1161.3');
+
+      // Invariant: Zero ledger transactions before confirmation
+      const countBefore = await prisma.transaction.count({ where: { portfolioId } });
+      expect(countBefore).toBe(0);
+
+      // 2. Confirm
+      const confirmRes = await request(app.getHttpServer())
+        .post(`/api/v1/portfolios/${portfolioId}/imports/confirm`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          sourceType: 'B3_ANNUAL_REPORT_XLSX',
+          fileName: 'relatorio-consolidado-anual-2024.xlsx',
+          content: annualBase64,
+          runId: previewData.runId,
+          decisions: [],
+        })
+        .expect(201);
+
+      expect(confirmRes.body.data.created).toBe(5);
+
+      // Verify written ledger transactions
+      const txs = await prisma.transaction.findMany({
+        where: { portfolioId },
+        orderBy: { tradeDate: 'asc' },
+      });
+      expect(txs).toHaveLength(5);
+      for (const tx of txs) {
+        expect(tx.type).toBe('TRANSFER_IN');
+        expect(tx.source).toBe('B3');
+        expect(tx.tradeDate.toISOString().slice(0, 10)).toBe('2024-12-31');
+      }
+
+      // 3. Re-upload preview verifies duplicate detection
+      const rePreviewRes = await request(app.getHttpServer())
+        .post(`/api/v1/portfolios/${portfolioId}/imports/preview`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          sourceType: 'B3_ANNUAL_REPORT_XLSX',
+          fileName: 'relatorio-consolidado-anual-2024.xlsx',
+          content: annualBase64,
+        })
+        .expect(200);
+
+      const reData = rePreviewRes.body.data;
+      expect(reData.summary.duplicates).toBe(5);
+      expect(reData.summary.ready).toBe(0);
+    });
+  });
 });

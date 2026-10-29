@@ -94,6 +94,7 @@ interface PreviewCandidate {
   accountLabel?: string;
   normalizedInstitution?: string;
   externalId?: string;
+  notes?: string;
   status: 'READY' | 'DUPLICATE' | 'AMBIGUOUS_ASSET' | 'INVALID' | 'UNSUPPORTED' | 'NEEDS_REVIEW';
   issues: PreviewIssue[];
   assetId: string | null;
@@ -938,7 +939,9 @@ function ImportHubContent() {
   const [portfolioId, setPortfolioId] = useState<string | null>(searchParams.get('portfolioId'));
   const [fileName, setFileName] = useState('');
   const [content, setContent] = useState('');
-  const [sourceType, setSourceType] = useState<'GENERIC_CSV' | 'B3_NEGOTIATION_XLSX'>('GENERIC_CSV');
+  const [sourceType, setSourceType] = useState<
+    'GENERIC_CSV' | 'B3_NEGOTIATION_XLSX' | 'B3_ANNUAL_REPORT_XLSX'
+  >('GENERIC_CSV');
   const [detectedFormatName, setDetectedFormatName] = useState<string | null>(null);
   const [provider, setProvider] = useState('Corretora');
   const [defaultAccountId, setDefaultAccountId] = useState('');
@@ -1049,15 +1052,21 @@ function ImportHubContent() {
       const res = await apiClient.post<{ data: PreviewResponse }>(
         `/api/v1/portfolios/${activePortfolioId}/imports/preview`,
         {
-          ...(sourceType === 'B3_NEGOTIATION_XLSX'
-            ? { sourceType: 'B3_NEGOTIATION_XLSX' as const }
-            : { sourceType: 'GENERIC_CSV' as const }),
-          provider: provider.trim() === '' ? (sourceType === 'B3_NEGOTIATION_XLSX' ? 'B3' : 'CSV') : provider.trim(),
-          fileName: fileName === '' ? (sourceType === 'B3_NEGOTIATION_XLSX' ? 'negociacao.xlsx' : 'importacao.csv') : fileName,
+          ...(sourceType === 'B3_ANNUAL_REPORT_XLSX'
+            ? { sourceType: 'B3_ANNUAL_REPORT_XLSX' as const }
+            : sourceType === 'B3_NEGOTIATION_XLSX'
+              ? { sourceType: 'B3_NEGOTIATION_XLSX' as const }
+              : { sourceType: 'GENERIC_CSV' as const }),
+          provider: provider.trim() === '' ? (sourceType !== 'GENERIC_CSV' ? 'B3' : 'CSV') : provider.trim(),
+          fileName: fileName === '' ? (sourceType === 'B3_ANNUAL_REPORT_XLSX' ? 'anual.xlsx' : sourceType === 'B3_NEGOTIATION_XLSX' ? 'negociacao.xlsx' : 'importacao.csv') : fileName,
           content,
           ...(defaultAccountId === '' ? {} : { defaultAccountId }),
         },
       );
+      if (res.data.sourceType === 'B3_ANNUAL_REPORT_XLSX') {
+        setSourceType('B3_ANNUAL_REPORT_XLSX');
+        setDetectedFormatName('Área do Investidor B3 — Relatório Consolidado Anual (Posição Inicial)');
+      }
       return res.data;
     },
   });
@@ -1270,10 +1279,12 @@ function ImportHubContent() {
       const res = await apiClient.post<{ data: ImportReceipt }>(
         `/api/v1/portfolios/${activePortfolioId}/imports/confirm`,
         {
-          ...(sourceType === 'B3_NEGOTIATION_XLSX'
-            ? { sourceType: 'B3_NEGOTIATION_XLSX' as const }
-            : { sourceType: 'GENERIC_CSV' as const }),
-          provider: provider.trim() === '' ? (sourceType === 'B3_NEGOTIATION_XLSX' ? 'B3' : 'CSV') : provider.trim(),
+          ...(sourceType === 'B3_ANNUAL_REPORT_XLSX'
+            ? { sourceType: 'B3_ANNUAL_REPORT_XLSX' as const }
+            : sourceType === 'B3_NEGOTIATION_XLSX'
+              ? { sourceType: 'B3_NEGOTIATION_XLSX' as const }
+              : { sourceType: 'GENERIC_CSV' as const }),
+          provider: provider.trim() === '' ? (sourceType !== 'GENERIC_CSV' ? 'B3' : 'CSV') : provider.trim(),
           fileName: previewData.fileName,
           content,
           ...(defaultAccountId === '' ? {} : { defaultAccountId }),
@@ -1318,8 +1329,18 @@ function ImportHubContent() {
       }
       const base64 = btoa(binary);
       setContent(base64);
-      setSourceType('B3_NEGOTIATION_XLSX');
-      setDetectedFormatName('Área do Investidor B3 — Negociação');
+      const isAnnual =
+        file.name.toLowerCase().includes('anual') ||
+        file.name.toLowerCase().includes('consolidado');
+      if (isAnnual) {
+        setSourceType('B3_ANNUAL_REPORT_XLSX');
+        setDetectedFormatName(
+          'Área do Investidor B3 — Relatório Consolidado Anual (Posição Inicial)',
+        );
+      } else {
+        setSourceType('B3_NEGOTIATION_XLSX');
+        setDetectedFormatName('Área do Investidor B3 — Negociação');
+      }
       setProvider('B3');
     } else {
       const text = await file.text();
@@ -2249,14 +2270,32 @@ function ImportHubContent() {
                         <td style={{ padding: 8 }}>
                           {formatCivilDateDisplay(candidate.tradeDate)}
                         </td>
-                        <td style={{ padding: 8 }}>{candidate.ticker}</td>
+                        <td style={{ padding: 8 }}>
+                          <div>
+                            <strong>{candidate.ticker}</strong>
+                            {candidate.notes && (
+                              <div
+                                style={{
+                                  fontSize: '0.75rem',
+                                  color: colors.textMuted,
+                                  marginTop: 2,
+                                  maxWidth: 320,
+                                }}
+                              >
+                                {candidate.notes}
+                              </div>
+                            )}
+                          </div>
+                        </td>
                         <td style={{ padding: 8 }}>
                           {candidate.operation === 'BUY'
                             ? 'Compra'
                             : candidate.operation === 'SELL'
                               ? 'Venda'
                               : candidate.operation === 'TRANSFER_IN'
-                                ? 'Transferência (entrada)'
+                                ? candidate.rawOperation === 'POSICAO_INICIAL'
+                                  ? 'Posição Inicial'
+                                  : 'Transferência (entrada)'
                                 : candidate.operation === 'TRANSFER_OUT'
                                   ? 'Transferência (saída)'
                                   : candidate.operation === 'DIVIDEND'
@@ -2267,7 +2306,9 @@ function ImportHubContent() {
                         </td>
                         <td style={{ padding: 8 }}>{formatQuantity(candidate.quantity)}</td>
                         <td style={{ padding: 8 }}>
-                          {formatCurrency(candidate.unitPrice, candidate.currency)}
+                          {candidate.rawOperation === 'POSICAO_INICIAL' && candidate.unitPrice === '0'
+                            ? '—'
+                            : formatCurrency(candidate.unitPrice, candidate.currency)}
                         </td>
                         <td style={{ padding: 8 }}>
                           {candidate.brokerLabel ?? provider}
