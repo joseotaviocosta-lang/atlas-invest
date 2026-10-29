@@ -141,6 +141,22 @@ describe('Auth E2E: Register, Login, /me', () => {
       expect(res.body.code).toBe('AUTH.INVALID_CREDENTIALS');
       expect(res.body.message).toBe('Invalid credentials.');
     });
+
+    it('should reject deactivated user with identical 401 AUTH.INVALID_CREDENTIALS', async () => {
+      await prisma.user.update({
+        where: { email: 'login-user@atlas.dev' },
+        data: { deactivatedAt: new Date() },
+      });
+
+      const res = await request(app.getHttpServer()).post('/api/v1/auth/login').send({
+        email: 'login-user@atlas.dev',
+        password: 'CorrectPassword123!',
+      });
+
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe('AUTH.INVALID_CREDENTIALS');
+      expect(res.body.message).toBe('Invalid credentials.');
+    });
   });
 
   describe('GET /api/v1/auth/me', () => {

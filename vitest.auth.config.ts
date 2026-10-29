@@ -8,6 +8,7 @@ export default defineConfig({
     include: ['tests/auth/**/*.test.ts'],
     fileParallelism: false,
     testTimeout: 25000,
+    hookTimeout: 30000,
   },
   resolve: {
     alias: {

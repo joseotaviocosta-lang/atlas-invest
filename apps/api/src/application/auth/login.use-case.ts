@@ -43,7 +43,7 @@ export class LoginUseCase {
     const normalizedEmail = dto.email.trim().toLowerCase();
 
     const user = await this.userRepository.findByEmail(normalizedEmail);
-    if (!user) {
+    if (!user || user.deactivatedAt) {
       await this.passwordHasher.verifyDummy();
       throw new UnauthorizedException({
         message: 'Invalid credentials.',

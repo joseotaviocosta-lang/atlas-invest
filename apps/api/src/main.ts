@@ -1,4 +1,19 @@
 import 'reflect-metadata';
+import * as path from 'path';
+
+// Deterministic dev/local environment bootstrap: load root .env if DATABASE_URL is not set
+if (!process.env.DATABASE_URL) {
+  try {
+    process.loadEnvFile?.(path.resolve(__dirname, '../../../.env'));
+  } catch {
+    try {
+      process.loadEnvFile?.(path.resolve(process.cwd(), '.env'));
+    } catch {
+      // Ignored if not found
+    }
+  }
+}
+
 import { NestFactory } from '@nestjs/core';
 import { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule, OpenAPIObject } from '@nestjs/swagger';
@@ -64,6 +79,13 @@ export function validateProductionSecrets(): void {
     ) {
       throw new Error(
         'Security invariant violated: DATABASE_URL in production must point to a dedicated production database, not atlas_test or port 5433.',
+      );
+    }
+  } else if (process.env.NODE_ENV !== 'test') {
+    const dbUrl = process.env.DATABASE_URL;
+    if (dbUrl && (dbUrl.includes(':5432/') || dbUrl.includes(':5432?'))) {
+      throw new Error(
+        'Development database target invariant violated: port 5432 is obsolete and missing migrations. Point DATABASE_URL to port 5434 (atlas_dev).',
       );
     }
   }

@@ -136,12 +136,12 @@ describe('API Integration: Phase 6B LGPD & Legal Compliance Readiness', () => {
       expect(Array.isArray(res.body.data)).toBe(true);
       expect(res.body.data.length).toBe(2);
 
-      const tos = res.body.data.find((d: any) => d.type === 'TERMS_OF_SERVICE');
+      const tos = res.body.data.find((d: Record<string, unknown>) => d.type === 'TERMS_OF_SERVICE');
       expect(tos).toBeDefined();
       expect(tos.version).toBe('1.0.0');
       expect(tos.draftWatermark).toContain('DRAFT — LEGAL REVIEW REQUIRED');
 
-      const privacy = res.body.data.find((d: any) => d.type === 'PRIVACY_POLICY');
+      const privacy = res.body.data.find((d: Record<string, unknown>) => d.type === 'PRIVACY_POLICY');
       expect(privacy).toBeDefined();
       expect(privacy.version).toBe('1.0.0');
       expect(privacy.draftWatermark).toContain('DRAFT — LEGAL REVIEW REQUIRED');
@@ -182,7 +182,7 @@ describe('API Integration: Phase 6B LGPD & Legal Compliance Readiness', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data.length).toBe(4);
-      expect(res.body.data.every((c: any) => c.granted === false)).toBe(true);
+      expect(res.body.data.every((c: Record<string, unknown>) => c.granted === false)).toBe(true);
     });
 
     it('POST /api/v1/privacy/consents: records grant and revocation timestamps accurately', async () => {
@@ -331,15 +331,15 @@ describe('API Integration: Phase 6B LGPD & Legal Compliance Readiness', () => {
       expect(res.body.data.principles.length).toBeGreaterThanOrEqual(4);
       expect(res.body.data.entities.length).toBe(4);
 
-      const b3 = res.body.data.entities.find((e: any) => e.name.includes('B3'));
+      const b3 = res.body.data.entities.find((e: Record<string, unknown>) => typeof e.name === 'string' && e.name.includes('B3'));
       expect(b3).toBeDefined();
       expect(b3.legalBasisCandidate).toContain('Art. 7, V');
 
-      const rfb = res.body.data.entities.find((e: any) => e.name.includes('Receita Federal'));
+      const rfb = res.body.data.entities.find((e: Record<string, unknown>) => typeof e.name === 'string' && e.name.includes('Receita Federal'));
       expect(rfb).toBeDefined();
       expect(rfb.legalBasisCandidate).toContain('Art. 7, II');
 
-      const ai = res.body.data.entities.find((e: any) => e.name.includes('Google Vertex AI'));
+      const ai = res.body.data.entities.find((e: Record<string, unknown>) => typeof e.name === 'string' && e.name.includes('Google Vertex AI'));
       expect(ai).toBeDefined();
       expect(ai.legalBasisCandidate).toContain('Art. 7, I');
     });

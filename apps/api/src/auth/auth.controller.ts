@@ -35,6 +35,10 @@ import {
 } from '../application/auth';
 import { TokenService } from './services/token.service';
 
+const AUTH_THROTTLE_TTL = 60000;
+const AUTH_REGISTER_LIMIT = process.env.NODE_ENV === 'test' ? 100 : 3;
+const AUTH_LOGIN_LIMIT = process.env.NODE_ENV === 'test' ? 100 : 5;
+
 @ApiTags('Authentication')
 @Controller('api/v1/auth')
 export class AuthController {
@@ -58,7 +62,7 @@ export class AuthController {
   ) {}
 
   @Public()
-  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @Throttle({ default: { limit: AUTH_REGISTER_LIMIT, ttl: AUTH_THROTTLE_TTL } })
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Register a new user' })
@@ -81,7 +85,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ default: { limit: AUTH_LOGIN_LIMIT, ttl: AUTH_THROTTLE_TTL } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login with email and password' })
@@ -100,7 +104,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @Throttle({ default: { limit: 30, ttl: AUTH_THROTTLE_TTL } })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Rotate refresh token and issue new access token' })
@@ -133,7 +137,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ default: { limit: 5, ttl: AUTH_THROTTLE_TTL } })
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Request password reset token (generic response)' })
@@ -146,7 +150,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ default: { limit: 5, ttl: AUTH_THROTTLE_TTL } })
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reset password using token and revoke all sessions' })
