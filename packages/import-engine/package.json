@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@atlas/domain": "workspace:*"
+    "@atlas/domain": "workspace:*",
+    "exceljs": "^4.4.0"
   },
   "devDependencies": {
     "@atlas/config": "workspace:*"

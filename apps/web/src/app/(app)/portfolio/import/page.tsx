@@ -109,6 +109,7 @@ interface PreviewResponse {
   sourceType: string;
   provider: string;
   fileName: string;
+  runId?: string | null;
   candidates: PreviewCandidate[];
   summary: PreviewSummary;
 }
@@ -905,6 +906,8 @@ function ImportHubContent() {
   const [portfolioId, setPortfolioId] = useState<string | null>(searchParams.get('portfolioId'));
   const [fileName, setFileName] = useState('');
   const [content, setContent] = useState('');
+  const [sourceType, setSourceType] = useState<'GENERIC_CSV' | 'B3_NEGOTIATION_XLSX'>('GENERIC_CSV');
+  const [detectedFormatName, setDetectedFormatName] = useState<string | null>(null);
   const [provider, setProvider] = useState('Corretora');
   const [defaultAccountId, setDefaultAccountId] = useState('');
   const [skipRows, setSkipRows] = useState<Set<number>>(new Set());
@@ -1002,9 +1005,11 @@ function ImportHubContent() {
       const res = await apiClient.post<{ data: PreviewResponse }>(
         `/api/v1/portfolios/${activePortfolioId}/imports/preview`,
         {
-          sourceType: 'GENERIC_CSV',
-          provider: provider.trim() === '' ? 'CSV' : provider.trim(),
-          fileName: fileName === '' ? 'importacao.csv' : fileName,
+          ...(sourceType === 'B3_NEGOTIATION_XLSX'
+            ? { sourceType: 'B3_NEGOTIATION_XLSX' as const }
+            : { sourceType: 'GENERIC_CSV' as const }),
+          provider: provider.trim() === '' ? (sourceType === 'B3_NEGOTIATION_XLSX' ? 'B3' : 'CSV') : provider.trim(),
+          fileName: fileName === '' ? (sourceType === 'B3_NEGOTIATION_XLSX' ? 'negociacao.xlsx' : 'importacao.csv') : fileName,
           content,
           ...(defaultAccountId === '' ? {} : { defaultAccountId }),
         },
@@ -1073,12 +1078,15 @@ function ImportHubContent() {
       const res = await apiClient.post<{ data: ImportReceipt }>(
         `/api/v1/portfolios/${activePortfolioId}/imports/confirm`,
         {
-          sourceType: 'GENERIC_CSV',
-          provider: provider.trim() === '' ? 'CSV' : provider.trim(),
+          ...(sourceType === 'B3_NEGOTIATION_XLSX'
+            ? { sourceType: 'B3_NEGOTIATION_XLSX' as const }
+            : { sourceType: 'GENERIC_CSV' as const }),
+          provider: provider.trim() === '' ? (sourceType === 'B3_NEGOTIATION_XLSX' ? 'B3' : 'CSV') : provider.trim(),
           fileName: previewData.fileName,
           content,
           ...(defaultAccountId === '' ? {} : { defaultAccountId }),
           decisions,
+          ...(previewData.runId ? { runId: previewData.runId } : {}),
         },
       );
       return res.data;
@@ -1104,8 +1112,30 @@ function ImportHubContent() {
       setFileError('Arquivo excede o limite de 2 MB por importação.');
       return;
     }
-    const text = await file.text();
-    setContent(text);
+    const isXlsx =
+      file.name.toLowerCase().endsWith('.xlsx') ||
+      file.type.includes('spreadsheetml') ||
+      file.type.includes('excel');
+
+    if (isXlsx) {
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]!);
+      }
+      const base64 = btoa(binary);
+      setContent(base64);
+      setSourceType('B3_NEGOTIATION_XLSX');
+      setDetectedFormatName('Área do Investidor B3 — Negociação');
+      setProvider('B3');
+    } else {
+      const text = await file.text();
+      setContent(text);
+      setSourceType('GENERIC_CSV');
+      setDetectedFormatName(null);
+      setProvider('Corretora');
+    }
     setFileName(file.name);
     setSkipRows(new Set());
     setAssetOverrides({});
@@ -1564,15 +1594,37 @@ function ImportHubContent() {
             </select>
 
             <label htmlFor="import-file" style={{ fontSize: '0.875rem', fontWeight: 600 }}>
-              Arquivo CSV (modelo Atlas)
+              Arquivo da corretora ou B3 (CSV ou XLSX)
             </label>
             <input
               id="import-file"
               type="file"
-              accept=".csv,text/csv"
+              accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={(event) => void handleFile(event.target.files?.[0])}
               style={{ minHeight: 44, fontSize: '0.875rem' }}
             />
+            {detectedFormatName && (
+              <div
+                style={{
+                  padding: '8px 12px',
+                  backgroundColor: `${colors.accent}15`,
+                  borderRadius: borderRadius.sm,
+                  border: `1px solid ${colors.accent}`,
+                  marginTop: 4,
+                }}
+              >
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: '0.875rem',
+                    color: colors.accent,
+                    fontWeight: 600,
+                  }}
+                >
+                  Formato detectado: {detectedFormatName}
+                </p>
+              </div>
+            )}
             {fileError && (
               <ErrorState
                 title="Arquivo inválido"
@@ -1663,6 +1715,7 @@ function ImportHubContent() {
                       'Operação',
                       'Qtd',
                       'Preço',
+                      'Instituição',
                       'Taxas',
                       'Situação',
                       'Decisão',
@@ -1718,6 +1771,9 @@ function ImportHubContent() {
                         <td style={{ padding: 8 }}>{formatQuantity(candidate.quantity)}</td>
                         <td style={{ padding: 8 }}>
                           {formatCurrency(candidate.unitPrice, candidate.currency)}
+                        </td>
+                        <td style={{ padding: 8 }}>
+                          {candidate.brokerLabel ?? provider}
                         </td>
                         <td style={{ padding: 8 }}>
                           {formatCurrency(candidate.fees, candidate.currency)}
@@ -1829,6 +1885,21 @@ function ImportHubContent() {
               >
                 {confirmMutation.isPending ? 'Importando…' : '4. Confirmar importação'}
               </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  previewMutation.reset();
+                  setContent('');
+                  setFileName('');
+                  setDetectedFormatName(null);
+                  setSkipRows(new Set());
+                  setAssetOverrides({});
+                  setAccountOverrides({});
+                  setForceRows(new Set());
+                }}
+              >
+                Cancelar
+              </Button>
               {eligibility.hint && (
                 <p
                   style={{ fontSize: '0.875rem', marginTop: `${spacing.sm}px` }}
@@ -1862,7 +1933,7 @@ function ImportHubContent() {
           <Card style={{ padding: `${spacing.xl}px` }}>
             <EmptyState
               title="Nenhum arquivo selecionado"
-              description="Envie um CSV no modelo Atlas para ver a análise antes de importar. Nada é lançado sem a sua confirmação."
+              description="Envie um CSV no modelo Atlas ou XLSX da B3 para ver a análise antes de importar. Nada é lançado sem a sua confirmação."
               actionLabel="Baixar modelo CSV"
               onAction={downloadTemplate}
             />

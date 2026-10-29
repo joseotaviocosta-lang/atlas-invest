@@ -25,6 +25,9 @@ import {
   normalizeRow,
   normalizeProvider,
   parseCsv,
+  detectB3XlsxLayout,
+  parseB3NegotiationXlsx,
+  B3XlsxParseError,
   resolveAccount,
   resolveAsset,
   summarize,
@@ -104,10 +107,11 @@ export class PreviewPortfolioImportUseCase {
     const conflicts = preview.candidates.filter(
       (candidate) => candidate.duplicate === 'CONFLICT',
     ).length;
+    const isB3 = command.sourceType === 'B3_NEGOTIATION_XLSX' || context.provider.includes('B3');
     const run = await this.runService.startRun({
       portfolioId: command.portfolioId,
       userId: command.userId,
-      source: 'CSV',
+      source: isB3 ? 'B3' : 'CSV',
       provider: context.provider,
       fileName: command.fileName,
       trigger: 'MANUAL',
@@ -139,9 +143,13 @@ export class PreviewPortfolioImportUseCase {
   }
 
   private async runPipeline(command: PreviewPortfolioImportCommand): Promise<PipelineContext> {
-    if (!SUPPORTED_IMPORT_SOURCES.includes(command.sourceType as 'GENERIC_CSV')) {
+    if (
+      !SUPPORTED_IMPORT_SOURCES.includes(
+        command.sourceType as (typeof SUPPORTED_IMPORT_SOURCES)[number],
+      )
+    ) {
       throw new ImportValidationError(
-        `Fonte "${command.sourceType}" ainda não suportada. Envie um arquivo CSV no modelo Atlas.`,
+        `Fonte "${command.sourceType}" ainda não suportada. Envie um arquivo CSV no modelo Atlas ou XLSX da B3.`,
       );
     }
 
@@ -150,41 +158,73 @@ export class PreviewPortfolioImportUseCase {
       throw new EntityNotFoundError('Portfolio', command.portfolioId);
     }
 
-    if (TEXT_ENCODER.encode(command.content).length > MAX_IMPORT_BYTES) {
-      throw new ImportValidationError(
-        `Arquivo excede o limite de ${MAX_IMPORT_BYTES / 1024 / 1024} MB por importação.`,
-      );
-    }
+    let normalized: NormalizedCandidate[];
+    let defaultProviderName = 'CSV';
 
-    let headers: string[];
-    let rawRows: string[][];
-    try {
-      const parsed = parseCsv(command.content, MAX_IMPORT_ROWS);
-      headers = parsed.headers;
-      rawRows = parsed.rows;
-    } catch (error: unknown) {
-      if (error instanceof CsvParseError) {
-        throw new ImportValidationError(error.message);
+    if (command.sourceType === 'B3_NEGOTIATION_XLSX') {
+      const buffer = Buffer.from(command.content, 'base64');
+      if (buffer.length > MAX_IMPORT_BYTES) {
+        throw new ImportValidationError(
+          `Arquivo excede o limite de ${MAX_IMPORT_BYTES / 1024 / 1024} MB por importação.`,
+        );
       }
-      throw error;
-    }
 
-    const { mapping, missing } = mapHeaders(headers);
-    if (missing.length > 0) {
-      throw new ImportValidationError(
-        `Colunas obrigatórias ausentes: ${missing.join(', ')}. Use o modelo Atlas (data, ativo, operação, quantidade).`,
-      );
-    }
+      const detection = await detectB3XlsxLayout(buffer);
+      if (!detection.isB3 || detection.layout !== 'B3_NEGOTIATION') {
+        throw new ImportValidationError(
+          detection.reason ?? 'Arquivo Excel não reconhecido como formato oficial da B3.',
+        );
+      }
 
-    const today = this.clock.today();
-    const rows: RawImportRow[] = rawRows.map((cells, index) => ({
-      rowNumber: index + 2,
-      cells: Object.fromEntries(cells.map((value, cellIndex) => [String(cellIndex), value])),
-    }));
-    const normalized = rows.map((row) => normalizeRow(row, mapping, { today }));
+      try {
+        normalized = await parseB3NegotiationXlsx(buffer, {
+          today: this.clock.today(),
+          maxRows: MAX_IMPORT_ROWS,
+        });
+      } catch (error: unknown) {
+        if (error instanceof B3XlsxParseError) {
+          throw new ImportValidationError(error.message);
+        }
+        throw error;
+      }
+      defaultProviderName = 'B3';
+    } else {
+      if (TEXT_ENCODER.encode(command.content).length > MAX_IMPORT_BYTES) {
+        throw new ImportValidationError(
+          `Arquivo excede o limite de ${MAX_IMPORT_BYTES / 1024 / 1024} MB por importação.`,
+        );
+      }
+
+      let headers: string[];
+      let rawRows: string[][];
+      try {
+        const parsed = parseCsv(command.content, MAX_IMPORT_ROWS);
+        headers = parsed.headers;
+        rawRows = parsed.rows;
+      } catch (error: unknown) {
+        if (error instanceof CsvParseError) {
+          throw new ImportValidationError(error.message);
+        }
+        throw error;
+      }
+
+      const { mapping, missing } = mapHeaders(headers);
+      if (missing.length > 0) {
+        throw new ImportValidationError(
+          `Colunas obrigatórias ausentes: ${missing.join(', ')}. Use o modelo Atlas (data, ativo, operação, quantidade).`,
+        );
+      }
+
+      const today = this.clock.today();
+      const rows: RawImportRow[] = rawRows.map((cells, index) => ({
+        rowNumber: index + 2,
+        cells: Object.fromEntries(cells.map((value, cellIndex) => [String(cellIndex), value])),
+      }));
+      normalized = rows.map((row) => normalizeRow(row, mapping, { today }));
+    }
 
     const provider = normalizeProvider(
-      !command.provider || command.provider.trim() === '' ? 'CSV' : command.provider,
+      !command.provider || command.provider.trim() === '' ? defaultProviderName : command.provider,
     );
 
     const [assets, accounts] = await Promise.all([
@@ -278,7 +318,7 @@ export class PreviewPortfolioImportUseCase {
     });
 
     return {
-      sourceType: 'GENERIC_CSV',
+      sourceType: command.sourceType,
       provider: context.provider,
       fileName: command.fileName,
       // Run linkage is set by execute() (user-facing preview); internal

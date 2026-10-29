@@ -6,8 +6,25 @@
  * Dates are civil `YYYY-MM-DD` strings (never timezone-shifted Timestamps).
  */
 
-export const SUPPORTED_IMPORT_SOURCES = ['GENERIC_CSV'] as const;
+export const SUPPORTED_IMPORT_SOURCES = ['GENERIC_CSV', 'B3_NEGOTIATION_XLSX'] as const;
 export type SupportedImportSource = (typeof SUPPORTED_IMPORT_SOURCES)[number];
+
+export type B3LayoutType =
+  | 'B3_NEGOTIATION'
+  | 'B3_MOVEMENT'
+  | 'B3_EVENTS'
+  | 'B3_POSITION'
+  | 'B3_ANNUAL_REPORT'
+  | 'UNKNOWN';
+
+export interface B3LayoutDetectionResult {
+  isB3: boolean;
+  layout: B3LayoutType;
+  sheetName?: string;
+  detectedName: string;
+  isSupported: boolean;
+  reason?: string;
+}
 
 /**
  * Future source placeholders. Architecturally compatible with the 5K

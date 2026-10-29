@@ -5,7 +5,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 const MAX_CONTENT_CHARS = 3 * 1024 * 1024;
 
 export const PreviewPortfolioImportBodySchema = z.object({
-  sourceType: z.literal('GENERIC_CSV'),
+  sourceType: z.enum(['GENERIC_CSV', 'B3_NEGOTIATION_XLSX']),
   provider: z.string().trim().min(1).max(100).optional(),
   fileName: z.string().trim().min(1).max(255),
   content: z.string().min(1).max(MAX_CONTENT_CHARS),
@@ -32,7 +32,7 @@ export const ConfirmPortfolioImportBodySchema = PreviewPortfolioImportBodySchema
 export type ConfirmPortfolioImportBody = z.infer<typeof ConfirmPortfolioImportBodySchema>;
 
 export class PreviewPortfolioImportSwaggerDto {
-  @ApiProperty({ enum: ['GENERIC_CSV'], example: 'GENERIC_CSV' })
+  @ApiProperty({ enum: ['GENERIC_CSV', 'B3_NEGOTIATION_XLSX'], example: 'GENERIC_CSV' })
   sourceType!: string;
 
   @ApiPropertyOptional({ type: String, example: 'XP' })

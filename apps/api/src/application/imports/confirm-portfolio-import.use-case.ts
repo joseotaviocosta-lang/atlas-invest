@@ -325,8 +325,10 @@ export class ConfirmPortfolioImportUseCase {
       tradeDate: candidate.tradeDate,
       settlementDate: candidate.settlementDate,
       // Phase 5M: the ledger source mirrors the originating provider.
-      // CSV flows keep 'CSV'; simulated (and future) B3 flows record 'B3'.
-      source: (candidate.provider === 'B3' ? 'B3' : 'CSV') as CreateTransactionCommand['source'],
+      // CSV flows keep 'CSV'; B3 flows record 'B3'.
+      source: (candidate.provider.includes('B3') || command.sourceType === 'B3_NEGOTIATION_XLSX'
+        ? 'B3'
+        : 'CSV') as CreateTransactionCommand['source'],
       provider: candidate.provider,
       externalId: candidate.externalId,
       notes: this.buildNotes(command.fileName, candidate),
