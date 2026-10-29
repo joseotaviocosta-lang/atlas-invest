@@ -1,15 +1,17 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { EntityNotFoundError, CrossPortfolioIntegrityError } from '@atlas/database';
-import { LocalDate, serializeTransaction } from '@atlas/domain';
+import { LocalDate, serializeTransaction, Asset } from '@atlas/domain';
 import type {
   IAccountRepository,
   IAssetRepository,
+  IInstitutionRepository,
   IPortfolioRepository,
   ITransactionRepository,
 } from '@atlas/database';
 import {
   ACCOUNT_REPOSITORY,
   ASSET_REPOSITORY,
+  INSTITUTION_REPOSITORY,
   PORTFOLIO_REPOSITORY,
   TRANSACTION_REPOSITORY,
 } from '../../database/tokens';
@@ -30,6 +32,9 @@ import {
   B3XlsxParseError,
   resolveAccount,
   resolveAsset,
+  inferB3Asset,
+  normalizeB3InstitutionName,
+  matchAccountForB3Institution,
   summarize,
   CsvParseError,
   type AccountRef,
@@ -39,6 +44,8 @@ import {
   type ImportSummary,
   type NormalizedCandidate,
   type RawImportRow,
+  type UniqueAssetSummary,
+  type UniqueInstitutionSummary,
 } from '@atlas/import-engine';
 import { ImportValidationError } from './import-validation.error';
 import { IntegrationRunService } from './integration-run.service';
@@ -66,6 +73,8 @@ export interface PortfolioImportPreview {
   runId: string | null;
   candidates: ClassifiedCandidate[];
   summary: ImportSummary;
+  assetSummary?: UniqueAssetSummary[];
+  institutionSummary?: UniqueInstitutionSummary[];
 }
 
 interface PipelineContext {
@@ -73,6 +82,7 @@ interface PipelineContext {
   normalized: NormalizedCandidate[];
   assets: AssetRef[];
   accounts: AccountRef[];
+  institutions: Array<{ id: string; name: string }>;
   defaultAccountId: string | null;
   existing: ExistingLedgerRow[];
 }
@@ -90,6 +100,8 @@ export class PreviewPortfolioImportUseCase {
     private readonly assetRepository: IAssetRepository,
     @Inject(TRANSACTION_REPOSITORY)
     private readonly transactionRepository: ITransactionRepository,
+    @Inject(INSTITUTION_REPOSITORY)
+    private readonly institutionRepository: IInstitutionRepository,
     @Inject(FISCAL_CLOCK)
     private readonly clock: FiscalClock,
     @Inject(IntegrationRunService)
@@ -227,10 +239,43 @@ export class PreviewPortfolioImportUseCase {
       !command.provider || command.provider.trim() === '' ? defaultProviderName : command.provider,
     );
 
-    const [assets, accounts] = await Promise.all([
+    const [assets, accounts, institutions] = await Promise.all([
       this.assetRepository.list(),
       this.accountRepository.findByPortfolioId(command.portfolioId),
+      this.institutionRepository.list(),
     ]);
+
+    // Phase 5K Auto-Resolution: auto-provision known / unambiguous B3 assets into AssetRepository
+    // Metadata-only persistence: ledger delta remains strictly 0 (no financial transactions).
+    const uniqueTickers = Array.from(
+      new Set(normalized.map((c) => c.ticker.trim().toUpperCase())),
+    ).filter(Boolean);
+
+    const existingByTicker = new Map(
+      assets.map((a) => [a.ticker.trim().toUpperCase(), a]),
+    );
+
+    for (const ticker of uniqueTickers) {
+      if (!existingByTicker.has(ticker)) {
+        const ref = inferB3Asset(ticker);
+        if (ref) {
+          try {
+            const newAsset = Asset.create({
+              ticker: ref.ticker,
+              name: ref.name,
+              type: ref.type,
+              currency: ref.currency,
+              exchange: ref.exchange,
+            });
+            const created = await this.assetRepository.create(newAsset);
+            assets.push(created);
+            existingByTicker.set(ticker, created);
+          } catch {
+            // Concurrency or already existing fallback
+          }
+        }
+      }
+    }
 
     if (command.defaultAccountId) {
       const fallback = accounts.find((account) => account.id === command.defaultAccountId);
@@ -264,7 +309,16 @@ export class PreviewPortfolioImportUseCase {
         exchange: asset.exchange,
         status: asset.status,
       })),
-      accounts: accounts.map((account) => ({ id: account.id, name: account.name })),
+      accounts: accounts.map((account) => {
+        const inst = institutions.find((i) => i.id === account.institutionId);
+        return {
+          id: account.id,
+          name: account.name,
+          institutionId: account.institutionId,
+          institutionName: inst?.name,
+        };
+      }),
+      institutions: institutions.map((i) => ({ id: i.id, name: i.name })),
       defaultAccountId: command.defaultAccountId ?? null,
       existing,
     };
@@ -297,14 +351,35 @@ export class PreviewPortfolioImportUseCase {
         explicitAsset !== null
           ? { resolution: 'RESOLVED' as const, asset: explicitAsset, candidates: [] as AssetRef[] }
           : resolveAsset(candidate.ticker, context.assets);
-      const accountMatch =
-        explicitAccount !== null
-          ? {
-              resolution: 'RESOLVED' as const,
-              account: explicitAccount,
-              candidates: [] as AccountRef[],
-            }
-          : resolveAccount(candidate.accountLabel, context.accounts);
+
+      let accountMatch: {
+        resolution: 'RESOLVED' | 'AMBIGUOUS' | 'NOT_FOUND' | 'UNSPECIFIED';
+        account: AccountRef | null;
+        candidates: AccountRef[];
+      };
+
+      if (explicitAccount !== null) {
+        accountMatch = {
+          resolution: 'RESOLVED',
+          account: explicitAccount,
+          candidates: [],
+        };
+      } else if (command.sourceType === 'B3_NEGOTIATION_XLSX' || candidate.accountLabel || candidate.brokerLabel) {
+        // Deterministic B3 Institution to Account resolution
+        const instLabel = candidate.accountLabel?.trim() || candidate.brokerLabel?.trim();
+        const matched = matchAccountForB3Institution(
+          instLabel,
+          context.accounts,
+          context.institutions,
+        );
+        accountMatch = {
+          resolution: matched.resolution,
+          account: matched.account,
+          candidates: matched.candidates,
+        };
+      } else {
+        accountMatch = resolveAccount(candidate.accountLabel, context.accounts);
+      }
 
       return classifyOne({
         portfolioId: command.portfolioId,
@@ -317,6 +392,67 @@ export class PreviewPortfolioImportUseCase {
       });
     });
 
+    // Unique Asset Summary
+    const assetSummaryMap = new Map<string, UniqueAssetSummary>();
+    for (const candidate of candidates) {
+      const ticker = candidate.ticker.trim().toUpperCase();
+      const existing = assetSummaryMap.get(ticker);
+      if (existing) {
+        existing.rowCount += 1;
+      } else {
+        const asset = context.assets.find((a) => a.ticker.toUpperCase() === ticker);
+        assetSummaryMap.set(ticker, {
+          ticker,
+          rowCount: 1,
+          assetId: candidate.assetId,
+          status:
+            candidate.assetResolution === 'RESOLVED'
+              ? 'RESOLVED'
+              : candidate.assetResolution === 'AMBIGUOUS'
+                ? 'AMBIGUOUS'
+                : 'NEEDS_MAPPING',
+          name: asset ? (asset as { name?: string }).name : undefined,
+          type: asset ? (asset as { type?: string }).type : undefined,
+        });
+      }
+    }
+    const assetSummary = Array.from(assetSummaryMap.values()).sort((a, b) =>
+      a.ticker.localeCompare(b.ticker),
+    );
+
+    // Unique Institution Summary (grouped by normalized institution name)
+    const institutionSummaryMap = new Map<string, UniqueInstitutionSummary>();
+    for (const candidate of candidates) {
+      const rawName =
+        candidate.accountLabel?.trim() || candidate.brokerLabel?.trim() || 'Não identificada';
+      const normalizedName = normalizeB3InstitutionName(rawName);
+      const existing = institutionSummaryMap.get(normalizedName);
+      if (existing) {
+        existing.rowCount += 1;
+      } else {
+        const instCatalog = context.institutions.find(
+          (i) =>
+            i.name.toLowerCase() === normalizedName.toLowerCase() ||
+            normalizeB3InstitutionName(i.name).toLowerCase() === normalizedName.toLowerCase(),
+        );
+        const matchedAccount = candidate.accountId
+          ? context.accounts.find((a) => a.id === candidate.accountId)
+          : null;
+        institutionSummaryMap.set(normalizedName, {
+          rawName,
+          normalizedName,
+          institutionId: instCatalog?.id ?? null,
+          matchedAccountId: candidate.accountId ?? null,
+          matchedAccountName: matchedAccount?.name ?? null,
+          rowCount: 1,
+          status: candidate.accountId ? 'RESOLVED' : 'NEEDS_ACCOUNT',
+        });
+      }
+    }
+    const institutionSummary = Array.from(institutionSummaryMap.values()).sort(
+      (a, b) => b.rowCount - a.rowCount,
+    );
+
     return {
       sourceType: command.sourceType,
       provider: context.provider,
@@ -326,6 +462,8 @@ export class PreviewPortfolioImportUseCase {
       runId: null,
       candidates,
       summary: summarize(candidates),
+      assetSummary,
+      institutionSummary,
     };
   }
 

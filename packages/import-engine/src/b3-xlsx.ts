@@ -469,7 +469,7 @@ export async function parseB3NegotiationXlsx(
         fees: '0',
         currency: 'BRL',
         brokerLabel: broker !== '' ? broker : undefined,
-        accountLabel: undefined,
+        accountLabel: broker !== '' ? broker : undefined,
         externalId: undefined,
         notes,
         status,

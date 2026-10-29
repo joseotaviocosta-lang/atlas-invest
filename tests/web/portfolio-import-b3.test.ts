@@ -34,4 +34,19 @@ describe('Web Import Hub: Native B3 XLSX Integration', () => {
     expect(src).toContain('Cancelar');
     expect(src).toContain('previewMutation.reset()');
   });
+
+  it('renders unique assets summary and batch asset mapping', () => {
+    const src = page();
+    expect(src).toContain('Ativos únicos encontrados');
+    expect(src).toContain('handleBatchAssetMap');
+    expect(src).toContain('Aplicar a todas as ocorrências de');
+  });
+
+  it('renders institutions summary with batch account mapping and quick creation', () => {
+    const src = page();
+    expect(src).toContain('Instituições e contas de custódia');
+    expect(src).toContain('handleBatchAccountMap');
+    expect(src).toContain('handleCreateAccountForInstitution');
+    expect(src).toContain('Usar esta conta para todas as operações desta instituição');
+  });
 });

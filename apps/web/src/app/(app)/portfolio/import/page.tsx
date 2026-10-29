@@ -60,6 +60,12 @@ interface PortfolioOption {
 interface AccountOption {
   id: string;
   name: string;
+  institutionId?: string;
+}
+
+interface InstitutionOption {
+  id: string;
+  name: string;
 }
 
 interface AssetOption {
@@ -85,6 +91,7 @@ interface PreviewCandidate {
   fees: string;
   currency: string;
   brokerLabel?: string;
+  accountLabel?: string;
   externalId?: string;
   status: 'READY' | 'DUPLICATE' | 'AMBIGUOUS_ASSET' | 'INVALID' | 'UNSUPPORTED' | 'NEEDS_REVIEW';
   issues: PreviewIssue[];
@@ -105,6 +112,25 @@ interface PreviewSummary {
   ambiguousAssets: number;
 }
 
+interface UniqueAssetSummary {
+  ticker: string;
+  rowCount: number;
+  assetId: string | null;
+  status: 'RESOLVED' | 'NEEDS_MAPPING' | 'AMBIGUOUS';
+  name?: string;
+  type?: string;
+}
+
+interface UniqueInstitutionSummary {
+  rawName: string;
+  normalizedName: string;
+  institutionId: string | null;
+  matchedAccountId: string | null;
+  matchedAccountName: string | null;
+  rowCount: number;
+  status: 'RESOLVED' | 'NEEDS_ACCOUNT' | 'AMBIGUOUS';
+}
+
 interface PreviewResponse {
   sourceType: string;
   provider: string;
@@ -112,6 +138,8 @@ interface PreviewResponse {
   runId?: string | null;
   candidates: PreviewCandidate[];
   summary: PreviewSummary;
+  assetSummary?: UniqueAssetSummary[];
+  institutionSummary?: UniqueInstitutionSummary[];
 }
 
 interface ImportReceipt {
@@ -969,6 +997,17 @@ function ImportHubContent() {
   });
   const assets = useMemo(() => assetsData ?? [], [assetsData]);
 
+  const { data: institutionsData } = useQuery({
+    queryKey: ['institutions'],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: InstitutionOption[] }>('/api/v1/institutions');
+      return res.data;
+    },
+    enabled: authReady,
+    staleTime: 300_000,
+  });
+  const institutions = useMemo(() => institutionsData ?? [], [institutionsData]);
+
   const runsQuery = useQuery({
     queryKey: ['import-runs', activePortfolioId],
     queryFn: async () => {
@@ -1047,6 +1086,78 @@ function ImportHubContent() {
       ),
     [effectiveRows, skipRows, assetOverrides, accountOverrides, forceRows],
   );
+
+  const handleBatchAssetMap = (ticker: string, assetId: string) => {
+    if (!previewMutation.data) return;
+    const matchingRowNumbers = previewMutation.data.candidates
+      .filter((c) => c.ticker.toUpperCase() === ticker.toUpperCase())
+      .map((c) => c.rowNumber);
+
+    setAssetOverrides((previous) => {
+      const updated = { ...previous };
+      for (const rowNum of matchingRowNumbers) {
+        updated[rowNum] = assetId;
+      }
+      return updated;
+    });
+  };
+
+  const handleBatchAccountMap = (rawInstitutionName: string, accountId: string) => {
+    if (!previewMutation.data) return;
+    const matchingRowNumbers = previewMutation.data.candidates
+      .filter(
+        (c) =>
+          (c.brokerLabel?.trim() || '') === rawInstitutionName.trim() ||
+          (c.accountLabel?.trim() || '') === rawInstitutionName.trim(),
+      )
+      .map((c) => c.rowNumber);
+
+    setAccountOverrides((previous) => {
+      const updated = { ...previous };
+      for (const rowNum of matchingRowNumbers) {
+        updated[rowNum] = accountId;
+      }
+      return updated;
+    });
+  };
+
+  const [creatingAccountFor, setCreatingAccountFor] = useState<string | null>(null);
+
+  const handleCreateAccountForInstitution = async (inst: UniqueInstitutionSummary) => {
+    if (!activePortfolioId) return;
+    setCreatingAccountFor(inst.rawName);
+    try {
+      const instId =
+        inst.institutionId ||
+        institutions.find(
+          (i) =>
+            i.name.toLowerCase() === inst.normalizedName.toLowerCase() ||
+            i.name.toLowerCase().includes(inst.normalizedName.toLowerCase()),
+        )?.id;
+
+      if (!instId) {
+        setFileError(
+          `Instituição "${inst.normalizedName}" não encontrada no catálogo para criação automática.`,
+        );
+        return;
+      }
+
+      const res = await apiClient.post<{ data: AccountOption }>(
+        `/api/v1/portfolios/${activePortfolioId}/accounts`,
+        {
+          name: inst.normalizedName,
+          institutionId: instId,
+          currency: 'BRL',
+        },
+      );
+      await queryClient.invalidateQueries({ queryKey: ['portfolio-accounts', activePortfolioId] });
+      handleBatchAccountMap(inst.rawName, res.data.id);
+    } catch (err: unknown) {
+      setFileError(err instanceof Error ? err.message : 'Falha ao criar conta para a instituição.');
+    } finally {
+      setCreatingAccountFor(null);
+    }
+  };
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
@@ -1704,6 +1815,244 @@ function ImportHubContent() {
               por você · {eligibility.autoSkippedCount} ignoradas automaticamente ·{' '}
               {eligibility.blockedCount} aguardando decisão
             </p>
+
+            {/* Step 17: Unique Asset Summary & Batch Resolution */}
+            {preview.assetSummary && preview.assetSummary.length > 0 && (
+              <div
+                style={{
+                  marginTop: `${spacing.base}px`,
+                  marginBottom: `${spacing.base}px`,
+                  padding: `${spacing.sm}px`,
+                  backgroundColor: colors.surface,
+                  borderRadius: borderRadius.sm,
+                  border: `1px solid ${colors.border}`,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 8,
+                    flexWrap: 'wrap',
+                    gap: 8,
+                  }}
+                >
+                  <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>
+                    Ativos únicos encontrados ({preview.assetSummary.length})
+                  </span>
+                  <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                    Resolvidos automaticamente:{' '}
+                    <strong style={{ color: colors.positive }}>
+                      {
+                        preview.assetSummary.filter(
+                          (a) =>
+                            a.status === 'RESOLVED' ||
+                            preview.candidates.some(
+                              (c) => c.ticker === a.ticker && assetOverrides[c.rowNumber],
+                            ),
+                        ).length
+                      }
+                    </strong>{' '}
+                    · Precisam de decisão:{' '}
+                    <strong
+                      style={{
+                        color:
+                          preview.assetSummary.filter(
+                            (a) =>
+                              a.status !== 'RESOLVED' &&
+                              !preview.candidates.some(
+                                (c) => c.ticker === a.ticker && assetOverrides[c.rowNumber],
+                              ),
+                          ).length > 0
+                            ? colors.warning
+                            : colors.textSecondary,
+                      }}
+                    >
+                      {
+                        preview.assetSummary.filter(
+                          (a) =>
+                            a.status !== 'RESOLVED' &&
+                            !preview.candidates.some(
+                              (c) => c.ticker === a.ticker && assetOverrides[c.rowNumber],
+                            ),
+                        ).length
+                      }
+                    </strong>
+                  </span>
+                </div>
+
+                {preview.assetSummary
+                  .filter(
+                    (a) =>
+                      a.status !== 'RESOLVED' &&
+                      !preview.candidates.some(
+                        (c) => c.ticker === a.ticker && assetOverrides[c.rowNumber],
+                      ),
+                  )
+                  .map((unresolved) => (
+                    <div
+                      key={unresolved.ticker}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        padding: '6px 8px',
+                        backgroundColor: `${colors.warning}10`,
+                        borderRadius: borderRadius.sm,
+                        marginBottom: 4,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.8125rem' }}>
+                        <strong>{unresolved.ticker}</strong> ({unresolved.rowCount} operações)
+                      </span>
+                      <select
+                        aria-label={`Mapear ativo ${unresolved.ticker}`}
+                        value={
+                          preview.candidates.find(
+                            (c) => c.ticker === unresolved.ticker && assetOverrides[c.rowNumber],
+                          )
+                            ? assetOverrides[
+                                preview.candidates.find((c) => c.ticker === unresolved.ticker)!
+                                  .rowNumber
+                              ]
+                            : ''
+                        }
+                        onChange={(event) => {
+                          if (event.target.value) {
+                            handleBatchAssetMap(unresolved.ticker, event.target.value);
+                          }
+                        }}
+                        style={{ minHeight: 36, fontSize: '0.8125rem' }}
+                      >
+                        <option value="">
+                          Aplicar a todas as ocorrências de {unresolved.ticker}…
+                        </option>
+                        {assets.map((asset) => (
+                          <option key={asset.id} value={asset.id}>
+                            {asset.ticker} · {asset.exchange}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+              </div>
+            )}
+
+            {/* Step 16: File-level Institution Summary & Account Mapping */}
+            {preview.institutionSummary && preview.institutionSummary.length > 0 && (
+              <div
+                style={{
+                  marginBottom: `${spacing.base}px`,
+                  padding: `${spacing.sm}px`,
+                  backgroundColor: colors.surface,
+                  borderRadius: borderRadius.sm,
+                  border: `1px solid ${colors.border}`,
+                }}
+              >
+                <div style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: 8 }}>
+                  Instituições e contas de custódia
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {preview.institutionSummary.map((inst) => {
+                    const sampleCandidate = preview.candidates.find(
+                      (c) =>
+                        (c.brokerLabel?.trim() || '') === inst.rawName ||
+                        (c.accountLabel?.trim() || '') === inst.rawName,
+                    );
+                    const currentAccountId =
+                      (sampleCandidate && accountOverrides[sampleCandidate.rowNumber]) ||
+                      inst.matchedAccountId;
+                    const resolvedAccount = currentAccountId
+                      ? accounts.find((a) => a.id === currentAccountId)
+                      : null;
+
+                    return (
+                      <div
+                        key={inst.rawName}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: 8,
+                          padding: '8px 12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: borderRadius.sm,
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>
+                            {inst.normalizedName}{' '}
+                            <span style={{ fontWeight: 400, color: colors.textSecondary }}>
+                              — {inst.rowCount} operações
+                            </span>
+                          </div>
+                          {inst.rawName !== inst.normalizedName && (
+                            <div style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+                              {inst.rawName}
+                            </div>
+                          )}
+                          <div style={{ marginTop: 4 }}>
+                            {resolvedAccount ? (
+                              <Badge variant="success">Conta resolvida: {resolvedAccount.name}</Badge>
+                            ) : (
+                              <Badge variant="warning">Conta não definida</Badge>
+                            )}
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <select
+                            aria-label={`Conta para operações de ${inst.normalizedName}`}
+                            value={resolvedAccount ? resolvedAccount.id : ''}
+                            onChange={(event) => {
+                              if (event.target.value) {
+                                handleBatchAccountMap(inst.rawName, event.target.value);
+                              }
+                            }}
+                            style={{ minHeight: 40, fontSize: '0.8125rem' }}
+                          >
+                            <option value="">
+                              {resolvedAccount
+                                ? 'Trocar conta para todas…'
+                                : 'Selecionar conta para todas…'}
+                            </option>
+                            {accounts.map((account) => (
+                              <option key={account.id} value={account.id}>
+                                {account.name}
+                              </option>
+                            ))}
+                          </select>
+
+                          {!resolvedAccount && (
+                            <Button
+                              variant="secondary"
+                              onClick={() => void handleCreateAccountForInstitution(inst)}
+                              disabled={creatingAccountFor === inst.rawName}
+                              style={{ minHeight: 40, fontSize: '0.8125rem' }}
+                            >
+                              {creatingAccountFor === inst.rawName
+                                ? 'Criando conta…'
+                                : `+ Criar conta "${inst.normalizedName}"`}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', fontSize: '0.875rem', borderCollapse: 'collapse' }}>
                 <thead>
@@ -1790,44 +2139,89 @@ function ImportHubContent() {
                             </div>
                           ))}
                           {needsAsset && (
-                            <select
-                              aria-label={`Ativo da linha ${rowNumber}`}
-                              value={assetOverrides[rowNumber] ?? ''}
-                              onChange={(event) =>
-                                setAssetOverrides((previous) => ({
-                                  ...previous,
-                                  [rowNumber]: event.target.value,
-                                }))
-                              }
-                              style={{ minHeight: 44, marginTop: 4 }}
-                            >
-                              <option value="">Selecionar ativo…</option>
-                              {assetOptions.map((asset) => (
-                                <option key={asset.id} value={asset.id}>
-                                  {asset.ticker} · {asset.exchange}
-                                </option>
-                              ))}
-                            </select>
+                            <div style={{ marginTop: 4 }}>
+                              <select
+                                aria-label={`Ativo da linha ${rowNumber}`}
+                                value={assetOverrides[rowNumber] ?? ''}
+                                onChange={(event) =>
+                                  setAssetOverrides((previous) => ({
+                                    ...previous,
+                                    [rowNumber]: event.target.value,
+                                  }))
+                                }
+                                style={{ minHeight: 44, width: '100%' }}
+                              >
+                                <option value="">Selecionar ativo…</option>
+                                {assetOptions.map((asset) => (
+                                  <option key={asset.id} value={asset.id}>
+                                    {asset.ticker} · {asset.exchange}
+                                  </option>
+                                ))}
+                              </select>
+                              {assetOverrides[rowNumber] && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleBatchAssetMap(candidate.ticker, assetOverrides[rowNumber]!)
+                                  }
+                                  style={{
+                                    fontSize: '0.75rem',
+                                    color: colors.accent,
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: '2px 0',
+                                    cursor: 'pointer',
+                                    textDecoration: 'underline',
+                                  }}
+                                >
+                                  Aplicar a todas as ocorrências de {candidate.ticker}
+                                </button>
+                              )}
+                            </div>
                           )}
                           {needsAccount && (
-                            <select
-                              aria-label={`Conta da linha ${rowNumber}`}
-                              value={accountOverrides[rowNumber] ?? ''}
-                              onChange={(event) =>
-                                setAccountOverrides((previous) => ({
-                                  ...previous,
-                                  [rowNumber]: event.target.value,
-                                }))
-                              }
-                              style={{ minHeight: 44, marginTop: 4 }}
-                            >
-                              <option value="">Selecionar conta…</option>
-                              {accounts.map((account) => (
-                                <option key={account.id} value={account.id}>
-                                  {account.name}
-                                </option>
-                              ))}
-                            </select>
+                            <div style={{ marginTop: 4 }}>
+                              <select
+                                aria-label={`Conta da linha ${rowNumber}`}
+                                value={accountOverrides[rowNumber] ?? ''}
+                                onChange={(event) =>
+                                  setAccountOverrides((previous) => ({
+                                    ...previous,
+                                    [rowNumber]: event.target.value,
+                                  }))
+                                }
+                                style={{ minHeight: 44, width: '100%' }}
+                              >
+                                <option value="">Selecionar conta…</option>
+                                {accounts.map((account) => (
+                                  <option key={account.id} value={account.id}>
+                                    {account.name}
+                                  </option>
+                                ))}
+                              </select>
+                              {accountOverrides[rowNumber] && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleBatchAccountMap(
+                                      candidate.brokerLabel ?? candidate.accountLabel ?? '',
+                                      accountOverrides[rowNumber]!,
+                                    )
+                                  }
+                                  style={{
+                                    fontSize: '0.75rem',
+                                    color: colors.accent,
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: '2px 0',
+                                    cursor: 'pointer',
+                                    textDecoration: 'underline',
+                                  }}
+                                >
+                                  Usar esta conta para todas as operações desta instituição
+                                </button>
+                              )}
+                            </div>
                           )}
                           {candidate.duplicate === 'PROBABLE_DUPLICATE' && !skipped && (
                             <label

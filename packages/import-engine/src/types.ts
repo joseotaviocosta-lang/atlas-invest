@@ -155,6 +155,32 @@ export interface AssetRef {
 export interface AccountRef {
   id: string;
   name: string;
+  institutionId?: string;
+  institutionName?: string;
+}
+
+export interface InstitutionRef {
+  id: string;
+  name: string;
+}
+
+export interface UniqueAssetSummary {
+  ticker: string;
+  rowCount: number;
+  assetId: string | null;
+  status: 'RESOLVED' | 'NEEDS_MAPPING' | 'AMBIGUOUS';
+  name?: string;
+  type?: string;
+}
+
+export interface UniqueInstitutionSummary {
+  rawName: string;
+  normalizedName: string;
+  institutionId: string | null;
+  matchedAccountId: string | null;
+  matchedAccountName: string | null;
+  rowCount: number;
+  status: 'RESOLVED' | 'NEEDS_ACCOUNT' | 'AMBIGUOUS';
 }
 
 export interface ExistingLedgerRow {

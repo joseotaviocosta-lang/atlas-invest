@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import request from 'supertest';
 import { INestApplication } from '@nestjs/common';
 import ExcelJS from 'exceljs';
+import type { UniqueAssetSummary, UniqueInstitutionSummary } from '@atlas/import-engine';
 import {
   createTestApp,
   closeTestApp,
@@ -47,6 +48,32 @@ async function createB3NegotiationXlsxBase64(): Promise<string> {
     72.1,
     3605,
   ]);
+  const arrayBuffer = await wb.xlsx.writeBuffer();
+  return Buffer.from(arrayBuffer).toString('base64');
+}
+
+async function createMultiAssetInstitutionB3XlsxBase64(): Promise<string> {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Negociação');
+  ws.addRow([
+    'Data do Negócio',
+    'Tipo de Movimentação',
+    'Mercado',
+    'Prazo/Vencimento',
+    'Instituição',
+    'Código de Negociação',
+    'Quantidade',
+    'Preço',
+    'Valor',
+  ]);
+  // ITSA4 (Stock) via XP
+  ws.addRow(['10/01/2026', 'Compra', 'Mercado à Vista', '-', 'XP INVESTIMENTOS CCTVM S/A.', 'ITSA4', 200, 10.5, 2100]);
+  // JHSF3 (Stock) via XP
+  ws.addRow(['12/01/2026', 'Compra', 'Mercado à Vista', '-', 'XP INVESTIMENTOS CCTVM S/A', 'JHSF3', 500, 4.2, 2100]);
+  // IRIM11 (FII) via NuInvest
+  ws.addRow(['15/01/2026', 'Compra', 'Mercado à Vista', '-', 'NU INVESTIMENTOS S.A. - CTVM', 'IRIM11', 50, 80.0, 4000]);
+  // ROXO34 (BDR) via NuInvest
+  ws.addRow(['18/01/2026', 'Compra', 'Mercado à Vista', '-', 'NU INVESTIMENTOS S.A. - CTVM', 'ROXO34', 100, 12.0, 1200]);
   const arrayBuffer = await wb.xlsx.writeBuffer();
   return Buffer.from(arrayBuffer).toString('base64');
 }
@@ -311,6 +338,177 @@ describe('API Integration: Native B3 XLSX Import', () => {
       // Ledger count still exactly 2
       const finalCount = await prisma.transaction.count({ where: { portfolioId } });
       expect(finalCount).toBe(2);
+    });
+
+    it('auto-resolves and provisions unseeded B3 assets (ITSA4, JHSF3, IRIM11, ROXO34) and auto-matches accounts by institution', async () => {
+      // Create institutions and accounts for XP and NuInvest
+      const xpInst = await prisma.institution.create({
+        data: {
+          id: 'b0000000-0000-4000-8000-000000000010',
+          name: 'XP Investimentos',
+          type: 'BROKER',
+          country: 'BR',
+        },
+      });
+      const nuInst = await prisma.institution.create({
+        data: {
+          id: 'b0000000-0000-4000-8000-000000000020',
+          name: 'Nubank / NuInvest',
+          type: 'BROKER',
+          country: 'BR',
+        },
+      });
+      const xpAccount = await prisma.account.create({
+        data: {
+          id: 'd0000000-0000-4000-8000-000000000010',
+          portfolioId,
+          institutionId: xpInst.id,
+          name: 'XP Conta Principal',
+          currency: 'BRL',
+          status: 'ACTIVE',
+        },
+      });
+      const nuAccount = await prisma.account.create({
+        data: {
+          id: 'd0000000-0000-4000-8000-000000000020',
+          portfolioId,
+          institutionId: nuInst.id,
+          name: 'NuInvest Custódia',
+          currency: 'BRL',
+          status: 'ACTIVE',
+        },
+      });
+
+      // Verify that ITSA4, JHSF3, IRIM11, ROXO34 do NOT exist initially in DB
+      const initialAssets = await prisma.asset.findMany({
+        where: { ticker: { in: ['ITSA4', 'JHSF3', 'IRIM11', 'ROXO34'] } },
+      });
+      expect(initialAssets).toHaveLength(0);
+
+      const base64Content = await createMultiAssetInstitutionB3XlsxBase64();
+
+      // 1. Preview
+      const previewRes = await request(app.getHttpServer())
+        .post(previewUrl())
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          sourceType: 'B3_NEGOTIATION_XLSX',
+          fileName: 'negociacao-multi-ativos.xlsx',
+          content: base64Content,
+        })
+        .expect(200);
+
+      const data = previewRes.body.data;
+      expect(data.summary.totalRows).toBe(4);
+      expect(data.summary.ready).toBe(4);
+      expect(data.summary.needsReview).toBe(0);
+      expect(data.summary.duplicates).toBe(0);
+
+      // Verify assetSummary
+      expect(data.assetSummary).toHaveLength(4);
+      expect(data.assetSummary.every((a: UniqueAssetSummary) => a.status === 'RESOLVED')).toBe(true);
+
+      // Verify institutionSummary
+      expect(data.institutionSummary).toHaveLength(2);
+      const xpSummary = data.institutionSummary.find((i: UniqueInstitutionSummary) => i.normalizedName === 'XP Investimentos');
+      expect(xpSummary).toBeDefined();
+      expect(xpSummary.matchedAccountId).toBe(xpAccount.id);
+      expect(xpSummary.status).toBe('RESOLVED');
+
+      const nuSummary = data.institutionSummary.find((i: UniqueInstitutionSummary) => i.normalizedName === 'Nubank / NuInvest');
+      expect(nuSummary).toBeDefined();
+      expect(nuSummary.matchedAccountId).toBe(nuAccount.id);
+      expect(nuSummary.status).toBe('RESOLVED');
+
+      // Verify that assets were metadata-provisioned in DB
+      const provisionedAssets = await prisma.asset.findMany({
+        where: { ticker: { in: ['ITSA4', 'JHSF3', 'IRIM11', 'ROXO34'] } },
+      });
+      expect(provisionedAssets).toHaveLength(4);
+      const itsa = provisionedAssets.find((a) => a.ticker === 'ITSA4');
+      expect(itsa?.type).toBe('STOCK');
+      const irim = provisionedAssets.find((a) => a.ticker === 'IRIM11');
+      expect(irim?.type).toBe('FII');
+      const roxo = provisionedAssets.find((a) => a.ticker === 'ROXO34');
+      expect(roxo?.type).toBe('BDR');
+
+      // Zero transactions in ledger (ledger delta = 0)
+      const txCountBefore = await prisma.transaction.count({ where: { portfolioId } });
+      expect(txCountBefore).toBe(0);
+
+      // 2. Confirm
+      const confirmRes = await request(app.getHttpServer())
+        .post(confirmUrl())
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          sourceType: 'B3_NEGOTIATION_XLSX',
+          fileName: 'negociacao-multi-ativos.xlsx',
+          content: base64Content,
+          runId: data.runId,
+          decisions: [],
+        })
+        .expect(201);
+
+      expect(confirmRes.body.data.created).toBe(4);
+
+      // Verify ledger transactions
+      const txs = await prisma.transaction.findMany({
+        where: { portfolioId },
+        orderBy: { tradeDate: 'asc' },
+      });
+      expect(txs).toHaveLength(4);
+      // XP operations mapped to XP account
+      const xpTxs = txs.filter((t) => t.accountId === xpAccount.id);
+      expect(xpTxs).toHaveLength(2);
+      // Nu operations mapped to Nu account
+      const nuTxs = txs.filter((t) => t.accountId === nuAccount.id);
+      expect(nuTxs).toHaveLength(2);
+    });
+
+    it('handles new empty portfolio with 0 accounts by reporting NEEDS_ACCOUNT in institutionSummary', async () => {
+      // Create empty portfolio with 0 accounts
+      const user = await prisma.user.findFirst();
+      const emptyPortfolio = await prisma.portfolio.create({
+        data: {
+          id: '33333333-3333-4333-8333-000000000099',
+          userId: user!.id,
+          name: 'Carteira Vazia',
+          baseCurrency: 'BRL',
+          type: 'PERSONAL',
+          status: 'ACTIVE',
+        },
+      });
+
+      const base64Content = await createMultiAssetInstitutionB3XlsxBase64();
+
+      const previewRes = await request(app.getHttpServer())
+        .post(`/api/v1/portfolios/${emptyPortfolio.id}/imports/preview`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          sourceType: 'B3_NEGOTIATION_XLSX',
+          fileName: 'negociacao-carteira-vazia.xlsx',
+          content: base64Content,
+        })
+        .expect(200);
+
+      const data = previewRes.body.data;
+      expect(data.summary.totalRows).toBe(4);
+      // Because no accounts exist, rows need account assignment (needsReview)
+      expect(data.summary.needsReview).toBe(4);
+      expect(data.summary.ready).toBe(0);
+
+      // But all assets are resolved
+      expect(data.assetSummary).toHaveLength(4);
+      expect(data.assetSummary.every((a: UniqueAssetSummary) => a.status === 'RESOLVED')).toBe(true);
+
+      // Institutions report NEEDS_ACCOUNT
+      expect(data.institutionSummary).toHaveLength(2);
+      expect(data.institutionSummary.every((i: UniqueInstitutionSummary) => i.status === 'NEEDS_ACCOUNT')).toBe(true);
+      expect(data.institutionSummary.every((i: UniqueInstitutionSummary) => i.matchedAccountId === null)).toBe(true);
+
+      // Zero transactions
+      const txCount = await prisma.transaction.count({ where: { portfolioId: emptyPortfolio.id } });
+      expect(txCount).toBe(0);
     });
   });
 });
