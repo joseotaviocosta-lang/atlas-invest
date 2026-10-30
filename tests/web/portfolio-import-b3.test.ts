@@ -9,6 +9,10 @@ function page(): string {
   );
 }
 
+function readWeb(relativePath: string): string {
+  return readFileSync(resolve(__dirname, '../../', relativePath), 'utf-8');
+}
+
 describe('Web Import Hub: Native B3 XLSX Integration', () => {
   it('accepts both CSV and XLSX files in file input', () => {
     const src = page();
@@ -18,9 +22,24 @@ describe('Web Import Hub: Native B3 XLSX Integration', () => {
 
   it('supports B3_NEGOTIATION_XLSX sourceType with detected format display', () => {
     const src = page();
-    expect(src).toContain("setSourceType('B3_NEGOTIATION_XLSX')");
-    expect(src).toContain('Área do Investidor B3 — Negociação');
+    // Hotfix B1: filename sniffing moved to detectClientSourceType (UX hint);
+    // the server re-detects from bytes. Negotiation behavior preserved.
+    expect(src).toContain('detectClientSourceType');
+    expect(src).toContain('B3_NEGOTIATION_XLSX');
     expect(src).toContain('Formato detectado:');
+    const helper = readWeb('apps/web/src/lib/import-review.ts');
+    expect(helper).toContain('Área do Investidor B3 — Negociação');
+  });
+
+  it('supports B3_MOVEMENT_XLSX sourceType with server-detected format label', () => {
+    const src = page();
+    expect(src).toContain('B3_MOVEMENT_XLSX');
+    expect(src).toContain('detectClientSourceType');
+    expect(src).toContain('detectedName');
+    expect(src).toContain('movement-notices');
+    // The pt-BR label lives in the sniffing helper (single source of truth).
+    const helper = readWeb('apps/web/src/lib/import-review.ts');
+    expect(helper).toContain('Área do Investidor B3 — Movimentação');
   });
 
   it('renders Instituição column in preview table', () => {

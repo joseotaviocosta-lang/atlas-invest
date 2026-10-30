@@ -9,7 +9,11 @@ import { useAuthReady } from '@/hooks/use-auth-ready';
 import {
   getConfirmEligibility,
   getEffectiveRowState,
+  detectClientSourceType,
+  groupMovementNotices,
   type EffectiveRowState,
+  type ClientSourceType,
+  type MovementNoticeLike,
 } from '@/lib/import-review';
 import {
   colors,
@@ -142,6 +146,9 @@ interface PreviewResponse {
   fileName: string;
   runId?: string | null;
   candidates: PreviewCandidate[];
+  notices?: MovementNoticeLike[];
+  detectedLayout?: string | null;
+  detectedName?: string | null;
   summary: PreviewSummary;
   assetSummary?: UniqueAssetSummary[];
   institutionSummary?: UniqueInstitutionSummary[];
@@ -939,9 +946,7 @@ function ImportHubContent() {
   const [portfolioId, setPortfolioId] = useState<string | null>(searchParams.get('portfolioId'));
   const [fileName, setFileName] = useState('');
   const [content, setContent] = useState('');
-  const [sourceType, setSourceType] = useState<
-    'GENERIC_CSV' | 'B3_NEGOTIATION_XLSX' | 'B3_ANNUAL_REPORT_XLSX'
-  >('GENERIC_CSV');
+  const [sourceType, setSourceType] = useState<ClientSourceType>('GENERIC_CSV');
   const [detectedFormatName, setDetectedFormatName] = useState<string | null>(null);
   const [provider, setProvider] = useState('Corretora');
   const [defaultAccountId, setDefaultAccountId] = useState('');
@@ -1056,14 +1061,20 @@ function ImportHubContent() {
             ? { sourceType: 'B3_ANNUAL_REPORT_XLSX' as const }
             : sourceType === 'B3_NEGOTIATION_XLSX'
               ? { sourceType: 'B3_NEGOTIATION_XLSX' as const }
-              : { sourceType: 'GENERIC_CSV' as const }),
+              : sourceType === 'B3_MOVEMENT_XLSX'
+                ? { sourceType: 'B3_MOVEMENT_XLSX' as const }
+                : { sourceType: 'GENERIC_CSV' as const }),
           provider: provider.trim() === '' ? (sourceType !== 'GENERIC_CSV' ? 'B3' : 'CSV') : provider.trim(),
-          fileName: fileName === '' ? (sourceType === 'B3_ANNUAL_REPORT_XLSX' ? 'anual.xlsx' : sourceType === 'B3_NEGOTIATION_XLSX' ? 'negociacao.xlsx' : 'importacao.csv') : fileName,
+          fileName: fileName === '' ? (sourceType === 'B3_ANNUAL_REPORT_XLSX' ? 'anual.xlsx' : sourceType === 'B3_NEGOTIATION_XLSX' ? 'negociacao.xlsx' : sourceType === 'B3_MOVEMENT_XLSX' ? 'movimentacao.xlsx' : 'importacao.csv') : fileName,
           content,
           ...(defaultAccountId ? { defaultAccountId } : {}),
         },
       );
-      if (res.data.sourceType === 'B3_ANNUAL_REPORT_XLSX') {
+      // Hotfix B1 — the server re-detects the layout from the file bytes and
+      // is the source of truth for the format label (declared sourceType is a hint).
+      if (res.data.detectedName) {
+        setDetectedFormatName(res.data.detectedName);
+      } else if (res.data.sourceType === 'B3_ANNUAL_REPORT_XLSX') {
         setSourceType('B3_ANNUAL_REPORT_XLSX');
         setDetectedFormatName('Área do Investidor B3 — Relatório Consolidado Anual (Posição Inicial)');
       }
@@ -1144,6 +1155,17 @@ function ImportHubContent() {
       ambiguousAssets: previewData.summary.ambiguousAssets,
     };
   }, [previewMutation.data, effectiveRows]);
+
+  // Hotfix B1 (M2) — movement notices are display-only: grouped for review,
+  // never counted as importable, never sent to confirm.
+  const noticeGroups = useMemo(
+    () => groupMovementNotices(previewMutation.data?.notices ?? []),
+    [previewMutation.data],
+  );
+  const totalNotices = useMemo(
+    () => noticeGroups.reduce((sum, group) => sum + group.count, 0),
+    [noticeGroups],
+  );
 
   const handleBatchAssetMap = (ticker: string, assetId: string) => {
     if (!previewMutation.data) return;
@@ -1283,7 +1305,9 @@ function ImportHubContent() {
             ? { sourceType: 'B3_ANNUAL_REPORT_XLSX' as const }
             : sourceType === 'B3_NEGOTIATION_XLSX'
               ? { sourceType: 'B3_NEGOTIATION_XLSX' as const }
-              : { sourceType: 'GENERIC_CSV' as const }),
+              : sourceType === 'B3_MOVEMENT_XLSX'
+                ? { sourceType: 'B3_MOVEMENT_XLSX' as const }
+                : { sourceType: 'GENERIC_CSV' as const }),
           provider: provider.trim() === '' ? (sourceType !== 'GENERIC_CSV' ? 'B3' : 'CSV') : provider.trim(),
           fileName: previewData.fileName,
           content,
@@ -1329,18 +1353,11 @@ function ImportHubContent() {
       }
       const base64 = btoa(binary);
       setContent(base64);
-      const isAnnual =
-        file.name.toLowerCase().includes('anual') ||
-        file.name.toLowerCase().includes('consolidado');
-      if (isAnnual) {
-        setSourceType('B3_ANNUAL_REPORT_XLSX');
-        setDetectedFormatName(
-          'Área do Investidor B3 — Relatório Consolidado Anual (Posição Inicial)',
-        );
-      } else {
-        setSourceType('B3_NEGOTIATION_XLSX');
-        setDetectedFormatName('Área do Investidor B3 — Negociação');
-      }
+      // Filename sniffing is a UX hint only: the backend re-detects the layout
+      // from the file bytes and wins for parsing and safety gates (hotfix B1).
+      const hint = detectClientSourceType(file.name, true);
+      setSourceType(hint.sourceType);
+      setDetectedFormatName(hint.formatName);
       setProvider('B3');
     } else {
       const text = await file.text();
@@ -2514,12 +2531,70 @@ function ImportHubContent() {
                 </tbody>
               </table>
             </div>
+            {/* Hotfix B1 (M2) — movement notices: display-only grouped section.
+                Notices never enter readyCount / willImport / confirm payload. */}
+            {noticeGroups.length > 0 && (
+              <div style={{ marginTop: `${spacing.base}px` }} data-testid="movement-notices">
+                <SectionHeader
+                  title={`Avisos e eventos sem efeito direto (${totalNotices})`}
+                  description="Proventos, direitos, empréstimos e marcadores informativos. Estes itens não serão importados."
+                />
+                {noticeGroups.map((group) => (
+                  <details
+                    key={group.key}
+                    style={{
+                      marginTop: `${spacing.sm}px`,
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: `${borderRadius.md}px`,
+                      padding: `${spacing.sm}px`,
+                    }}
+                  >
+                    <summary
+                      style={{
+                        cursor: 'pointer',
+                        fontSize: '0.875rem',
+                        fontWeight: 600,
+                        color: colors.textPrimary,
+                        minHeight: 44,
+                        display: 'flex',
+                        alignItems: 'center',
+                      }}
+                    >
+                      {group.label} ({group.count})
+                    </summary>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: `${spacing.sm}px 0 0` }}>
+                      {group.items.map((notice) => (
+                        <li
+                          key={notice.rowNumber}
+                          style={{
+                            fontSize: '0.8125rem',
+                            color: colors.textSecondary,
+                            marginBottom: 4,
+                          }}
+                        >
+                          <strong style={{ color: colors.textPrimary }}>
+                            {notice.ticker || '—'}
+                          </strong>{' '}
+                          · {notice.movement}
+                          {notice.tradeDate ? ` · ${formatCivilDateDisplay(notice.tradeDate)}` : ''} ·{' '}
+                          {notice.message}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ))}
+              </div>
+            )}
             <div style={{ marginTop: `${spacing.base}px` }}>
               <Button
                 onClick={() => confirmMutation.mutate()}
                 disabled={confirmMutation.isPending || !eligibility.canConfirm}
               >
-                {confirmMutation.isPending ? 'Importando…' : '4. Confirmar importação'}
+                {confirmMutation.isPending
+                  ? 'Importando…'
+                  : eligibility.importableCount > 0
+                    ? `4. Confirmar ${eligibility.importableCount} evento${eligibility.importableCount === 1 ? '' : 's'}`
+                    : '4. Confirmar importação'}
               </Button>
               <Button
                 variant="outline"

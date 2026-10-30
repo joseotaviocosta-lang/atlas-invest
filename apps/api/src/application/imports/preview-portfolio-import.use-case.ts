@@ -42,6 +42,7 @@ import {
   CsvParseError,
   type AccountRef,
   type AssetRef,
+  type B3LayoutType,
   type ClassifiedCandidate,
   type ExistingLedgerRow,
   type ImportSummary,
@@ -82,6 +83,15 @@ export interface PortfolioImportPreview {
    * so they can never reach the ledger (PART P: no mass import).
    */
   notices: MovementNotice[];
+  /**
+   * Hotfix B1 — the layout the server actually detected by inspecting the
+   * file bytes (source of truth for parsing AND safety gates). The declared
+   * client sourceType is only a hint and must never disable gates.
+   * Null for CSV flows (no layout inspection).
+   */
+  detectedLayout: B3LayoutType | null;
+  /** Human-readable detected format name for honest UI labeling. */
+  detectedName: string | null;
   summary: ImportSummary;
   assetSummary?: UniqueAssetSummary[];
   institutionSummary?: UniqueInstitutionSummary[];
@@ -91,6 +101,8 @@ interface PipelineContext {
   provider: string;
   normalized: NormalizedCandidate[];
   notices: MovementNotice[];
+  detectedLayout: B3LayoutType | null;
+  detectedName: string | null;
   assets: AssetRef[];
   accounts: AccountRef[];
   institutions: Array<{ id: string; name: string }>;
@@ -188,6 +200,10 @@ export class PreviewPortfolioImportUseCase {
     let normalized: NormalizedCandidate[];
     let movementNotices: MovementNotice[] = [];
     let defaultProviderName = 'CSV';
+    // Hotfix B1 — detected layout is the source of truth for parsing AND
+    // safety gates. Declared sourceType is only a client hint.
+    let detectedLayout: B3LayoutType | null = null;
+    let detectedName: string | null = null;
 
     if (
       command.sourceType === 'B3_NEGOTIATION_XLSX' ||
@@ -207,6 +223,8 @@ export class PreviewPortfolioImportUseCase {
           detection.reason ?? 'Arquivo Excel não reconhecido como formato oficial da B3.',
         );
       }
+      detectedLayout = detection.layout;
+      detectedName = detection.detectedName;
 
       try {
         if (detection.layout === 'B3_NEGOTIATION') {
@@ -335,10 +353,11 @@ export class PreviewPortfolioImportUseCase {
     const tradeDates = dated.map((candidate) => candidate.tradeDate).sort();
     // Phase R1 — movement ledger gates (settlement shadows, pre-baseline
     // snapshot cover) need the FULL ledger history, including 2024 opening
-    // legs that fall outside the file's own date window. Other sources keep
-    // the bounded range query.
+    // legs that fall outside the file's own date window. Keyed on DETECTED
+    // layout (hotfix B1): a misdeclared client sourceType must never shrink
+    // the history window nor skip gates. Other sources keep the bounded query.
     const existing =
-      command.sourceType === 'B3_MOVEMENT_XLSX'
+      detectedLayout === 'B3_MOVEMENT'
         ? await this.loadFullLedger(command.portfolioId)
         : await this.loadExistingLedger(
             command.portfolioId,
@@ -350,6 +369,8 @@ export class PreviewPortfolioImportUseCase {
       provider,
       normalized,
       notices: movementNotices,
+      detectedLayout,
+      detectedName,
       assets: assets.map((asset) => ({
         id: asset.id,
         ticker: asset.ticker,
@@ -462,8 +483,9 @@ export class PreviewPortfolioImportUseCase {
     // resolved assetId/accountId plus full existing history). Downgrades only:
     // shadows and loan-state become UNSUPPORTED, pre-baseline trades become
     // NEEDS_REVIEW. Nothing here can promote a row to READY.
+    // Hotfix B1: keyed on DETECTED layout, never on declared sourceType.
     const gated =
-      command.sourceType === 'B3_MOVEMENT_XLSX'
+      context.detectedLayout === 'B3_MOVEMENT'
         ? applyMovementLedgerGates({ candidates, existing: context.existing })
         : candidates;
 
@@ -572,6 +594,8 @@ export class PreviewPortfolioImportUseCase {
       runId: null,
       candidates: gated,
       notices: context.notices,
+      detectedLayout: context.detectedLayout,
+      detectedName: context.detectedName,
       summary: summarize(gated),
       assetSummary,
       institutionSummary,

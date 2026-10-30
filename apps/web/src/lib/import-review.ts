@@ -136,3 +136,118 @@ export function getConfirmEligibility(
     hint: null,
   };
 }
+
+/**
+ * Phase R1 hotfix — client-side source hint for the Import Hub.
+ *
+ * Filename sniffing is a UX hint only: the backend re-detects the layout from
+ * the file bytes and remains the source of truth (detection wins for parsing
+ * and safety gates). Recognizes `movimentacao-` / `movimentação-` prefixes.
+ */
+export type ClientSourceType =
+  | 'GENERIC_CSV'
+  | 'B3_NEGOTIATION_XLSX'
+  | 'B3_ANNUAL_REPORT_XLSX'
+  | 'B3_MOVEMENT_XLSX';
+
+export interface ClientSourceHint {
+  sourceType: ClientSourceType;
+  formatName: string | null;
+}
+
+export function detectClientSourceType(fileName: string, isXlsx: boolean): ClientSourceHint {
+  if (!isXlsx) {
+    return { sourceType: 'GENERIC_CSV', formatName: null };
+  }
+  const lowered = fileName.toLowerCase();
+  if (lowered.includes('anual') || lowered.includes('consolidado')) {
+    return {
+      sourceType: 'B3_ANNUAL_REPORT_XLSX',
+      formatName: 'Área do Investidor B3 — Relatório Consolidado Anual (Posição Inicial)',
+    };
+  }
+  if (lowered.includes('moviment')) {
+    return {
+      sourceType: 'B3_MOVEMENT_XLSX',
+      formatName: 'Área do Investidor B3 — Movimentação',
+    };
+  }
+  return {
+    sourceType: 'B3_NEGOTIATION_XLSX',
+    formatName: 'Área do Investidor B3 — Negociação',
+  };
+}
+
+export interface MovementNoticeLike {
+  rowNumber: number;
+  group: string;
+  movement: string;
+  ticker: string;
+  tradeDate: string | null;
+  quantity: string | null;
+  reasonCode: string;
+  message: string;
+}
+
+export interface MovementNoticeGroup {
+  key: string;
+  label: string;
+  count: number;
+  items: MovementNoticeLike[];
+}
+
+const NOTICE_GROUP_ORDER = [
+  'rights',
+  'cash',
+  'loans',
+  'markers',
+  'review',
+  'other',
+] as const;
+
+const NOTICE_GROUP_LABELS: Record<(typeof NOTICE_GROUP_ORDER)[number], string> = {
+  rights: 'Direitos e subscrições',
+  cash: 'Proventos / caixa',
+  loans: 'Empréstimos',
+  markers: 'Atualizações informativas',
+  review: 'Revisão necessária',
+  other: 'Outros',
+};
+
+function noticeGroupKey(notice: MovementNoticeLike): (typeof NOTICE_GROUP_ORDER)[number] {
+  if (notice.group === 'CASH_ONLY') return 'cash';
+  if (notice.reasonCode === 'SUBSCRIPTION_LIFECYCLE_MANUAL') return 'rights';
+  if (notice.group === 'INFORMATIONAL') {
+    return notice.reasonCode === 'LOAN_CUSTODY_STATE' ? 'loans' : 'markers';
+  }
+  if (notice.group === 'REVIEW_REQUIRED') return 'review';
+  return 'other';
+}
+
+/**
+ * Groups movement notices for the dedicated Import Hub section.
+ * Pure, deterministic, stable group order; items sorted by source row.
+ * Notices never enter readyCount / willImport / confirm payloads — the
+ * section is display-only by construction (callers pass notices separately).
+ */
+export function groupMovementNotices(notices: readonly MovementNoticeLike[]): MovementNoticeGroup[] {
+  const buckets = new Map<(typeof NOTICE_GROUP_ORDER)[number], MovementNoticeLike[]>();
+  for (const notice of notices) {
+    const key = noticeGroupKey(notice);
+    const bucket = buckets.get(key);
+    if (bucket) bucket.push(notice);
+    else buckets.set(key, [notice]);
+  }
+  const groups: MovementNoticeGroup[] = [];
+  for (const key of NOTICE_GROUP_ORDER) {
+    const items = buckets.get(key);
+    if (!items || items.length === 0) continue;
+    groups.push({
+      key,
+      label: NOTICE_GROUP_LABELS[key],
+      count: items.length,
+      items: [...items].sort((a, b) => a.rowNumber - b.rowNumber),
+    });
+  }
+  return groups;
+}
