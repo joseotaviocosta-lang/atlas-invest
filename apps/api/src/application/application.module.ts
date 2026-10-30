@@ -129,6 +129,7 @@ import { CreateAccountUseCase, GetAccountUseCase, ListAccountsUseCase } from './
 import { CreateAssetUseCase, GetAssetUseCase, SearchAssetsUseCase } from './assets';
 import {
   CreateTransactionUseCase,
+  CorporateActionsUseCase,
   GetTransactionUseCase,
   ListTransactionsUseCase,
   RectifyPortfolioTransactionUseCase,
@@ -258,6 +259,7 @@ const USE_CASES = [
   GetAssetUseCase,
   SearchAssetsUseCase,
   CreateTransactionUseCase,
+  CorporateActionsUseCase,
   GetTransactionUseCase,
   ListTransactionsUseCase,
   RectifyPortfolioTransactionUseCase,

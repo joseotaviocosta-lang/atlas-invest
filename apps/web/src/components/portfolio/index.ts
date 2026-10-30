@@ -14,6 +14,7 @@ export * from './PortfolioHistoricalBanner';
 export * from './PortfolioValuation';
 export * from './PortfolioAllocationSection';
 export * from './PortfolioReviewSection';
+export * from './CorporateActionModal';
 export * from './PortfolioStrategySection';
 export * from './PortfolioScenarioSimulator';
 export * from './PortfolioSavedScenarios';

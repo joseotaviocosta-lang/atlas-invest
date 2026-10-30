@@ -50,6 +50,7 @@ import {
   PortfolioPlanningSection,
   PortfolioReviewSection,
   PortfolioStrategySection,
+  CorporateActionModal,
   PortfolioShell,
   valuationQueryKey,
   allocationQueryKey,
@@ -596,6 +597,8 @@ function PortfolioPageContent() {
     if (!opAssetId && assetsCatalog[0]) setOpAssetId(assetsCatalog[0].id);
     setIsOpModalOpen(true);
   };
+
+  const [isCorporateActionModalOpen, setIsCorporateActionModalOpen] = useState(false);
 
   const hasOpenedNewActionRef = React.useRef(false);
   React.useEffect(() => {
@@ -1695,6 +1698,13 @@ function PortfolioPageContent() {
                 <Button onClick={openOpModal} disabled={!activePortfolio}>
                   + Nova operação
                 </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => setIsCorporateActionModalOpen(true)}
+                  disabled={!activePortfolio}
+                >
+                  Evento corporativo
+                </Button>
                 {activePortfolio && (
                   <Link
                     href={`/portfolio/import?portfolioId=${activePortfolio.id}`}
@@ -2025,6 +2035,17 @@ function PortfolioPageContent() {
                   </div>
                 </form>
               </Modal>
+
+              {/* Corporate Action Modal (owner-controlled SPLIT / REVERSE_SPLIT) */}
+              {activePortfolio && (
+                <CorporateActionModal
+                  portfolioId={activePortfolio.id}
+                  accounts={accountsData}
+                  assets={assetsCatalog}
+                  open={isCorporateActionModalOpen}
+                  onClose={() => setIsCorporateActionModalOpen(false)}
+                />
+              )}
 
               {/* Guided Transaction Correction Modal (C2 / Append-Only Guided Correction) */}
               <Modal
