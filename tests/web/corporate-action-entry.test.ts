@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CORPORATE_ACTION_TYPE_LABELS,
   CORPORATE_ACTION_TYPE_OPTIONS,
+  canProjectEffects,
   describeCorporateActionLeg,
   validateCorporateActionDraft,
 } from '@/lib/corporate-action-entry';
@@ -45,5 +46,19 @@ describe('Corporate action entry helpers', () => {
       'Desdobramento 5 × 80 = 400',
     );
     expect(describeCorporateActionLeg('SPLIT', '80', null, null)).toBe('Desdobramento');
+  });
+
+  it('enables preview from staged legs, never from draft state', () => {
+    const twoLegs = [{}, {}];
+    // Draft reset (empty form) with 2 staged legs + account: enabled.
+    expect(canProjectEffects(twoLegs, 'account-1', false)).toBe(true);
+    // No staged legs: disabled even with an account selected.
+    expect(canProjectEffects([], 'account-1', false)).toBe(false);
+    // Single staged valid leg: enabled.
+    expect(canProjectEffects([{}], 'account-1', false)).toBe(true);
+    // Missing account: disabled (with hint in UI), regardless of staging.
+    expect(canProjectEffects(twoLegs, '', false)).toBe(false);
+    // Request in flight: disabled to prevent duplicate previews.
+    expect(canProjectEffects(twoLegs, 'account-1', true)).toBe(false);
   });
 });

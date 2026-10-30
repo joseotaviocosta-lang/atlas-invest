@@ -106,6 +106,21 @@ describe('Corporate actions HTTP: preview + atomic confirm', () => {
       { assetId, assetTicker: 'VIVT3', beforeQuantity: '200', afterQuantity: '400' },
     ]);
 
+    // Preview persists nothing: history count is identical before/after.
+    const historyBefore = await request(app.getHttpServer())
+      .get(`/api/v1/portfolios/${portfolioId}/history?limit=1`)
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(historyBefore.status).toBe(200);
+    const totalBefore = historyBefore.body.meta.totalCount;
+    await request(app.getHttpServer())
+      .post(`/api/v1/portfolios/${portfolioId}/corporate-actions/preview`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ accountId, currency: 'BRL', legs });
+    const historyAfter = await request(app.getHttpServer())
+      .get(`/api/v1/portfolios/${portfolioId}/history?limit=1`)
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(historyAfter.body.meta.totalCount).toBe(totalBefore);
+
     const confirmRes = await request(app.getHttpServer())
       .post(`/api/v1/portfolios/${portfolioId}/corporate-actions/confirm`)
       .set('Authorization', `Bearer ${authToken}`)

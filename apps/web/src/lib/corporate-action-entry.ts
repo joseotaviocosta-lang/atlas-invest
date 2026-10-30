@@ -54,6 +54,14 @@ export function validateCorporateActionDraft(draft: CorporateActionLegDraft): st
   return null;
 }
 
+export function canProjectEffects(
+  legs: readonly unknown[],
+  accountId: string,
+  requestInFlight: boolean,
+): boolean {
+  return legs.length > 0 && accountId !== '' && !requestInFlight;
+}
+
 export function describeCorporateActionLeg(
   type: string,
   factor: string,

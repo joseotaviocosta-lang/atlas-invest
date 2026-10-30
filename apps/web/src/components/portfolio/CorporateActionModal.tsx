@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, ApiError } from '@/api/client';
 import { Modal, Input, Select, Button } from '@/components/ui';
@@ -10,6 +10,7 @@ import {
   CORPORATE_ACTION_TYPE_OPTIONS,
   CORPORATE_ACTION_TYPE_LABELS,
   CORPORATE_ACTION_TAX_MESSAGE,
+  canProjectEffects,
   validateCorporateActionDraft,
   describeCorporateActionLeg,
   type ManualCorporateActionType,
@@ -93,6 +94,15 @@ export function CorporateActionModal({
   const [draftError, setDraftError] = useState<string | null>(null);
   const [flowError, setFlowError] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
+
+  // Preselect the first custody account so a staged, valid batch never sits
+  // behind a silently disabled preview button (hotfix: the projection needs
+  // an account, but the empty default gave no hint).
+  useEffect(() => {
+    if (accountId === '' && accounts.length > 0 && accounts[0]) {
+      setAccountId(accounts[0].id);
+    }
+  }, [accounts, accountId]);
 
   const resetStaging = () => {
     setLegs([]);
@@ -335,10 +345,15 @@ export function CorporateActionModal({
             variant="secondary"
             onClick={() => previewMutation.mutate()}
             isLoading={previewMutation.isPending}
-            disabled={accountId === '' || legs.length === 0}
+            disabled={!canProjectEffects(legs, accountId, previewMutation.isPending)}
           >
             Projetar efeitos
           </Button>
+          {legs.length > 0 && accountId === '' && (
+            <div style={{ fontSize: '0.875rem', color: colors.textSecondary, marginTop: 4 }}>
+              Selecione a conta de custódia para projetar os efeitos.
+            </div>
+          )}
         </div>
       )}
 
