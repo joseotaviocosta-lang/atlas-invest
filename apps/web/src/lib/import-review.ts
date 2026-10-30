@@ -24,6 +24,20 @@ export interface ReviewCandidateLike {
   assetId: string | null;
   accountId: string | null;
   duplicate: 'NEW' | 'EXACT_DUPLICATE' | 'PROBABLE_DUPLICATE' | 'CONFLICT';
+  unsettledExceptionEligible?: boolean;
+}
+
+const CIVIL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Display-only mirror of the server's unsettled-trade resolution metadata
+ * check (the backend re-validates authoritatively at confirm time).
+ */
+export function isResolutionMetadataValid(decision: ReviewDecision): boolean {
+  const reason = (decision.resolution?.reason ?? '').trim();
+  if (reason.length === 0 || reason.length > 500) return false;
+  const date = (decision.resolution?.declaredSettlementDate ?? '').trim();
+  return date === '' || CIVIL_DATE_RE.test(date);
 }
 
 export interface ReviewDecision {
@@ -31,6 +45,14 @@ export interface ReviewDecision {
   assetOverrideId?: string;
   accountOverrideId?: string;
   forceImport: boolean;
+  /**
+   * Owner-stated unsettled-trade resolution (display-only mirror: the server
+   * re-verifies eligibility and metadata at confirm time and is authoritative).
+   */
+  resolution?: {
+    reason: string;
+    declaredSettlementDate?: string;
+  };
 }
 
 export interface EffectiveRow {
@@ -73,6 +95,23 @@ export function getEffectiveRowState(
       state: 'blocked',
       reason: 'Possível duplicada: ignore a linha ou marque "Importar mesmo assim"',
     };
+  }
+  // Owner-reviewed unsettled-trade exception: an eligible pre-baseline row
+  // with complete resolution metadata becomes importable (the server
+  // re-verifies before persisting anything).
+  if (candidate.status === 'NEEDS_REVIEW' && candidate.unsettledExceptionEligible) {
+    if (decision.resolution) {
+      if (isResolutionMetadataValid(decision)) {
+        return {
+          state: 'importable',
+          reason: 'Resolução de trade pré-baseline não liquidado no snapshot',
+        };
+      }
+      return {
+        state: 'blocked',
+        reason: 'Complete o motivo (1–500 caracteres) e a data de liquidação (AAAA-MM-DD ou vazio)',
+      };
+    }
   }
   const onlyResolutionIssues =
     candidate.issues.length > 0 &&

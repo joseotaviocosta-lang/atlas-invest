@@ -1,7 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { LocalDate } from '@atlas/domain';
 import { DuplicateExternalTransactionError } from '@atlas/database';
 import type { ClassifiedCandidate } from '@atlas/import-engine';
+import {
+  verifyUnsettledTradeResolution,
+  validateUnsettledResolutionMetadata,
+} from '@atlas/import-engine';
 import { CreateTransactionUseCase, type CreateTransactionCommand } from '../transactions';
 import { ImportValidationError } from './import-validation.error';
 import {
@@ -16,6 +21,18 @@ export interface ConfirmRowDecision {
   action: 'import' | 'skip';
   assetId?: string;
   accountId?: string;
+  /**
+   * Typed review resolution for the pre-baseline unsettled-trade exception.
+   * Request-scoped (never persisted as config): the backend re-verifies
+   * eligibility against the server-computed candidate and records the
+   * outcome in ledger notes. A forged resolution on an ineligible row is
+   * rejected — it can never promote a row to READY by itself.
+   */
+  resolution?: {
+    type: 'PRE_BASELINE_NOT_COVERED_BY_SNAPSHOT';
+    reason: string;
+    declaredSettlementDate?: string;
+  };
 }
 
 export interface ConfirmPortfolioImportCommand extends PreviewPortfolioImportCommand {
@@ -195,6 +212,25 @@ export class ConfirmPortfolioImportUseCase {
         continue;
       }
 
+      // Typed unsettled-trade resolution (PART M): NEEDS_REVIEW rows gated
+      // solely by pre-baseline coverage may be released by an explicit,
+      // evidence-backed owner decision. Eligibility AND metadata are verified
+      // server-side against the recomputed preview — a manipulated client
+      // cannot force import.
+      if (candidate.status === 'NEEDS_REVIEW' && decision?.resolution) {
+        const release = this.tryReleaseUnsettledTrade(command, candidate, decision);
+        if (release) {
+          commands.push(release);
+        } else {
+          failed.push({
+            rowNumber: candidate.rowNumber,
+            message: 'Resolução inválida para esta linha: ela não é elegível à exceção de trade pré-baseline não liquidado',
+            kind: 'error',
+          });
+        }
+        continue;
+      }
+
       // NEEDS_REVIEW (and any other non-importable state): left pending, never
       // persisted, never marked as user-ignored. Re-preview reproduces the set.
       failed.push({
@@ -357,6 +393,44 @@ export class ConfirmPortfolioImportUseCase {
       });
     }
     return receipt;
+  }
+
+  /**
+   * Releases a pre-baseline-gated row under the owner-reviewed unsettled-trade
+   * exception. Returns the persistable command, or null when the row or the
+   * metadata is ineligible (fail closed — the row stays pending/review).
+   */
+  private tryReleaseUnsettledTrade(
+    command: ConfirmPortfolioImportCommand,
+    candidate: ClassifiedCandidate,
+    decision: ConfirmRowDecision,
+  ): CreateTransactionCommand | null {
+    const resolution = decision.resolution;
+    if (!resolution) return null;
+    const meta = validateUnsettledResolutionMetadata(resolution);
+    if (!meta.valid) return null;
+    // Declared settlement is provenance metadata only: validate civil shape,
+    // never use it for ordering (canonical tradeDate rules).
+    if (resolution.declaredSettlementDate !== undefined) {
+      try {
+        LocalDate.from(resolution.declaredSettlementDate);
+      } catch {
+        return null;
+      }
+    }
+    const check = verifyUnsettledTradeResolution(candidate);
+    if (!check.eligible) return null;
+    const built = this.buildCommand(command, candidate);
+    if (!built) return null;
+    const reason = resolution.reason.trim().slice(0, 500);
+    const settlement =
+      resolution.declaredSettlementDate !== undefined
+        ? `; liquidação declarada ${resolution.declaredSettlementDate}`
+        : '';
+    return {
+      ...built,
+      notes: `${built.notes ?? ''} | Resolução PRE_BASELINE_NOT_COVERED_BY_SNAPSHOT: ${reason} (snapshot ${check.baselineDate}${settlement})`,
+    };
   }
 
   private buildCommand(

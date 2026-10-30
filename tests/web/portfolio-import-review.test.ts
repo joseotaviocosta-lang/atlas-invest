@@ -65,6 +65,51 @@ describe('Import review decisions (Phase 5K-HV-R1)', () => {
     );
   });
 
+  it('KCRE11: eligible pre-baseline row stays pending without resolution', () => {
+    const gated: ReviewCandidateLike = candidate({
+      status: 'NEEDS_REVIEW',
+      issues: [{ code: 'PRE_BASELINE_COVERED_BY_OPENING_SNAPSHOT' }],
+      unsettledExceptionEligible: true,
+    });
+    expect(getEffectiveRowState(gated, decision()).state).toBe('pending');
+  });
+
+  it('KCRE11: eligible row + complete resolution becomes importable', () => {
+    const gated: ReviewCandidateLike = candidate({
+      status: 'NEEDS_REVIEW',
+      issues: [{ code: 'PRE_BASELINE_COVERED_BY_OPENING_SNAPSHOT' }],
+      unsettledExceptionEligible: true,
+    });
+    const resolved = decision({
+      resolution: {
+        reason: 'Trade 27/12/2024 settled after 31/12/2024 cutoff',
+        declaredSettlementDate: '2025-01-02',
+      },
+    });
+    expect(getEffectiveRowState(gated, resolved).state).toBe('importable');
+    const eligibility = eligibilityOf([{ candidate: gated, decision: resolved }]);
+    expect(eligibility.canConfirm).toBe(true);
+    expect(eligibility.importableCount).toBe(1);
+  });
+
+  it('KCRE11: incomplete resolution blocks until fixed or skipped', () => {
+    const gated: ReviewCandidateLike = candidate({
+      status: 'NEEDS_REVIEW',
+      issues: [{ code: 'PRE_BASELINE_COVERED_BY_OPENING_SNAPSHOT' }],
+      unsettledExceptionEligible: true,
+    });
+    const bad = decision({ resolution: { reason: '  ' } });
+    expect(getEffectiveRowState(gated, bad).state).toBe('blocked');
+    // Ineligible rows never become importable via resolution.
+    const plain: ReviewCandidateLike = candidate({
+      status: 'NEEDS_REVIEW',
+      issues: [{ code: 'TRANSFER_WITH_PRICE' }],
+    });
+    expect(getEffectiveRowState(plain, decision({ resolution: { reason: 'x' } })).state).toBe(
+      'pending',
+    );
+  });
+
   it('D: mixed 2 resolved + 3 ignored enables confirm', () => {
     const ready = candidate();
     const needsReview: ReviewCandidateLike = candidate({

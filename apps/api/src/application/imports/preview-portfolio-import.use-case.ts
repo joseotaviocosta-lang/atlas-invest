@@ -33,6 +33,7 @@ import {
   parseB3AnnualReportXlsx,
   parseB3MovementXlsx,
   applyMovementLedgerGates,
+  applyPreBaselineSnapshotGate,
   B3XlsxParseError,
   resolveAccount,
   resolveAsset,
@@ -376,9 +377,12 @@ export class PreviewPortfolioImportUseCase {
     // snapshot cover) need the FULL ledger history, including 2024 opening
     // legs that fall outside the file's own date window. Keyed on DETECTED
     // layout (hotfix B1): a misdeclared client sourceType must never shrink
-    // the history window nor skip gates. Other sources keep the bounded query.
+    // the history window nor skip gates. Negotiation previews need the same
+    // full history for the shared pre-baseline gate (a narrow dated file
+    // must not blind the snapshot-coverage check). Other sources keep the
+    // bounded query.
     const existing =
-      detectedLayout === 'B3_MOVEMENT'
+      detectedLayout === 'B3_MOVEMENT' || detectedLayout === 'B3_NEGOTIATION'
         ? await this.loadFullLedger(command.portfolioId)
         : await this.loadExistingLedger(
             command.portfolioId,
@@ -515,10 +519,15 @@ export class PreviewPortfolioImportUseCase {
     // shadows and loan-state become UNSUPPORTED, pre-baseline trades become
     // NEEDS_REVIEW. Nothing here can promote a row to READY.
     // Hotfix B1: keyed on DETECTED layout, never on declared sourceType.
+    // Negotiation flows run the shared pre-baseline snapshot gate so
+    // pre-opening trades (KCRE11-shaped) cannot slip in silently; eligible
+    // rows are flagged for the owner-reviewed unsettled-trade exception.
     const gated =
       context.detectedLayout === 'B3_MOVEMENT'
         ? applyMovementLedgerGates({ candidates, existing: context.existing })
-        : candidates;
+        : context.detectedLayout === 'B3_NEGOTIATION'
+          ? applyPreBaselineSnapshotGate({ candidates, existing: context.existing })
+          : candidates;
 
     // Unique Asset Summary
     const assetSummaryMap = new Map<string, UniqueAssetSummary>();

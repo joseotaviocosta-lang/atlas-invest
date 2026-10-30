@@ -34,6 +34,16 @@ export const ConfirmPortfolioImportBodySchema = PreviewPortfolioImportBodySchema
         action: z.enum(['import', 'skip']),
         assetId: UUIDSchema.optional(),
         accountId: UUIDSchema.optional(),
+        resolution: z
+          .object({
+            type: z.literal('PRE_BASELINE_NOT_COVERED_BY_SNAPSHOT'),
+            reason: z.string().trim().min(1).max(500),
+            declaredSettlementDate: z
+              .string()
+              .regex(/^\d{4}-\d{2}-\d{2}$/)
+              .optional(),
+          })
+          .optional(),
       }),
     )
     .max(2000)
@@ -74,6 +84,11 @@ export class ConfirmPortfolioImportSwaggerDto extends PreviewPortfolioImportSwag
     action: 'import' | 'skip';
     assetId?: string;
     accountId?: string;
+    resolution?: {
+      type: 'PRE_BASELINE_NOT_COVERED_BY_SNAPSHOT';
+      reason: string;
+      declaredSettlementDate?: string;
+    };
   }>;
 
   @ApiPropertyOptional({

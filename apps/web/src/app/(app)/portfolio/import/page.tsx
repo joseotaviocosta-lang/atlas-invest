@@ -103,6 +103,7 @@ interface PreviewCandidate {
   targetQuantity?: string;
   conversionRatio?: string;
   conversionType?: string;
+  unsettledExceptionEligible?: boolean;
   status: 'READY' | 'DUPLICATE' | 'AMBIGUOUS_ASSET' | 'INVALID' | 'UNSUPPORTED' | 'NEEDS_REVIEW';
   issues: PreviewIssue[];
   assetId: string | null;
@@ -963,6 +964,9 @@ function ImportHubContent() {
   const [accountOverrides, setAccountOverrides] = useState<Record<number, string>>({});
   const [editingAccountRows, setEditingAccountRows] = useState<Set<number>>(new Set());
   const [forceRows, setForceRows] = useState<Set<number>>(new Set());
+  const [resolutionRows, setResolutionRows] = useState<
+    Record<number, { reason: string; declaredSettlementDate: string }>
+  >({});
   const [fileError, setFileError] = useState<string | null>(null);
   const [b3ModalOpen, setB3ModalOpen] = useState(false);
   const runIdParam = searchParams.get('runId');
@@ -1100,9 +1104,12 @@ function ImportHubContent() {
         assetOverrideId: assetOverrides[candidate.rowNumber],
         accountOverrideId: accountOverrides[candidate.rowNumber],
         forceImport: forceRows.has(candidate.rowNumber),
+        ...(resolutionRows[candidate.rowNumber]
+          ? { resolution: resolutionRows[candidate.rowNumber] }
+          : {}),
       }),
     }));
-  }, [previewMutation.data, skipRows, assetOverrides, accountOverrides, forceRows]);
+  }, [previewMutation.data, skipRows, assetOverrides, accountOverrides, forceRows, resolutionRows]);
 
   const eligibility = useMemo(
     () =>
@@ -1114,10 +1121,13 @@ function ImportHubContent() {
             assetOverrideId: assetOverrides[row.candidate.rowNumber],
             accountOverrideId: accountOverrides[row.candidate.rowNumber],
             forceImport: forceRows.has(row.candidate.rowNumber),
+            ...(resolutionRows[row.candidate.rowNumber]
+              ? { resolution: resolutionRows[row.candidate.rowNumber] }
+              : {}),
           },
         })),
       ),
-    [effectiveRows, skipRows, assetOverrides, accountOverrides, forceRows],
+    [effectiveRows, skipRows, assetOverrides, accountOverrides, forceRows, resolutionRows],
   );
 
   const derivedSummary = useMemo(() => {
@@ -1290,6 +1300,11 @@ function ImportHubContent() {
         action: 'skip' | 'import';
         assetId?: string;
         accountId?: string;
+        resolution?: {
+          type: 'PRE_BASELINE_NOT_COVERED_BY_SNAPSHOT';
+          reason: string;
+          declaredSettlementDate?: string;
+        };
       }> = [];
       for (const candidate of previewData.candidates) {
         const rowNumber = candidate.rowNumber;
@@ -1299,12 +1314,28 @@ function ImportHubContent() {
         }
         const assetId = assetOverrides[rowNumber];
         const accountId = accountOverrides[rowNumber];
-        if (assetId !== undefined || accountId !== undefined || forceRows.has(rowNumber)) {
+        const resolution = resolutionRows[rowNumber];
+        if (
+          assetId !== undefined ||
+          accountId !== undefined ||
+          forceRows.has(rowNumber) ||
+          resolution !== undefined
+        ) {
+          const declared = (resolution?.declaredSettlementDate ?? '').trim();
           decisions.push({
             rowNumber,
             action: 'import',
             ...(assetId !== undefined ? { assetId } : {}),
             ...(accountId !== undefined ? { accountId } : {}),
+            ...(resolution !== undefined
+              ? {
+                  resolution: {
+                    type: 'PRE_BASELINE_NOT_COVERED_BY_SNAPSHOT' as const,
+                    reason: resolution.reason.trim(),
+                    ...(declared !== '' ? { declaredSettlementDate: declared } : {}),
+                  },
+                }
+              : {}),
           });
         }
       }
@@ -1382,6 +1413,7 @@ function ImportHubContent() {
     setAccountOverrides({});
     setEditingAccountRows(new Set());
     setForceRows(new Set());
+    setResolutionRows({});
     previewMutation.reset();
     confirmMutation.reset();
   };
@@ -1418,6 +1450,32 @@ function ImportHubContent() {
       }
       return next;
     });
+  };
+
+  const toggleResolution = (rowNumber: number) => {
+    setResolutionRows((previous) => {
+      const next = { ...previous };
+      if (next[rowNumber] !== undefined) {
+        delete next[rowNumber];
+      } else {
+        next[rowNumber] = { reason: '', declaredSettlementDate: '' };
+      }
+      return next;
+    });
+  };
+
+  const updateResolution = (
+    rowNumber: number,
+    patch: Partial<{ reason: string; declaredSettlementDate: string }>,
+  ) => {
+    setResolutionRows((previous) => ({
+      ...previous,
+      [rowNumber]: {
+        reason: previous[rowNumber]?.reason ?? '',
+        declaredSettlementDate: previous[rowNumber]?.declaredSettlementDate ?? '',
+        ...patch,
+      },
+    }));
   };
 
   return (
@@ -2533,6 +2591,53 @@ function ImportHubContent() {
                               />
                               Importar mesmo assim
                             </label>
+                          )}
+                          {candidate.unsettledExceptionEligible && !skipped && (
+                            <div style={{ marginTop: 8 }}>
+                              <label
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  minHeight: 44,
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={resolutionRows[rowNumber] !== undefined}
+                                  onChange={() => toggleResolution(rowNumber)}
+                                  aria-label={`Resolver trade pré-baseline não liquidado na linha ${rowNumber}`}
+                                />
+                                Trade liquidado após o snapshot
+                              </label>
+                              {resolutionRows[rowNumber] !== undefined && (
+                                <div style={{ display: 'grid', gap: 8, marginTop: 4 }}>
+                                  <input
+                                    type="text"
+                                    value={resolutionRows[rowNumber]?.reason ?? ''}
+                                    onChange={(event) =>
+                                      updateResolution(rowNumber, { reason: event.target.value })
+                                    }
+                                    placeholder="Motivo com evidência (ex.: liquidação em 02/01/2025, após corte de 31/12)"
+                                    aria-label={`Motivo da resolução na linha ${rowNumber}`}
+                                    maxLength={500}
+                                    style={{ minHeight: 44, width: '100%' }}
+                                  />
+                                  <input
+                                    type="text"
+                                    value={resolutionRows[rowNumber]?.declaredSettlementDate ?? ''}
+                                    onChange={(event) =>
+                                      updateResolution(rowNumber, {
+                                        declaredSettlementDate: event.target.value,
+                                      })
+                                    }
+                                    placeholder="Liquidação declarada AAAA-MM-DD (opcional)"
+                                    aria-label={`Liquidação declarada na linha ${rowNumber}`}
+                                    style={{ minHeight: 44, width: '100%' }}
+                                  />
+                                </div>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td style={{ padding: 8 }}>

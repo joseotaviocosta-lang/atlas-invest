@@ -251,6 +251,17 @@ export interface ClassifiedCandidate extends NormalizedCandidate {
    */
   targetAssetId: string | null;
   targetAssetResolution: AssetResolution;
+  /**
+   * Set by the pre-baseline snapshot gate when a BUY/SELL row may qualify
+   * for the owner-reviewed unsettled-trade exception. Display hint only —
+   * confirm re-verifies server-side. Absent otherwise.
+   */
+  unsettledExceptionEligible?: boolean;
+  /**
+   * Trade date of the covering opening snapshot (set by the gate from ledger
+   * state). Carried into resolution provenance notes. Absent otherwise.
+   */
+  coveringSnapshotDate?: string;
   accountId: string | null;
   accountResolution: AccountResolution;
   fingerprint: string | null;

@@ -28,6 +28,7 @@ import type ExcelJS from 'exceljs';
 import { LocalDate } from '@atlas/domain';
 import { normalizeDecimalString } from './normalize';
 import { normalizeB3InstitutionName } from './b3-institutions';
+import { applyPreBaselineSnapshotGate } from './pre-baseline';
 import {
   MAX_IMPORT_ROWS,
   type ClassifiedCandidate,
@@ -757,28 +758,12 @@ export function applyMovementLedgerGates(input: MovementLedgerGateInput): Classi
       issues: [...candidate.issues, { code, message }],
     });
 
-    // Pre-baseline gate (A4): snapshot already represents custody.
-    if (
-      (candidate.operation === 'BUY' ||
-        candidate.operation === 'SELL' ||
-        candidate.operation === 'BONUS' ||
-        candidate.operation === 'SUBSCRIPTION') &&
-      candidate.status === 'READY'
-    ) {
-      const covering = existing.find(
-        (row) =>
-          row.type === 'TRANSFER_IN' &&
-          row.assetId === candidate.assetId &&
-          (candidate.accountId === null || row.accountId === candidate.accountId) &&
-          row.tradeDate >= candidate.tradeDate,
-      );
-      if (covering) {
-        return downgrade(
-          'NEEDS_REVIEW',
-          'PRE_BASELINE_COVERED_BY_OPENING_SNAPSHOT',
-          `Lançamento em ${candidate.tradeDate} é anterior ou igual ao snapshot de abertura (${covering.tradeDate}) que já representa a custódia; confirmar duplicaria a posição. Se o trade liquidou após o baseline (caso KCRE11: trade 27/12/2024 fora da abertura 31/12/2024, comprovado pelo relatório anual seguinte), a representação correta exige decisão explícita do titular — nunca importação silenciosa.`,
-        );
-      }
+    // Pre-baseline gate (A4): shared snapshot-coverage check. Downgrades
+    // only; eligible BUY/SELL rows are flagged for the owner-reviewed
+    // unsettled-trade exception (never auto-imported).
+    const [gated] = applyPreBaselineSnapshotGate({ candidates: [candidate], existing });
+    if (gated!.status === 'NEEDS_REVIEW' && candidate.status === 'READY') {
+      return gated!;
     }
 
     if (candidate.operation !== 'TRANSFER_IN' && candidate.operation !== 'TRANSFER_OUT') {
