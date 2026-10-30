@@ -163,7 +163,7 @@ interface ImportReceipt {
   created: number;
   skippedDuplicates: number;
   skippedByUser: number;
-  failed: Array<{ rowNumber: number; message: string }>;
+  failed: Array<{ rowNumber: number; message: string; pendingReview?: boolean }>;
   transactionIds: string[];
   confirmedAt: string;
 }
@@ -235,6 +235,7 @@ const EFFECTIVE_LABEL: Record<EffectiveRowState, string> = {
   skipped: 'Será ignorada',
   auto_skipped: 'Ignorada automaticamente',
   blocked: 'Aguardando decisão',
+  pending: 'Pendente (não será importada)',
 };
 
 interface IntegrationScheduleItem {
@@ -1134,7 +1135,9 @@ function ImportHubContent() {
         duplicates += 1;
       } else if (effectiveState === 'importable') {
         ready += 1;
-      } else if (effectiveState === 'blocked') {
+      } else if (effectiveState === 'blocked' || effectiveState === 'pending') {
+        // Pending review rows keep the historical "precisam de revisão" count:
+        // they stay visible and re-previewable, never silently dropped.
         needsReview += 1;
       } else if (effectiveState === 'skipped') {
         if (status === 'READY') {
@@ -2593,7 +2596,7 @@ function ImportHubContent() {
                 {confirmMutation.isPending
                   ? 'Importando…'
                   : eligibility.importableCount > 0
-                    ? `4. Confirmar ${eligibility.importableCount} evento${eligibility.importableCount === 1 ? '' : 's'}`
+                    ? `4. Confirmar ${eligibility.importableCount} evento${eligibility.importableCount === 1 ? '' : 's'} suportado${eligibility.importableCount === 1 ? '' : 's'}`
                     : '4. Confirmar importação'}
               </Button>
               <Button
@@ -2660,11 +2663,19 @@ function ImportHubContent() {
               ignoradas · {receipt.skippedByUser} ignoradas por você
               {receipt.failed.length > 0 ? ` · ${receipt.failed.length} com erro` : ''}
             </p>
+            {receipt.failed.some((failure) => failure.pendingReview) && (
+              <p style={{ fontSize: '0.875rem', color: colors.warning }}>
+                {receipt.failed.filter((failure) => failure.pendingReview).length} linhas
+                continuam pendentes de revisão e não foram importadas. Reanalise o
+                arquivo quando quiser concluí-las — nada foi perdido.
+              </p>
+            )}
             {receipt.failed.length > 0 && (
               <ul>
                 {receipt.failed.map((failure) => (
                   <li key={failure.rowNumber} style={{ fontSize: '0.875rem' }}>
-                    Linha {failure.rowNumber}: {failure.message}
+                    Linha {failure.rowNumber}
+                    {failure.pendingReview ? ' (pendente de revisão)' : ''}: {failure.message}
                   </li>
                 ))}
               </ul>

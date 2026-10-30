@@ -22,14 +22,16 @@ function eligibilityOf(rows: Array<{ candidate: ReviewCandidateLike; decision: R
 }
 
 describe('Import review decisions (Phase 5K-HV-R1)', () => {
-  it('A: NEEDS_REVIEW row + Ignore no longer blocks', () => {
+  it('A: NEEDS_REVIEW row + Ignore stays skipped and never imports', () => {
     const unresolved: ReviewCandidateLike = candidate({
       status: 'NEEDS_REVIEW',
       assetId: null,
       accountId: null,
       issues: [{ code: 'UNKNOWN_ASSET' }],
     });
-    expect(getEffectiveRowState(unresolved, decision()).state).toBe('blocked');
+    // Selective-confirmation hotfix: undecided review rows stay pending
+    // (never blocked, never user-ignored).
+    expect(getEffectiveRowState(unresolved, decision()).state).toBe('pending');
     expect(getEffectiveRowState(unresolved, decision({ skipped: true })).state).toBe('skipped');
 
     const eligibility = eligibilityOf([
@@ -84,7 +86,7 @@ describe('Import review decisions (Phase 5K-HV-R1)', () => {
     expect(eligibility.hint).toBeNull();
   });
 
-  it('E: one undecided row blocks confirm', () => {
+  it('E: one undecided review row stays pending without blocking confirm', () => {
     const unresolved: ReviewCandidateLike = candidate({
       status: 'NEEDS_REVIEW',
       assetId: null,
@@ -95,9 +97,11 @@ describe('Import review decisions (Phase 5K-HV-R1)', () => {
       { candidate: candidate(), decision: decision() },
       { candidate: unresolved, decision: decision() },
     ]);
-    expect(eligibility.canConfirm).toBe(false);
-    expect(eligibility.blockedCount).toBe(1);
-    expect(eligibility.hint).toMatch(/Resolva ou ignore/);
+    expect(eligibility.canConfirm).toBe(true);
+    expect(eligibility.importableCount).toBe(1);
+    expect(eligibility.pendingCount).toBe(1);
+    expect(eligibility.blockedCount).toBe(0);
+    expect(eligibility.hint).toMatch(/precisa de revisão e não será importado agora/);
   });
 
   it('F: all ignored rows disable confirm with explicit empty state', () => {
@@ -153,5 +157,89 @@ describe('Import review decisions (Phase 5K-HV-R1)', () => {
     ]);
     expect(eligibility.canConfirm).toBe(true);
     expect(eligibility.autoSkippedCount).toBe(2);
+  });
+});
+
+describe('Selective READY confirmation (hotfix)', () => {
+  it('READY + REVIEW + UNSUPPORTED enables confirm with pending warning', () => {
+    const ready: ReviewCandidateLike = candidate();
+    const review: ReviewCandidateLike = candidate({
+      status: 'NEEDS_REVIEW',
+      issues: [{ code: 'TRANSFER_NEEDS_COUNTERPARTY' }],
+    });
+    const unsupported: ReviewCandidateLike = candidate({
+      status: 'UNSUPPORTED',
+      issues: [{ code: 'LOAN_CUSTODY_STATE' }],
+    });
+    const eligibility = eligibilityOf([
+      { candidate: ready, decision: decision() },
+      { candidate: review, decision: decision() },
+      { candidate: unsupported, decision: decision() },
+    ]);
+    expect(eligibility.canConfirm).toBe(true);
+    expect(eligibility.importableCount).toBe(1);
+    expect(eligibility.pendingCount).toBe(1);
+    expect(eligibility.autoSkippedCount).toBe(1);
+    expect(eligibility.hint).toMatch(/1 item precisa de revisão e não será importado agora/);
+  });
+
+  it('0 READY + REVIEW keeps confirmation disabled', () => {
+    const review: ReviewCandidateLike = candidate({
+      status: 'NEEDS_REVIEW',
+      issues: [{ code: 'UNMATCHED_PRICED_SETTLEMENT' }],
+    });
+    const eligibility = eligibilityOf([{ candidate: review, decision: decision() }]);
+    expect(eligibility.canConfirm).toBe(false);
+    expect(eligibility.importableCount).toBe(0);
+    expect(eligibility.pendingCount).toBe(1);
+    expect(eligibility.hint).toMatch(/Nenhuma operação será importada/);
+  });
+
+  it('manually ignored READY decreases willImport; resolved REVIEW joins it', () => {
+    const skippedReady: ReviewCandidateLike = candidate();
+    const resolvable: ReviewCandidateLike = candidate({
+      status: 'NEEDS_REVIEW',
+      assetId: null,
+      accountId: 'account-1',
+      issues: [{ code: 'UNKNOWN_ASSET' }],
+    });
+    const eligibility = eligibilityOf([
+      { candidate: skippedReady, decision: decision({ skipped: true }) },
+      {
+        candidate: resolvable,
+        decision: decision({ assetOverrideId: 'asset-9' }),
+      },
+    ]);
+    expect(eligibility.canConfirm).toBe(true);
+    expect(eligibility.importableCount).toBe(1);
+    expect(eligibility.skippedCount).toBe(1);
+    expect(eligibility.pendingCount).toBe(0);
+  });
+
+  it('pending review is never counted as user-ignored', () => {
+    const review: ReviewCandidateLike = candidate({
+      status: 'NEEDS_REVIEW',
+      issues: [{ code: 'PRE_BASELINE_COVERED_BY_OPENING_SNAPSHOT' }],
+    });
+    const eligibility = eligibilityOf([
+      { candidate: candidate(), decision: decision() },
+      { candidate: review, decision: decision() },
+    ]);
+    expect(eligibility.skippedCount).toBe(0);
+    expect(eligibility.pendingCount).toBe(1);
+  });
+
+  it('invalid and conflict rows still block confirmation', () => {
+    const invalid: ReviewCandidateLike = candidate({
+      status: 'INVALID',
+      issues: [{ code: 'INVALID_DATE' }],
+    });
+    const eligibility = eligibilityOf([
+      { candidate: candidate(), decision: decision() },
+      { candidate: invalid, decision: decision() },
+    ]);
+    expect(eligibility.canConfirm).toBe(false);
+    expect(eligibility.blockedCount).toBe(1);
+    expect(eligibility.hint).toMatch(/Resolva ou ignore/);
   });
 });

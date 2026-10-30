@@ -9,10 +9,14 @@
  * - probable duplicates require an explicit force-import choice;
  * - conflicts, future dates and invalid rows can only be skipped.
  *
+ * Selective-confirmation hotfix: NEEDS_REVIEW rows that are neither skipped
+ * nor resolved stay PENDING — they never block confirmation of unrelated
+ * READY rows and are never marked as user-ignored. REVIEW != IGNORED.
+ *
  * No floats, no dates, no I/O — pure row-state reduction.
  */
 
-export type EffectiveRowState = 'importable' | 'skipped' | 'auto_skipped' | 'blocked';
+export type EffectiveRowState = 'importable' | 'skipped' | 'auto_skipped' | 'blocked' | 'pending';
 
 export interface ReviewCandidateLike {
   status: 'READY' | 'DUPLICATE' | 'AMBIGUOUS_ASSET' | 'INVALID' | 'UNSUPPORTED' | 'NEEDS_REVIEW';
@@ -74,19 +78,25 @@ export function getEffectiveRowState(
     candidate.issues.length > 0 &&
     candidate.issues.every((issue) => RESOLUTION_ISSUE_CODES.has(issue.code));
   if (!onlyResolutionIssues) {
-    return { state: 'blocked', reason: 'Linha precisa de revisão: ignore a linha' };
+    // Genuinely unresolvable review rows stay pending: they neither block
+    // unrelated READY rows nor count as user-ignored. The server also refuses
+    // to persist them (confirm only builds effective READY).
+    return { state: 'pending', reason: 'Linha pendente de revisão: não será importada agora' };
   }
   const assetOk = candidate.assetId !== null || (decision.assetOverrideId ?? '') !== '';
   const accountOk = candidate.accountId !== null || (decision.accountOverrideId ?? '') !== '';
   if (assetOk && accountOk) {
     return { state: 'importable', reason: null };
   }
-  return { state: 'blocked', reason: 'Resolva ativo e conta, ou ignore a linha' };
+  // Resolvable but undecided: pending, never blocking. The owner may still
+  // resolve these before confirming (optional uplift), but is never forced to.
+  return { state: 'pending', reason: 'Resolva, ignore a linha, ou confirme sem ela' };
 }
 
 export interface ConfirmEligibility {
   importableCount: number;
   blockedCount: number;
+  pendingCount: number;
   skippedCount: number;
   autoSkippedCount: number;
   canConfirm: boolean;
@@ -98,12 +108,14 @@ export function getConfirmEligibility(
 ): ConfirmEligibility {
   let importableCount = 0;
   let blockedCount = 0;
+  let pendingCount = 0;
   let skippedCount = 0;
   let autoSkippedCount = 0;
   for (const row of rows) {
     const effective = getEffectiveRowState(row.candidate, row.decision);
     if (effective.state === 'importable') importableCount += 1;
     else if (effective.state === 'blocked') blockedCount += 1;
+    else if (effective.state === 'pending') pendingCount += 1;
     else if (effective.state === 'skipped') skippedCount += 1;
     else autoSkippedCount += 1;
   }
@@ -111,6 +123,7 @@ export function getConfirmEligibility(
     return {
       importableCount,
       blockedCount,
+      pendingCount,
       skippedCount,
       autoSkippedCount,
       canConfirm: false,
@@ -121,15 +134,28 @@ export function getConfirmEligibility(
     return {
       importableCount,
       blockedCount,
+      pendingCount,
       skippedCount,
       autoSkippedCount,
       canConfirm: false,
       hint: 'Nenhuma operação será importada. Revise as decisões ou escolha outro arquivo.',
     };
   }
+  if (pendingCount > 0) {
+    return {
+      importableCount,
+      blockedCount,
+      pendingCount,
+      skippedCount,
+      autoSkippedCount,
+      canConfirm: true,
+      hint: `${pendingCount === 1 ? '1 item precisa' : `${pendingCount} itens precisam`} de revisão e não ${pendingCount === 1 ? 'será importado' : 'serão importados'} agora. Você poderá revisá-los posteriormente ou reanalisar o arquivo.`,
+    };
+  }
   return {
     importableCount,
     blockedCount,
+    pendingCount,
     skippedCount,
     autoSkippedCount,
     canConfirm: true,

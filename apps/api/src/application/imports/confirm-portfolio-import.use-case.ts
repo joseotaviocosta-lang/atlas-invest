@@ -28,6 +28,17 @@ export interface ConfirmPortfolioImportCommand extends PreviewPortfolioImportCom
   runId?: string;
 }
 
+export interface ImportRowFailure {
+  rowNumber: number;
+  message: string;
+  /**
+   * Selective-confirmation hotfix: true when the row was left pending review
+   * (NEEDS_REVIEW, not skipped by the user). Pending rows are NOT user-ignored
+   * and stay re-previewable; the run records PARTIAL instead of COMPLETED.
+   */
+  pendingReview: boolean;
+}
+
 export interface PortfolioImportReceipt {
   receiptId: string;
   portfolioId: string;
@@ -37,7 +48,7 @@ export interface PortfolioImportReceipt {
   created: number;
   skippedDuplicates: number;
   skippedByUser: number;
-  failed: Array<{ rowNumber: number; message: string }>;
+  failed: ImportRowFailure[];
   transactionIds: string[];
   confirmedAt: string;
 }
@@ -114,7 +125,7 @@ export class ConfirmPortfolioImportUseCase {
     const decisions = new Map(command.decisions.map((decision) => [decision.rowNumber, decision]));
 
     const commands: CreateTransactionCommand[] = [];
-    const failed: Array<{ rowNumber: number; message: string }> = [];
+    const failed: ImportRowFailure[] = [];
     let skippedDuplicates = 0;
     let skippedByUser = 0;
 
@@ -135,7 +146,7 @@ export class ConfirmPortfolioImportUseCase {
         if (built) {
           commands.push(built);
         } else {
-          failed.push({ rowNumber: candidate.rowNumber, message: 'Conta ou ativo não resolvido' });
+          failed.push({ rowNumber: candidate.rowNumber, message: 'Conta ou ativo não resolvido', pendingReview: false });
         }
         continue;
       }
@@ -144,6 +155,7 @@ export class ConfirmPortfolioImportUseCase {
         failed.push({
           rowNumber: candidate.rowNumber,
           message: candidate.issues[0]?.message ?? 'Linha inválida para importação',
+          pendingReview: false,
         });
         continue;
       }
@@ -153,6 +165,7 @@ export class ConfirmPortfolioImportUseCase {
           rowNumber: candidate.rowNumber,
           message:
             'Mesmo identificador externo com valores diferentes: ajuste o arquivo ou vincule ao lançamento existente',
+          pendingReview: false,
         });
         continue;
       }
@@ -162,14 +175,17 @@ export class ConfirmPortfolioImportUseCase {
         if (built) {
           commands.push(built);
         } else {
-          failed.push({ rowNumber: candidate.rowNumber, message: 'Conta ou ativo não resolvido' });
+          failed.push({ rowNumber: candidate.rowNumber, message: 'Conta ou ativo não resolvido', pendingReview: false });
         }
         continue;
       }
 
+      // NEEDS_REVIEW (and any other non-importable state): left pending, never
+      // persisted, never marked as user-ignored. Re-preview reproduces the set.
       failed.push({
         rowNumber: candidate.rowNumber,
         message: candidate.issues[0]?.message ?? 'Linha precisa de revisão antes da importação',
+        pendingReview: candidate.status === 'NEEDS_REVIEW',
       });
     }
 
@@ -208,16 +224,20 @@ export class ConfirmPortfolioImportUseCase {
         command.userId,
         created.map((transaction) => transaction.id),
       );
+      // Selective confirmation: rows left pending review keep the run PARTIAL
+      // instead of marking everything resolved. Skipped-by-user rows are NOT
+      // pending (explicit ignore); NEEDS_REVIEW leftovers are.
+      const pendingReviewCount = failed.filter((entry) => entry.pendingReview).length;
       await this.runService.recordConfirmation({
         runId: command.runId,
         portfolioId: command.portfolioId,
         userId: command.userId,
-        status: 'COMPLETED',
+        status: pendingReviewCount > 0 ? 'PARTIAL' : 'COMPLETED',
         confirmed: created.length,
         // Rejected rows (invalid, unsupported, undecided) count as ignored:
         // confirmed + ignored always reconciles to the previewed total.
         ignored: skippedDuplicates + skippedByUser + failed.length,
-        partial: false,
+        partial: pendingReviewCount > 0,
       });
     }
     return receipt;
@@ -268,7 +288,7 @@ export class ConfirmPortfolioImportUseCase {
     const decisions = new Map(command.decisions.map((decision) => [decision.rowNumber, decision]));
     let skippedDuplicates = 0;
     let skippedByUser = 0;
-    const failed: Array<{ rowNumber: number; message: string }> = [];
+    const failed: ImportRowFailure[] = [];
     for (const candidate of preview.candidates) {
       const decision = decisions.get(candidate.rowNumber);
       if (decision?.action === 'skip') {
@@ -281,6 +301,7 @@ export class ConfirmPortfolioImportUseCase {
           message:
             candidate.issues[0]?.message ??
             'Linha não importada: outra confirmação simultânea escreveu o lançamento',
+          pendingReview: false,
         });
       }
     }
