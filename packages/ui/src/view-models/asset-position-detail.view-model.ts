@@ -171,6 +171,7 @@ const CORPORATE_ACTION_LABELS: Record<string, string> = {
   REVERSE_SPLIT: 'Grupamento',
   BONUS: 'Bonificação',
   AMORTIZATION: 'Amortização',
+  RECEIPT_CONVERSION: 'Conversão de recibo',
 };
 
 const POSITION_TRANSACTION_TYPE_LABELS: Record<string, string> = {
@@ -184,6 +185,7 @@ const POSITION_TRANSACTION_TYPE_LABELS: Record<string, string> = {
   BONUS: 'Bonificação',
   AMORTIZATION: 'Amortização',
   SUBSCRIPTION: 'Subscrição',
+  RECEIPT_CONVERSION: 'Conversão de recibo',
   TRANSFER_IN: 'Transferência de Entrada',
   TRANSFER_OUT: 'Transferência de Saída',
   FEE: 'Taxa',

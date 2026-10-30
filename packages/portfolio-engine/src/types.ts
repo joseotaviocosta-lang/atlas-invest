@@ -65,19 +65,33 @@ export interface RealizedSummary {
 }
 
 /**
- * Supported corporate action types processed in Phase 1D (ADR-048, ADR-049, ADR-050).
+ * Supported corporate action types. RECEIPT_CONVERSION moves quantity and
+ * carried cost across two assets of the same account with zero realization.
  */
-export type CorporateActionType = 'SPLIT' | 'REVERSE_SPLIT' | 'BONUS' | 'AMORTIZATION';
+export type CorporateActionType =
+  | 'SPLIT'
+  | 'REVERSE_SPLIT'
+  | 'BONUS'
+  | 'AMORTIZATION'
+  | 'RECEIPT_CONVERSION';
 
 /**
  * Immutable audit record of an applied corporate action event.
  * Documents historical quantity and carried cost transformations without database persistence.
+ *
+ * For RECEIPT_CONVERSION, `assetId`/before/after describe the SOURCE
+ * (receipt) side; `targetAssetId`/`targetQuantity`/`conversionRatio`
+ * describe the PARENT side that received the carried cost.
  */
 export interface AppliedCorporateAction {
   readonly transactionId: TransactionId;
   readonly type: CorporateActionType;
   readonly accountId: AccountId;
   readonly assetId: AssetId;
+  readonly targetAssetId?: AssetId;
+  readonly targetQuantity?: Quantity;
+  readonly conversionRatio?: Quantity;
+  readonly convertedQuantity?: Quantity;
   readonly tradeDate: LocalDate;
   readonly beforeQuantity: Quantity;
   readonly afterQuantity: Quantity;

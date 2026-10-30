@@ -39,6 +39,7 @@ const TRANSACTION_FISCAL_MAPPING: Readonly<
   AMORTIZATION: { eventType: 'AMORTIZATION', relevance: 'INFORMATIONAL' },
   TRANSFER_IN: { eventType: 'TRANSFER_IN', relevance: 'NON_TAXABLE' },
   TRANSFER_OUT: { eventType: 'TRANSFER_OUT', relevance: 'NON_TAXABLE' },
+  RECEIPT_CONVERSION: { eventType: 'CORPORATE_ACTION', relevance: 'NON_TAXABLE' },
   DEPOSIT: { eventType: 'CASH_FLOW', relevance: 'NON_TAXABLE' },
   WITHDRAWAL: { eventType: 'CASH_FLOW', relevance: 'NON_TAXABLE' },
   FEE: { eventType: 'EXPENSE', relevance: 'INFORMATIONAL' },
@@ -196,6 +197,12 @@ function projectOne(
     }
     case 'TRANSFER_IN':
     case 'TRANSFER_OUT': {
+      quantity = tx.quantity;
+      break;
+    }
+    case 'RECEIPT_CONVERSION': {
+      // Corporate conversion: source quantity leaves, target quantity arrives.
+      // No proceeds, no gain, no income — cost basis carries (PART R).
       quantity = tx.quantity;
       break;
     }

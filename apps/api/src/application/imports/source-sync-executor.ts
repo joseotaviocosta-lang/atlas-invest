@@ -7,6 +7,7 @@ import type {
   ITransactionRepository,
 } from '@atlas/database';
 import {
+  canonicalConversionFingerprint,
   canonicalFingerprint,
   civilDateInTimezone,
   runSimulatedB3Sync,
@@ -211,35 +212,55 @@ export class SimulatedB3SyncExecutor implements SourceSyncExecutor {
   /**
    * Same ledger projection as the interactive preview path (dedupe parity):
    * canonical JSON rows plus canonical fingerprints. Income rows keep the
-   * credited amount; trades keep quantity/price/fees.
+   * credited amount; trades keep quantity/price/fees; conversions keep the
+   * dual-asset reference with the exact ratio.
    */
   private async loadExistingLedger(portfolioId: string): Promise<ExistingLedgerRow[]> {
     const transactions = await this.transactions.findByPortfolioId(portfolioId);
     return transactions.map((transaction) => {
       const json = serializeTransaction(transaction);
+      const isConversion = json.type === 'RECEIPT_CONVERSION';
       return {
         provider: json.provider ?? null,
         externalId: json.externalId ?? null,
         assetId: json.assetId ?? '',
+        targetAssetId: json.targetAssetId ?? null,
         accountId: json.accountId,
         type: json.type,
         tradeDate: json.tradeDate,
         quantity: json.quantity ?? '',
+        targetQuantity: json.targetQuantity ?? null,
+        conversionRatio: json.conversionRatio ?? null,
+        conversionType: json.conversionType ?? null,
         unitPrice: json.unitPrice?.amount ?? null,
         fees: json.fees?.amount ?? null,
         amount: json.amount?.amount ?? null,
         currency: json.currency,
-        fingerprint: canonicalFingerprint({
-          portfolioId: json.portfolioId,
-          accountId: json.accountId,
-          assetId: json.assetId ?? '',
-          type: json.type,
-          tradeDate: json.tradeDate,
-          quantity: json.quantity ?? '',
-          unitPrice: json.unitPrice?.amount ?? null,
-          fees: json.fees?.amount ?? null,
-          currency: json.currency,
-        }),
+        fingerprint: isConversion
+          ? canonicalConversionFingerprint({
+              portfolioId: json.portfolioId,
+              accountId: json.accountId,
+              assetId: json.assetId ?? '',
+              targetAssetId: json.targetAssetId ?? '',
+              type: json.type,
+              tradeDate: json.tradeDate,
+              quantity: json.quantity ?? '',
+              targetQuantity: json.targetQuantity ?? '',
+              conversionRatio: json.conversionRatio ?? '',
+              conversionType: json.conversionType ?? '',
+              currency: json.currency,
+            })
+          : canonicalFingerprint({
+              portfolioId: json.portfolioId,
+              accountId: json.accountId,
+              assetId: json.assetId ?? '',
+              type: json.type,
+              tradeDate: json.tradeDate,
+              quantity: json.quantity ?? '',
+              unitPrice: json.unitPrice?.amount ?? null,
+              fees: json.fees?.amount ?? null,
+              currency: json.currency,
+            }),
       };
     });
   }

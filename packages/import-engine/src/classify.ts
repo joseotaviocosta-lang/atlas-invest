@@ -11,9 +11,11 @@
  */
 
 import {
+  canonicalConversionFingerprint,
   canonicalFingerprint,
   canonicalIncomeFingerprint,
   normalizeDecimalValue,
+  probableConversionMatchKey,
   probableIncomeMatchKey,
   probableMatchKey,
   sourceIdentityKey,
@@ -45,6 +47,10 @@ function sameCanonicalFields(
     unitPrice: string;
     fees: string;
     amount?: string;
+    targetAssetId?: string | null;
+    targetQuantity?: string;
+    conversionRatio?: string;
+    conversionType?: string;
     currency: string;
   },
   row: ExistingLedgerRow,
@@ -63,6 +69,18 @@ function sameCanonicalFields(
     // and must not split the identity of one payout.
     return normalizeDecimalValue(row.amount) === normalizeDecimalValue(candidate.amount);
   }
+  if (candidate.operation === 'RECEIPT_CONVERSION') {
+    // Conversion identity is dual-asset: source + target + exact ratio + kind.
+    return (
+      (row.targetAssetId ?? null) === (candidate.targetAssetId ?? null) &&
+      normalizeDecimalValue(row.targetQuantity) ===
+        normalizeDecimalValue(candidate.targetQuantity ?? null) &&
+      normalizeDecimalValue(row.conversionRatio) ===
+        normalizeDecimalValue(candidate.conversionRatio ?? null) &&
+      (row.conversionType ?? null) === (candidate.conversionType ?? null) &&
+      normalizeDecimalValue(row.quantity) === normalizeDecimalValue(candidate.quantity)
+    );
+  }
   return (
     normalizeDecimalValue(row.quantity) === normalizeDecimalValue(candidate.quantity) &&
     normalizeDecimalValue(row.unitPrice) === normalizeDecimalValue(candidate.unitPrice) &&
@@ -70,15 +88,45 @@ function sameCanonicalFields(
   );
 }
 
+export interface ClassifyInput {
+  portfolioId: string;
+  provider: string;
+  candidate: NormalizedCandidate;
+  assetMatch: AssetMatch;
+  accountMatch: AccountMatch;
+  defaultAccountId: string | null;
+  existing: ExistingLedgerRow[];
+  /**
+   * Pre-resolved target asset for RECEIPT_CONVERSION rows (resolved WITHOUT
+   * successor fallback — conversion is a corporate event, never a rename;
+   * PART AD). Absent for every other operation.
+   */
+  targetAssetMatch?: AssetMatch;
+}
+
 export function classifyOne(input: ClassifyInput): ClassifiedCandidate {
-  const { portfolioId, provider, candidate, assetMatch, accountMatch, defaultAccountId, existing } =
-    input;
+  const {
+    portfolioId,
+    provider,
+    candidate,
+    assetMatch,
+    accountMatch,
+    defaultAccountId,
+    existing,
+    targetAssetMatch,
+  } = input;
 
   const assetId = assetMatch.asset?.id ?? null;
   const accountId = accountMatch.account?.id ?? defaultAccountId;
 
-  // Income identity is value-only (amount), trades use the full economic key.
+  // Income identity is value-only (amount), conversions use the dual-asset
+  // key, trades use the full economic key.
   const isIncome = candidate.amount !== undefined;
+  const isConversion = candidate.operation === 'RECEIPT_CONVERSION';
+  const targetAssetId = isConversion ? (targetAssetMatch?.asset?.id ?? null) : null;
+  const targetAssetResolution: AssetMatch['resolution'] = isConversion
+    ? (targetAssetMatch?.resolution ?? 'NOT_FOUND')
+    : 'NOT_FOUND';
 
   let fingerprint: string | null = null;
   if (assetId && accountId) {
@@ -92,17 +140,31 @@ export function classifyOne(input: ClassifyInput): ClassifiedCandidate {
           amount: candidate.amount ?? null,
           currency: candidate.currency,
         })
-      : canonicalFingerprint({
-          portfolioId,
-          accountId,
-          assetId,
-          type: candidate.operation,
-          tradeDate: candidate.tradeDate,
-          quantity: candidate.quantity,
-          unitPrice: candidate.unitPrice,
-          fees: candidate.fees,
-          currency: candidate.currency,
-        });
+      : isConversion && targetAssetId
+        ? canonicalConversionFingerprint({
+            portfolioId,
+            accountId,
+            assetId,
+            targetAssetId,
+            type: candidate.operation,
+            tradeDate: candidate.tradeDate,
+            quantity: candidate.quantity,
+            targetQuantity: candidate.targetQuantity ?? '',
+            conversionRatio: candidate.conversionRatio ?? '',
+            conversionType: candidate.conversionType ?? '',
+            currency: candidate.currency,
+          })
+        : canonicalFingerprint({
+            portfolioId,
+            accountId,
+            assetId,
+            type: candidate.operation,
+            tradeDate: candidate.tradeDate,
+            quantity: candidate.quantity,
+            unitPrice: candidate.unitPrice,
+            fees: candidate.fees,
+            currency: candidate.currency,
+          });
   }
 
   let duplicate: DuplicateClassification = 'NEW';
@@ -115,7 +177,9 @@ export function classifyOne(input: ClassifyInput): ClassifiedCandidate {
         sourceIdentityKey(row.provider, row.externalId) === key,
     );
     if (hit) {
-      duplicate = sameCanonicalFields(candidate, hit) ? 'EXACT_DUPLICATE' : 'CONFLICT';
+      duplicate = sameCanonicalFields({ ...candidate, targetAssetId }, hit)
+        ? 'EXACT_DUPLICATE'
+        : 'CONFLICT';
     }
   }
   if (duplicate === 'NEW' && fingerprint) {
@@ -134,15 +198,28 @@ export function classifyOne(input: ClassifyInput): ClassifiedCandidate {
           tradeDate: candidate.tradeDate,
           currency: candidate.currency,
         })
-      : probableMatchKey({
-          portfolioId,
-          accountId,
-          assetId,
-          type: candidate.operation,
-          tradeDate: candidate.tradeDate,
-          quantity: candidate.quantity,
-          currency: candidate.currency,
-        });
+      : isConversion && targetAssetId
+        ? probableConversionMatchKey({
+            portfolioId,
+            accountId,
+            assetId,
+            targetAssetId,
+            type: candidate.operation,
+            tradeDate: candidate.tradeDate,
+            quantity: candidate.quantity,
+            targetQuantity: candidate.targetQuantity ?? '',
+            conversionType: candidate.conversionType ?? '',
+            currency: candidate.currency,
+          })
+        : probableMatchKey({
+            portfolioId,
+            accountId,
+            assetId,
+            type: candidate.operation,
+            tradeDate: candidate.tradeDate,
+            quantity: candidate.quantity,
+            currency: candidate.currency,
+          });
     const hit = existing.find((row) => {
       if (row.assetId !== assetId || row.accountId !== accountId) return false;
       // Ledger income rows always carry the value-only fingerprint; trade
@@ -155,6 +232,22 @@ export function classifyOne(input: ClassifyInput): ClassifiedCandidate {
             assetId: row.assetId,
             type: row.type,
             tradeDate: row.tradeDate,
+            currency: row.currency,
+          }) === key
+        );
+      }
+      if (row.type === 'RECEIPT_CONVERSION' && row.targetAssetId) {
+        return (
+          probableConversionMatchKey({
+            portfolioId,
+            accountId: row.accountId,
+            assetId: row.assetId,
+            targetAssetId: row.targetAssetId,
+            type: row.type,
+            tradeDate: row.tradeDate,
+            quantity: row.quantity,
+            targetQuantity: row.targetQuantity ?? '',
+            conversionType: row.conversionType ?? '',
             currency: row.currency,
           }) === key
         );
@@ -176,6 +269,20 @@ export function classifyOne(input: ClassifyInput): ClassifiedCandidate {
     }
   }
 
+  // PART U: conversions without an EXACT effective date never stay READY,
+  // regardless of how complete the remaining fields are.
+  const conversionIssues =
+    isConversion && candidate.dateConfidence !== undefined && candidate.dateConfidence !== 'EXACT'
+      ? [
+          {
+            code: 'CONVERSION_DATE_UNVERIFIED' as const,
+            field: 'date',
+            message:
+              'Conversão de recibo identificada, mas a data exata não foi encontrada nas fontes disponíveis. O evento não será importado até que a data seja comprovada.',
+          },
+        ]
+      : [];
+
   let status = candidate.status;
   if (status === 'READY') {
     if (duplicate === 'EXACT_DUPLICATE') {
@@ -184,7 +291,9 @@ export function classifyOne(input: ClassifyInput): ClassifiedCandidate {
       duplicate === 'PROBABLE_DUPLICATE' ||
       duplicate === 'CONFLICT' ||
       assetMatch.resolution !== 'RESOLVED' ||
-      accountId === null
+      (isConversion && targetAssetResolution !== 'RESOLVED') ||
+      accountId === null ||
+      conversionIssues.length > 0
     ) {
       status = 'NEEDS_REVIEW';
     }
@@ -192,7 +301,7 @@ export function classifyOne(input: ClassifyInput): ClassifiedCandidate {
     status = 'DUPLICATE';
   }
 
-  const issues =
+  const baseIssues =
     duplicate === 'EXACT_DUPLICATE'
       ? [
           ...candidate.issues,
@@ -247,15 +356,29 @@ export function classifyOne(input: ClassifyInput): ClassifiedCandidate {
                   ]
                 : candidate.issues;
 
+  const issues =
+    isConversion && targetAssetResolution !== 'RESOLVED' && duplicate !== 'EXACT_DUPLICATE'
+      ? [
+          ...baseIssues,
+          {
+            code: 'UNKNOWN_TARGET_ASSET' as const,
+            field: 'target_ticker',
+            message: `Ativo destino "${candidate.targetTicker ?? ''}" não encontrado no cadastro`,
+          },
+        ]
+      : baseIssues;
+
   return Object.freeze({
     ...candidate,
     status:
       assetMatch.resolution === 'AMBIGUOUS' && candidate.status === 'READY'
         ? 'AMBIGUOUS_ASSET'
         : status,
-    issues: Object.freeze([...issues]) as ClassifiedCandidate['issues'],
+    issues: Object.freeze([...issues, ...conversionIssues]) as ClassifiedCandidate['issues'],
     assetId,
     assetResolution: assetMatch.resolution,
+    targetAssetId,
+    targetAssetResolution,
     accountId,
     accountResolution: accountId !== null ? accountMatch.resolution : 'UNSPECIFIED',
     fingerprint,
@@ -304,10 +427,14 @@ export function toLedgerSnapshotRow(
   classified: Pick<
     ClassifiedCandidate,
     | 'assetId'
+    | 'targetAssetId'
     | 'accountId'
     | 'operation'
     | 'tradeDate'
     | 'quantity'
+    | 'targetQuantity'
+    | 'conversionRatio'
+    | 'conversionType'
     | 'unitPrice'
     | 'fees'
     | 'amount'
@@ -321,10 +448,14 @@ export function toLedgerSnapshotRow(
     provider,
     externalId: classified.externalId ?? null,
     assetId: classified.assetId,
+    targetAssetId: classified.targetAssetId ?? null,
     accountId: classified.accountId,
     type: classified.operation,
     tradeDate: classified.tradeDate,
     quantity: classified.quantity,
+    targetQuantity: classified.targetQuantity ?? null,
+    conversionRatio: classified.conversionRatio ?? null,
+    conversionType: classified.conversionType ?? null,
     unitPrice: classified.unitPrice,
     fees: classified.fees,
     amount: classified.amount ?? null,

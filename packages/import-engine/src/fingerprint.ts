@@ -101,6 +101,67 @@ export function canonicalIncomeFingerprint(input: CanonicalIncomeFingerprintInpu
 }
 
 /**
+ * Canonical identity of a receipt-conversion event (PART Y).
+ *
+ * Unlike trades, a conversion is identified by BOTH assets plus the exact
+ * ratio and kind: source + target + quantities + ratio + conversionType.
+ */
+export interface CanonicalConversionFingerprintInput {
+  portfolioId: string;
+  accountId: string;
+  assetId: string;
+  targetAssetId: string;
+  type: string;
+  tradeDate: string;
+  quantity: string;
+  targetQuantity: string;
+  conversionRatio: string;
+  conversionType: string;
+  currency: string;
+}
+
+export function canonicalConversionFingerprint(
+  input: CanonicalConversionFingerprintInput,
+): string {
+  const canonical = [
+    input.portfolioId,
+    input.accountId,
+    input.assetId,
+    input.targetAssetId,
+    input.type,
+    input.tradeDate,
+    canonicalDecimal(input.quantity),
+    canonicalDecimal(input.targetQuantity),
+    canonicalDecimal(input.conversionRatio),
+    input.conversionType,
+    input.currency,
+  ].join('|');
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
+}
+
+/**
+ * Ratio-insensitive variant for conversion near-duplicate detection:
+ * same conversion occasion, possibly a corrected ratio.
+ */
+export function probableConversionMatchKey(
+  input: Omit<CanonicalConversionFingerprintInput, 'conversionRatio'>,
+): string {
+  const canonical = [
+    input.portfolioId,
+    input.accountId,
+    input.assetId,
+    input.targetAssetId,
+    input.type,
+    input.tradeDate,
+    canonicalDecimal(input.quantity),
+    canonicalDecimal(input.targetQuantity),
+    input.conversionType,
+    input.currency,
+  ].join('|');
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
+}
+
+/**
  * Price-insensitive variant used for PROBABLE duplicate detection:
  * same economic event, possibly different execution price/fees.
  */

@@ -224,7 +224,31 @@ export function expense(
   });
 }
 
-export function allSixteenTypes(prefix: string): Transaction[] {
+export function conversion(
+  id: string,
+  qty = '200',
+  targetQty = '200',
+  ratio = '1',
+  date = '2026-09-17',
+  assetId = PETR,
+  targetAssetId = VALE,
+): Transaction {
+  return TransactionFactory.createReceiptConversion({
+    id: uuidFor(id),
+    portfolioId: PF,
+    accountId: ACC,
+    assetId,
+    targetAssetId,
+    quantity: qty,
+    targetQuantity: targetQty,
+    conversionRatio: ratio,
+    conversionType: 'SUBSCRIPTION_RECEIPT',
+    currency: 'BRL',
+    tradeDate: date,
+  });
+}
+
+export function allSeventeenTypes(prefix: string): Transaction[] {
   return [
     buy(`${prefix}-buy`, '2026-09-01'),
     sell(`${prefix}-sell`, '2026-09-02'),
@@ -242,5 +266,6 @@ export function allSixteenTypes(prefix: string): Transaction[] {
     cashMovement('WITHDRAWAL', `${prefix}-wd`, '100', '2026-09-14'),
     expense('FEE', `${prefix}-fee`, '5', '2026-09-15'),
     expense('TAX', `${prefix}-tax`, '7', '2026-09-16'),
+    conversion(`${prefix}-conv`),
   ];
 }

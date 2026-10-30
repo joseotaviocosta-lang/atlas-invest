@@ -17,6 +17,11 @@ export const CANONICAL_COLUMNS = [
   'account',
   'external_id',
   'settlement_date',
+  'target_ticker',
+  'target_quantity',
+  'conversion_ratio',
+  'conversion_type',
+  'date_confidence',
   'notes',
 ] as const;
 export type CanonicalColumn = (typeof CANONICAL_COLUMNS)[number];
@@ -88,6 +93,22 @@ const HEADER_ALIASES: Record<string, CanonicalColumn> = {
   notes: 'notes',
   note: 'notes',
   obs: 'notes',
+  ativodestino: 'target_ticker',
+  tickerdestino: 'target_ticker',
+  targetticker: 'target_ticker',
+  target: 'target_ticker',
+  destino: 'target_ticker',
+  quantidadedestino: 'target_quantity',
+  qtddestino: 'target_quantity',
+  targetquantity: 'target_quantity',
+  proporcao: 'conversion_ratio',
+  proporção: 'conversion_ratio',
+  ratio: 'conversion_ratio',
+  conversionratio: 'conversion_ratio',
+  tipoconversao: 'conversion_type',
+  conversiontype: 'conversion_type',
+  dateconfidence: 'date_confidence',
+  confiancadata: 'date_confidence',
 };
 
 const REQUIRED_COLUMNS: CanonicalColumn[] = ['date', 'ticker', 'operation', 'quantity'];
@@ -138,6 +159,14 @@ const BONUS_SYNONYMS = new Set([
 // these labels: SUBSCRIPTION is a directly supported operation.
 const SUBSCRIPTION_SYNONYMS = new Set(['SUBSCRICAO', 'SUBSCRICAO EXERCIDA', 'SUBSCRIPTION']);
 
+// Receipt conversion (cross-asset corporate event, never a trade/transfer).
+const RECEIPT_CONVERSION_SYNONYMS = new Set([
+  'CONVERSAO DE RECIBO',
+  'CONVERSAO_DE_RECIBO',
+  'RECEIPT_CONVERSION',
+  'RECEIPT CONVERSION',
+]);
+
 export type MappedOperation =
   | { kind: 'BUY' }
   | { kind: 'SELL' }
@@ -148,6 +177,7 @@ export type MappedOperation =
   | { kind: 'FII_INCOME' }
   | { kind: 'BONUS' }
   | { kind: 'SUBSCRIPTION' }
+  | { kind: 'RECEIPT_CONVERSION' }
   | { kind: 'DEFERRED'; operation: string }
   | { kind: 'UNKNOWN'; raw: string };
 
@@ -189,6 +219,7 @@ export function mapOperation(raw: string): MappedOperation {
   if (FII_INCOME_SYNONYMS.has(normalized)) return { kind: 'FII_INCOME' };
   if (BONUS_SYNONYMS.has(normalized)) return { kind: 'BONUS' };
   if (SUBSCRIPTION_SYNONYMS.has(normalized)) return { kind: 'SUBSCRIPTION' };
+  if (RECEIPT_CONVERSION_SYNONYMS.has(normalized)) return { kind: 'RECEIPT_CONVERSION' };
   const deferred = DEFERRED_SYNONYMS[normalized];
   if (deferred) return { kind: 'DEFERRED', operation: deferred };
   return { kind: 'UNKNOWN', raw: raw.trim() };

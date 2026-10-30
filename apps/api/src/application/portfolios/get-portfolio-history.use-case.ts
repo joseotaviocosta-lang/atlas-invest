@@ -180,11 +180,16 @@ export class GetPortfolioHistoryUseCase {
           : new Map();
 
       // 9. Batch asset lookup to enrich items with ticker & assetName (no N+1).
+      // Conversion targets are included so CORPORATE_ACTION details can carry
+      // the parent ticker (PART Z/AA).
       const uniqueAssetIds = Array.from(
         new Set(
           history.items
-            .map((item) => item.assetId)
-            .filter((id): id is string => Boolean(id)),
+            .flatMap((item) => [
+              item.assetId,
+              (item.details as { targetAssetId?: unknown }).targetAssetId,
+            ])
+            .filter((id): id is string => typeof id === 'string' && id !== ''),
         ),
       );
       const assets =
@@ -225,9 +230,19 @@ export class GetPortfolioHistoryUseCase {
             assetTicker: asset?.ticker ?? null,
             assetName: asset?.name ?? null,
             rectification: badges.get(item.transactionId) ?? null,
-            details: isOpening
-              ? { ...item.details, isOpeningPosition: true }
-              : item.details,
+            details: {
+              ...item.details,
+              ...(isOpening ? { isOpeningPosition: true } : {}),
+              ...(() => {
+                const targetId = (item.details as { targetAssetId?: unknown }).targetAssetId;
+                if (typeof targetId !== 'string' || targetId === '') return {};
+                const target = assetMap.get(targetId);
+                return {
+                  targetAssetTicker: target?.ticker ?? null,
+                  targetAssetName: target?.name ?? null,
+                };
+              })(),
+            },
           };
         }),
       };

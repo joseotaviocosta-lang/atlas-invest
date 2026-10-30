@@ -99,6 +99,10 @@ interface PreviewCandidate {
   normalizedInstitution?: string;
   externalId?: string;
   notes?: string;
+  targetTicker?: string;
+  targetQuantity?: string;
+  conversionRatio?: string;
+  conversionType?: string;
   status: 'READY' | 'DUPLICATE' | 'AMBIGUOUS_ASSET' | 'INVALID' | 'UNSUPPORTED' | 'NEEDS_REVIEW';
   issues: PreviewIssue[];
   assetId: string | null;
@@ -2306,6 +2310,22 @@ function ImportHubContent() {
                         <td style={{ padding: 8 }}>
                           <div>
                             <strong>{candidate.ticker}</strong>
+                            {candidate.operation === 'RECEIPT_CONVERSION' &&
+                              candidate.targetTicker && (
+                                <div
+                                  style={{
+                                    fontSize: '0.75rem',
+                                    color: colors.textSecondary,
+                                    marginTop: 2,
+                                  }}
+                                >
+                                  → {candidate.targetTicker}
+                                  {candidate.targetQuantity &&
+                                    ` · ${formatQuantity(candidate.targetQuantity)}`}
+                                  {candidate.conversionRatio &&
+                                    ` · proporção ${candidate.conversionRatio}`}
+                                </div>
+                              )}
                             {candidate.notes && (
                               <div
                                 style={{
@@ -2329,7 +2349,9 @@ function ImportHubContent() {
                                 ? 'Bonificação'
                                 : candidate.operation === 'SUBSCRIPTION'
                                   ? 'Subscrição exercida'
-                                  : candidate.operation === 'TRANSFER_IN'
+                                  : candidate.operation === 'RECEIPT_CONVERSION'
+                                    ? 'Conversão de recibo'
+                                    : candidate.operation === 'TRANSFER_IN'
                                 ? candidate.rawOperation === 'POSICAO_INICIAL'
                                   ? 'Posição Inicial'
                                   : 'Transferência (entrada)'
@@ -2344,7 +2366,8 @@ function ImportHubContent() {
                         <td style={{ padding: 8 }}>{formatQuantity(candidate.quantity)}</td>
                         <td style={{ padding: 8 }}>
                           {(candidate.rawOperation === 'POSICAO_INICIAL' ||
-                            candidate.operation === 'BONUS') &&
+                            candidate.operation === 'BONUS' ||
+                            candidate.operation === 'RECEIPT_CONVERSION') &&
                           candidate.unitPrice === '0'
                             ? '—'
                             : formatCurrency(candidate.unitPrice, candidate.currency)}

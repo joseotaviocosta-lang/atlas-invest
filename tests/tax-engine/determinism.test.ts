@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { LocalDate } from '@atlas/domain';
 import { projectFiscalEvents, buildMonthlyTaxState, type TaxRuleSet } from '@atlas/tax-engine';
-import { allSixteenTypes, PETR } from './helpers';
+import { allSeventeenTypes, PETR } from './helpers';
 
 const RULE: TaxRuleSet = {
   id: 'BR-TEST',
@@ -24,7 +24,7 @@ function seededShuffle<T>(items: readonly T[], seed: number): T[] {
 }
 
 describe('Phase 4A — Determinism and order independence', () => {
-  const base = allSixteenTypes('det');
+  const base = allSeventeenTypes('det');
   const options = { assetTypeByAssetId: new Map<string, string>([[PETR, 'STOCK']]) };
 
   it('produces identical projections across 1000 repeated executions', () => {

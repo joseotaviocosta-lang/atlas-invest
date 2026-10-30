@@ -25,7 +25,7 @@ describe('Portfolio Engine 1.0 Contract Freeze & Formal Specification', () => {
     expect(engine.version).toBe('1.0.0-rc.1');
   });
 
-  describe('Semantics Matrix for All 16 Transaction Types', () => {
+  describe('Semantics Matrix for All 17 Transaction Types', () => {
     const allTypes: TransactionType[] = [
       'BUY',
       'SELL',
@@ -39,14 +39,15 @@ describe('Portfolio Engine 1.0 Contract Freeze & Formal Specification', () => {
       'AMORTIZATION',
       'TRANSFER_IN',
       'TRANSFER_OUT',
+      'RECEIPT_CONVERSION',
       'DEPOSIT',
       'WITHDRAWAL',
       'FEE',
       'TAX',
     ];
 
-    it('has exactly 16 supported transaction types in specification', () => {
-      expect(allTypes).toHaveLength(16);
+    it('has exactly 17 supported transaction types in specification', () => {
+      expect(allTypes).toHaveLength(17);
     });
 
     it('BUY: increases quantity and total cost, neutral to income and realized P&L', () => {
@@ -271,6 +272,44 @@ describe('Portfolio Engine 1.0 Contract Freeze & Formal Specification', () => {
       expect(asset?.quantity.equals(Quantity.from('150'))).toBe(true);
       expect(asset?.totalCost?.equals(Money.from('2750.00', 'BRL'))).toBe(true);
       expect(state.realizedDisposals).toHaveLength(0);
+    });
+
+    it('RECEIPT_CONVERSION: carries cost across assets with zero realization', () => {
+      const asset2 = 'c2222222-2222-4000-8000-000000000002';
+      const receiptBuy = TransactionFactory.createBuy({
+        id: nextId(),
+        portfolioId,
+        accountId: acc1,
+        assetId: asset1,
+        quantity: '200',
+        unitPrice: '8.50',
+        currency: 'BRL',
+        tradeDate: '2026-01-10',
+      });
+      const convTx = TransactionFactory.createReceiptConversion({
+        id: nextId(),
+        portfolioId,
+        accountId: acc1,
+        assetId: asset1,
+        targetAssetId: asset2,
+        quantity: '200',
+        targetQuantity: '200',
+        conversionRatio: '1',
+        conversionType: 'SUBSCRIPTION_RECEIPT',
+        currency: 'BRL',
+        tradeDate: '2026-02-01',
+      });
+
+      const { state } = replayPortfolio({ portfolioId, transactions: [receiptBuy, convTx] });
+
+      expect(state.assets.has(asset1)).toBe(false);
+      const parent = state.assets.get(asset2);
+      expect(parent?.quantity.equals(Quantity.from('200'))).toBe(true);
+      expect(parent?.totalCost?.equals(Money.from('1700.00', 'BRL'))).toBe(true);
+      expect(parent?.costBasisStatus).toBe('KNOWN');
+      expect(state.realizedDisposals).toHaveLength(0);
+      expect(state.incomeEvents).toHaveLength(0);
+      expect(state.appliedCorporateActions).toHaveLength(1);
     });
 
     it('AMORTIZATION: reduces total cost, quantity unchanged, produces CAPITAL_RETURN cash flow', () => {

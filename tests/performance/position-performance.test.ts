@@ -107,7 +107,7 @@ describe('Phase 5R-B: position capital flow classification', () => {
     ).toBeNull();
   });
 
-  it('ignores income, corporate actions, fees and cash movements like the portfolio engine', () => {
+  it('ignores income, corporate actions, conversions, fees and cash movements like the portfolio engine', () => {
     for (const type of [
       'DIVIDEND',
       'JCP',
@@ -115,6 +115,7 @@ describe('Phase 5R-B: position capital flow classification', () => {
       'SPLIT',
       'REVERSE_SPLIT',
       'BONUS',
+      'RECEIPT_CONVERSION',
       'AMORTIZATION',
       'FEE',
       'TAX',

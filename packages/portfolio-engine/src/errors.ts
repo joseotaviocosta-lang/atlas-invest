@@ -353,6 +353,44 @@ export class SubscriptionCostBasisError extends PortfolioReplayError {
 }
 
 /**
+ * Thrown when a RECEIPT_CONVERSION transaction is structurally invalid
+ * (indistinguishable assets, non-positive quantities/ratio, unknown kind).
+ */
+export class ReceiptConversionInvalidError extends PortfolioReplayError {
+  readonly transactionId: string;
+  readonly reason: string;
+
+  constructor(transactionId: string, reason: string) {
+    super(
+      `Invalid RECEIPT_CONVERSION transaction '${transactionId}': ${reason}`,
+      'PORTFOLIO_ENGINE.RECEIPT_CONVERSION_INVALID',
+    );
+    this.transactionId = transactionId;
+    this.reason = reason;
+  }
+}
+
+/**
+ * Thrown when a RECEIPT_CONVERSION requires more source quantity than the
+ * position holds. The source position is never driven negative.
+ */
+export class ReceiptConversionInsufficientSourceError extends PortfolioReplayError {
+  readonly transactionId: string;
+  readonly sourceQuantity: string;
+  readonly availableQuantity: string;
+
+  constructor(transactionId: string, sourceQuantity: string, availableQuantity: string) {
+    super(
+      `RECEIPT_CONVERSION transaction '${transactionId}' requires source quantity '${sourceQuantity}' but only '${availableQuantity}' is held`,
+      'PORTFOLIO_ENGINE.RECEIPT_CONVERSION_INSUFFICIENT_SOURCE',
+    );
+    this.transactionId = transactionId;
+    this.sourceQuantity = sourceQuantity;
+    this.availableQuantity = availableQuantity;
+  }
+}
+
+/**
  * Thrown when a linked transfer group contains mismatched quantities between OUT and IN legs.
  */
 export class TransferPairMismatchError extends PortfolioReplayError {

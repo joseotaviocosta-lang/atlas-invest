@@ -21,6 +21,7 @@ import {
   MAX_IMPORT_BYTES,
   MAX_IMPORT_ROWS,
   SUPPORTED_IMPORT_SOURCES,
+  canonicalConversionFingerprint,
   canonicalFingerprint,
   classifyOne,
   mapHeaders,
@@ -41,6 +42,7 @@ import {
   summarize,
   CsvParseError,
   type AccountRef,
+  type AssetMatch,
   type AssetRef,
   type B3LayoutType,
   type ClassifiedCandidate,
@@ -111,6 +113,25 @@ interface PipelineContext {
 }
 
 const TEXT_ENCODER = new TextEncoder();
+
+/**
+ * Direct ticker-to-asset resolution for receipt-conversion targets.
+ * Successor fallback is deliberately NOT consulted: the target is a distinct
+ * instrument receiving carried cost, never a renamed symbol (PART AD).
+ */
+function resolveConversionTarget(ticker: string, assets: AssetRef[]): AssetMatch {
+  const normalized = ticker.trim().toUpperCase();
+  const matches = assets.filter((asset) => asset.ticker.trim().toUpperCase() === normalized);
+  if (matches.length === 0) {
+    return { resolution: 'NOT_FOUND', asset: null, candidates: [], viaSuccessor: false };
+  }
+  const active = matches.filter((asset) => asset.status === 'ACTIVE');
+  const pool = active.length > 0 ? active : matches;
+  if (pool.length === 1) {
+    return { resolution: 'RESOLVED', asset: pool[0]!, candidates: [], viaSuccessor: false };
+  }
+  return { resolution: 'AMBIGUOUS', asset: null, candidates: [...pool], viaSuccessor: false };
+}
 
 @Injectable()
 export class PreviewPortfolioImportUseCase {
@@ -420,6 +441,15 @@ export class PreviewPortfolioImportUseCase {
           ? { resolution: 'RESOLVED' as const, asset: explicitAsset, candidates: [] as AssetRef[], viaSuccessor: false }
           : resolveAsset(candidate.ticker, context.assets);
 
+      // Receipt-conversion targets resolve by DIRECT ticker match only.
+      // Successor fallback is deliberately bypassed: a conversion is a
+      // corporate event between two distinct instruments, never a rename
+      // (PART AD). An unresolvable target stays NEEDS_REVIEW.
+      const targetAssetMatch =
+        candidate.operation === 'RECEIPT_CONVERSION' && candidate.targetTicker
+          ? resolveConversionTarget(candidate.targetTicker, context.assets)
+          : undefined;
+
       let accountMatch: {
         resolution: 'RESOLVED' | 'AMBIGUOUS' | 'NOT_FOUND' | 'UNSPECIFIED';
         account: AccountRef | null;
@@ -463,6 +493,7 @@ export class PreviewPortfolioImportUseCase {
         provider: context.provider,
         candidate,
         assetMatch,
+        targetAssetMatch,
         accountMatch,
         defaultAccountId: context.defaultAccountId,
         existing: context.existing,
@@ -609,30 +640,49 @@ export class PreviewPortfolioImportUseCase {
 
   private toExistingRow(transaction: Transaction): ExistingLedgerRow {
     const json = serializeTransaction(transaction);
+    const isConversion = json.type === 'RECEIPT_CONVERSION';
     return {
       provider: json.provider ?? null,
       externalId: json.externalId ?? null,
       assetId: json.assetId ?? '',
+      targetAssetId: json.targetAssetId ?? null,
       accountId: json.accountId,
       type: json.type,
       tradeDate: json.tradeDate,
       quantity: json.quantity ?? '',
+      targetQuantity: json.targetQuantity ?? null,
+      conversionRatio: json.conversionRatio ?? null,
+      conversionType: json.conversionType ?? null,
       unitPrice: json.unitPrice?.amount ?? null,
       fees: json.fees?.amount ?? null,
       // Phase 5O-A: income rows carry the credited value; trades carry null.
       amount: json.amount?.amount ?? null,
       currency: json.currency,
-      fingerprint: canonicalFingerprint({
-        portfolioId: json.portfolioId,
-        accountId: json.accountId,
-        assetId: json.assetId ?? '',
-        type: json.type,
-        tradeDate: json.tradeDate,
-        quantity: json.quantity ?? '',
-        unitPrice: json.unitPrice?.amount ?? null,
-        fees: json.fees?.amount ?? null,
-        currency: json.currency,
-      }),
+      fingerprint: isConversion
+        ? canonicalConversionFingerprint({
+            portfolioId: json.portfolioId,
+            accountId: json.accountId,
+            assetId: json.assetId ?? '',
+            targetAssetId: json.targetAssetId ?? '',
+            type: json.type,
+            tradeDate: json.tradeDate,
+            quantity: json.quantity ?? '',
+            targetQuantity: json.targetQuantity ?? '',
+            conversionRatio: json.conversionRatio ?? '',
+            conversionType: json.conversionType ?? '',
+            currency: json.currency,
+          })
+        : canonicalFingerprint({
+            portfolioId: json.portfolioId,
+            accountId: json.accountId,
+            assetId: json.assetId ?? '',
+            type: json.type,
+            tradeDate: json.tradeDate,
+            quantity: json.quantity ?? '',
+            unitPrice: json.unitPrice?.amount ?? null,
+            fees: json.fees?.amount ?? null,
+            currency: json.currency,
+          }),
     };
   }
 

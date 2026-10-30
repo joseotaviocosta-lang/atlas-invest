@@ -240,11 +240,13 @@ export class GetPortfolioTimelineAiGroundingContextUseCase {
       });
     }
 
-    // 6.5 CORPORATE_ACTION events
+    // 6.5 CORPORATE_ACTION events (conversions surface as
+    // OTHER_CORPORATE_ACTION: the AI layer explains canonical facts and must
+    // not gain a new financial event type in this phase).
     for (const ca of replay.state.appliedCorporateActions) {
       candidateEvents.push({
         eventId: `ca_${ca.transactionId}`,
-        eventType: ca.type,
+        eventType: ca.type === 'RECEIPT_CONVERSION' ? 'OTHER_CORPORATE_ACTION' : ca.type,
         economicDate: ca.tradeDate.toString(),
         assetId: String(ca.assetId),
         quantity: ca.afterQuantity ? ca.afterQuantity.value : undefined,

@@ -365,6 +365,41 @@ describe('Portfolio Activity View Model (Fase 2C)', () => {
     expect(items[1]!.kindLabel).not.toBe('Compra');
   });
 
+  it('maps RECEIPT_CONVERSION as Conversão de recibo with origin→target context (never sale/purchase)', () => {
+    const historyItems: PortfolioHistoryItemDto[] = [
+      {
+        id: 'ca_conv',
+        kind: 'CORPORATE_ACTION',
+        transactionId: 'tx-conv',
+        tradeDate: '2026-09-15',
+        accountId: 'acc-1',
+        assetId: 'asset-snel13',
+        currency: 'BRL',
+        details: {
+          type: 'RECEIPT_CONVERSION',
+          beforeQuantity: '200',
+          afterQuantity: '0',
+          convertedQuantity: '200',
+          targetQuantity: '200',
+        },
+      },
+    ];
+
+    const vm = buildPortfolioActivityViewModel({
+      portfolioId: 'port-1',
+      historyItems,
+      pagination: defaultPagination,
+      portfolioState: mockPortfolioState,
+      accountsMeta,
+      assetsMeta,
+    });
+
+    const items = vm.groups[0]!.items;
+    expect(items[0]!.kindLabel).toBe('Conversão de recibo');
+    expect(items[0]!.kindLabel).not.toContain('Venda');
+    expect(items[0]!.kindLabel).not.toContain('Compra');
+  });
+
   it('maps TRANSFER events with counterparty and UNMATCHED status warning badge', () => {
     const historyItems: PortfolioHistoryItemDto[] = [
       {

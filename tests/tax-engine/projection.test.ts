@@ -7,11 +7,12 @@ import {
   type CanonicalRealizedResult,
 } from '@atlas/tax-engine';
 import {
-  allSixteenTypes,
+  allSeventeenTypes,
   amortization,
   bonus,
   buy,
   cashMovement,
+  conversion,
   expense,
   income,
   sell,
@@ -36,6 +37,7 @@ const onePerType = [
   amortization('t-amort'),
   transfer('TRANSFER_IN', 't-tin'),
   transfer('TRANSFER_OUT', 't-tout'),
+  conversion('t-conv'),
   cashMovement('DEPOSIT', 't-dep'),
   cashMovement('WITHDRAWAL', 't-wd'),
   expense('FEE', 't-fee'),
@@ -190,9 +192,20 @@ describe('Phase 4A — Transaction -> FiscalEvent projection', () => {
     expect(input.map((t) => t.id)).toEqual(before);
   });
 
-  it('exhaustively maps all sixteen types via allSixteenTypes helper', () => {
-    const events = projectFiscalEvents(allSixteenTypes('p'));
-    expect(events).toHaveLength(16);
-    expect(new Set(events.map((e) => e.sourceTransactionType)).size).toBe(16);
+  it('exhaustively maps all seventeen types via allSeventeenTypes helper', () => {
+    const events = projectFiscalEvents(allSeventeenTypes('p'));
+    expect(events).toHaveLength(17);
+    expect(new Set(events.map((e) => e.sourceTransactionType)).size).toBe(17);
+  });
+
+  it('maps receipt conversion as non-taxable corporate action with zero realization', () => {
+    const [event] = projectFiscalEvents([conversion('conv-zero')], {
+      assetTypeByAssetId: new Map([[PETR, 'STOCK']]),
+    });
+    expect(event!.eventType).toBe('CORPORATE_ACTION');
+    expect(event!.relevance).toBe('NON_TAXABLE');
+    expect(event!.proceeds).toBeUndefined();
+    expect(event!.realizedResult).toBeUndefined();
+    expect(event!.qualityIssues).toHaveLength(0);
   });
 });

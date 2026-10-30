@@ -8,7 +8,7 @@ import {
 } from './setup';
 import { TransactionRepository, AssetRepository } from '../../packages/database/src';
 
-describe('Database Integration: 16 Transaction Types Ledger Round-Trip', () => {
+describe('Database Integration: 17 Transaction Types Ledger Round-Trip', () => {
   const prisma = getTestPrismaClient();
   const txRepo = new TransactionRepository(prisma);
   const assetRepo = new AssetRepository(prisma);
@@ -264,6 +264,72 @@ describe('Database Integration: 16 Transaction Types Ledger Round-Trip', () => {
       expect(r.quantity.value).toBe('30');
       expect(r.transferGroupId).toBe('tg-roundtrip-123');
     }
+  });
+
+  it('12b. RECEIPT_CONVERSION round-trip preserves dual-asset decimals exactly', async () => {
+    const target = await assetRepo.create(
+      Asset.create({
+        ticker: 'SNEL11',
+        name: 'Suno Energias Limpas',
+        type: 'EQUITY',
+        currency: 'BRL',
+        exchange: 'BVMF',
+      }),
+    );
+    const tx = TransactionFactory.createReceiptConversion({
+      portfolioId,
+      accountId,
+      assetId,
+      targetAssetId: target.id,
+      quantity: '200',
+      targetQuantity: '200',
+      conversionRatio: '1',
+      conversionType: 'SUBSCRIPTION_RECEIPT',
+      currency: 'BRL',
+      tradeDate: '2026-03-12',
+    });
+    await txRepo.create(tx);
+    const r = await txRepo.findById(tx.id);
+    expect(r && r.type === 'RECEIPT_CONVERSION').toBe(true);
+    if (r && r.type === 'RECEIPT_CONVERSION') {
+      expect(String(r.assetId)).toBe(String(assetId));
+      expect(String(r.targetAssetId)).toBe(String(target.id));
+      expect(r.quantity.value).toBe('200');
+      expect(r.targetQuantity.value).toBe('200');
+      expect(r.conversionRatio.value).toBe('1');
+      expect(r.conversionType).toBe('SUBSCRIPTION_RECEIPT');
+    }
+  });
+
+  it('12c. DB CHECK rejects conversion scope violations at the storage layer', async () => {
+    const target = await assetRepo.create(
+      Asset.create({
+        ticker: 'SNEL13',
+        name: 'Suno Recibo',
+        type: 'EQUITY',
+        currency: 'BRL',
+        exchange: 'BVMF',
+      }),
+    );
+    // BUY carrying conversion columns must be rejected by the CHECK constraint.
+    await expect(
+      prisma.$executeRawUnsafe(
+        `INSERT INTO transactions (id, portfolio_id, account_id, asset_id, type, trade_date, currency, quantity, target_asset_id) VALUES (gen_random_uuid(), $1, $2, $3, 'BUY', '2026-03-12', 'BRL', 1, $4)`,
+        portfolioId,
+        accountId,
+        assetId,
+        target.id,
+      ),
+    ).rejects.toThrow();
+    // RECEIPT_CONVERSION without target columns must be rejected as well.
+    await expect(
+      prisma.$executeRawUnsafe(
+        `INSERT INTO transactions (id, portfolio_id, account_id, asset_id, type, trade_date, currency, quantity) VALUES (gen_random_uuid(), $1, $2, $3, 'RECEIPT_CONVERSION', '2026-03-12', 'BRL', 1)`,
+        portfolioId,
+        accountId,
+        assetId,
+      ),
+    ).rejects.toThrow();
   });
 
   it('13. DEPOSIT transaction round-trip', async () => {

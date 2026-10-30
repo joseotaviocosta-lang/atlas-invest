@@ -33,6 +33,7 @@ export const OPERATION_TYPE_LABELS: Record<string, string> = {
   BONUS: 'Bonificação',
   AMORTIZATION: 'Amortização',
   SUBSCRIPTION: 'Subscrição',
+  RECEIPT_CONVERSION: 'Conversão de recibo',
   DEPOSIT: 'Depósito',
   WITHDRAWAL: 'Retirada',
   FEE: 'Taxa',

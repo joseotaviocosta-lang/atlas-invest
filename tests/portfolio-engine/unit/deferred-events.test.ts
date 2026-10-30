@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { TransactionFactory, TRANSACTION_TYPES, TransactionType } from '@atlas/domain';
 import { replayPortfolio } from '@atlas/portfolio-engine';
-import { PORTFOLIO_DEFAULT, ACCOUNT_XP, ASSET_PETR4 } from '../fixtures/assets';
+import { PORTFOLIO_DEFAULT, ACCOUNT_XP, ASSET_PETR4, ASSET_HGLG11 } from '../fixtures/assets';
 
 describe('Portfolio Engine Core: Exhaustive Transaction Semantics & Zero Drops', () => {
   it('DIVIDEND should not alter quantity and should generate IncomeEvent (applied, 0 deferred)', () => {
@@ -76,7 +76,7 @@ describe('Portfolio Engine Core: Exhaustive Transaction Semantics & Zero Drops',
     expect(result.state.assets.get(String(ASSET_PETR4))?.totalCost?.amount).toBe('1160');
   });
 
-  it('Exhaustiveness Check: all 16 transaction types must be explicitly handled and applied (16 applied, 0 deferred, never dropped)', () => {
+  it('Exhaustiveness Check: all 17 transaction types must be explicitly handled and applied (18 entries incl. conversion funding leg, 0 deferred, never dropped)', () => {
     const commonProps = {
       portfolioId: String(PORTFOLIO_DEFAULT),
       accountId: String(ACCOUNT_XP),
@@ -177,9 +177,26 @@ describe('Portfolio Engine Core: Exhaustive Transaction Semantics & Zero Drops',
         amount: '5',
         tradeDate: '2026-01-21',
       }),
+      TransactionFactory.createBuy({
+        ...commonProps,
+        assetId: String(ASSET_HGLG11),
+        quantity: '20',
+        unitPrice: '10',
+        tradeDate: '2026-01-21',
+      }),
+      TransactionFactory.createReceiptConversion({
+        ...commonProps,
+        assetId: String(ASSET_HGLG11),
+        targetAssetId: String(ASSET_PETR4),
+        quantity: '20',
+        targetQuantity: '20',
+        conversionRatio: '1',
+        conversionType: 'SUBSCRIPTION_RECEIPT',
+        tradeDate: '2026-01-22',
+      }),
     ];
 
-    expect(allTypeTransactions).toHaveLength(16);
+    expect(allTypeTransactions).toHaveLength(18);
 
     const handledTypes = new Set<TransactionType>();
     for (const tx of allTypeTransactions) {
@@ -192,12 +209,12 @@ describe('Portfolio Engine Core: Exhaustive Transaction Semantics & Zero Drops',
       transactions: allTypeTransactions,
     });
 
-    // In Phase 1E, ALL 16 types are applied
-    expect(result.appliedTransactions).toHaveLength(16);
+    // ALL 17 types are applied (18 ledger entries: 16 original + funding BUY + RECEIPT_CONVERSION)
+    expect(result.appliedTransactions).toHaveLength(18);
     expect(result.deferredEvents).toHaveLength(0);
 
-    // Total must equal 16 (zero drops)
-    expect(result.totalProcessedCount).toBe(16);
-    expect(result.appliedTransactions.length + result.deferredEvents.length).toBe(16);
+    // Total must equal 18 (zero drops)
+    expect(result.totalProcessedCount).toBe(18);
+    expect(result.appliedTransactions.length + result.deferredEvents.length).toBe(18);
   });
 });

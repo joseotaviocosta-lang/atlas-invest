@@ -50,6 +50,7 @@ describe('Phase 5R-D: income event classification', () => {
       'FEE',
       'TAX',
       'SUBSCRIPTION',
+      'RECEIPT_CONVERSION',
       'INCOME',
     ]) {
       expect(isIncomeEventType(type)).toBe(false);

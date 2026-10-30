@@ -65,6 +65,29 @@ export interface NormalizeOptions {
   defaultCurrency?: string;
 }
 
+/**
+ * Exact decimal check `target == quantity × ratio` using BigInt integer
+ * arithmetic (no floats, no precision loss). Returns false on any malformed
+ * input — callers fail closed.
+ */
+function conversionRatioHolds(quantity: string, ratio: string, target: string): boolean {
+  const parse = (raw: string): { int: bigint; scale: number } | null => {
+    const m = /^(\d+)(?:\.(\d+))?$/.exec(raw.trim());
+    if (!m) return null;
+    const digits = (m[1]! + (m[2] ?? '')).replace(/^0+(?=\d)/, '') || '0';
+    return { int: BigInt(digits === '' ? '0' : digits), scale: (m[2] ?? '').length };
+  };
+  const q = parse(quantity);
+  const r = parse(ratio);
+  const t = parse(target);
+  if (!q || !r || !t) return false;
+  const left = q.int * r.int;
+  const leftScale = q.scale + r.scale;
+  const diff = leftScale - t.scale;
+  if (diff >= 0) return left === t.int * 10n ** BigInt(diff);
+  return left * 10n ** BigInt(-diff) === t.int;
+}
+
 export function normalizeRow(
   row: RawImportRow,
   mapping: MappedHeaders['mapping'],
@@ -113,6 +136,7 @@ export function normalizeRow(
   const isIncome =
     mapped.kind === 'DIVIDEND' || mapped.kind === 'JCP' || mapped.kind === 'FII_INCOME';
   const isBonus = mapped.kind === 'BONUS';
+  const isConversion = mapped.kind === 'RECEIPT_CONVERSION';
 
   const quantityRaw = cell(row, mapping, 'quantity');
   const quantity = normalizeDecimalString(quantityRaw);
@@ -160,10 +184,10 @@ export function normalizeRow(
       field: 'unit_price',
       message: 'Bonificação com preço informado precisa de revisão (custo desconhecido)',
     });
-  } else if ((isTransfer || isIncome) && unitPrice !== null && !/^0+(\.0+)?$/.test(unitPrice)) {
-    // Custody moves and income events carry no price. A priced "transfer" or
-    // "dividend" is ambiguous (sale? corporate action?) and must never
-    // auto-convert.
+  } else if ((isTransfer || isIncome || isConversion) && unitPrice !== null && !/^0+(\.0+)?$/.test(unitPrice)) {
+    // Custody moves, conversions and income events carry no price. A priced
+    // "transfer", "conversion" or "dividend" is ambiguous (sale? corporate
+    // action?) and must never auto-convert.
     status = 'NEEDS_REVIEW';
     issues.push(
       isIncome
@@ -172,11 +196,17 @@ export function normalizeRow(
             field: 'unit_price',
             message: 'Rendimento com preço informado precisa de revisão',
           }
-        : {
-            code: 'TRANSFER_WITH_PRICE',
-            field: 'unit_price',
-            message: 'Transferência de custódia com preço informado precisa de revisão',
-          },
+        : isConversion
+          ? {
+              code: 'CONVERSION_WITH_PRICE',
+              field: 'unit_price',
+              message: 'Conversão de recibo com preço informado precisa de revisão (conversão não tem preço)',
+            }
+          : {
+              code: 'TRANSFER_WITH_PRICE',
+              field: 'unit_price',
+              message: 'Transferência de custódia com preço informado precisa de revisão',
+            },
     );
   }
 
@@ -190,10 +220,10 @@ export function normalizeRow(
       fees = parsed;
     }
   }
-  if ((isTransfer || isIncome) && !/^0+(\.0+)?$/.test(fees)) {
-    // A custody leg or income row with fees attached is ambiguous: fees
-    // belong to the economic event, never to the custody move or the payout
-    // itself. Human review, no guessing.
+  if ((isTransfer || isIncome || isConversion) && !/^0+(\.0+)?$/.test(fees)) {
+    // A custody leg, conversion or income row with fees attached is ambiguous:
+    // fees belong to the economic event, never to the custody move, the
+    // conversion itself or the payout. Human review, no guessing.
     status = 'NEEDS_REVIEW';
     issues.push(
       isIncome
@@ -202,11 +232,17 @@ export function normalizeRow(
             field: 'fees',
             message: 'Rendimento com taxas informadas precisa de revisão',
           }
-        : {
-            code: 'TRANSFER_WITH_FEES',
-            field: 'fees',
-            message: 'Transferência de custódia com taxas informadas precisa de revisão',
-          },
+        : isConversion
+          ? {
+              code: 'CONVERSION_WITH_FEES',
+              field: 'fees',
+              message: 'Conversão de recibo com taxas informadas precisa de revisão',
+            }
+          : {
+              code: 'TRANSFER_WITH_FEES',
+              field: 'fees',
+              message: 'Transferência de custódia com taxas informadas precisa de revisão',
+            },
     );
   }
 
@@ -238,7 +274,8 @@ export function normalizeRow(
     mapped.kind === 'JCP' ||
     mapped.kind === 'FII_INCOME' ||
     mapped.kind === 'BONUS' ||
-    mapped.kind === 'SUBSCRIPTION'
+    mapped.kind === 'SUBSCRIPTION' ||
+    mapped.kind === 'RECEIPT_CONVERSION'
       ? mapped.kind
       : 'BUY';
 
@@ -254,6 +291,96 @@ export function normalizeRow(
     });
   }
 
+  // Receipt-conversion cross-asset references (PART D/T/U). All quantities
+  // and the ratio are exact decimal strings; consistency is verified with
+  // integer arithmetic (never float). Only EXACT dates are importable.
+  let targetTicker: string | undefined;
+  let targetQuantity: string | undefined;
+  let conversionRatio: string | undefined;
+  let conversionType: string | undefined;
+  let dateConfidence: 'EXACT' | 'BOUNDED' | 'UNKNOWN' = 'EXACT';
+  if (isConversion) {
+    const rawTarget = cell(row, mapping, 'target_ticker').trim().toUpperCase();
+    if (rawTarget === '') {
+      fail('MISSING_TARGET_ASSET', 'Conversão de recibo exige o ativo destino', 'target_ticker');
+    } else if (rawTarget === ticker) {
+      fail(
+        'CONVERSION_SAME_ASSET',
+        'Ativo origem e destino da conversão devem ser diferentes',
+        'target_ticker',
+      );
+    } else {
+      targetTicker = rawTarget;
+    }
+    const rawTargetQty = cell(row, mapping, 'target_quantity');
+    const parsedTargetQty = normalizeDecimalString(rawTargetQty);
+    if (parsedTargetQty === null || !isPositiveDecimal(parsedTargetQty)) {
+      fail(
+        'INVALID_TARGET_QUANTITY',
+        `Quantidade destino "${rawTargetQty.trim()}" inválida`,
+        'target_quantity',
+      );
+    } else {
+      targetQuantity = parsedTargetQty;
+    }
+    const rawRatio = cell(row, mapping, 'conversion_ratio');
+    const parsedRatio = normalizeDecimalString(rawRatio);
+    if (parsedRatio === null || !isPositiveDecimal(parsedRatio)) {
+      fail(
+        'INVALID_CONVERSION_RATIO',
+        `Proporção "${rawRatio.trim()}" inválida`,
+        'conversion_ratio',
+      );
+    } else {
+      conversionRatio = parsedRatio;
+    }
+    const rawKind = cell(row, mapping, 'conversion_type').trim().toUpperCase();
+    if (rawKind === '') {
+      conversionType = 'SUBSCRIPTION_RECEIPT';
+    } else if (rawKind !== 'SUBSCRIPTION_RECEIPT') {
+      fail(
+        'UNKNOWN_CONVERSION_TYPE',
+        `Tipo de conversão "${rawKind}" não suportado`,
+        'conversion_type',
+      );
+    } else {
+      conversionType = rawKind;
+    }
+    if (
+      targetQuantity !== undefined &&
+      conversionRatio !== undefined &&
+      quantity !== null &&
+      !conversionRatioHolds(quantity, conversionRatio, targetQuantity)
+    ) {
+      fail(
+        'CONVERSION_RATIO_MISMATCH',
+        'Quantidade destino inconsistente com quantidade origem × proporção',
+        'target_quantity',
+      );
+    }
+    const rawConfidence = cell(row, mapping, 'date_confidence').trim().toUpperCase();
+    if (rawConfidence !== '' && rawConfidence !== 'EXACT' && rawConfidence !== 'BOUNDED' && rawConfidence !== 'UNKNOWN') {
+      fail(
+        'INVALID_DATE_CONFIDENCE',
+        `Confiança de data "${rawConfidence}" inválida (EXACT, BOUNDED ou UNKNOWN)`,
+        'date_confidence',
+      );
+    } else {
+      if (rawConfidence === 'BOUNDED' || rawConfidence === 'UNKNOWN') {
+        dateConfidence = rawConfidence;
+      }
+      if (status === 'READY' && dateConfidence !== 'EXACT') {
+        status = 'NEEDS_REVIEW';
+        issues.push({
+          code: 'CONVERSION_DATE_UNVERIFIED',
+          field: 'date',
+          message:
+            'Conversão de recibo identificada, mas a data exata não foi encontrada nas fontes disponíveis. O evento não será importado até que a data seja comprovada.',
+        });
+      }
+    }
+  }
+
   const candidate: NormalizedCandidate = {
     rowNumber: row.rowNumber,
     tradeDate,
@@ -265,6 +392,11 @@ export function normalizeRow(
     unitPrice: unitPrice ?? '0',
     fees,
     currency,
+    ...(isConversion && targetTicker ? { targetTicker } : {}),
+    ...(isConversion && targetQuantity ? { targetQuantity } : {}),
+    ...(isConversion && conversionRatio ? { conversionRatio } : {}),
+    ...(isConversion && conversionType ? { conversionType } : {}),
+    ...(isConversion ? { dateConfidence } : {}),
     ...(() => {
       const broker = cell(row, mapping, 'broker').trim();
       return broker === '' ? {} : { brokerLabel: broker };

@@ -380,12 +380,15 @@ export function buildPortfolioActivityViewModel(
 
       case 'CORPORATE_ACTION': {
         const ca = details as {
-          type?: 'SPLIT' | 'REVERSE_SPLIT' | 'BONUS' | 'SUBSCRIPTION' | 'AMORTIZATION';
+          type?: 'SPLIT' | 'REVERSE_SPLIT' | 'BONUS' | 'SUBSCRIPTION' | 'AMORTIZATION' | 'RECEIPT_CONVERSION';
           beforeQuantity?: string;
           afterQuantity?: string;
           beforeTotalCost?: MoneyDto | null;
           afterTotalCost?: MoneyDto | null;
           status?: string;
+          targetAssetTicker?: string | null;
+          targetQuantity?: string;
+          convertedQuantity?: string;
         };
 
         let kindLabel = 'Evento Corporativo';
@@ -407,6 +410,13 @@ export function buildPortfolioActivityViewModel(
           case 'AMORTIZATION':
             kindLabel = 'Amortização';
             secondaryContext = 'Devolução de capital';
+            break;
+          case 'RECEIPT_CONVERSION':
+            kindLabel = 'Conversão de recibo';
+            secondaryContext =
+              ca.targetAssetTicker && ca.convertedQuantity && ca.targetQuantity
+                ? `${ca.convertedQuantity} ${assetTicker ?? ''} convertidos em ${ca.targetQuantity} ${ca.targetAssetTicker}`
+                : 'Conversão de recibo em ativo principal';
             break;
           default:
             kindLabel = ca.type ?? 'Evento Corporativo';

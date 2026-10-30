@@ -1,4 +1,10 @@
-# Canonical Receipt Conversion Event — Design (no implementation)
+# Canonical Receipt Conversion Event — Design (APPROVED & IMPLEMENTED as infra)
+
+Status: DESIGN APPROVED (`RECEIPT_CONVERSION_MODEL_APPROVED`) and implemented
+as infrastructure (migration 46, domain, replay, tax, import, API, UI).
+Real SNEL event remains REVIEW (`SNEL_CONVERSION_DATE_EVIDENCE_REQUIRED`).
+Ledger 134 → 134. Reconciliation 36/40 = 90.0% (SNEL still out).
+See `receipt-conversion-implementation.md` for the build record.
 
 Status: DESIGN ONLY. No production code, no migration, no ledger writes.
 Ledger 134 → 134 during design. Reconciliation unchanged: 36/40 = 90.0%.

@@ -14,6 +14,7 @@ import {
   CashMovementTransaction,
   ExpenseTransaction,
   SubscriptionTransaction,
+  ReceiptConversionTransaction,
 } from '@atlas/domain';
 import {
   DeferredPortfolioEvent,
@@ -43,6 +44,8 @@ import {
   InvalidIncomeAmountError,
   InvalidCashFlowAmountError,
   SubscriptionCostBasisError,
+  ReceiptConversionInvalidError,
+  ReceiptConversionInsufficientSourceError,
 } from './errors';
 
 /**
@@ -1053,6 +1056,149 @@ const subscriptionHandler: TransactionHandler<SubscriptionTransaction> = {
 };
 
 /**
+ * Cross-asset receipt conversion (e.g. SNEL13 receipt → SNEL11 parent).
+ *
+ * Moves quantity AND carried cost from the source (receipt) position to the
+ * target (parent) position within the same account. Ownership is unchanged:
+ * zero disposals, zero proceeds, zero gain. Cost rules mirror the transfer
+ * merge matrix conservatively — any INCOMPLETE side yields INCOMPLETE.
+ */
+const receiptConversionHandler: TransactionHandler<ReceiptConversionTransaction> = {
+  handle(ctx, tx) {
+    const txId = String(tx.id);
+    // 1. Structural invariants (defense in depth; factory validates first).
+    if (String(tx.assetId) === String(tx.targetAssetId)) {
+      throw new ReceiptConversionInvalidError(txId, 'source and target assets must differ');
+    }
+    if (!tx.quantity.isPositive() || !tx.targetQuantity.isPositive()) {
+      throw new ReceiptConversionInvalidError(txId, 'source and target quantities must be > 0');
+    }
+    if (!tx.conversionRatio.isPositive()) {
+      throw new ReceiptConversionInvalidError(txId, 'conversion ratio must be > 0');
+    }
+    if (!tx.quantity.multiply(tx.conversionRatio).equals(tx.targetQuantity)) {
+      throw new ReceiptConversionInvalidError(
+        txId,
+        `targetQuantity '${tx.targetQuantity.value}' != sourceQuantity '${tx.quantity.value}' × ratio '${tx.conversionRatio.value}'`,
+      );
+    }
+
+    const accountAssets = ctx.getOrCreateAccountAssets(String(tx.accountId));
+    const sourceKey = String(tx.assetId);
+    const targetKey = String(tx.targetAssetId);
+    const sourcePos = accountAssets.get(sourceKey);
+    const targetPos = accountAssets.get(targetKey);
+    const sourceQty = sourcePos?.quantity ?? Quantity.zero();
+
+    // 2. Long-only invariant on the source side (never negative).
+    if (tx.quantity.compare(sourceQty) > 0) {
+      throw new ReceiptConversionInsufficientSourceError(
+        txId,
+        tx.quantity.value,
+        sourceQty.toString(),
+      );
+    }
+    if (!sourcePos) {
+      throw new ReceiptConversionInsufficientSourceError(txId, tx.quantity.value, '0');
+    }
+
+    // 3. Currency compatibility (source, target and event must agree).
+    if (sourcePos.currency !== tx.currency) {
+      throw new CurrencyMismatchError(sourcePos.currency, tx.currency);
+    }
+    if (targetPos && targetPos.currency !== tx.currency) {
+      throw new CurrencyMismatchError(targetPos.currency, tx.currency);
+    }
+
+    // 4. Capture source cost state for the converted slice.
+    const beforeSourceQty = sourcePos.quantity;
+    const afterSourceQty = beforeSourceQty.subtract(tx.quantity);
+    const beforeSourceTotal = sourcePos.totalCost;
+    const beforeSourceAverage = sourcePos.averageCost;
+    let carriedCost: Money | undefined;
+    let carriedStatus: CostBasisStatus;
+    let afterSourceTotal: Money | undefined;
+    if (sourcePos.costBasisStatus === 'KNOWN' && beforeSourceTotal && beforeSourceAverage) {
+      carriedCost = beforeSourceAverage.multiply(tx.quantity);
+      carriedStatus = 'KNOWN';
+      afterSourceTotal = beforeSourceTotal.subtract(carriedCost);
+    } else {
+      carriedCost = undefined;
+      carriedStatus = 'INCOMPLETE';
+      afterSourceTotal = undefined;
+    }
+    const afterSourceAverage =
+      carriedStatus === 'KNOWN' && !afterSourceQty.isZero()
+        ? (afterSourceTotal as Money).divide(afterSourceQty)
+        : undefined;
+
+    // 5. Update source position (close-out when fully converted).
+    if (afterSourceQty.isZero()) {
+      accountAssets.delete(sourceKey);
+    } else {
+      accountAssets.set(sourceKey, {
+        quantity: afterSourceQty,
+        totalCost: afterSourceTotal,
+        averageCost: afterSourceAverage,
+        currency: sourcePos.currency,
+        costBasisStatus: carriedStatus,
+      });
+    }
+
+    // 6. Merge into target position (PART N matrix).
+    const beforeTargetQty = targetPos?.quantity ?? Quantity.zero();
+    const afterTargetQty = beforeTargetQty.add(tx.targetQuantity);
+    let afterTargetTotal: Money | undefined;
+    let afterTargetAverage: Money | undefined;
+    let targetStatus: CostBasisStatus;
+    if (
+      carriedStatus === 'KNOWN' &&
+      carriedCost &&
+      (!targetPos || targetPos.costBasisStatus === 'KNOWN') &&
+      (!targetPos || targetPos.totalCost)
+    ) {
+      const prevTotal = targetPos?.totalCost ?? Money.zero(tx.currency);
+      afterTargetTotal = prevTotal.add(carriedCost);
+      afterTargetAverage = afterTargetTotal.divide(afterTargetQty);
+      targetStatus = 'KNOWN';
+    } else {
+      afterTargetTotal = undefined;
+      afterTargetAverage = undefined;
+      targetStatus = 'INCOMPLETE';
+    }
+    accountAssets.set(targetKey, {
+      quantity: afterTargetQty,
+      totalCost: afterTargetTotal,
+      averageCost: afterTargetAverage,
+      currency: targetPos?.currency ?? tx.currency,
+      costBasisStatus: targetStatus,
+    });
+
+    // 7. Audit record (source before/after + target side). Zero disposals.
+    ctx.recordAppliedCorporateAction({
+      transactionId: tx.id,
+      type: 'RECEIPT_CONVERSION',
+      accountId: tx.accountId,
+      assetId: tx.assetId,
+      targetAssetId: tx.targetAssetId,
+      targetQuantity: tx.targetQuantity,
+      conversionRatio: tx.conversionRatio,
+      convertedQuantity: tx.quantity,
+      tradeDate: tx.tradeDate,
+      beforeQuantity: beforeSourceQty,
+      afterQuantity: afterSourceQty,
+      beforeTotalCost: beforeSourceTotal,
+      afterTotalCost: afterSourceTotal,
+      beforeAverageCost: beforeSourceAverage,
+      afterAverageCost: afterSourceAverage,
+      status: carriedStatus,
+    });
+
+    ctx.appliedTransactions.push(tx);
+  },
+};
+
+/**
  * Dispatcher function evaluating a single transaction against the replay context.
  * All 16 transaction types are now exhaustively handled.
  * Utilizes TypeScript exhaustiveness checks (`never`) to prevent unhandled transaction types.
@@ -1099,6 +1245,10 @@ export function dispatchTransaction(ctx: ReplayContext, tx: Transaction): void {
 
     case 'SUBSCRIPTION':
       subscriptionHandler.handle(ctx, tx as SubscriptionTransaction);
+      break;
+
+    case 'RECEIPT_CONVERSION':
+      receiptConversionHandler.handle(ctx, tx as ReceiptConversionTransaction);
       break;
 
     case 'DEPOSIT':

@@ -197,6 +197,11 @@ model Transaction {
   externalId      String?   @map("external_id") @db.VarChar(255)
   notes           String?   @db.Text
   transferGroupId String?   @map("transfer_group_id") @db.VarChar(255)
+  // RECEIPT_CONVERSION cross-asset references (all other types keep NULL).
+  targetAssetId   String?   @map("target_asset_id") @db.Uuid
+  targetQuantity  Decimal?  @map("target_quantity") @db.Decimal(38, 18)
+  conversionRatio Decimal?  @map("conversion_ratio") @db.Decimal(38, 18)
+  conversionType  String?   @map("conversion_type") @db.VarChar(50)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -215,6 +220,7 @@ model Transaction {
   @@index([portfolioId, accountId])
   @@index([portfolioId, transferGroupId])
   @@index([assetId])
+  @@index([targetAssetId])
   @@map("transactions")
 }
 

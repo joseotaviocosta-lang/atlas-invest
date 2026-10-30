@@ -21,7 +21,11 @@ export const CreateTransactionBodySchema = z.object({
   externalId: z.string().optional(),
   notes: z.string().optional(),
   assetId: UUIDSchema.optional(),
+  targetAssetId: UUIDSchema.optional(),
   quantity: DecimalStringSchema.optional(),
+  targetQuantity: DecimalStringSchema.optional(),
+  conversionRatio: DecimalStringSchema.optional(),
+  conversionType: z.string().optional(),
   unitPrice: DecimalStringSchema.optional(),
   fees: DecimalStringSchema.optional(),
   taxes: DecimalStringSchema.optional(),
@@ -53,6 +57,7 @@ export class CreateTransactionSwaggerDto {
       'AMORTIZATION',
       'TRANSFER_IN',
       'TRANSFER_OUT',
+      'RECEIPT_CONVERSION',
       'DEPOSIT',
       'WITHDRAWAL',
       'FEE',
@@ -98,6 +103,9 @@ export class CreateTransactionSwaggerDto {
   @ApiPropertyOptional({ type: String, example: '44444444-4444-4444-8444-444444444444' })
   assetId?: string;
 
+  @ApiPropertyOptional({ type: String, example: '55555555-5555-4555-8555-555555555555' })
+  targetAssetId?: string;
+
   @ApiPropertyOptional({
     type: String,
     example: '100',
@@ -139,4 +147,25 @@ export class CreateTransactionSwaggerDto {
     description: 'Strict decimal string for split factor',
   })
   factor?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: '200',
+    description: 'Strict decimal string for receipt-conversion target quantity',
+  })
+  targetQuantity?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: '1',
+    description: 'Strict decimal string for receipt-conversion ratio',
+  })
+  conversionRatio?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: 'SUBSCRIPTION_RECEIPT',
+    description: 'Receipt-conversion kind',
+  })
+  conversionType?: string;
 }

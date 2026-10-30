@@ -33,7 +33,11 @@ export interface CreateTransactionCommand {
   externalId?: string;
   notes?: string;
   assetId?: string;
+  targetAssetId?: string;
   quantity?: string;
+  targetQuantity?: string;
+  conversionRatio?: string;
+  conversionType?: string;
   unitPrice?: string;
   fees?: string;
   taxes?: string;
@@ -106,7 +110,14 @@ export class CreateTransactionUseCase {
     }
 
     const assetIds = [
-      ...new Set(commands.flatMap((command) => (command.assetId ? [command.assetId] : []))),
+      ...new Set(
+        commands.flatMap((command) => {
+          const ids: string[] = [];
+          if (command.assetId) ids.push(command.assetId);
+          if (command.targetAssetId) ids.push(command.targetAssetId);
+          return ids;
+        }),
+      ),
     ];
     const assetsById = new Set<string>(
       (await this.assetRepository.findByIds(assetIds)).map((asset) => asset.id),
@@ -114,6 +125,9 @@ export class CreateTransactionUseCase {
     for (const command of commands) {
       if (command.assetId && !assetsById.has(command.assetId)) {
         throw new EntityNotFoundError('Asset', command.assetId);
+      }
+      if (command.targetAssetId && !assetsById.has(command.targetAssetId)) {
+        throw new EntityNotFoundError('Asset', command.targetAssetId);
       }
     }
 
@@ -238,6 +252,30 @@ export class CreateTransactionUseCase {
           assetId: command.assetId,
           quantity: command.quantity,
           transferGroupId: command.transferGroupId,
+        });
+      }
+
+      case 'RECEIPT_CONVERSION': {
+        if (
+          !command.assetId ||
+          !command.targetAssetId ||
+          !command.quantity ||
+          !command.targetQuantity ||
+          !command.conversionRatio ||
+          !command.conversionType
+        ) {
+          throw new InvalidTransactionError(
+            'RECEIPT_CONVERSION requires assetId, targetAssetId, quantity, targetQuantity, conversionRatio, and conversionType',
+          );
+        }
+        return TransactionFactory.createReceiptConversion({
+          ...common,
+          assetId: command.assetId,
+          targetAssetId: command.targetAssetId,
+          quantity: command.quantity,
+          targetQuantity: command.targetQuantity,
+          conversionRatio: command.conversionRatio,
+          conversionType: command.conversionType,
         });
       }
 

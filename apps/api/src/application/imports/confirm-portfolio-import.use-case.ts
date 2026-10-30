@@ -440,6 +440,29 @@ export class ConfirmPortfolioImportUseCase {
         userId: command.userId,
       };
     }
+    // Receipt conversions persist the dual-asset reference with the exact
+    // ratio (never a price, never proceeds). Only EXACT-dated READY rows
+    // reach this path — confirm only builds effective READY candidates.
+    if (candidate.operation === 'RECEIPT_CONVERSION') {
+      if (
+        !candidate.targetAssetId ||
+        !candidate.targetQuantity ||
+        !candidate.conversionRatio ||
+        !candidate.conversionType
+      ) {
+        return null;
+      }
+      return {
+        ...base,
+        type: candidate.operation,
+        quantity: candidate.quantity,
+        targetAssetId: candidate.targetAssetId,
+        targetQuantity: candidate.targetQuantity,
+        conversionRatio: candidate.conversionRatio,
+        conversionType: candidate.conversionType,
+        userId: command.userId,
+      };
+    }
     return {
       ...base,
       type: candidate.operation,

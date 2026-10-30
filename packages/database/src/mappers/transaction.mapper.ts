@@ -9,6 +9,7 @@ import {
   SubscriptionTransaction,
   AmortizationTransaction,
   TransferTransaction,
+  ReceiptConversionTransaction,
   CashMovementTransaction,
   ExpenseTransaction,
 } from '@atlas/domain';
@@ -104,6 +105,18 @@ export class TransactionMapper {
           assetId: tx.assetId,
           quantity: DecimalConverter.toPersistence(tx.quantity.value),
           transferGroupId: tx.transferGroupId ?? null,
+        };
+      }
+      case 'RECEIPT_CONVERSION': {
+        const tx = entity as ReceiptConversionTransaction;
+        return {
+          ...base,
+          assetId: tx.assetId,
+          quantity: DecimalConverter.toPersistence(tx.quantity.value),
+          targetAssetId: tx.targetAssetId,
+          targetQuantity: DecimalConverter.toPersistence(tx.targetQuantity.value),
+          conversionRatio: DecimalConverter.toPersistence(tx.conversionRatio.value),
+          conversionType: tx.conversionType,
         };
       }
       case 'DEPOSIT':
@@ -263,6 +276,16 @@ export class TransactionMapper {
             `${raw.type} transaction requires assetId and quantity`,
           );
         }
+        if (
+          raw.targetAssetId !== null ||
+          raw.targetQuantity !== null ||
+          raw.conversionRatio !== null ||
+          raw.conversionType !== null
+        ) {
+          throw new PersistenceMappingError(
+            `${raw.type} transaction must not carry receipt-conversion fields`,
+          );
+        }
         const quantity = DecimalConverter.toCanonicalString(raw.quantity)!;
         return TransactionFactory.createTransfer({
           ...common,
@@ -270,6 +293,34 @@ export class TransactionMapper {
           assetId: raw.assetId,
           quantity,
           transferGroupId: raw.transferGroupId ?? undefined,
+        });
+      }
+      case 'RECEIPT_CONVERSION': {
+        if (
+          !raw.assetId ||
+          !raw.targetAssetId ||
+          raw.quantity === null ||
+          raw.targetQuantity === null ||
+          raw.conversionRatio === null ||
+          !raw.conversionType
+        ) {
+          throw new PersistenceMappingError(
+            'RECEIPT_CONVERSION transaction requires assetId, targetAssetId, quantity, targetQuantity, conversionRatio, and conversionType',
+          );
+        }
+        if (raw.unitPrice !== null || raw.amount !== null) {
+          throw new PersistenceMappingError(
+            'RECEIPT_CONVERSION transaction must not carry unitPrice or amount',
+          );
+        }
+        return TransactionFactory.createReceiptConversion({
+          ...common,
+          assetId: raw.assetId,
+          targetAssetId: raw.targetAssetId,
+          quantity: DecimalConverter.toCanonicalString(raw.quantity)!,
+          targetQuantity: DecimalConverter.toCanonicalString(raw.targetQuantity)!,
+          conversionRatio: DecimalConverter.toCanonicalString(raw.conversionRatio)!,
+          conversionType: raw.conversionType,
         });
       }
       case 'DEPOSIT':

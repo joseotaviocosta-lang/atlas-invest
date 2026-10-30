@@ -11,7 +11,7 @@ import {
   ReplayResult,
   createPortfolioReplayEngine,
 } from '@atlas/portfolio-engine';
-import { PORTFOLIO_DEFAULT, ACCOUNT_XP, ASSET_PETR4 } from './fixtures/assets';
+import { PORTFOLIO_DEFAULT, ACCOUNT_XP, ASSET_PETR4, ASSET_HGLG11 } from './fixtures/assets';
 
 let txSequence = 1;
 
@@ -138,6 +138,39 @@ export class PortfolioScenarioBuilder {
       currency: props.currency ?? 'BRL',
       tradeDate: props.tradeDate,
       transferGroupId: props.transferGroupId,
+      createdAt: props.createdAt,
+    });
+    this.transactions.push(tx);
+    return this;
+  }
+
+  receiptConversion(props: {
+    assetId?: AssetId | string;
+    targetAssetId?: AssetId | string;
+    quantity: string | number;
+    targetQuantity?: string | number;
+    conversionRatio?: string | number;
+    conversionType?: string;
+    currency?: string;
+    tradeDate: string | LocalDate;
+    accountId?: AccountId | string;
+    createdAt?: Date;
+    id?: string;
+  }): this {
+    const qty = props.quantity.toString();
+    const ratio = (props.conversionRatio ?? '1').toString();
+    const tx = TransactionFactory.createReceiptConversion({
+      id: props.id ?? nextTxId(),
+      portfolioId: String(this.portfolioId),
+      accountId: String(props.accountId ?? this.defaultAccountId),
+      assetId: String(props.assetId ?? ASSET_PETR4),
+      targetAssetId: String(props.targetAssetId ?? ASSET_HGLG11),
+      quantity: qty,
+      targetQuantity: (props.targetQuantity ?? qty).toString(),
+      conversionRatio: ratio,
+      conversionType: props.conversionType ?? 'SUBSCRIPTION_RECEIPT',
+      currency: props.currency ?? 'BRL',
+      tradeDate: props.tradeDate,
       createdAt: props.createdAt,
     });
     this.transactions.push(tx);

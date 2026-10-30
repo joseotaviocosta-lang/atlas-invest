@@ -231,6 +231,12 @@ export class PortfolioReadModelMapper {
               ? { amount: ca.afterAverageCost.amount, currency: ca.afterAverageCost.currency }
               : null,
             status: ca.status,
+            // Receipt-conversion target side (PART Z/AA): present only for
+            // RECEIPT_CONVERSION events; never sale/purchase language.
+            ...(ca.targetAssetId ? { targetAssetId: String(ca.targetAssetId) } : {}),
+            ...(ca.targetQuantity ? { targetQuantity: ca.targetQuantity.value } : {}),
+            ...(ca.conversionRatio ? { conversionRatio: ca.conversionRatio.value } : {}),
+            ...(ca.convertedQuantity ? { convertedQuantity: ca.convertedQuantity.value } : {}),
           },
         });
       }

@@ -55,6 +55,10 @@ export type DeferredImportSource = (typeof DEFERRED_IMPORT_SOURCES)[number];
  * SUBSCRIPTION flows as an onerous acquisition of new units carrying an exact
  * `unitPrice > 0` (exercise price from source evidence; never inferred, never
  * zero — the engine keeps INCOMPLETE positions INCOMPLETE).
+ * RECEIPT_CONVERSION flows as a cross-asset corporate conversion carrying
+ * source/target quantities plus an exact `conversionRatio > 0` (never a
+ * disposal, never an acquisition — the engine carries cost with zero
+ * realization). Only EXACT-dated conversions are importable (PART U).
  * Every other operation stays deferred (fail-closed).
  */
 export const SUPPORTED_IMPORT_OPERATIONS = [
@@ -67,6 +71,7 @@ export const SUPPORTED_IMPORT_OPERATIONS = [
   'FII_INCOME',
   'BONUS',
   'SUBSCRIPTION',
+  'RECEIPT_CONVERSION',
 ] as const;
 export type SupportedImportOperation = (typeof SUPPORTED_IMPORT_OPERATIONS)[number];
 
@@ -119,6 +124,14 @@ export interface RawImportRow {
   cells: Record<string, string>;
 }
 
+/**
+ * Provenance confidence of a conversion effective date (PART U).
+ * Only EXACT dates (dated source row or explicitly declared date) can
+ * produce READY candidates; BOUNDED/UNKNOWN dates stay in review — never
+ * silently pinned to an arbitrary calendar day (PART W).
+ */
+export type ConversionDateConfidence = 'EXACT' | 'BOUNDED' | 'UNKNOWN';
+
 export interface NormalizedCandidate {
   rowNumber: number;
   tradeDate: string;
@@ -136,6 +149,18 @@ export interface NormalizedCandidate {
    * rows with a valid `amount` are importable through the canonical writer.
    */
   amount?: string;
+  /**
+   * Receipt-conversion cross-asset references (exact decimal strings).
+   * Only RECEIPT_CONVERSION rows carry these; every other operation keeps
+   * them undefined (mirrors the DB CHECK scope). `dateConfidence` gates
+   * READY: only EXACT dates are importable (PART U); BOUNDED/UNKNOWN dates
+   * stay in review and are never pinned to an arbitrary day (PART W).
+   */
+  targetTicker?: string;
+  targetQuantity?: string;
+  conversionRatio?: string;
+  conversionType?: string;
+  dateConfidence?: ConversionDateConfidence;
   currency: string;
   brokerLabel?: string;
   accountLabel?: string;
@@ -197,10 +222,14 @@ export interface ExistingLedgerRow {
   provider: string | null;
   externalId: string | null;
   assetId: string;
+  targetAssetId: string | null;
   accountId: string;
   type: string;
   tradeDate: string;
   quantity: string;
+  targetQuantity: string | null;
+  conversionRatio: string | null;
+  conversionType: string | null;
   unitPrice: string | null;
   fees: string | null;
   /**
@@ -216,6 +245,12 @@ export interface ExistingLedgerRow {
 export interface ClassifiedCandidate extends NormalizedCandidate {
   assetId: string | null;
   assetResolution: AssetResolution;
+  /**
+   * Resolved TARGET asset for RECEIPT_CONVERSION rows (direct match only,
+   * never via successor fallback). Null for every other operation.
+   */
+  targetAssetId: string | null;
+  targetAssetResolution: AssetResolution;
   accountId: string | null;
   accountResolution: AccountResolution;
   fingerprint: string | null;

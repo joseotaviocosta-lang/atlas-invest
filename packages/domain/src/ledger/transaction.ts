@@ -78,6 +78,31 @@ export interface TransferTransaction extends BaseTransactionData {
   transferGroupId?: string;
 }
 
+/**
+ * Canonical receipt-conversion kinds. Only subscription-receipt conversion
+ * is modeled; future conversion families need explicit design review.
+ */
+export const CONVERSION_TYPES = ['SUBSCRIPTION_RECEIPT'] as const;
+export type ConversionType = (typeof CONVERSION_TYPES)[number];
+
+/**
+ * Cross-asset receipt conversion (e.g. SNEL13 receipt → SNEL11 parent).
+ *
+ * `assetId`/`quantity` are the SOURCE (receipt) side; `targetAssetId` /
+ * `targetQuantity` are the PARENT side. `conversionRatio` must satisfy
+ * `targetQuantity = sourceQuantity × ratio` in exact decimal arithmetic.
+ * Carries cost, never realizes: no unitPrice, no proceeds, no fees.
+ */
+export interface ReceiptConversionTransaction extends BaseTransactionData {
+  type: 'RECEIPT_CONVERSION';
+  assetId: AssetId;
+  targetAssetId: AssetId;
+  quantity: Quantity;
+  targetQuantity: Quantity;
+  conversionRatio: Quantity;
+  conversionType: ConversionType;
+}
+
 export interface CashMovementTransaction extends BaseTransactionData {
   type: 'DEPOSIT' | 'WITHDRAWAL';
   amount: Money;
@@ -97,6 +122,7 @@ export type Transaction =
   | SubscriptionTransaction
   | AmortizationTransaction
   | TransferTransaction
+  | ReceiptConversionTransaction
   | CashMovementTransaction
   | ExpenseTransaction;
 
@@ -122,6 +148,10 @@ export interface TransactionJSON {
   factor?: string;
   assignedCost?: MoneyJSON;
   transferGroupId?: string;
+  targetAssetId?: string;
+  targetQuantity?: string;
+  conversionRatio?: string;
+  conversionType?: string;
 }
 
 function validateSource(source: string): TransactionSource {
@@ -533,8 +563,85 @@ export class TransactionFactory {
     return Object.freeze(tx);
   }
 
-  static createCashMovement(props: {
+  static createReceiptConversion(props: {
     id?: string;
+    portfolioId: string;
+    accountId: string;
+    assetId: string;
+    targetAssetId: string;
+    quantity: string | Quantity;
+    targetQuantity: string | Quantity;
+    conversionRatio: string | Quantity;
+    conversionType: string;
+    currency: string;
+    tradeDate: string | LocalDate;
+    settlementDate?: string | LocalDate;
+    source?: string;
+    provider?: string;
+    externalId?: string;
+    notes?: string;
+    createdAt?: Date;
+  }): ReceiptConversionTransaction {
+    const common = this.parseCommon(props);
+    const assetId = createAssetId(props.assetId);
+    const targetAssetId = createAssetId(props.targetAssetId);
+    const quantity =
+      props.quantity instanceof Quantity ? props.quantity : Quantity.from(props.quantity);
+    const targetQuantity =
+      props.targetQuantity instanceof Quantity
+        ? props.targetQuantity
+        : Quantity.from(props.targetQuantity);
+    const conversionRatio =
+      props.conversionRatio instanceof Quantity
+        ? props.conversionRatio
+        : Quantity.from(props.conversionRatio);
+
+    if (String(assetId) === String(targetAssetId)) {
+      throw new InvalidTransactionError(
+        'RECEIPT_CONVERSION_INVALID: sourceAssetId and targetAssetId must differ',
+      );
+    }
+    if (!quantity.isPositive()) {
+      throw new InvalidTransactionError(
+        `RECEIPT_CONVERSION_INVALID: source quantity must be > 0, received '${quantity.value}'`,
+      );
+    }
+    if (!targetQuantity.isPositive()) {
+      throw new InvalidTransactionError(
+        `RECEIPT_CONVERSION_INVALID: target quantity must be > 0, received '${targetQuantity.value}'`,
+      );
+    }
+    if (!conversionRatio.isPositive()) {
+      throw new InvalidTransactionError(
+        `RECEIPT_CONVERSION_INVALID: conversion ratio must be > 0, received '${conversionRatio.value}'`,
+      );
+    }
+    if (!(CONVERSION_TYPES as readonly string[]).includes(props.conversionType)) {
+      throw new InvalidTransactionError(
+        `RECEIPT_CONVERSION_INVALID: unknown conversionType '${props.conversionType}'`,
+      );
+    }
+    const expectedTarget = quantity.multiply(conversionRatio);
+    if (!expectedTarget.equals(targetQuantity)) {
+      throw new InvalidTransactionError(
+        `CONVERSION_RATIO_MISMATCH: targetQuantity '${targetQuantity.value}' != sourceQuantity '${quantity.value}' × ratio '${conversionRatio.value}'`,
+      );
+    }
+
+    const tx: ReceiptConversionTransaction = {
+      ...common,
+      type: 'RECEIPT_CONVERSION',
+      assetId,
+      targetAssetId,
+      quantity,
+      targetQuantity,
+      conversionRatio,
+      conversionType: props.conversionType as ConversionType,
+    };
+    return Object.freeze(tx);
+  }
+
+  static createCashMovement(props: {    id?: string;
     portfolioId: string;
     accountId: string;
     type: 'DEPOSIT' | 'WITHDRAWAL';
@@ -643,6 +750,13 @@ export function serializeTransaction(tx: Transaction): TransactionJSON {
   }
   if ('transferGroupId' in tx && (tx as TransferTransaction).transferGroupId) {
     json.transferGroupId = (tx as TransferTransaction).transferGroupId;
+  }
+  if (tx.type === 'RECEIPT_CONVERSION') {
+    const conv = tx as ReceiptConversionTransaction;
+    json.targetAssetId = String(conv.targetAssetId);
+    json.targetQuantity = conv.targetQuantity.toString();
+    json.conversionRatio = conv.conversionRatio.toString();
+    json.conversionType = conv.conversionType;
   }
 
   return json;
