@@ -111,10 +111,15 @@ describe('Selective confirmation: READY persists, REVIEW stays pending, run is P
     expect(persisted[0]).not.toHaveProperty('amount');
 
     // Review row pending (never user-ignored); loan legs not pending, not persisted.
-    const pending = receipt.failed.filter((f) => f.pendingReview);
+    const pending = receipt.failed.filter((f) => f.kind === 'pending-review');
     expect(pending).toHaveLength(1);
-    const nonPending = receipt.failed.filter((f) => !f.pendingReview);
-    expect(nonPending.length).toBeGreaterThanOrEqual(2);
+    expect(receipt.pendingReviewCount).toBe(1);
+    const unsupported = receipt.failed.filter((f) => f.kind === 'unsupported');
+    expect(unsupported.length).toBeGreaterThanOrEqual(2);
+    expect(receipt.unsupportedCount).toBe(unsupported.length);
+    // No technical errors: deliberate non-imports are not errors.
+    expect(receipt.failed.some((f) => f.kind === 'error')).toBe(false);
+    expect(receipt.errorCount).toBe(0);
 
     // Run records PARTIAL with reconciliation intact.
     expect(recordConfirmation).toHaveBeenCalledTimes(1);

@@ -163,7 +163,10 @@ interface ImportReceipt {
   created: number;
   skippedDuplicates: number;
   skippedByUser: number;
-  failed: Array<{ rowNumber: number; message: string; pendingReview?: boolean }>;
+  failed: Array<{ rowNumber: number; message: string; kind: 'pending-review' | 'unsupported' | 'error' }>;
+  pendingReviewCount: number;
+  unsupportedCount: number;
+  errorCount: number;
   transactionIds: string[];
   confirmedAt: string;
 }
@@ -2660,28 +2663,153 @@ function ImportHubContent() {
 
         {receipt && (
           <Card style={{ padding: `${spacing.base}px` }}>
-            <SectionHeader title="Importação concluída" />
+            <SectionHeader
+              title={
+                receipt.pendingReviewCount > 0
+                  ? 'Importação concluída parcialmente'
+                  : 'Importação concluída'
+              }
+            />
             <p style={{ fontSize: '0.875rem' }} aria-live="polite">
-              {receipt.created} operações lançadas · {receipt.skippedDuplicates} duplicadas
-              ignoradas · {receipt.skippedByUser} ignoradas por você
-              {receipt.failed.length > 0 ? ` · ${receipt.failed.length} com erro` : ''}
+              {receipt.created} {receipt.created === 1 ? 'evento importado' : 'eventos importados'}{' '}
+              com sucesso.
+              {receipt.pendingReviewCount > 0
+                ? ` ${receipt.pendingReviewCount} ${receipt.pendingReviewCount === 1 ? 'item permanece' : 'itens permanecem'} pendente${receipt.pendingReviewCount === 1 ? '' : 's'} de revisão.`
+                : ''}
+              {receipt.unsupportedCount > 0
+                ? ` ${receipt.unsupportedCount} ${receipt.unsupportedCount === 1 ? 'item não suportado foi' : 'itens não suportados foram'} ignorado${receipt.unsupportedCount === 1 ? '' : 's'} automaticamente.`
+                : ''}
             </p>
-            {receipt.failed.some((failure) => failure.pendingReview) && (
-              <p style={{ fontSize: '0.875rem', color: colors.warning }}>
-                {receipt.failed.filter((failure) => failure.pendingReview).length} linhas
-                continuam pendentes de revisão e não foram importadas. Reanalise o
-                arquivo quando quiser concluí-las — nada foi perdido.
+            {receipt.errorCount === 0 ? (
+              <p style={{ fontSize: '0.875rem', color: colors.positive }}>
+                Nenhum erro técnico ocorreu.
+              </p>
+            ) : (
+              <p style={{ fontSize: '0.875rem', color: colors.negative }}>
+                {receipt.errorCount} {receipt.errorCount === 1 ? 'erro técnico precisa' : 'erros técnicos precisam'} da sua atenção.
               </p>
             )}
-            {receipt.failed.length > 0 && (
-              <ul>
-                {receipt.failed.map((failure) => (
-                  <li key={failure.rowNumber} style={{ fontSize: '0.875rem' }}>
-                    Linha {failure.rowNumber}
-                    {failure.pendingReview ? ' (pendente de revisão)' : ''}: {failure.message}
-                  </li>
-                ))}
-              </ul>
+            {receipt.failed.some((failure) => failure.kind === 'pending-review') && (
+              <details
+                style={{
+                  marginTop: `${spacing.sm}px`,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: `${borderRadius.md}px`,
+                  padding: `${spacing.sm}px`,
+                }}
+              >
+                <summary
+                  style={{
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                    fontWeight: 600,
+                    minHeight: 44,
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  Pendentes de revisão (
+                  {receipt.failed.filter((failure) => failure.kind === 'pending-review').length})
+                </summary>
+                <ul style={{ listStyle: 'none', padding: 0, margin: `${spacing.sm}px 0 0` }}>
+                  {receipt.failed
+                    .filter((failure) => failure.kind === 'pending-review')
+                    .map((failure) => (
+                      <li
+                        key={failure.rowNumber}
+                        style={{
+                          fontSize: '0.8125rem',
+                          color: colors.textSecondary,
+                          marginBottom: 4,
+                        }}
+                      >
+                        Linha {failure.rowNumber}: {failure.message} Reanalise o arquivo quando
+                        quiser concluí-las — nada foi perdido.
+                      </li>
+                    ))}
+                </ul>
+              </details>
+            )}
+            {receipt.failed.some((failure) => failure.kind === 'unsupported') && (
+              <details
+                style={{
+                  marginTop: `${spacing.sm}px`,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: `${borderRadius.md}px`,
+                  padding: `${spacing.sm}px`,
+                }}
+              >
+                <summary
+                  style={{
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                    fontWeight: 600,
+                    minHeight: 44,
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  Não suportados / ignorados automaticamente (
+                  {receipt.failed.filter((failure) => failure.kind === 'unsupported').length})
+                </summary>
+                <ul style={{ listStyle: 'none', padding: 0, margin: `${spacing.sm}px 0 0` }}>
+                  {receipt.failed
+                    .filter((failure) => failure.kind === 'unsupported')
+                    .map((failure) => (
+                      <li
+                        key={failure.rowNumber}
+                        style={{
+                          fontSize: '0.8125rem',
+                          color: colors.textSecondary,
+                          marginBottom: 4,
+                        }}
+                      >
+                        Linha {failure.rowNumber}: {failure.message}
+                      </li>
+                    ))}
+                </ul>
+              </details>
+            )}
+            {receipt.failed.some((failure) => failure.kind === 'error') && (
+              <details
+                open
+                style={{
+                  marginTop: `${spacing.sm}px`,
+                  border: `1px solid ${colors.negative}`,
+                  borderRadius: `${borderRadius.md}px`,
+                  padding: `${spacing.sm}px`,
+                }}
+              >
+                <summary
+                  style={{
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                    fontWeight: 600,
+                    minHeight: 44,
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  Erros reais ({receipt.failed.filter((failure) => failure.kind === 'error').length}
+                  )
+                </summary>
+                <ul style={{ listStyle: 'none', padding: 0, margin: `${spacing.sm}px 0 0` }}>
+                  {receipt.failed
+                    .filter((failure) => failure.kind === 'error')
+                    .map((failure) => (
+                      <li
+                        key={failure.rowNumber}
+                        style={{
+                          fontSize: '0.8125rem',
+                          color: colors.textSecondary,
+                          marginBottom: 4,
+                        }}
+                      >
+                        Linha {failure.rowNumber}: {failure.message}
+                      </li>
+                    ))}
+                </ul>
+              </details>
             )}
             <Link
               href={

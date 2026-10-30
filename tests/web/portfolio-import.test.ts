@@ -46,6 +46,13 @@ describe('Web Import Hub boundaries (Phase 5K)', () => {
     }
     expect(page()).toContain('Importar carteira');
     expect(page()).toContain('Importação concluída');
+    // Partial receipt hotfix: pending/unsupported are grouped, never errors.
+    expect(page()).toContain('Importação concluída parcialmente');
+    expect(page()).toContain('Nenhum erro técnico ocorreu.');
+    expect(page()).toContain('Pendentes de revisão (');
+    expect(page()).toContain('Não suportados / ignorados automaticamente (');
+    expect(page()).toContain('Erros reais (');
+    expect(page()).not.toContain('com erro');
     expect(page()).toContain('Nada é lançado sem a sua confirmação');
   });
 
