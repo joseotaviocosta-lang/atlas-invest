@@ -101,4 +101,34 @@ describe('MarketData: Symbol Resolution', () => {
       expect((err as { code: string }).code).toBe('MARKET_DATA.UNSUPPORTED_ASSET');
     }
   });
+
+  it('prefers the current symbol for renamed predecessors (MRFG3 -> MBRF3)', () => {
+    const ref = resolveMarketDataSymbol(
+      {
+        assetId: createAssetId(),
+        ticker: 'MRFG3',
+        exchange: 'BVMF',
+        currency: 'BRL',
+        assetType: 'STOCK',
+      },
+      'STOOQ',
+    );
+    expect(ref.providerSymbol).toBe('MBRF3.SA');
+    // Identity stays the asset row, never the symbol.
+    expect(ref.assetId).toBeDefined();
+  });
+
+  it('keeps unmapped tickers on their own symbol', () => {
+    const ref = resolveMarketDataSymbol(
+      {
+        assetId: createAssetId(),
+        ticker: 'PETR4',
+        exchange: 'BVMF',
+        currency: 'BRL',
+        assetType: 'STOCK',
+      },
+      'BRAPI',
+    );
+    expect(ref.providerSymbol).toBe('PETR4');
+  });
 });

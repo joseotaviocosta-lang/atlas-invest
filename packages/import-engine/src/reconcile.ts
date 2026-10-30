@@ -8,6 +8,7 @@
  * canonical ledger events — never by mutating the snapshot comparison.
  */
 
+import { resolveCanonicalTicker } from '@atlas/domain';
 import { normalizeDecimalValue } from './fingerprint';
 
 export const RECONCILIATION_STATUSES = [
@@ -48,6 +49,24 @@ export interface ReconciliationSummary {
   missingLocal: number;
   missingSource: number;
   unresolved: number;
+}
+
+/**
+ * Canonical grouping key for cross-source reconciliation rows.
+ *
+ * A known successor ticker folds to its predecessor (e.g. MBRF3 and MRFG3
+ * both key as `ticker:MRFG3`), so ledger rows under the historical identity
+ * compare against source snapshots under the current identity as one economic
+ * position. Rows without a ticker key by AssetId. Pure label mapping — the
+ * engine comparison itself is untouched.
+ */
+export function canonicalReconciliationKey(
+  ticker: string | undefined,
+  assetId: string,
+): string {
+  const trimmed = (ticker ?? '').trim();
+  if (trimmed === '') return `id:${assetId}`;
+  return `ticker:${resolveCanonicalTicker(trimmed)}`;
 }
 
 function isDecimal(value: string): boolean {

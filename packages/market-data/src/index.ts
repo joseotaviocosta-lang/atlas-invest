@@ -9,6 +9,7 @@ import {
   LocalDate,
   assertValidCurrency,
   isValidUUID,
+  resolveCurrentTicker,
 } from '@atlas/domain';
 
 export const MARKET_DATA_VERSION = '0.1.0';
@@ -582,6 +583,9 @@ export function assetRefFromAsset(asset: Asset): MarketDataAssetRef {
  *   instead of inventing a quotation.
  * - Exchange-aware: identical tickers on different exchanges resolve
  *   to distinct provider symbols.
+ * - Ticker successors: when the catalog ticker is a renamed predecessor
+ *   (e.g. MRFG3 → MBRF3), the CURRENT symbol is preferred so live and
+ *   historical providers receive a quotable symbol. Identity stays assetId.
  */
 export function resolveMarketDataSymbol(
   ref: MarketDataAssetRef,
@@ -595,7 +599,7 @@ export function resolveMarketDataSymbol(
     );
   }
   const exchange = ref.exchange.trim().toUpperCase();
-  const ticker = ref.ticker.trim().toUpperCase();
+  const ticker = resolveCurrentTicker(ref.ticker);
   if (ticker === '') {
     throw new MarketDataError(
       'Cannot resolve provider symbol for empty ticker',

@@ -13,6 +13,7 @@ export * from './primitives/domain-id';
 
 // Entities
 export * from './entities/asset';
+export * from './entities/asset-successors';
 export * from './entities/institution';
 export * from './entities/account';
 export * from './entities/portfolio';

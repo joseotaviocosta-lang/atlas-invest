@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { themeTokens, colors } from '@atlas/ui';
 import { PortfolioOverviewPositionItem } from '@atlas/ui';
 import { Card } from '../ui/Card';
+import { successorDisplayFor } from '../../lib/asset-display';
 
 export interface PositionCardProps {
   position: PortfolioOverviewPositionItem;
@@ -25,6 +26,11 @@ export function PositionCard({ position, portfolioId, asOf }: PositionCardProps)
     router.push(`/(app)/portfolio/${position.assetId}${query}`);
   };
 
+  // Ticker successor display (presentation only): renamed predecessors show
+  // the current symbol with an "anteriormente X" note. Historical snapshots
+  // keep the epoch ticker. Routing and keys keep the row's own ticker/assetId.
+  const successorDisplay = successorDisplayFor(position.displayIdentifier, asOf ?? undefined);
+
   return (
     <Card style={styles.card}>
       {/* Position Header (Tappable touch target >= 44px) */}
@@ -36,7 +42,14 @@ export function PositionCard({ position, portfolioId, asOf }: PositionCardProps)
         accessibilityLabel={`Abrir detalhes de ${position.displayIdentifier}`}
       >
         <View style={styles.identifierGroup}>
-          <Text style={styles.ticker}>{position.displayIdentifier}</Text>
+          <Text style={styles.ticker}>
+            {successorDisplay.currentTicker === ''
+              ? position.displayIdentifier
+              : successorDisplay.currentTicker}
+          </Text>
+          {successorDisplay.successionNote && (
+            <Text style={styles.successionNote}>({successorDisplay.successionNote})</Text>
+          )}
           {isIncomplete && (
             <View style={styles.badgeWarning}>
               <Text style={styles.badgeWarningText}>Dados incompletos</Text>
@@ -167,6 +180,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: themeTokens.colors.text,
+  },
+  successionNote: {
+    fontSize: 11,
+    color: themeTokens.colors.textMuted,
   },
   badgeWarning: {
     backgroundColor: 'rgba(234, 179, 8, 0.15)',

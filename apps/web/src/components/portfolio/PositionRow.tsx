@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { colors, spacing, borderRadius, formatCurrency, formatPercentage } from '@atlas/ui';
 import { PortfolioOverviewPositionItem, appendAsOf } from '@atlas/ui';
 import { Badge } from '@/components/ui/Badge';
+import { successorDisplayFor } from '@/lib/asset-display';
 
 export interface PositionValuationDisplay {
   ticker?: string | null;
@@ -54,6 +55,16 @@ export function PositionRow({
     (!UUID_REGEX.test(position.displayIdentifier) ? position.displayIdentifier : null) ||
     'Ativo sem identificação';
 
+  // Ticker successor display (presentation only): renamed predecessors show
+  // the current symbol with an "anteriormente X" note. Routing, keys and
+  // history labels keep the row's own ticker/assetId untouched.
+  const successorDisplay = successorDisplayFor(
+    primaryLabel === 'Ativo sem identificação' ? null : primaryLabel,
+    isHistorical ? (asOf ?? undefined) : undefined,
+  );
+  const displayTicker =
+    successorDisplay.currentTicker === '' ? primaryLabel : successorDisplay.currentTicker;
+
   const secondaryLabel = position.assetName || valuation?.assetType || null;
 
   return (
@@ -98,10 +109,15 @@ export function PositionRow({
                   fontFamily: 'monospace',
                   textDecoration: 'none',
                 }}
-                aria-label={`Ver detalhes de ${primaryLabel}`}
+                aria-label={`Ver detalhes de ${displayTicker}`}
               >
-                {primaryLabel}
+                {displayTicker}
               </Link>
+              {successorDisplay.successionNote && (
+                <span style={{ fontSize: '0.75rem', color: colors.textMuted }}>
+                  ({successorDisplay.successionNote})
+                </span>
+              )}
               {isIncomplete && <Badge variant="warning">Dados incompletos</Badge>}
             </div>
             {secondaryLabel && (

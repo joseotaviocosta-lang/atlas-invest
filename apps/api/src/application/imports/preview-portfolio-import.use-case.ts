@@ -417,7 +417,7 @@ export class PreviewPortfolioImportUseCase {
 
       const assetMatch =
         explicitAsset !== null
-          ? { resolution: 'RESOLVED' as const, asset: explicitAsset, candidates: [] as AssetRef[] }
+          ? { resolution: 'RESOLVED' as const, asset: explicitAsset, candidates: [] as AssetRef[], viaSuccessor: false }
           : resolveAsset(candidate.ticker, context.assets);
 
       let accountMatch: {
