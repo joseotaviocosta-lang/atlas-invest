@@ -142,6 +142,23 @@ describe('Import Engine: fingerprints', () => {
     };
     expect(probableMatchKey(key)).toBe(probableMatchKey({ ...key }));
   });
+
+  it('distinguishes split legs by type and dedupes identical legs', () => {
+    const leg = {
+      portfolioId: PORTFOLIO,
+      accountId: ACCOUNT,
+      assetId: ASSET,
+      tradeDate: '2025-04-15',
+      quantity: '',
+      unitPrice: null,
+      fees: null,
+      currency: 'BRL',
+    };
+    const reverseSplit = canonicalFingerprint({ ...leg, type: 'REVERSE_SPLIT' });
+    const split = canonicalFingerprint({ ...leg, type: 'SPLIT' });
+    expect(reverseSplit).not.toBe(split);
+    expect(canonicalFingerprint({ ...leg, type: 'SPLIT' })).toBe(split);
+  });
 });
 
 describe('Import Engine: asset and account resolution', () => {

@@ -111,6 +111,20 @@ describe('Phase 4A — Transaction -> FiscalEvent projection', () => {
     expect(event!.realizedResult).toBeUndefined();
   });
 
+  it('split legs produce zero realization and zero DARF-relevant proceeds', () => {
+    const events = projectFiscalEvents(
+      [split('SPLIT', 'sp-vivt'), split('REVERSE_SPLIT', 'rs-vivt', '40', '2026-09-08')],
+      { assetTypeByAssetId: new Map([[PETR, 'STOCK']]) },
+    );
+    expect(events).toHaveLength(2);
+    for (const event of events) {
+      expect(event.eventType).toBe('CORPORATE_ACTION');
+      expect(event.relevance).toBe('NON_TAXABLE');
+      expect(event.proceeds).toBeUndefined();
+      expect(event.realizedResult).toBeUndefined();
+    }
+  });
+
   it('sale reuses canonical realized result without re-deriving gain', () => {
     const canonical = new Map<string, CanonicalRealizedResult>([
       [
