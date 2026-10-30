@@ -78,4 +78,10 @@ describe('Web movement notices section (hotfix B1, M2)', () => {
     expect(page).toContain('Bonificação');
     expect(page).toContain('detectedName');
   });
+
+  it('renders pending review counters from a single pending derivation (page text)', () => {
+    const page = readWeb('apps/web/src/app/(app)/portfolio/import/page.tsx');
+    expect(page).toContain('eligibility.pendingCount');
+    expect(page).toContain('aguardando revisão');
+  });
 });

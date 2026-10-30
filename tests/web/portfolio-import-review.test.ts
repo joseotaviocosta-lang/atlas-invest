@@ -243,3 +243,84 @@ describe('Selective READY confirmation (hotfix)', () => {
     expect(eligibility.hint).toMatch(/Resolva ou ignore/);
   });
 });
+
+describe('Pending review counter consistency (hotfix)', () => {
+  const ready = (): ReviewCandidateLike => candidate();
+  const review = (): ReviewCandidateLike =>
+    candidate({ status: 'NEEDS_REVIEW', issues: [{ code: 'TRANSFER_NEEDS_COUNTERPARTY' }] });
+  const unsupported = (): ReviewCandidateLike =>
+    candidate({ status: 'UNSUPPORTED', issues: [{ code: 'LOAN_CUSTODY_STATE' }] });
+
+  it('8 READY + 45 REVIEW + 127 UNSUPPORTED → willImport 8, pending 45, auto 127', () => {
+    const rows = [
+      ...Array.from({ length: 8 }, () => ({ candidate: ready(), decision: decision() })),
+      ...Array.from({ length: 45 }, () => ({ candidate: review(), decision: decision() })),
+      ...Array.from({ length: 127 }, () => ({ candidate: unsupported(), decision: decision() })),
+    ];
+    const eligibility = eligibilityOf(rows);
+    expect(eligibility.importableCount).toBe(8);
+    expect(eligibility.pendingCount).toBe(45);
+    expect(eligibility.autoSkippedCount).toBe(127);
+    expect(eligibility.skippedCount).toBe(0);
+    expect(eligibility.blockedCount).toBe(0);
+    expect(eligibility.canConfirm).toBe(true);
+  });
+
+  it('0 READY + 45 REVIEW → pending 45, confirmation disabled', () => {
+    const rows = Array.from({ length: 45 }, () => ({
+      candidate: review(),
+      decision: decision(),
+    }));
+    const eligibility = eligibilityOf(rows);
+    expect(eligibility.importableCount).toBe(0);
+    expect(eligibility.pendingCount).toBe(45);
+    expect(eligibility.canConfirm).toBe(false);
+    expect(eligibility.hint).toMatch(/Nenhuma operação será importada/);
+  });
+
+  it('8 READY + 0 REVIEW → pending 0, confirmation enabled', () => {
+    const rows = Array.from({ length: 8 }, () => ({
+      candidate: ready(),
+      decision: decision(),
+    }));
+    const eligibility = eligibilityOf(rows);
+    expect(eligibility.importableCount).toBe(8);
+    expect(eligibility.pendingCount).toBe(0);
+    expect(eligibility.canConfirm).toBe(true);
+    expect(eligibility.hint).toBeNull();
+  });
+
+  it('resolving 1 of 45 REVIEW rows moves it from pending to importable', () => {
+    const resolvable: ReviewCandidateLike = candidate({
+      status: 'NEEDS_REVIEW',
+      assetId: null,
+      accountId: 'account-1',
+      issues: [{ code: 'UNKNOWN_ASSET' }],
+    });
+    const rows = [
+      ...Array.from({ length: 8 }, () => ({ candidate: ready(), decision: decision() })),
+      ...Array.from({ length: 44 }, () => ({ candidate: review(), decision: decision() })),
+      {
+        candidate: resolvable,
+        decision: decision({ assetOverrideId: 'asset-9' }),
+      },
+    ];
+    const eligibility = eligibilityOf(rows);
+    expect(eligibility.importableCount).toBe(9);
+    expect(eligibility.pendingCount).toBe(44);
+    expect(eligibility.canConfirm).toBe(true);
+  });
+
+  it('ignoring 1 of 8 READY decreases willImport without touching pending', () => {
+    const rows = [
+      ...Array.from({ length: 7 }, () => ({ candidate: ready(), decision: decision() })),
+      { candidate: ready(), decision: decision({ skipped: true }) },
+      ...Array.from({ length: 45 }, () => ({ candidate: review(), decision: decision() })),
+    ];
+    const eligibility = eligibilityOf(rows);
+    expect(eligibility.importableCount).toBe(7);
+    expect(eligibility.skippedCount).toBe(1);
+    expect(eligibility.pendingCount).toBe(45);
+    expect(eligibility.canConfirm).toBe(true);
+  });
+});

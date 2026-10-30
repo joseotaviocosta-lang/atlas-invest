@@ -1946,7 +1946,10 @@ function ImportHubContent() {
             <p style={{ fontSize: '0.875rem', fontWeight: 600 }} aria-live="polite">
               {eligibility.importableCount} serão importadas · {eligibility.skippedCount} ignoradas
               por você · {eligibility.autoSkippedCount} ignoradas automaticamente ·{' '}
-              {eligibility.blockedCount} aguardando decisão
+              {eligibility.pendingCount} aguardando revisão
+              {eligibility.blockedCount > 0
+                ? ` · ${eligibility.blockedCount} aguardando decisão`
+                : ''}
             </p>
 
             {/* Step 17: Unique Asset Summary & Batch Resolution */}
