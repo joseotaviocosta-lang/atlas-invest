@@ -129,6 +129,7 @@ model Portfolio {
   annualOpeningPositions AnnualOpeningPositionInputRecord[]
   reconciliationDecisions ReconciliationDecisionRecord[]
   transactionRectifications TransactionRectificationRecord[]
+  costBasisEvidence      CostBasisEvidenceRecord[]
 
   @@index([userId])
   @@map("portfolios")
@@ -148,6 +149,7 @@ model Account {
   institution            Institution                        @relation(fields: [institutionId], references: [id], onDelete: Restrict)
   transactions           Transaction[]
   annualOpeningPositions AnnualOpeningPositionInputRecord[]
+  costBasisEvidence      CostBasisEvidenceRecord[]
 
   @@unique([id, portfolioId])
   @@index([portfolioId])
@@ -169,6 +171,7 @@ model Asset {
   marketIntelligenceLinks MarketIntelligenceAssetLink[]
   fiiTaxEligibilityFacts  FiiTaxEligibilityFactRecord[]
   annualOpeningPositions  AnnualOpeningPositionInputRecord[]
+  costBasisEvidence       CostBasisEvidenceRecord[]
   marketQuotes            MarketQuoteRecord[]
   watchlistItems          WatchlistItem[]
 
@@ -1656,4 +1659,44 @@ model DataSubjectRequest {
   @@index([userId], map: "dsr_user_idx")
   @@index([status], map: "dsr_status_idx")
   @@map("data_subject_requests")
+}
+
+/// Cost-basis evidence revisions (ADR-310). Audited claims that
+/// already-represented quantities carry factual acquisition cost. NEVER a
+/// ledger event: no quantity is created, moved, or rewritten here.
+/// Same content resubmitted is idempotent via the fingerprint identity;
+/// content revisions insert new rows pointing at supersedesId (current =
+/// rows nothing supersedes). Status transitions DRAFT → REVIEW_REQUIRED →
+/// VERIFIED / REJECTED; only VERIFIED rows feed derived reads.
+model CostBasisEvidenceRecord {
+  id               String    @id @default(uuid()) @db.Uuid
+  portfolioId      String    @map("portfolio_id") @db.Uuid
+  accountId        String    @map("account_id") @db.Uuid
+  assetId          String    @map("asset_id") @db.Uuid
+  evidenceType     String    @map("evidence_type") @db.VarChar(40)
+  source           String    @db.VarChar(30)
+  quantityCovered  Decimal   @map("quantity_covered") @db.Decimal(38, 18)
+  unitCost         Decimal?  @map("unit_cost") @db.Decimal(38, 18)
+  totalCost        Decimal?  @map("total_cost") @db.Decimal(38, 18)
+  currency         String    @db.VarChar(3)
+  acquisitionDate  DateTime  @map("acquisition_date") @db.Date
+  evidenceDate     DateTime? @map("evidence_date") @db.Date
+  status           String    @db.VarChar(20)
+  sourceReference  String    @map("source_reference") @db.VarChar(255)
+  notes            String?   @db.Text
+  version          Int       @default(1)
+  supersedesId     String?   @map("supersedes_id") @db.Uuid
+  fingerprint      String    @db.VarChar(64)
+  confirmedBy      String?   @map("confirmed_by") @db.VarChar(255)
+  confirmedAt      DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  rejectedReason   String?   @map("rejected_reason") @db.VarChar(500)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  account   Account   @relation(fields: [accountId, portfolioId], references: [id, portfolioId], onDelete: Restrict)
+  asset     Asset     @relation(fields: [assetId], references: [id], onDelete: Restrict)
+
+  @@unique([portfolioId, fingerprint, version], name: "cost_evidence_fingerprint_version_identity")
+  @@index([portfolioId, accountId, assetId, status], map: "cost_evidence_scope_status_idx")
+  @@map("cost_basis_evidence")
 }

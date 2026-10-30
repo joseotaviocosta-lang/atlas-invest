@@ -16,11 +16,13 @@ import { PortfolioDataQualityController } from './portfolio-data-quality.control
 import { PortfolioMaintenanceController } from './portfolio-maintenance.controller';
 import { PortfolioOperationsController } from './portfolio-operations.controller';
 import { PortfolioAuditHistoryController } from './portfolio-audit-history.controller';
+import { PortfolioCostEvidenceController } from './portfolio-cost-evidence.controller';
 
 @Module({
   imports: [ApplicationModule],
   controllers: [
     PortfoliosController,
+    PortfolioCostEvidenceController,
     ValuationController,
     PortfolioReviewController,
     PortfolioAllocationStrategyController,

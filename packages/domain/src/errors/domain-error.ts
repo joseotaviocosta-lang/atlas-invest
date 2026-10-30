@@ -62,3 +62,15 @@ export class InvalidTransactionError extends DomainError {
     super(message, 'DOMAIN.INVALID_TRANSACTION');
   }
 }
+
+export class InvalidCostEvidenceError extends DomainError {
+  constructor(message: string) {
+    super(message, 'DOMAIN.INVALID_COST_EVIDENCE');
+  }
+}
+
+export class CostEvidenceOverCoverageError extends DomainError {
+  constructor(message: string) {
+    super(message, 'DOMAIN.COST_EVIDENCE_OVER_COVERAGE');
+  }
+}

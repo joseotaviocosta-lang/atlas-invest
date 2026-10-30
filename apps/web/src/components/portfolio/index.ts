@@ -29,6 +29,8 @@ export * from './PositionPerformanceSection';
 export * from './PositionIncomeSection';
 export * from './PortfolioDataQualitySection';
 export * from './PositionDataQualitySection';
+export * from './CostEvidenceSection';
+export * from './CostEvidenceModal';
 export * from './PortfolioOperationsSection';
 export * from './PortfolioPlanningSection';
 export * from './PortfolioAuditTimeline';

@@ -29,6 +29,7 @@ import {
   AssetIncomeSection,
   AssetHistorySection,
   PortfolioHistoricalBanner,
+  CostEvidenceSection,
   PositionIntelligenceSection,
   PositionPerformanceSection,
   PositionIncomeSection,
@@ -403,6 +404,22 @@ function AssetPositionDetailContent() {
 
           {/* Custody Breakdown by Account (historical snapshot when asOf) */}
           <AssetCustodyBreakdown accounts={viewModel.accountsBreakdown} />
+
+          {/* Historical cost evidence (current mode, incomplete cost only) */}
+          {!isHistorical &&
+          activePortfolioId &&
+          viewModel.primaryCard.isCostBasisIncomplete ? (
+            <CostEvidenceSection
+              portfolioId={activePortfolioId}
+              assetId={assetId}
+              assetTicker={viewModel.header.ticker}
+              accounts={viewModel.accountsBreakdown.map((account) => ({
+                id: account.accountId,
+                name: account.accountName,
+              }))}
+              positionQuantity={viewModel.primaryCard.rawQuantity}
+            />
+          ) : null}
 
           {/* Position Intelligence (valuation, weight, income, activity — current mode only). */}
           {!isHistorical && activePortfolioId ? (

@@ -5,6 +5,7 @@ export * from './ordering';
 export * from './dispatcher';
 export * from './engine';
 export * from './performance-universe';
+export * from './cost-assessment';
 
 import { Transaction, PortfolioId, AssetId, LocalDate, Money, Quantity } from '@atlas/domain';
 import { PortfolioState } from './types';

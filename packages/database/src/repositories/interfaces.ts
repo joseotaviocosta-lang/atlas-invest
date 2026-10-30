@@ -2752,3 +2752,80 @@ export interface IPrivacyRepository {
 
   exportUserData(userId: string): Promise<UserDataExport>;
 }
+
+// ---------------------------------------------------------------------------
+// Cost-basis evidence persistence (ADR-310, append-only revisions)
+// ---------------------------------------------------------------------------
+
+export type CostBasisEvidenceWriteOutcome = 'CREATED' | 'DUPLICATE';
+
+export interface CostBasisEvidenceRow {
+  id: string;
+  portfolioId: string;
+  accountId: string;
+  assetId: string;
+  evidenceType: string;
+  source: string;
+  quantityCovered: string;
+  unitCost: string | null;
+  totalCost: string | null;
+  currency: string;
+  acquisitionDate: string;
+  evidenceDate: string | null;
+  status: string;
+  sourceReference: string;
+  notes: string | null;
+  version: number;
+  supersedesId: string | null;
+  fingerprint: string;
+  confirmedBy: string | null;
+  confirmedAt: Date | null;
+  rejectedReason: string | null;
+  createdAt: Date;
+}
+
+export interface ICostBasisEvidenceRepository {
+  findById(id: string): Promise<CostBasisEvidenceRow | null>;
+  /** Scoped list, newest first. No N+1: single query with optional filters. */
+  listByScope(input: {
+    portfolioId: string;
+    accountId?: string;
+    assetId?: string;
+    statuses?: string[];
+  }): Promise<CostBasisEvidenceRow[]>;
+  /**
+   * Current rows per evidence stream (rows nothing supersedes). Computed
+   * without mutations: a row is current when no other row in scope points
+   * at it via supersedesId.
+   */
+  listCurrentByScope(input: {
+    portfolioId: string;
+    accountId?: string;
+    assetId?: string;
+  }): Promise<CostBasisEvidenceRow[]>;
+  /**
+   * Appends a revision. Identical fingerprint in scope → idempotent
+   * DUPLICATE (no insert). Otherwise inserts with monotonic version
+   * (parent chain length + 1) linked via supersedesId when revising.
+   */
+  create(input: {
+    portfolioId: string;
+    accountId: string;
+    assetId: string;
+    evidenceType: string;
+    source: string;
+    quantityCovered: string;
+    unitCost?: string | null;
+    totalCost?: string | null;
+    currency: string;
+    acquisitionDate: string;
+    evidenceDate?: string | null;
+    status: string;
+    sourceReference: string;
+    notes?: string | null;
+    supersedesId?: string | null;
+    fingerprint: string;
+    confirmedBy?: string | null;
+    rejectedReason?: string | null;
+  }): Promise<{ outcome: CostBasisEvidenceWriteOutcome; record: CostBasisEvidenceRow }>;
+}

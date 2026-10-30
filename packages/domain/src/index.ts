@@ -10,6 +10,7 @@ export * from './primitives/quantity';
 export * from './primitives/percentage';
 export * from './primitives/local-date';
 export * from './primitives/domain-id';
+export * from './primitives/sha256';
 
 // Entities
 export * from './entities/asset';
@@ -21,6 +22,7 @@ export * from './entities/portfolio';
 // Ledger & Transactions
 export * from './ledger/types';
 export * from './ledger/transaction';
+export * from './ledger/cost-evidence';
 
 // Notifications
 export * from './notifications/types';
