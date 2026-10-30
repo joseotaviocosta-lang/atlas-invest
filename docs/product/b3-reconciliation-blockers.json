@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "frozenAt": "2026-10-30",
+  "ledger": 137,
+  "migrations": 46,
+  "coverage": "38/40",
+  "blockers": [
+    {
+      "asset": "EGIE3",
+      "delta": "-200",
+      "atlas": "480",
+      "b3": "280",
+      "status": "EVIDENCE_BLOCKED",
+      "classification": "EXTERNAL_ACCOUNT_OR_BROKERAGE_GAP",
+      "proven": [
+        "Opening economic 400 (200 normal + 200 donor, 31/12/2024)",
+        "Official 40% bonus base exactly 200, credit 01/12/2025 (+80)",
+        "Current economic 280; outflow of 200 before 26/11/2025",
+        "No priced outflow, transfer-out, or qty-reducing action in any local file"
+      ],
+      "unknown": ["event type (sale vs transfer-out)", "exact date", "channel", "destination"],
+      "requiredEvidence": [
+        "XP Jan-Nov/2025 transaction statements",
+        "EGIE3 brokerage notes",
+        "Portability / custody-transfer records",
+        "Other-broker statements if applicable"
+      ],
+      "confidence": { "occurrence": "HIGH", "channel": "LOW" }
+    },
+    {
+      "asset": "ITSA4",
+      "delta": "+15.7",
+      "atlas": "984.3",
+      "b3": "1000",
+      "status": "EVIDENCE_BLOCKED",
+      "classification": "HOLDER_LEVEL_SUBSCRIPTION_EVIDENCE_REQUIRED",
+      "proven": [
+        "Opening 1161.3; bonus eligible base exactly 1177; bonus +23.54; fraction -0.54",
+        "Bridge exact except +15.7 arriving (31/12/2024, 19/12/2025]",
+        "Official Feb-2025 capital increase exists (ratio 1.3766678%, R$6.70, credit 29/05/2025)"
+      ],
+      "unknown": ["event quantity/date (full entitlement 15.9872 != 15.70)"],
+      "requiredEvidence": [
+        "XP subscription / rights history Mar-May/2025",
+        "ITSA2 exercise information",
+        "2025 holder / income statement"
+      ],
+      "confidence": { "occurrence": "HIGH", "hypothesis": "LOW" }
+    },
+    {
+      "asset": "SNEL11/SNEL13",
+      "delta": "+200",
+      "atlas": "2540 (+200 SNEL13 receipt-only raw position)",
+      "b3": "2740",
+      "status": "EVIDENCE_BLOCKED",
+      "classification": "SNEL_CONVERSION_DATE_EVIDENCE_REQUIRED",
+      "proven": [
+        "SNEL13 200 receipt converts to SNEL11 +200, ratio 1:1",
+        "RECEIPT_CONVERSION canonical model implemented and tested"
+      ],
+      "unknown": ["exact effective conversion date (window (2024-12-31, 2025-12-31])"],
+      "requiredEvidence": [
+        "Official B3 / Suno / administrator conversion or credit notice with exact date"
+      ],
+      "confidence": { "occurrence": "HIGH", "date": "LOW" }
+    }
+  ]
+}
