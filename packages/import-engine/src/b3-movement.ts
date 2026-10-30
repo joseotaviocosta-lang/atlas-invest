@@ -8,7 +8,8 @@
  *
  * - a ledger `NormalizedCandidate` (only for classes the ledger can represent
  *   honestly: BONUS with unknown cost, fraction-auction SELL, plain custody
- *   TRANSFER legs), or
+ *   TRANSFER legs, and SUBSCRIPTION exercises with a factual exercise price),
+ *   or
  * - a `MovementNotice` (cash-only, informational, review-required,
  *   unsupported) that can NEVER reach the ledger — confirm ignores notices
  *   structurally (PART P: no mass import).
@@ -97,7 +98,10 @@ function cellString(cell: ExcelJS.Cell | undefined): string {
       return String(val.result).trim();
     }
     if ('richText' in val && Array.isArray(val.richText)) {
-      return val.richText.map((chunk) => chunk.text).join('').trim();
+      return val.richText
+        .map((chunk) => chunk.text)
+        .join('')
+        .trim();
     }
     if ('text' in val && typeof val.text === 'string') {
       return val.text.trim();
@@ -302,7 +306,6 @@ const CASH_ONLY_LABELS = new Set([
 
 const SUBSCRIPTION_LIFECYCLE_LABELS = new Set([
   'DIREITO DE SUBSCRICAO',
-  'DIREITOS DE SUBSCRICAO - EXERCIDO',
   'DIREITO SOBRAS DE SUBSCRICAO',
   'DIREITO SOBRAS DE SUBSCRICAO - NAO EXERCIDO',
   'DIREITOS DE SUBSCRICAO - NAO EXERCIDO',
@@ -321,9 +324,22 @@ function normMovementLabel(movement: string): string {
 }
 
 /**
- * Routes one movement row. Only BONUS (unknown cost), fraction-auction SELL
- * and plain custody TRANSFER legs become ledger candidates; everything else
- * becomes a notice that confirm ignores structurally.
+ * Derives the parent asset ticker from an FII subscription-right ticker.
+ * Rights trade as `<BASE>1[234]` (e.g. SNAG12, MXRF12) while the parent trades
+ * as `<BASE>11`. Returns null for anything else (stock rights such as HYPE1
+ * have no derivable parent and stay in manual review — never guessed).
+ */
+export function parentTickerOfSubscriptionRight(rightsTicker: string): string | null {
+  const match = /^([A-Z0-9]{4,})1([234])$/.exec(rightsTicker.trim().toUpperCase());
+  if (!match) return null;
+  return `${match[1]}11`;
+}
+
+/**
+ * Routes one movement row. Only BONUS (unknown cost), fraction-auction SELL,
+ * SUBSCRIPTION exercises with factual price, and plain custody TRANSFER legs
+ * become ledger candidates; everything else becomes a notice that confirm
+ * ignores structurally.
  */
 export function mapMovementRow(
   row: B3MovementRow,
@@ -331,13 +347,28 @@ export function mapMovementRow(
   fractionPairQty: string | null = null,
 ): MappedMovementOutcome {
   if (row.tradeDate === '') {
-    return notice(row, 'REVIEW_REQUIRED', 'INVALID_MOVEMENT_ROW', 'Linha sem data civil válida precisa de revisão; nada foi importado.');
+    return notice(
+      row,
+      'REVIEW_REQUIRED',
+      'INVALID_MOVEMENT_ROW',
+      'Linha sem data civil válida precisa de revisão; nada foi importado.',
+    );
   }
   if (row.tradeDate > options.today) {
-    return notice(row, 'REVIEW_REQUIRED', 'FUTURE_MOVEMENT_DATE', `Movimentação em ${row.tradeDate} é futura e precisa de revisão.`);
+    return notice(
+      row,
+      'REVIEW_REQUIRED',
+      'FUTURE_MOVEMENT_DATE',
+      `Movimentação em ${row.tradeDate} é futura e precisa de revisão.`,
+    );
   }
   if (row.ticker === '') {
-    return notice(row, 'REVIEW_REQUIRED', 'MISSING_MOVEMENT_TICKER', 'Linha sem identificador de ativo precisa de revisão.');
+    return notice(
+      row,
+      'REVIEW_REQUIRED',
+      'MISSING_MOVEMENT_TICKER',
+      'Linha sem identificador de ativo precisa de revisão.',
+    );
   }
 
   const label = normMovementLabel(row.movement);
@@ -345,13 +376,25 @@ export function mapMovementRow(
   // 1. Bonus: quantity-only corporate action, unknown cost (never zero).
   if (label === 'BONIFICACAO EM ATIVOS' || label === 'BONIFICACAO') {
     if (!isPositiveDecimal(row.quantity)) {
-      return notice(row, 'REVIEW_REQUIRED', 'BONUS_WITHOUT_QUANTITY', 'Bonificação sem quantidade positiva precisa de revisão.');
+      return notice(
+        row,
+        'REVIEW_REQUIRED',
+        'BONUS_WITHOUT_QUANTITY',
+        'Bonificação sem quantidade positiva precisa de revisão.',
+      );
     }
     if (row.unitPrice !== null && !/^0+(\.0+)?$/.test(row.unitPrice)) {
       return {
         kind: 'candidate',
         candidate: {
-          ...baseCandidate(row, options.fileName, 'BONUS', row.quantity, '0', ' | sem custo atribuído (custo desconhecido)'),
+          ...baseCandidate(
+            row,
+            options.fileName,
+            'BONUS',
+            row.quantity,
+            '0',
+            ' | sem custo atribuído (custo desconhecido)',
+          ),
           status: 'NEEDS_REVIEW',
           issues: [
             {
@@ -365,15 +408,88 @@ export function mapMovementRow(
     }
     return {
       kind: 'candidate',
-      candidate: baseCandidate(row, options.fileName, 'BONUS', row.quantity!, '0', ' | sem custo atribuído (custo desconhecido)'),
+      candidate: baseCandidate(
+        row,
+        options.fileName,
+        'BONUS',
+        row.quantity!,
+        '0',
+        ' | sem custo atribuído (custo desconhecido)',
+      ),
     };
   }
 
-  // 2. Fraction auction (crédito, qty + price): the auction IS the disposal.
+  // 2. Subscription exercise (débito of rights with factual exercise price):
+  // books an onerous SUBSCRIPTION on the PARENT asset (rights ticker → parent
+  // ticker, e.g. SNAG12 → SNAG11). Quantity known + price unknown is never
+  // READY; zero-price and inferred prices are impossible by construction.
+  if (label === 'DIREITOS DE SUBSCRICAO - EXERCIDO') {
+    const parent = parentTickerOfSubscriptionRight(row.ticker);
+    if (parent === null) {
+      return notice(
+        row,
+        'REVIEW_REQUIRED',
+        'SUBSCRIPTION_PARENT_UNRESOLVED',
+        `Subscrição exercida (${row.ticker}) sem ativo-mãe derivável precisa de revisão; nada foi importado.`,
+      );
+    }
+    if (row.direction !== 'DEBITO') {
+      return notice(
+        row,
+        'REVIEW_REQUIRED',
+        'SUBSCRIPTION_UNEXPECTED_DIRECTION',
+        `Subscrição exercida (${row.ticker}) fora do débito de direitos esperado precisa de revisão; nada foi importado.`,
+      );
+    }
+    if (!isPositiveDecimal(row.quantity)) {
+      return notice(
+        row,
+        'REVIEW_REQUIRED',
+        'SUBSCRIPTION_WITHOUT_QUANTITY',
+        'Subscrição exercida sem quantidade positiva precisa de revisão; nada foi importado.',
+      );
+    }
+    if (!isPositiveDecimal(row.unitPrice)) {
+      return notice(
+        row,
+        'REVIEW_REQUIRED',
+        'SUBSCRIPTION_WITHOUT_PRICE',
+        'Preço de exercício não encontrado na fonte B3. Este evento não será importado até que o custo seja informado/comprovado.',
+      );
+    }
+    const broker = row.institution;
+    return {
+      kind: 'candidate',
+      candidate: {
+        rowNumber: row.rowNumber,
+        tradeDate: row.tradeDate,
+        ticker: parent,
+        operation: 'SUBSCRIPTION',
+        rawOperation: row.movement,
+        quantity: row.quantity!,
+        unitPrice: row.unitPrice!,
+        fees: '0',
+        currency: 'BRL',
+        ...(broker === '' ? {} : { brokerLabel: broker }),
+        ...(broker === '' ? {} : { normalizedInstitution: normalizeB3InstitutionName(broker) }),
+        externalId: `${movementExternalId(options.fileName, row)}|PARENT:${parent}`,
+        notes: `${movementNotes(options.fileName, row)} | direito ${row.ticker} exercido @ ${row.unitPrice}`,
+        status: 'READY' as ImportRowStatus,
+        issues: [] as ImportIssue[],
+      },
+    };
+  }
+
+  // 3. Fraction auction (crédito, qty + price): the auction IS the disposal.
   // The paired "Fração em Ativos" débito is consumed as provenance (fractionPairQty).
   if (label === 'LEILAO DE FRACAO') {
     if (!isPositiveDecimal(row.quantity) || !isPositiveDecimal(row.unitPrice)) {
-      return notice(row, 'REVIEW_REQUIRED', 'FRACTION_AUCTION_INCOMPLETE', 'Leilão de fração sem quantidade/preço precisa de revisão.');
+      return notice(
+        row,
+        'REVIEW_REQUIRED',
+        'FRACTION_AUCTION_INCOMPLETE',
+        'Leilão de fração sem quantidade/preço precisa de revisão.',
+      );
     }
     const pairNote =
       fractionPairQty !== null
@@ -390,7 +506,8 @@ export function mapMovementRow(
                 {
                   code: 'FRACTION_WITHOUT_DEBIT_PAIR',
                   field: 'quantity',
-                  message: 'Leilão de fração sem débito de fração correspondente no arquivo precisa de revisão',
+                  message:
+                    'Leilão de fração sem débito de fração correspondente no arquivo precisa de revisão',
                 } satisfies ImportIssue,
               ],
             }
@@ -399,19 +516,35 @@ export function mapMovementRow(
     };
   }
 
-  // 3. Fraction debit alone: custody left with no proceeds in view → review.
+  // 4. Fraction debit alone: custody left with no proceeds in view → review.
   if (label === 'FRACAO EM ATIVOS') {
-    return notice(row, 'REVIEW_REQUIRED', 'FRACTION_DEBIT_WITHOUT_AUCTION', 'Baixa de fração sem leilão correspondente no arquivo precisa de revisão; nada foi importado.');
+    return notice(
+      row,
+      'REVIEW_REQUIRED',
+      'FRACTION_DEBIT_WITHOUT_AUCTION',
+      'Baixa de fração sem leilão correspondente no arquivo precisa de revisão; nada foi importado.',
+    );
   }
 
-  // 4. Plain custody transfers (direction-mapped). Loan rolls and settlement
+  // 5. Plain custody transfers (direction-mapped). Loan rolls and settlement
   // mirrors are downgraded later by ledger gates; never READY here.
   if (label === 'TRANSFERENCIA' || label === 'TRANSFERENCIA - LIQUIDACAO') {
     if (!isPositiveDecimal(row.quantity)) {
-      return notice(row, 'REVIEW_REQUIRED', 'TRANSFER_WITHOUT_QUANTITY', 'Transferência sem quantidade positiva precisa de revisão.');
+      return notice(
+        row,
+        'REVIEW_REQUIRED',
+        'TRANSFER_WITHOUT_QUANTITY',
+        'Transferência sem quantidade positiva precisa de revisão.',
+      );
     }
     const operation = row.direction === 'DEBITO' ? 'TRANSFER_OUT' : 'TRANSFER_IN';
-    const candidate = baseCandidate(row, options.fileName, operation, row.quantity!, row.unitPrice ?? '0');
+    const candidate = baseCandidate(
+      row,
+      options.fileName,
+      operation,
+      row.quantity!,
+      row.unitPrice ?? '0',
+    );
     if (row.unitPrice !== null && !/^0+(\.0+)?$/.test(row.unitPrice)) {
       return {
         kind: 'candidate',
@@ -422,7 +555,8 @@ export function mapMovementRow(
             {
               code: 'TRANSFER_WITH_PRICE',
               field: 'unit_price',
-              message: 'Transferência de custódia com preço informado precisa de revisão (venda? bonificação? liquidação de trade?)',
+              message:
+                'Transferência de custódia com preço informado precisa de revisão (venda? bonificação? liquidação de trade?)',
             },
           ],
         },
@@ -431,28 +565,48 @@ export function mapMovementRow(
     return { kind: 'candidate', candidate };
   }
 
-  // 5. Cash-only events: never custody explanations, never importable here.
+  // 6. Cash-only events: never custody explanations, never importable here.
   if (CASH_ONLY_LABELS.has(label)) {
-    return notice(row, 'CASH_ONLY', 'CASH_ONLY_EVENT', `Evento de caixa (${row.movement}) não altera custódia; tratado em fase futura de cashflow/income.`);
+    return notice(
+      row,
+      'CASH_ONLY',
+      'CASH_ONLY_EVENT',
+      `Evento de caixa (${row.movement}) não altera custódia; tratado em fase futura de cashflow/income.`,
+    );
   }
 
-  // 6. Informational markers: proven no-ops (Atualização mirrors custody).
+  // 7. Informational markers: proven no-ops (Atualização mirrors custody).
   if (label === 'ATUALIZACAO') {
-    return notice(row, 'INFORMATIONAL', 'INFORMATIONAL_POSITION_MARKER', 'Marcador informacional de posição (Atualização); sem efeito econômico.');
+    return notice(
+      row,
+      'INFORMATIONAL',
+      'INFORMATIONAL_POSITION_MARKER',
+      'Marcador informacional de posição (Atualização); sem efeito econômico.',
+    );
   }
 
-  // 7. Stock-loan custody state: economic-neutral by construction.
+  // 8. Stock-loan custody state: economic-neutral by construction.
   if (label === 'EMPRESTIMO') {
     if (row.quantity !== null && isPositiveDecimal(row.quantity)) {
-      return notice(row, 'INFORMATIONAL', 'LOAN_CUSTODY_STATE', 'Registro de empréstimo (doador) altera apenas disponibilidade/estado de empréstimo, nunca a propriedade econômica.');
+      return notice(
+        row,
+        'INFORMATIONAL',
+        'LOAN_CUSTODY_STATE',
+        'Registro de empréstimo (doador) altera apenas disponibilidade/estado de empréstimo, nunca a propriedade econômica.',
+      );
     }
-    return notice(row, 'CASH_ONLY', 'LOAN_INTEREST_CASH', 'Juros de empréstimo (quantidade zerada) são caixa, não custódia.');
+    return notice(
+      row,
+      'CASH_ONLY',
+      'LOAN_INTEREST_CASH',
+      'Juros de empréstimo (quantidade zerada) são caixa, não custódia.',
+    );
   }
 
-  // 8. Subscription lifecycle: rights, requests, receipts, sobras, cessões.
-  // Exercised/converted rights change custody but the ledger has no honest
-  // representation without exercise price (SUBSCRIPTION requires unitPrice>0)
-  // and no receipt-conversion type — never fabricate.
+  // 9. Subscription lifecycle: rights, requests, receipts, sobras, cessões.
+  // Exercised rights WITH a factual price are handled by branch 2 above;
+  // everything here lacks either a price or a conversion representation and
+  // stays out of the ledger — never fabricate.
   if (SUBSCRIPTION_LIFECYCLE_LABELS.has(label)) {
     return notice(
       row,
@@ -462,8 +616,13 @@ export function mapMovementRow(
     );
   }
 
-  // 9. Fail closed: unknown labels need a human, never silent import.
-  return notice(row, 'REVIEW_REQUIRED', 'UNKNOWN_MOVEMENT_LABEL', `Movimentação "${row.movement}" não classificada precisa de revisão; nada foi importado.`);
+  // 10. Fail closed: unknown labels need a human, never silent import.
+  return notice(
+    row,
+    'REVIEW_REQUIRED',
+    'UNKNOWN_MOVEMENT_LABEL',
+    `Movimentação "${row.movement}" não classificada precisa de revisão; nada foi importado.`,
+  );
 }
 
 export interface MappedMovementSheet {
@@ -568,15 +727,13 @@ function normRawLabel(raw: string): string {
  *   settlement window → UNSUPPORTED (already represented, PART P).
  * - LOAN_CUSTODY_STATE: débito+crédito Transferência pair (same ticker/date/qty)
  *   → UNSUPPORTED (loan-roll signature, economic-neutral).
- * - PRE_BASELINE_COVERED_BY_OPENING_SNAPSHOT: BUY/SELL/BONUS dated on/before an
+ * - PRE_BASELINE_COVERED_BY_OPENING_SNAPSHOT: BUY/SELL/BONUS/SUBSCRIPTION dated on/before an
  *   existing opening TRANSFER_IN for the same asset+account → NEEDS_REVIEW.
  *   Confirming as-is would double-count (canonical replay orders by tradeDate
  *   ahead of the snapshot); KCRE11-style settlement-after-baseline cases need
  *   explicit owner decision with 2025-report evidence, never silent import.
  */
-export function applyMovementLedgerGates(
-  input: MovementLedgerGateInput,
-): ClassifiedCandidate[] {
+export function applyMovementLedgerGates(input: MovementLedgerGateInput): ClassifiedCandidate[] {
   const { candidates, existing } = input;
   const pairKeys = new Map<string, { debito: number; credito: number }>();
   candidates.forEach((c) => {
@@ -604,7 +761,8 @@ export function applyMovementLedgerGates(
     if (
       (candidate.operation === 'BUY' ||
         candidate.operation === 'SELL' ||
-        candidate.operation === 'BONUS') &&
+        candidate.operation === 'BONUS' ||
+        candidate.operation === 'SUBSCRIPTION') &&
       candidate.status === 'READY'
     ) {
       const covering = existing.find(
@@ -695,10 +853,8 @@ export function summarizeMovementPreview(
   candidates: readonly { status: ImportRowStatus; issues: readonly { code: string }[] }[],
   notices: readonly MovementNotice[],
 ): MovementPreviewSummary {
-  const hasCode = (
-    issues: readonly { code: string }[],
-    ...codes: string[]
-  ): boolean => issues.some((i) => codes.includes(i.code));
+  const hasCode = (issues: readonly { code: string }[], ...codes: string[]): boolean =>
+    issues.some((i) => codes.includes(i.code));
   let supportedCustodyEvents = 0;
   let settlementShadows = 0;
   let unsupported = 0;

@@ -58,7 +58,11 @@ describe('Import Engine: template header mapping', () => {
     expect(mapOperation('JCP')).toEqual({ kind: 'JCP' });
     // Phase R1: bonus maps to a first-class kind (quantity-only, unknown cost).
     expect(mapOperation('BONIFICAÇÃO')).toEqual({ kind: 'BONUS' });
-    expect(mapOperation('SUBSCRIÇÃO')).toEqual({ kind: 'DEFERRED', operation: 'SUBSCRIPTION' });
+    // Subscription exercise maps to a first-class kind (onerous acquisition
+    // with factual price; price-unknown rows fail closed in normalizeRow).
+    expect(mapOperation('SUBSCRIÇÃO')).toEqual({ kind: 'SUBSCRIPTION' });
+    expect(mapOperation('SUBSCRIÇÃO EXERCIDA')).toEqual({ kind: 'SUBSCRIPTION' });
+    expect(mapOperation('SUBSCRIPTION')).toEqual({ kind: 'SUBSCRIPTION' });
     expect(mapOperation('ALIENAÇÃO')).toEqual({ kind: 'UNKNOWN', raw: 'ALIENAÇÃO' });
   });
 });

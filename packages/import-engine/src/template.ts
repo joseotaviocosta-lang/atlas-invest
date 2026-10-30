@@ -126,7 +126,17 @@ const DIVIDEND_SYNONYMS = new Set(['DIVIDENDO', 'DIVIDENDOS', 'DIVIDEND']);
 const JCP_SYNONYMS = new Set(['JCP', 'JUROS SOBRE CAPITAL PROPRIO', 'JUROSSOBRECAPITALPROPRIO']);
 const FII_INCOME_SYNONYMS = new Set(['RENDIMENTO', 'RENDIMENTOS', 'RENDIMENTO_FII', 'FII_INCOME']);
 
-const BONUS_SYNONYMS = new Set(['BONIFICACAO', 'BONUS', 'BONUS EM ATIVOS', 'BONIFICACAO EM ATIVOS']);
+const BONUS_SYNONYMS = new Set([
+  'BONIFICACAO',
+  'BONUS',
+  'BONUS EM ATIVOS',
+  'BONIFICACAO EM ATIVOS',
+]);
+
+// Subscription exercises booked on the PARENT asset with a factual exercise
+// price (never inferred, never zero). Deferred map below no longer claims
+// these labels: SUBSCRIPTION is a directly supported operation.
+const SUBSCRIPTION_SYNONYMS = new Set(['SUBSCRICAO', 'SUBSCRICAO EXERCIDA', 'SUBSCRIPTION']);
 
 export type MappedOperation =
   | { kind: 'BUY' }
@@ -137,6 +147,7 @@ export type MappedOperation =
   | { kind: 'JCP' }
   | { kind: 'FII_INCOME' }
   | { kind: 'BONUS' }
+  | { kind: 'SUBSCRIPTION' }
   | { kind: 'DEFERRED'; operation: string }
   | { kind: 'UNKNOWN'; raw: string };
 
@@ -145,9 +156,6 @@ const DEFERRED_SYNONYMS: Record<string, string> = {
   SPLIT: 'SPLIT',
   GRUPAMENTO: 'REVERSE_SPLIT',
   REVERSE_SPLIT: 'REVERSE_SPLIT',
-  SUBSCRICAO: 'SUBSCRIPTION',
-  SUBSCRIÇÃO: 'SUBSCRIPTION',
-  SUBSCRIPTION: 'SUBSCRIPTION',
   AMORTIZACAO: 'AMORTIZATION',
   AMORTIZAÇÃO: 'AMORTIZATION',
   AMORTIZATION: 'AMORTIZATION',
@@ -180,6 +188,7 @@ export function mapOperation(raw: string): MappedOperation {
   if (JCP_SYNONYMS.has(normalized)) return { kind: 'JCP' };
   if (FII_INCOME_SYNONYMS.has(normalized)) return { kind: 'FII_INCOME' };
   if (BONUS_SYNONYMS.has(normalized)) return { kind: 'BONUS' };
+  if (SUBSCRIPTION_SYNONYMS.has(normalized)) return { kind: 'SUBSCRIPTION' };
   const deferred = DEFERRED_SYNONYMS[normalized];
   if (deferred) return { kind: 'DEFERRED', operation: deferred };
   return { kind: 'UNKNOWN', raw: raw.trim() };

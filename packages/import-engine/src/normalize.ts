@@ -4,7 +4,7 @@
  * Converts raw string cells into canonical candidates with strict validation:
  * - civil dates (ISO canonical, BR DD/MM/YYYY accepted and normalized);
  * - decimal strings only (BR `1.234,56` and ISO `1234.56` accepted, never float);
- * - operation mapping (BUY/SELL/BONUS supported; known others deferred; unknown invalid);
+ * - operation mapping (BUY/SELL/SUBSCRIPTION-with-price/BONUS supported; known others deferred; unknown invalid);
  * - currency defaults to BRL and must be supported.
  *
  * `today` is injected (YYYY-MM-DD) so future-date detection stays deterministic.
@@ -104,7 +104,7 @@ export function normalizeRow(
     issues.push({
       code: 'UNSUPPORTED_OPERATION',
       field: 'operation',
-      message: `Operação ${mapped.operation} ainda não é suportada na importação (somente compra, venda, bonificação, transferência de custódia e rendimentos com valor informado)`,
+      message: `Operação ${mapped.operation} ainda não é suportada na importação (somente compra, venda, subscrição exercida com preço, bonificação, transferência de custódia e rendimentos com valor informado)`,
     });
     status = 'UNSUPPORTED';
   }
@@ -135,11 +135,20 @@ export function normalizeRow(
 
   const unitPriceRaw = cell(row, mapping, 'unit_price');
   const unitPrice = normalizeDecimalString(unitPriceRaw);
-  if (mapped.kind === 'BUY' || mapped.kind === 'SELL') {
+  if (mapped.kind === 'BUY' || mapped.kind === 'SELL' || mapped.kind === 'SUBSCRIPTION') {
     if (unitPrice === null) {
       fail('INVALID_UNIT_PRICE', `Preço unitário "${unitPriceRaw.trim()}" inválido`, 'unit_price');
     } else if (!isPositiveDecimal(unitPrice)) {
-      fail('INVALID_UNIT_PRICE', 'Preço unitário deve ser maior que zero', 'unit_price');
+      // A subscription without a factual exercise price is never importable:
+      // quantity known + price unknown != safe READY event (never zero,
+      // never inferred from market/average prices).
+      fail(
+        'INVALID_UNIT_PRICE',
+        mapped.kind === 'SUBSCRIPTION'
+          ? 'Subscrição sem preço de exercício comprovado não pode ser importada'
+          : 'Preço unitário deve ser maior que zero',
+        'unit_price',
+      );
     }
   } else if (isBonus && unitPrice !== null && !/^0+(\.0+)?$/.test(unitPrice)) {
     // A bonus carries no acquisition price: credited shares have unknown cost
@@ -228,7 +237,8 @@ export function normalizeRow(
     mapped.kind === 'DIVIDEND' ||
     mapped.kind === 'JCP' ||
     mapped.kind === 'FII_INCOME' ||
-    mapped.kind === 'BONUS'
+    mapped.kind === 'BONUS' ||
+    mapped.kind === 'SUBSCRIPTION'
       ? mapped.kind
       : 'BUY';
 

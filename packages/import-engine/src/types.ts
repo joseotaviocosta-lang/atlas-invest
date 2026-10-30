@@ -15,12 +15,7 @@ export const SUPPORTED_IMPORT_SOURCES = [
 export type SupportedImportSource = (typeof SUPPORTED_IMPORT_SOURCES)[number];
 
 export type B3LayoutType =
-  | 'B3_NEGOTIATION'
-  | 'B3_MOVEMENT'
-  | 'B3_EVENTS'
-  | 'B3_POSITION'
-  | 'B3_ANNUAL_REPORT'
-  | 'UNKNOWN';
+  'B3_NEGOTIATION' | 'B3_MOVEMENT' | 'B3_EVENTS' | 'B3_POSITION' | 'B3_ANNUAL_REPORT' | 'UNKNOWN';
 
 export interface B3LayoutDetectionResult {
   isB3: boolean;
@@ -50,13 +45,16 @@ export type DeferredImportSource = (typeof DEFERRED_IMPORT_SOURCES)[number];
 
 /**
  * Importable scope (5K trades + 5M custody transfers + 5O-A income events +
- * R1 bonus corporate actions).
+ * R1 bonus corporate actions + subscription exercises with factual price).
  * BUY/SELL flow into canonical positions as economic events; TRANSFER_IN /
  * TRANSFER_OUT flow as mirrored custody legs (never acquisitions, never
  * disposals); DIVIDEND / JCP / FII_INCOME flow as income events carrying an
  * exact `amount` (never quantities, never prices); BONUS flows as a corporate
  * action adding custody quantity with NO assigned cost (the engine keeps the
- * position costBasisStatus INCOMPLETE — unknown cost is never zero).
+ * position costBasisStatus INCOMPLETE — unknown cost is never zero);
+ * SUBSCRIPTION flows as an onerous acquisition of new units carrying an exact
+ * `unitPrice > 0` (exercise price from source evidence; never inferred, never
+ * zero — the engine keeps INCOMPLETE positions INCOMPLETE).
  * Every other operation stays deferred (fail-closed).
  */
 export const SUPPORTED_IMPORT_OPERATIONS = [
@@ -68,6 +66,7 @@ export const SUPPORTED_IMPORT_OPERATIONS = [
   'JCP',
   'FII_INCOME',
   'BONUS',
+  'SUBSCRIPTION',
 ] as const;
 export type SupportedImportOperation = (typeof SUPPORTED_IMPORT_OPERATIONS)[number];
 
@@ -78,7 +77,6 @@ export type SupportedImportOperation = (typeof SUPPORTED_IMPORT_OPERATIONS)[numb
 export const DEFERRED_IMPORT_OPERATIONS = [
   'SPLIT',
   'REVERSE_SPLIT',
-  'SUBSCRIPTION',
   'AMORTIZATION',
   'DEPOSIT',
   'WITHDRAWAL',

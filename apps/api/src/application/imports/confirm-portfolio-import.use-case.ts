@@ -153,7 +153,11 @@ export class ConfirmPortfolioImportUseCase {
         if (built) {
           commands.push(built);
         } else {
-          failed.push({ rowNumber: candidate.rowNumber, message: 'Conta ou ativo não resolvido', kind: 'error' });
+          failed.push({
+            rowNumber: candidate.rowNumber,
+            message: 'Conta ou ativo não resolvido',
+            kind: 'error',
+          });
         }
         continue;
       }
@@ -182,7 +186,11 @@ export class ConfirmPortfolioImportUseCase {
         if (built) {
           commands.push(built);
         } else {
-          failed.push({ rowNumber: candidate.rowNumber, message: 'Conta ou ativo não resolvido', kind: 'error' });
+          failed.push({
+            rowNumber: candidate.rowNumber,
+            message: 'Conta ou ativo não resolvido',
+            kind: 'error',
+          });
         }
         continue;
       }
@@ -241,7 +249,9 @@ export class ConfirmPortfolioImportUseCase {
       // instead of marking everything resolved. Skipped-by-user rows are NOT
       // pending (explicit ignore); NEEDS_REVIEW leftovers are.
       // PARTIAL != ERROR: actual errors surface via receipt.errorCount.
-      const runPendingReviewCount = failed.filter((entry) => entry.kind === 'pending-review').length;
+      const runPendingReviewCount = failed.filter(
+        (entry) => entry.kind === 'pending-review',
+      ).length;
       await this.runService.recordConfirmation({
         runId: command.runId,
         portfolioId: command.portfolioId,
@@ -412,6 +422,21 @@ export class ConfirmPortfolioImportUseCase {
         ...base,
         type: candidate.operation,
         quantity: candidate.quantity,
+        userId: command.userId,
+      };
+    }
+    // Subscription exercises persist quantity + factual exercise price.
+    // The router guarantees unitPrice > 0 from source evidence (never
+    // inferred, never zero); the engine folds the acquisition cost into the
+    // position and keeps INCOMPLETE positions INCOMPLETE (never a gain,
+    // never a disposal — tax projection treats it as INFORMATIONAL).
+    if (candidate.operation === 'SUBSCRIPTION') {
+      return {
+        ...base,
+        type: candidate.operation,
+        quantity: candidate.quantity,
+        unitPrice: candidate.unitPrice,
+        fees: candidate.fees !== '0' ? candidate.fees : undefined,
         userId: command.userId,
       };
     }
