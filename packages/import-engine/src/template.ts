@@ -126,6 +126,8 @@ const DIVIDEND_SYNONYMS = new Set(['DIVIDENDO', 'DIVIDENDOS', 'DIVIDEND']);
 const JCP_SYNONYMS = new Set(['JCP', 'JUROS SOBRE CAPITAL PROPRIO', 'JUROSSOBRECAPITALPROPRIO']);
 const FII_INCOME_SYNONYMS = new Set(['RENDIMENTO', 'RENDIMENTOS', 'RENDIMENTO_FII', 'FII_INCOME']);
 
+const BONUS_SYNONYMS = new Set(['BONIFICACAO', 'BONUS', 'BONUS EM ATIVOS', 'BONIFICACAO EM ATIVOS']);
+
 export type MappedOperation =
   | { kind: 'BUY' }
   | { kind: 'SELL' }
@@ -134,6 +136,7 @@ export type MappedOperation =
   | { kind: 'DIVIDEND' }
   | { kind: 'JCP' }
   | { kind: 'FII_INCOME' }
+  | { kind: 'BONUS' }
   | { kind: 'DEFERRED'; operation: string }
   | { kind: 'UNKNOWN'; raw: string };
 
@@ -142,9 +145,6 @@ const DEFERRED_SYNONYMS: Record<string, string> = {
   SPLIT: 'SPLIT',
   GRUPAMENTO: 'REVERSE_SPLIT',
   REVERSE_SPLIT: 'REVERSE_SPLIT',
-  BONIFICACAO: 'BONUS',
-  BONIFICAÇÃO: 'BONUS',
-  BONUS: 'BONUS',
   SUBSCRICAO: 'SUBSCRIPTION',
   SUBSCRIÇÃO: 'SUBSCRIPTION',
   SUBSCRIPTION: 'SUBSCRIPTION',
@@ -179,6 +179,7 @@ export function mapOperation(raw: string): MappedOperation {
   if (DIVIDEND_SYNONYMS.has(normalized)) return { kind: 'DIVIDEND' };
   if (JCP_SYNONYMS.has(normalized)) return { kind: 'JCP' };
   if (FII_INCOME_SYNONYMS.has(normalized)) return { kind: 'FII_INCOME' };
+  if (BONUS_SYNONYMS.has(normalized)) return { kind: 'BONUS' };
   const deferred = DEFERRED_SYNONYMS[normalized];
   if (deferred) return { kind: 'DEFERRED', operation: deferred };
   return { kind: 'UNKNOWN', raw: raw.trim() };

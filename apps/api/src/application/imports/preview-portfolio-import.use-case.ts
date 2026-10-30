@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { EntityNotFoundError, CrossPortfolioIntegrityError } from '@atlas/database';
-import { LocalDate, serializeTransaction, Asset } from '@atlas/domain';
+import { LocalDate, serializeTransaction, Asset, type Transaction } from '@atlas/domain';
 import type {
   IAccountRepository,
   IAssetRepository,
@@ -30,6 +30,8 @@ import {
   detectB3XlsxLayout,
   parseB3NegotiationXlsx,
   parseB3AnnualReportXlsx,
+  parseB3MovementXlsx,
+  applyMovementLedgerGates,
   B3XlsxParseError,
   resolveAccount,
   resolveAsset,
@@ -43,6 +45,7 @@ import {
   type ClassifiedCandidate,
   type ExistingLedgerRow,
   type ImportSummary,
+  type MovementNotice,
   type NormalizedCandidate,
   type RawImportRow,
   type UniqueAssetSummary,
@@ -73,6 +76,12 @@ export interface PortfolioImportPreview {
   /** Operational run tracking this preview. Null on internal re-previews. */
   runId: string | null;
   candidates: ClassifiedCandidate[];
+  /**
+   * Phase R1 — non-ledger movement notices (cash-only, informational,
+   * review-required). Display-only: confirm ignores notices structurally,
+   * so they can never reach the ledger (PART P: no mass import).
+   */
+  notices: MovementNotice[];
   summary: ImportSummary;
   assetSummary?: UniqueAssetSummary[];
   institutionSummary?: UniqueInstitutionSummary[];
@@ -81,6 +90,7 @@ export interface PortfolioImportPreview {
 interface PipelineContext {
   provider: string;
   normalized: NormalizedCandidate[];
+  notices: MovementNotice[];
   assets: AssetRef[];
   accounts: AccountRef[];
   institutions: Array<{ id: string; name: string }>;
@@ -123,6 +133,7 @@ export class PreviewPortfolioImportUseCase {
     const isB3 =
       command.sourceType === 'B3_NEGOTIATION_XLSX' ||
       command.sourceType === 'B3_ANNUAL_REPORT_XLSX' ||
+      command.sourceType === 'B3_MOVEMENT_XLSX' ||
       context.provider.includes('B3');
     const run = await this.runService.startRun({
       portfolioId: command.portfolioId,
@@ -175,11 +186,13 @@ export class PreviewPortfolioImportUseCase {
     }
 
     let normalized: NormalizedCandidate[];
+    let movementNotices: MovementNotice[] = [];
     let defaultProviderName = 'CSV';
 
     if (
       command.sourceType === 'B3_NEGOTIATION_XLSX' ||
-      command.sourceType === 'B3_ANNUAL_REPORT_XLSX'
+      command.sourceType === 'B3_ANNUAL_REPORT_XLSX' ||
+      command.sourceType === 'B3_MOVEMENT_XLSX'
     ) {
       const buffer = Buffer.from(command.content, 'base64');
       if (buffer.length > MAX_IMPORT_BYTES) {
@@ -206,6 +219,14 @@ export class PreviewPortfolioImportUseCase {
             fileName: command.fileName,
             maxRows: MAX_IMPORT_ROWS,
           });
+        } else if (detection.layout === 'B3_MOVEMENT') {
+          const mapped = await parseB3MovementXlsx(buffer, {
+            fileName: command.fileName,
+            today: this.clock.today(),
+            maxRows: MAX_IMPORT_ROWS,
+          });
+          normalized = [...mapped.candidates];
+          movementNotices = [...mapped.notices];
         } else {
           throw new ImportValidationError(
             `Layout B3 "${detection.detectedName}" ainda não é suportado para importação.`,
@@ -312,15 +333,23 @@ export class PreviewPortfolioImportUseCase {
       (candidate) => candidate.status !== 'INVALID' && candidate.tradeDate !== '',
     );
     const tradeDates = dated.map((candidate) => candidate.tradeDate).sort();
-    const existing = await this.loadExistingLedger(
-      command.portfolioId,
-      tradeDates[0],
-      tradeDates[tradeDates.length - 1],
-    );
+    // Phase R1 — movement ledger gates (settlement shadows, pre-baseline
+    // snapshot cover) need the FULL ledger history, including 2024 opening
+    // legs that fall outside the file's own date window. Other sources keep
+    // the bounded range query.
+    const existing =
+      command.sourceType === 'B3_MOVEMENT_XLSX'
+        ? await this.loadFullLedger(command.portfolioId)
+        : await this.loadExistingLedger(
+            command.portfolioId,
+            tradeDates[0],
+            tradeDates[tradeDates.length - 1],
+          );
 
     return {
       provider,
       normalized,
+      notices: movementNotices,
       assets: assets.map((asset) => ({
         id: asset.id,
         ticker: asset.ticker,
@@ -385,6 +414,7 @@ export class PreviewPortfolioImportUseCase {
       } else if (
         command.sourceType === 'B3_NEGOTIATION_XLSX' ||
         command.sourceType === 'B3_ANNUAL_REPORT_XLSX' ||
+        command.sourceType === 'B3_MOVEMENT_XLSX' ||
         candidate.accountLabel ||
         candidate.brokerLabel
       ) {
@@ -428,9 +458,18 @@ export class PreviewPortfolioImportUseCase {
       };
     });
 
+    // Phase R1 — movement ledger gates run post-classification (they need
+    // resolved assetId/accountId plus full existing history). Downgrades only:
+    // shadows and loan-state become UNSUPPORTED, pre-baseline trades become
+    // NEEDS_REVIEW. Nothing here can promote a row to READY.
+    const gated =
+      command.sourceType === 'B3_MOVEMENT_XLSX'
+        ? applyMovementLedgerGates({ candidates, existing: context.existing })
+        : candidates;
+
     // Unique Asset Summary
     const assetSummaryMap = new Map<string, UniqueAssetSummary>();
-    for (const candidate of candidates) {
+    for (const candidate of gated) {
       const ticker = candidate.ticker.trim().toUpperCase();
       const existing = assetSummaryMap.get(ticker);
       if (existing) {
@@ -466,7 +505,7 @@ export class PreviewPortfolioImportUseCase {
       }
     >();
 
-    for (const candidate of candidates) {
+    for (const candidate of gated) {
       const rawName =
         candidate.accountLabel?.trim() || candidate.brokerLabel?.trim() || 'Não identificada';
       const normalizedName = candidate.normalizedInstitution || normalizeB3InstitutionName(rawName);
@@ -531,10 +570,45 @@ export class PreviewPortfolioImportUseCase {
       // Run linkage is set by execute() (user-facing preview); internal
       // re-previews resolve it to null.
       runId: null,
-      candidates,
-      summary: summarize(candidates),
+      candidates: gated,
+      notices: context.notices,
+      summary: summarize(gated),
       assetSummary,
       institutionSummary,
+    };
+  }
+
+  private async loadFullLedger(portfolioId: string): Promise<ExistingLedgerRow[]> {
+    const transactions = await this.transactionRepository.findByPortfolioId(portfolioId);
+    return transactions.map((transaction) => this.toExistingRow(transaction));
+  }
+
+  private toExistingRow(transaction: Transaction): ExistingLedgerRow {
+    const json = serializeTransaction(transaction);
+    return {
+      provider: json.provider ?? null,
+      externalId: json.externalId ?? null,
+      assetId: json.assetId ?? '',
+      accountId: json.accountId,
+      type: json.type,
+      tradeDate: json.tradeDate,
+      quantity: json.quantity ?? '',
+      unitPrice: json.unitPrice?.amount ?? null,
+      fees: json.fees?.amount ?? null,
+      // Phase 5O-A: income rows carry the credited value; trades carry null.
+      amount: json.amount?.amount ?? null,
+      currency: json.currency,
+      fingerprint: canonicalFingerprint({
+        portfolioId: json.portfolioId,
+        accountId: json.accountId,
+        assetId: json.assetId ?? '',
+        type: json.type,
+        tradeDate: json.tradeDate,
+        quantity: json.quantity ?? '',
+        unitPrice: json.unitPrice?.amount ?? null,
+        fees: json.fees?.amount ?? null,
+        currency: json.currency,
+      }),
     };
   }
 
@@ -548,33 +622,6 @@ export class PreviewPortfolioImportUseCase {
       startDate: LocalDate.from(startDate),
       endDate: LocalDate.from(endDate),
     });
-    return transactions.map((transaction) => {
-      const json = serializeTransaction(transaction);
-      return {
-        provider: json.provider ?? null,
-        externalId: json.externalId ?? null,
-        assetId: json.assetId ?? '',
-        accountId: json.accountId,
-        type: json.type,
-        tradeDate: json.tradeDate,
-        quantity: json.quantity ?? '',
-        unitPrice: json.unitPrice?.amount ?? null,
-        fees: json.fees?.amount ?? null,
-        // Phase 5O-A: income rows carry the credited value; trades carry null.
-        amount: json.amount?.amount ?? null,
-        currency: json.currency,
-        fingerprint: canonicalFingerprint({
-          portfolioId: json.portfolioId,
-          accountId: json.accountId,
-          assetId: json.assetId ?? '',
-          type: json.type,
-          tradeDate: json.tradeDate,
-          quantity: json.quantity ?? '',
-          unitPrice: json.unitPrice?.amount ?? null,
-          fees: json.fees?.amount ?? null,
-          currency: json.currency,
-        }),
-      };
-    });
+    return transactions.map((transaction) => this.toExistingRow(transaction));
   }
 }

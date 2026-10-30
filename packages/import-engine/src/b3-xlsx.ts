@@ -18,6 +18,11 @@ import { LocalDate, Quantity } from '@atlas/domain';
 import { normalizeDecimalString } from './normalize';
 import { normalizeB3InstitutionName } from './b3-institutions';
 import {
+  extractMovementRows,
+  mapMovementSheet,
+  type MappedMovementSheet,
+} from './b3-movement';
+import {
   MAX_IMPORT_BYTES,
   MAX_IMPORT_ROWS,
   type B3LayoutDetectionResult,
@@ -181,8 +186,7 @@ export async function detectB3XlsxLayout(buffer: Buffer): Promise<B3LayoutDetect
         layout: 'B3_MOVEMENT',
         sheetName: ws.name,
         detectedName: 'Área do Investidor B3 — Movimentação',
-        isSupported: false,
-        reason: 'Arquivo B3 reconhecido (Movimentação), mas este tipo ainda não é suportado para importação.',
+        isSupported: true,
       };
     }
   }
@@ -811,4 +815,74 @@ export async function parseB3AnnualReportXlsx(
   }
 
   return candidates;
+}
+
+export interface ParseB3MovementOptions {
+  maxRows?: number;
+  fileName?: string;
+  today?: string;
+}
+
+/**
+ * Phase R1 — parses a B3 Movimentação workbook into ledger candidates plus
+ * non-ledger notices. Only BONUS (unknown cost), fraction-auction SELL and
+ * plain custody TRANSFER legs become candidates; cash-only, informational,
+ * subscription-lifecycle and unknown rows become notices that confirm
+ * ignores structurally. Ledger gates (shadows, pre-baseline) run later in
+ * the preview pipeline with existing-ledger context.
+ */
+export async function parseB3MovementXlsx(
+  buffer: Buffer,
+  options: ParseB3MovementOptions = {},
+): Promise<MappedMovementSheet> {
+  const maxRows = options.maxRows ?? MAX_IMPORT_ROWS;
+
+  if (buffer.length > MAX_IMPORT_BYTES) {
+    throw new B3XlsxParseError(
+      `Arquivo excede o limite de ${MAX_IMPORT_BYTES / 1024 / 1024} MB por importação.`,
+    );
+  }
+
+  const detection = await detectB3XlsxLayout(buffer);
+  if (!detection.isB3 || detection.layout !== 'B3_MOVEMENT') {
+    throw new B3XlsxParseError(
+      detection.reason ?? 'Arquivo Excel não reconhecido como Movimentação da B3.',
+    );
+  }
+
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+
+  const worksheet =
+    (detection.sheetName ? workbook.getWorksheet(detection.sheetName) : null) ??
+    workbook.worksheets[0];
+
+  if (!worksheet) {
+    throw new B3XlsxParseError('Planilha de Movimentação da B3 não encontrada no arquivo.');
+  }
+
+  let rows;
+  try {
+    rows = extractMovementRows(worksheet, maxRows);
+  } catch (error: unknown) {
+    throw new B3XlsxParseError(
+      error instanceof Error ? error.message : 'Falha ao ler a Movimentação da B3.',
+    );
+  }
+
+  const today =
+    options.today ?? (() => {
+      const now = new Date();
+      const pad = (n: number): string => String(n).padStart(2, '0');
+      return `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
+    })();
+
+  const mapped = mapMovementSheet(rows, {
+    fileName: options.fileName ?? 'movimentacao-b3.xlsx',
+    today,
+  });
+  return {
+    candidates: mapped.candidates.map((candidate) => Object.freeze(candidate)),
+    notices: mapped.notices.map((notice) => Object.freeze(notice)),
+  };
 }

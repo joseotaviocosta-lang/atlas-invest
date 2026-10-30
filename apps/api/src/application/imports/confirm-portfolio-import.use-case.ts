@@ -328,7 +328,8 @@ export class ConfirmPortfolioImportUseCase {
       // CSV flows keep 'CSV'; B3 flows record 'B3'.
       source: (candidate.provider.includes('B3') ||
       command.sourceType === 'B3_NEGOTIATION_XLSX' ||
-      command.sourceType === 'B3_ANNUAL_REPORT_XLSX'
+      command.sourceType === 'B3_ANNUAL_REPORT_XLSX' ||
+      command.sourceType === 'B3_MOVEMENT_XLSX'
         ? 'B3'
         : 'CSV') as CreateTransactionCommand['source'],
       provider: candidate.provider,
@@ -362,6 +363,17 @@ export class ConfirmPortfolioImportUseCase {
         type: candidate.operation,
         quantity: candidate.quantity,
         ...(candidate.transferGroupId ? { transferGroupId: candidate.transferGroupId } : {}),
+        userId: command.userId,
+      };
+    }
+    // Phase R1: bonus corporate actions persist quantity-only. No unitPrice,
+    // no fees, no assignedCost: the credited shares have unknown acquisition
+    // cost and the engine keeps costBasisStatus INCOMPLETE (never zero).
+    if (candidate.operation === 'BONUS') {
+      return {
+        ...base,
+        type: candidate.operation,
+        quantity: candidate.quantity,
         userId: command.userId,
       };
     }

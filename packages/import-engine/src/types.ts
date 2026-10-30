@@ -10,6 +10,7 @@ export const SUPPORTED_IMPORT_SOURCES = [
   'GENERIC_CSV',
   'B3_NEGOTIATION_XLSX',
   'B3_ANNUAL_REPORT_XLSX',
+  'B3_MOVEMENT_XLSX',
 ] as const;
 export type SupportedImportSource = (typeof SUPPORTED_IMPORT_SOURCES)[number];
 
@@ -48,12 +49,15 @@ export const DEFERRED_IMPORT_SOURCES = [
 export type DeferredImportSource = (typeof DEFERRED_IMPORT_SOURCES)[number];
 
 /**
- * Importable scope (5K trades + 5M custody transfers + 5O-A income events).
+ * Importable scope (5K trades + 5M custody transfers + 5O-A income events +
+ * R1 bonus corporate actions).
  * BUY/SELL flow into canonical positions as economic events; TRANSFER_IN /
  * TRANSFER_OUT flow as mirrored custody legs (never acquisitions, never
  * disposals); DIVIDEND / JCP / FII_INCOME flow as income events carrying an
- * exact `amount` (never quantities, never prices). Every other operation
- * stays deferred (fail-closed).
+ * exact `amount` (never quantities, never prices); BONUS flows as a corporate
+ * action adding custody quantity with NO assigned cost (the engine keeps the
+ * position costBasisStatus INCOMPLETE — unknown cost is never zero).
+ * Every other operation stays deferred (fail-closed).
  */
 export const SUPPORTED_IMPORT_OPERATIONS = [
   'BUY',
@@ -63,6 +67,7 @@ export const SUPPORTED_IMPORT_OPERATIONS = [
   'DIVIDEND',
   'JCP',
   'FII_INCOME',
+  'BONUS',
 ] as const;
 export type SupportedImportOperation = (typeof SUPPORTED_IMPORT_OPERATIONS)[number];
 
@@ -73,7 +78,6 @@ export type SupportedImportOperation = (typeof SUPPORTED_IMPORT_OPERATIONS)[numb
 export const DEFERRED_IMPORT_OPERATIONS = [
   'SPLIT',
   'REVERSE_SPLIT',
-  'BONUS',
   'SUBSCRIPTION',
   'AMORTIZATION',
   'DEPOSIT',

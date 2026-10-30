@@ -8,6 +8,7 @@ export * from './resolve';
 export * from './classify';
 export * from './b3';
 export * from './b3-xlsx';
+export * from './b3-movement';
 export * from './b3-assets';
 export * from './b3-institutions';
 export * from './b3-simulated';

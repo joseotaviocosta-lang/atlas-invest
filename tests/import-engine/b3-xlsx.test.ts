@@ -68,8 +68,10 @@ describe('B3 XLSX Import: Layout Detection & Negotiation Parser', () => {
       const result = await detectB3XlsxLayout(buffer);
       expect(result.isB3).toBe(true);
       expect(result.layout).toBe('B3_MOVEMENT');
-      expect(result.isSupported).toBe(false);
-      expect(result.reason).toContain('Arquivo B3 reconhecido (Movimentação), mas este tipo ainda não é suportado');
+      // Phase R1: movement preview is supported (parser + classifier + ledger
+      // gates); only proven custody classes become importable candidates.
+      expect(result.isSupported).toBe(true);
+      expect(result.detectedName).toContain('Movimentação');
     });
 
     it('detects B3 Eventos / Proventos a Receber and marks it recognized but unsupported', async () => {

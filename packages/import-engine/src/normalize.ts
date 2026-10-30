@@ -4,7 +4,7 @@
  * Converts raw string cells into canonical candidates with strict validation:
  * - civil dates (ISO canonical, BR DD/MM/YYYY accepted and normalized);
  * - decimal strings only (BR `1.234,56` and ISO `1234.56` accepted, never float);
- * - operation mapping (BUY/SELL supported; known others deferred; unknown invalid);
+ * - operation mapping (BUY/SELL/BONUS supported; known others deferred; unknown invalid);
  * - currency defaults to BRL and must be supported.
  *
  * `today` is injected (YYYY-MM-DD) so future-date detection stays deterministic.
@@ -104,7 +104,7 @@ export function normalizeRow(
     issues.push({
       code: 'UNSUPPORTED_OPERATION',
       field: 'operation',
-      message: `Operação ${mapped.operation} ainda não é suportada na importação (somente compra, venda, transferência de custódia e rendimentos com valor informado)`,
+      message: `Operação ${mapped.operation} ainda não é suportada na importação (somente compra, venda, bonificação, transferência de custódia e rendimentos com valor informado)`,
     });
     status = 'UNSUPPORTED';
   }
@@ -112,6 +112,7 @@ export function normalizeRow(
   const isTransfer = mapped.kind === 'TRANSFER_IN' || mapped.kind === 'TRANSFER_OUT';
   const isIncome =
     mapped.kind === 'DIVIDEND' || mapped.kind === 'JCP' || mapped.kind === 'FII_INCOME';
+  const isBonus = mapped.kind === 'BONUS';
 
   const quantityRaw = cell(row, mapping, 'quantity');
   const quantity = normalizeDecimalString(quantityRaw);
@@ -140,6 +141,16 @@ export function normalizeRow(
     } else if (!isPositiveDecimal(unitPrice)) {
       fail('INVALID_UNIT_PRICE', 'Preço unitário deve ser maior que zero', 'unit_price');
     }
+  } else if (isBonus && unitPrice !== null && !/^0+(\.0+)?$/.test(unitPrice)) {
+    // A bonus carries no acquisition price: credited shares have unknown cost
+    // (the engine keeps INCOMPLETE, never zero). A priced "bonus" is ambiguous
+    // and must never auto-convert into cost basis.
+    status = 'NEEDS_REVIEW';
+    issues.push({
+      code: 'BONUS_WITH_PRICE',
+      field: 'unit_price',
+      message: 'Bonificação com preço informado precisa de revisão (custo desconhecido)',
+    });
   } else if ((isTransfer || isIncome) && unitPrice !== null && !/^0+(\.0+)?$/.test(unitPrice)) {
     // Custody moves and income events carry no price. A priced "transfer" or
     // "dividend" is ambiguous (sale? corporate action?) and must never
@@ -216,7 +227,8 @@ export function normalizeRow(
     mapped.kind === 'TRANSFER_OUT' ||
     mapped.kind === 'DIVIDEND' ||
     mapped.kind === 'JCP' ||
-    mapped.kind === 'FII_INCOME'
+    mapped.kind === 'FII_INCOME' ||
+    mapped.kind === 'BONUS'
       ? mapped.kind
       : 'BUY';
 

@@ -2299,7 +2299,9 @@ function ImportHubContent() {
                             ? 'Compra'
                             : candidate.operation === 'SELL'
                               ? 'Venda'
-                              : candidate.operation === 'TRANSFER_IN'
+                              : candidate.operation === 'BONUS'
+                                ? 'Bonificação'
+                                : candidate.operation === 'TRANSFER_IN'
                                 ? candidate.rawOperation === 'POSICAO_INICIAL'
                                   ? 'Posição Inicial'
                                   : 'Transferência (entrada)'
@@ -2313,7 +2315,9 @@ function ImportHubContent() {
                         </td>
                         <td style={{ padding: 8 }}>{formatQuantity(candidate.quantity)}</td>
                         <td style={{ padding: 8 }}>
-                          {candidate.rawOperation === 'POSICAO_INICIAL' && candidate.unitPrice === '0'
+                          {(candidate.rawOperation === 'POSICAO_INICIAL' ||
+                            candidate.operation === 'BONUS') &&
+                          candidate.unitPrice === '0'
                             ? '—'
                             : formatCurrency(candidate.unitPrice, candidate.currency)}
                         </td>
