@@ -8,6 +8,7 @@ import {
   validateCostEvidenceDraft,
   normalizeDecimalField,
   buildCostEvidencePayload,
+  getEvidenceRowViewState,
 } from '@/lib/cost-evidence-entry';
 
 describe('Cost evidence entry helpers', () => {
@@ -79,5 +80,84 @@ describe('Cost evidence entry helpers', () => {
       currency: 'BRL',
       sourceReference: 'XP-1',
     });
+  });
+});
+
+describe('Cost evidence version currency (stale-action gating)', () => {
+  const v1 = { id: 'ev-1', status: 'DRAFT', version: 1, supersedesId: null };
+  const v2 = { id: 'ev-2', status: 'REVIEW_REQUIRED', version: 2, supersedesId: 'ev-1' };
+  const v3 = { id: 'ev-3', status: 'VERIFIED', version: 3, supersedesId: 'ev-2' };
+
+  it('Test 1 — current DRAFT exposes submit only', () => {
+    const view = getEvidenceRowViewState(v1, [v1]);
+    expect(view.isCurrent).toBe(true);
+    expect(view.showSubmit).toBe(true);
+    expect(view.showVerify).toBe(false);
+    expect(view.showReject).toBe(false);
+    expect(view.historicalLabel).toBeNull();
+  });
+
+  it('Test 2 — superseded DRAFT hides submit and labels history', () => {
+    const view = getEvidenceRowViewState(v1, [v1, v2]);
+    expect(view.isCurrent).toBe(false);
+    expect(view.showSubmit).toBe(false);
+    expect(view.showVerify).toBe(false);
+    expect(view.showReject).toBe(false);
+    expect(view.historicalLabel).toBe('Substituída pela v2');
+  });
+
+  it('Test 3 — current REVIEW_REQUIRED exposes verify + reject', () => {
+    const view = getEvidenceRowViewState(v2, [v2]);
+    expect(view.isCurrent).toBe(true);
+    expect(view.showSubmit).toBe(false);
+    expect(view.showVerify).toBe(true);
+    expect(view.showReject).toBe(true);
+    expect(view.historicalLabel).toBeNull();
+  });
+
+  it('Test 4 — superseded REVIEW_REQUIRED hides all actions and labels history', () => {
+    const view = getEvidenceRowViewState(v2, [v1, v2, v3]);
+    expect(view.isCurrent).toBe(false);
+    expect(view.showSubmit).toBe(false);
+    expect(view.showVerify).toBe(false);
+    expect(view.showReject).toBe(false);
+    expect(view.historicalLabel).toBe('Substituída pela v3');
+  });
+
+  it('Test 5 — current VERIFIED exposes no lifecycle actions', () => {
+    const view = getEvidenceRowViewState(v3, [v3]);
+    expect(view.isCurrent).toBe(true);
+    expect(view.showSubmit).toBe(false);
+    expect(view.showVerify).toBe(false);
+    expect(view.showReject).toBe(false);
+    expect(view.historicalLabel).toBeNull();
+  });
+
+  it('Test 6 — full KCRE11 chain: v3 acts, v1/v2 read-only, zero stale buttons', () => {
+    const chain = [v1, v2, v3];
+    const states = chain.map((row) => getEvidenceRowViewState(row, chain));
+    expect(states.map((s) => s.isCurrent)).toEqual([false, false, true]);
+    expect(states.map((s) => s.historicalLabel)).toEqual([
+      'Substituída pela v2',
+      'Substituída pela v3',
+      null,
+    ]);
+    const staleButtons = states
+      .filter((s) => !s.isCurrent)
+      .reduce((count, s) => count + Number(s.showSubmit) + Number(s.showVerify) + Number(s.showReject), 0);
+    expect(staleButtons).toBe(0);
+    const currentButtons =
+      Number(states[2]!.showSubmit) + Number(states[2]!.showVerify) + Number(states[2]!.showReject);
+    expect(currentButtons).toBe(0);
+  });
+
+  it('treats rows without a listed successor as current (list-scoped currency)', () => {
+    // Currency is decided within the listed set only; the section always
+    // lists the full unfiltered chain, so this is exact in production.
+    // Enforcement for any partial-view edge stays server-side (409).
+    const orphan = { id: 'ev-9', status: 'DRAFT', version: 1, supersedesId: 'ev-0' };
+    const view = getEvidenceRowViewState(orphan, [orphan]);
+    expect(view.isCurrent).toBe(true);
+    expect(view.historicalLabel).toBeNull();
   });
 });

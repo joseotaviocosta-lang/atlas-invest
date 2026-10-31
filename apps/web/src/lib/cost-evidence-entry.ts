@@ -133,3 +133,53 @@ export function buildCostEvidencePayload(draft: CostEvidenceDraft): Record<strin
   if (draft.notes.trim() !== '') payload['notes'] = draft.notes.trim();
   return payload;
 }
+
+/**
+ * Minimal structural shape for version-currency decisions. The evidence list
+ * endpoint returns the full chain in scope (no status filter), so currency
+ * can be derived safely client-side for DISPLAY gating only — the backend
+ * remains the enforcer (409 COST_EVIDENCE.SUPERSEDED).
+ */
+export interface EvidenceVersionRow {
+  id: string;
+  status: string;
+  version: number;
+  supersedesId: string | null;
+}
+
+export interface EvidenceRowViewState {
+  isCurrent: boolean;
+  successorVersion: number | null;
+  showSubmit: boolean;
+  showVerify: boolean;
+  showReject: boolean;
+  /** e.g. "Substituída pela v3"; null for current rows. */
+  historicalLabel: string | null;
+}
+
+/**
+ * Derives the display state of one evidence row within its full version
+ * chain. A row is current when no other row in the listed set supersedes it.
+ * Only current rows expose lifecycle actions; superseded rows are read-only
+ * history. Pure: no financial math, no I/O.
+ */
+export function getEvidenceRowViewState(
+  row: EvidenceVersionRow,
+  allRows: readonly EvidenceVersionRow[],
+): EvidenceRowViewState {
+  const successor = allRows.find((other) => other.supersedesId === row.id) ?? null;
+  const isCurrent = successor === null;
+  const successorVersion = successor ? successor.version : null;
+  return {
+    isCurrent,
+    successorVersion,
+    showSubmit: isCurrent && row.status === 'DRAFT',
+    showVerify: isCurrent && row.status === 'REVIEW_REQUIRED',
+    showReject: isCurrent && row.status === 'REVIEW_REQUIRED',
+    historicalLabel: isCurrent
+      ? null
+      : successorVersion !== null
+        ? `Substituída pela v${successorVersion}`
+        : 'Versão histórica',
+  };
+}

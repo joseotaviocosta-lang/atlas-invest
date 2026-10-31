@@ -12,6 +12,7 @@ import {
   COST_EVIDENCE_STATUS_LABELS,
   COST_EVIDENCE_ASSESSMENT_LABELS,
   COST_EVIDENCE_TAX_MESSAGE,
+  getEvidenceRowViewState,
 } from '@/lib/cost-evidence-entry';
 
 interface CostAssessment {
@@ -44,6 +45,7 @@ interface EvidenceRow {
   sourceReference: string;
   notes: string | null;
   version: number;
+  supersedesId: string | null;
   confirmedBy: string | null;
   rejectedReason: string | null;
   createdAt: string;
@@ -134,6 +136,12 @@ export function CostEvidenceSection({
 
   const assessment = assessmentQuery.data ?? null;
   const rows = useMemo(() => evidenceQuery.data ?? [], [evidenceQuery.data]);
+  // Display-only currency: a row acts only when nothing in the listed chain
+  // supersedes it. Enforcement stays server-side (409 SUPERSEDED).
+  const rowViewStates = useMemo(
+    () => new Map(rows.map((row) => [row.id, getEvidenceRowViewState(row, rows)])),
+    [rows],
+  );
 
   if (accounts.length === 0) return null;
 
@@ -210,7 +218,16 @@ export function CostEvidenceSection({
 
       {rows.length > 0 && (
         <div style={{ marginTop: `${spacing.base}px`, display: 'flex', flexDirection: 'column', gap: `${spacing.sm}px` }}>
-          {rows.map((row) => (
+          {rows.map((row) => {
+            const view = rowViewStates.get(row.id) ?? {
+              isCurrent: true,
+              successorVersion: null,
+              showSubmit: row.status === 'DRAFT',
+              showVerify: row.status === 'REVIEW_REQUIRED',
+              showReject: row.status === 'REVIEW_REQUIRED',
+              historicalLabel: null,
+            };
+            return (
             <div
               key={row.id}
               style={{
@@ -228,7 +245,9 @@ export function CostEvidenceSection({
                   {row.sourceReference}
                 </div>
                 <div style={{ color: colors.textSecondary }}>
-                  {COST_EVIDENCE_STATUS_LABELS[row.status] ?? row.status} (v{row.version})
+                  {COST_EVIDENCE_STATUS_LABELS[row.status] ?? row.status} (v{row.version}
+                  {view.isCurrent ? ', versão atual' : ''})
+                  {view.historicalLabel ? ` • ${view.historicalLabel}` : ''}
                 </div>
               </div>
               <div style={{ color: colors.textSecondary }}>
@@ -238,7 +257,7 @@ export function CostEvidenceSection({
                 {row.rejectedReason ? ` • Motivo: ${row.rejectedReason}` : ''}
               </div>
               <div style={{ display: 'flex', gap: `${spacing.sm}px`, marginTop: `${spacing.sm}px`, flexWrap: 'wrap' }}>
-                {row.status === 'DRAFT' && (
+                {view.showSubmit && (
                   <Button
                     size="sm"
                     variant="secondary"
@@ -248,7 +267,7 @@ export function CostEvidenceSection({
                     Enviar para confirmação
                   </Button>
                 )}
-                {row.status === 'REVIEW_REQUIRED' && (
+                {view.showVerify && (
                   <>
                     <Button
                       size="sm"
@@ -269,7 +288,7 @@ export function CostEvidenceSection({
                   </>
                 )}
               </div>
-              {rejectingId === row.id && (
+              {view.showReject && rejectingId === row.id && (
                 <div style={{ display: 'flex', gap: `${spacing.sm}px`, marginTop: `${spacing.sm}px` }}>
                   <input
                     aria-label="Motivo da rejeição"
@@ -295,7 +314,8 @@ export function CostEvidenceSection({
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
