@@ -1,5 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { EntityNotFoundError, getPrismaClient } from '@atlas/database';
+import { TransactionRepository } from '@atlas/database';
+import { CostBasisEvidenceRepository } from '@atlas/database';
+import { AssetRepository } from '@atlas/database';
+import {
+  replayPortfolio,
+  summarizeLedgerKnownLots,
+  buildCostBasisAssessment,
+  toVerifiedEvidenceLot,
+} from '@atlas/portfolio-engine';
+import { Quantity } from '@atlas/domain';
 import { PRISMA_CLIENT } from '../../database/tokens';
 import {
   NotificationDto,
@@ -74,6 +84,7 @@ export class GetNotificationCenterFeedUseCase {
       this.fetchImportNotifications(targetPortfolioIds, portfolioNameMap),
       this.fetchRecoveryAndOperationalNotifications(),
       this.fetchContributionNotifications(targetPortfolioIds, portfolioNameMap, todayCivil),
+      this.fetchCostBasisNotifications(targetPortfolioIds, portfolioNameMap, todayCivil),
     ]);
 
     const allNotifications: NotificationDto[] = [];
@@ -414,5 +425,171 @@ export class GetNotificationCenterFeedUseCase {
         },
       };
     });
+  }
+
+  /**
+   * Cost-basis evidence reminders (fiscal reminder delivery, read-side only).
+   *
+   * Derived from live replay + VERIFIED evidence — never writes, never feeds
+   * tax. Three item kinds, all deterministic ids (idempotent by construction,
+   * auto-resolved when the source condition disappears):
+   * - grouped DATA_QUALITY/IMPORTANT per portfolio over scopes whose
+   *   documentary coverage is incomplete (KCRE11-style COMPLETE scopes are
+   *   structurally excluded — the gate reads the assessment, never the
+   *   canonical costBasisStatus);
+   * - per-evidence DATA_QUALITY/ACTION_REQUIRED for current REVIEW_REQUIRED
+   *   rows only (superseded revisions never listed → never emitted);
+   * - grouped FISCAL/ACTION_REQUIRED when canonical cost is INCOMPLETE
+   *   anywhere (tax stays fail-closed; data-quality wording, never a payment
+   *   instruction, never an amount).
+   */
+  private async fetchCostBasisNotifications(
+    portfolioIds: readonly string[],
+    portfolioNameMap: Map<string, string>,
+    todayCivil: string,
+  ): Promise<NotificationDto[]> {
+    if (portfolioIds.length === 0) return [];
+    const txRepo = new TransactionRepository(this.prisma);
+    const evRepo = new CostBasisEvidenceRepository(this.prisma);
+    const assetRepo = new AssetRepository(this.prisma);
+    const out: NotificationDto[] = [];
+
+    for (const portfolioId of portfolioIds) {
+      const pName = portfolioNameMap.get(portfolioId) || 'Carteira';
+      const ledger = await txRepo.findByPortfolioId(portfolioId);
+      if (ledger.length === 0) continue;
+      const replayed = replayPortfolio({ portfolioId, transactions: ledger });
+      const currentEvidence = await evRepo.listCurrentByScope({ portfolioId });
+      const verifiedByScope = new Map<string, typeof currentEvidence>();
+      for (const row of currentEvidence) {
+        if (row.status !== 'VERIFIED') continue;
+        const key = `${row.accountId}|${row.assetId}`;
+        const list = verifiedByScope.get(key) ?? [];
+        list.push(row);
+        verifiedByScope.set(key, list);
+      }
+
+      const uncoveredTickers: string[] = [];
+      const uncoveredAssetIds: string[] = [];
+      let latestUncoveredDate = '';
+      let canonicalIncompleteCount = 0;
+      let latestIncompleteDate = '';
+
+      for (const [accountId, acc] of replayed.state.accounts) {
+        for (const [assetId, pos] of acc.assets) {
+          if (pos.quantity.isZero()) continue;
+          if (pos.costBasisStatus === 'INCOMPLETE') {
+            canonicalIncompleteCount += 1;
+          }
+          const lots = summarizeLedgerKnownLots(ledger, { assetId, accountId });
+          for (const lot of lots) {
+            if (lot.tradeDate > latestIncompleteDate && pos.costBasisStatus === 'INCOMPLETE') {
+              latestIncompleteDate = lot.tradeDate;
+            }
+          }
+          const verified = (verifiedByScope.get(`${accountId}|${assetId}`) ?? []).map(
+            toVerifiedEvidenceLot,
+          );
+          const assessment = buildCostBasisAssessment({
+            positionQuantity: pos.quantity,
+            ledgerLots: lots,
+            evidence: verified,
+          });
+          if (!Quantity.from(assessment.uncoveredQuantity).isZero()) {
+            uncoveredAssetIds.push(assetId);
+            for (const lot of lots) {
+              if (lot.tradeDate > latestUncoveredDate) latestUncoveredDate = lot.tradeDate;
+            }
+          }
+        }
+      }
+
+      // Batch ticker lookup for every asset referenced below (single query).
+      const reviewRows = currentEvidence.filter((row) => row.status === 'REVIEW_REQUIRED');
+      const tickerIds = Array.from(new Set([...uncoveredAssetIds, ...reviewRows.map((r) => r.assetId)]));
+      const tickerById = new Map<string, string>();
+      if (tickerIds.length > 0) {
+        for (const asset of await assetRepo.findByIds(tickerIds)) {
+          tickerById.set(String(asset.id), asset.ticker);
+        }
+      }
+      for (const assetId of uncoveredAssetIds) {
+        const ticker = tickerById.get(assetId);
+        if (ticker && !uncoveredTickers.includes(ticker)) uncoveredTickers.push(ticker);
+      }
+
+      if (uncoveredAssetIds.length > 0) {
+        const scopeCount = new Set(uncoveredAssetIds).size;
+        const shown = uncoveredTickers.slice(0, 3).join(', ');
+        out.push({
+          id: `cost-basis:${portfolioId}:incomplete:v1`,
+          category: 'DATA_QUALITY',
+          priority: 'IMPORTANT',
+          title: `Custo histórico incompleto em ${scopeCount} ${scopeCount === 1 ? 'posição' : 'posições'}`,
+          description:
+            `${scopeCount} ${scopeCount === 1 ? 'posição ainda tem' : 'posições ainda têm'} unidades sem custo histórico comprovado${shown ? ` (${shown}${uncoveredTickers.length > 3 ? ', …' : ''})` : ''}. ` +
+            'Adicione evidências para melhorar a qualidade dos cálculos futuros.',
+          occurredAt: `${latestUncoveredDate || todayCivil}T00:00:00.000Z`,
+          dueAt: null,
+          portfolioId,
+          portfolioName: pName,
+          actionHref: `/portfolio?portfolioId=${portfolioId}&tab=overview`,
+          actionLabel: 'Revisar posições',
+          sourceContext: {
+            origin: 'Cost Evidence',
+            entityType: 'COST_ASSESSMENT',
+            entityId: portfolioId,
+          },
+        });
+      }
+
+      for (const row of reviewRows) {
+        const ticker = tickerById.get(row.assetId) ?? 'posição';
+        out.push({
+          id: `cost-evidence:${row.id}:review-required`,
+          category: 'DATA_QUALITY',
+          priority: 'ACTION_REQUIRED',
+          title: `Evidência aguardando confirmação: ${ticker}`,
+          description: `${row.quantityCovered} unidades (${row.acquisitionDate}) aguardam sua confirmação para compor o custo histórico.`,
+          occurredAt: row.createdAt.toISOString(),
+          dueAt: null,
+          portfolioId,
+          portfolioName: pName,
+          actionHref: `/portfolio/assets/${row.assetId}?portfolioId=${portfolioId}`,
+          actionLabel: 'Revisar evidência',
+          sourceContext: {
+            origin: 'Cost Evidence',
+            entityType: 'COST_BASIS_EVIDENCE',
+            entityId: row.id,
+          },
+        });
+      }
+
+      if (canonicalIncompleteCount > 0) {
+        const n = canonicalIncompleteCount;
+        out.push({
+          id: `tax-blocked:${portfolioId}:incomplete-cost:v1`,
+          category: 'FISCAL',
+          priority: 'ACTION_REQUIRED',
+          title: 'Cálculo tributário bloqueado',
+          description:
+            `${n} ${n === 1 ? 'posição ainda tem' : 'posições ainda têm'} custo histórico incompleto para fins fiscais e o cálculo tributário permanece bloqueado. ` +
+            'Verifique as pendências — nenhum imposto é calculado a partir de dados incompletos.',
+          occurredAt: `${latestIncompleteDate || todayCivil}T00:00:00.000Z`,
+          dueAt: null,
+          portfolioId,
+          portfolioName: pName,
+          actionHref: '/tax',
+          actionLabel: 'Ver pendências fiscais',
+          sourceContext: {
+            origin: 'Cost Evidence',
+            entityType: 'TAX_BLOCKED_COST',
+            entityId: portfolioId,
+          },
+        });
+      }
+    }
+
+    return out;
   }
 }
