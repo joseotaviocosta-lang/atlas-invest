@@ -186,7 +186,6 @@ qualidade em fatos de explicação estruturados; sem persistência (48→48);
 validação humana no `/tax` com fixtures douradas + casos EGIE3/ITSA4/SNEL/KCRE11.
 
 ## 14. CTI-1 implementado (contrato final)
-
 - Pacote `@atlas/tax-intelligence@0.1.0` (puro, zero I/O): `types.ts`
   (`TaxIntelligenceContext`, `TaxIntelligenceResponse`, taxonomias),
   `blocker-catalog.ts` (23 códigos canônicos + fallback
@@ -217,3 +216,32 @@ Implementações futuras preservam: ledger 137, replay 109/109, reconciliação
 38/40, KCRE11 300/100% documental/INCOMPLETE canônico, fail-closed fiscal,
 blockers intactos. Migração 47 intocada;
 `MIGRATION_HISTORY_HYGIENE_REQUIRED_BEFORE_PRODUCTION` mantido.
+
+## 15. CTI-2 implementado (superfície no Fiscal)
+
+- Componente `TaxIntelligencePanel` (`apps/web/.../components/fiscal/`):
+  âncora `id="entenda"`, título "Entenda sua situação fiscal", renderizado na
+  aba Apuração Mensal & DARF logo após o `TaxDashboardSummaryCard` (faixa
+  estática preservada — conteúdos distintos: fórmula do cálculo vs explicação
+  contextual; demais abas intocadas).
+- Dados: `GET .../tax-intelligence?competence=` com o mesmo
+  `portfolioId` (primeira carteira, convenção da página) e `competence` da
+  página; chave de query inclui ambos (troca de mês/carteira refaz a chamada,
+  sem resíduo). Falha do CTI degrada isolada (ErrorState + retry); a página
+  fiscal segue funcional.
+- Tipos e mapas puros em `@atlas/ui` (`tax-intelligence.view-model.ts`):
+  `Raw*` espelhando o contrato, `taxIntelligenceQueryKey`, status →
+  Badge (success/warning/danger/neutral, nunca só cor — há rótulo textual),
+  actionId → rota existente (desconhecido → null, nunca renderizado).
+  Ações são Links de navegação (semântica correta, só teclado-focáveis).
+- Conteúdo: Badge + headline + summary verbatim; contagem de pendências;
+  blocos na ordem do backend; ações; limitações sempre visíveis;
+  "Dados considerados" e "Fontes consideradas" colapsáveis; "Explicação
+  gerada em …" (tempo do painel, sem implicar frescura de mercado).
+- Preview real (2026-11, somente leitura): BLOCKED, "2 pendências
+  prioritárias", ações Abrir prontidão anual + Revisar posições, sem valores,
+  sem linguagem de pagamento, ledger 137/137.
+- Responsivo por construção (flex-wrap, grid auto-fit da página, sem overflow
+  fixo). Telemetria: nenhuma nova (sem convenção existente para painéis —
+  omitido por escopo). Deep-link `/tax#entenda` preparado (âncora), fiação do
+  reminder adiada à CTI-3.

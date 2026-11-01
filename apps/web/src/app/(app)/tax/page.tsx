@@ -28,6 +28,7 @@ import {
   Tabs,
 } from '@/components/ui';
 import { TaxDashboardSummaryCard } from '@/components/fiscal/TaxDashboardSummaryCard';
+import { TaxIntelligencePanel } from '@/components/fiscal/TaxIntelligencePanel';
 import { TaxInputEntry } from '@/components/fiscal/TaxInputEntry';
 import { TaxObligationSection } from '@/components/fiscal/TaxObligationSection';
 import { EquityFiscalSection } from '@/components/fiscal/EquityFiscalSection';
@@ -166,6 +167,8 @@ function FiscalContent() {
             inputReadiness={inputReadiness}
             isLoading={isLoading || liabilityLoading}
           />
+
+          <TaxIntelligencePanel portfolioId={selectedPortfolioId} competence={competence} />
 
           {isLoading && (
             <Card style={{ padding: `${spacing.xxl}px` }}>
