@@ -4,5 +4,6 @@ export * from './accounts';
 export * from './assets';
 export * from './transactions';
 export * from './cost-evidence';
+export * from './tax-intelligence';
 export * from './fiscal';
 export * from './application.module';

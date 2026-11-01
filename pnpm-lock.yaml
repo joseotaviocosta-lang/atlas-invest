@@ -284,6 +284,9 @@ importers:
       '@atlas/tax-engine':
         specifier: workspace:*
         version: link:../../packages/tax-engine
+      '@atlas/tax-intelligence':
+        specifier: workspace:*
+        version: link:../../packages/tax-intelligence
       '@atlas/validation':
         specifier: workspace:*
         version: link:../../packages/validation
@@ -655,6 +658,19 @@ importers:
         version: link:../config
 
   packages/tax-engine:
+    dependencies:
+      '@atlas/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@atlas/portfolio-engine':
+        specifier: workspace:*
+        version: link:../portfolio-engine
+    devDependencies:
+      '@atlas/config':
+        specifier: workspace:*
+        version: link:../config
+
+  packages/tax-intelligence:
     dependencies:
       '@atlas/domain':
         specifier: workspace:*

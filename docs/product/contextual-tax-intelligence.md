@@ -185,6 +185,32 @@ CTI-3 (deep-links dos reminders) → CTI-4 (redação LLM só se justificada).
 qualidade em fatos de explicação estruturados; sem persistência (48→48);
 validação humana no `/tax` com fixtures douradas + casos EGIE3/ITSA4/SNEL/KCRE11.
 
+## 14. CTI-1 implementado (contrato final)
+
+- Pacote `@atlas/tax-intelligence@0.1.0` (puro, zero I/O): `types.ts`
+  (`TaxIntelligenceContext`, `TaxIntelligenceResponse`, taxonomias),
+  `blocker-catalog.ts` (23 códigos canônicos + fallback
+  `OTHER_CANONICAL_BLOCKER`), `coverage.ts`
+  (`summarizeDocumentaryCoverage` — implementação canônica única, também
+  consumida pelo feed de notificações), `projector.ts`
+  (`projectTaxIntelligence(context, nowIso)`).
+- Contagens de cobertura em **ativos distintos** (posições na linguagem do
+  usuário): ativo completo ⇔ todos os escopos completos; parcial ⇔ misto.
+  Coerente com o card agrupado do feed ("35 posições" nos dois).
+- `GET /api/v1/portfolios/:portfolioId/tax-intelligence?competence=YYYY-MM`
+  (competência default = mês civil corrente; 400 em formato inválido; 404
+  cross-user). Use-case injeta leitores canônicos existentes (monthly state,
+  liability apenas se COMPLETE, annual readiness) + replay/evidência da
+  carteira. `taxDue` copiado só com overall CONFIRMED (inclusive quando o
+  mensal é COMPLETE mas o anual rebaixa — sem resumir número não-definitivo).
+- Dry-run real (Carteira Real, somente leitura): `2026-11` → BLOCKED
+  (mensal EMPTY + anual BLOCKED); `2026-10` → BLOCKED com fato mensal
+  PARTIAL (coerente com o "/tax Apuração parcial"); `2026-01` → mensal
+  COMPLETE rebaixado pelo anual, sem fato TAX_DUE (fix do projetor validado
+  em dado real). KCRE11 nuance presente; `6 de 41` documental; zero writes.
+- Sem LLM (teste estático varre `ai-engine` nos arquivos CTI), sem persistência
+  (48→48), sem toque em tax-engine/ledger/reconciliação.
+
 ## 14. Invariantes de baseline e dívida
 
 Implementações futuras preservam: ledger 137, replay 109/109, reconciliação

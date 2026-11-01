@@ -3,12 +3,8 @@ import { EntityNotFoundError, getPrismaClient } from '@atlas/database';
 import { TransactionRepository } from '@atlas/database';
 import { CostBasisEvidenceRepository } from '@atlas/database';
 import { AssetRepository } from '@atlas/database';
-import {
-  replayPortfolio,
-  summarizeLedgerKnownLots,
-  buildCostBasisAssessment,
-  toVerifiedEvidenceLot,
-} from '@atlas/portfolio-engine';
+import { replayPortfolio } from '@atlas/portfolio-engine';
+import { summarizeDocumentaryCoverage } from '@atlas/tax-intelligence';
 import { Quantity } from '@atlas/domain';
 import { PRISMA_CLIENT } from '../../database/tokens';
 import {
@@ -460,49 +456,29 @@ export class GetNotificationCenterFeedUseCase {
       if (ledger.length === 0) continue;
       const replayed = replayPortfolio({ portfolioId, transactions: ledger });
       const currentEvidence = await evRepo.listCurrentByScope({ portfolioId });
-      const verifiedByScope = new Map<string, typeof currentEvidence>();
-      for (const row of currentEvidence) {
-        if (row.status !== 'VERIFIED') continue;
-        const key = `${row.accountId}|${row.assetId}`;
-        const list = verifiedByScope.get(key) ?? [];
-        list.push(row);
-        verifiedByScope.set(key, list);
-      }
-
+      // Single canonical aggregation (shared with CTI-1 context builder).
+      const coverage = summarizeDocumentaryCoverage({
+        transactions: ledger,
+        replayState: replayed.state,
+        evidenceRows: currentEvidence,
+      });
+      const uncoveredScopes = coverage.scopes.filter(
+        (scope) => !Quantity.from(scope.uncoveredQuantity).isZero(),
+      );
+      const uncoveredAssetIds = uncoveredScopes.map((scope) => scope.assetId);
+      const latestUncoveredDate = uncoveredScopes.reduce(
+        (max, scope) => (scope.latestLotDate && scope.latestLotDate > max ? scope.latestLotDate : max),
+        '',
+      );
+      const canonicalIncompleteCount = coverage.canonicalIncompleteScopes;
+      const latestIncompleteDate = coverage.scopes.reduce(
+        (max, scope) =>
+          scope.canonicalIncomplete && scope.latestLotDate && scope.latestLotDate > max
+            ? scope.latestLotDate
+            : max,
+        '',
+      );
       const uncoveredTickers: string[] = [];
-      const uncoveredAssetIds: string[] = [];
-      let latestUncoveredDate = '';
-      let canonicalIncompleteCount = 0;
-      let latestIncompleteDate = '';
-
-      for (const [accountId, acc] of replayed.state.accounts) {
-        for (const [assetId, pos] of acc.assets) {
-          if (pos.quantity.isZero()) continue;
-          if (pos.costBasisStatus === 'INCOMPLETE') {
-            canonicalIncompleteCount += 1;
-          }
-          const lots = summarizeLedgerKnownLots(ledger, { assetId, accountId });
-          for (const lot of lots) {
-            if (lot.tradeDate > latestIncompleteDate && pos.costBasisStatus === 'INCOMPLETE') {
-              latestIncompleteDate = lot.tradeDate;
-            }
-          }
-          const verified = (verifiedByScope.get(`${accountId}|${assetId}`) ?? []).map(
-            toVerifiedEvidenceLot,
-          );
-          const assessment = buildCostBasisAssessment({
-            positionQuantity: pos.quantity,
-            ledgerLots: lots,
-            evidence: verified,
-          });
-          if (!Quantity.from(assessment.uncoveredQuantity).isZero()) {
-            uncoveredAssetIds.push(assetId);
-            for (const lot of lots) {
-              if (lot.tradeDate > latestUncoveredDate) latestUncoveredDate = lot.tradeDate;
-            }
-          }
-        }
-      }
 
       // Batch ticker lookup for every asset referenced below (single query).
       const reviewRows = currentEvidence.filter((row) => row.status === 'REVIEW_REQUIRED');

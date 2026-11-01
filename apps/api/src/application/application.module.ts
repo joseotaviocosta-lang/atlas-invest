@@ -135,6 +135,7 @@ import {
   RectifyPortfolioTransactionUseCase,
 } from './transactions';
 import { CostEvidenceUseCase, CostEvidenceAssessmentUseCase } from './cost-evidence';
+import { GetTaxIntelligenceUseCase } from './tax-intelligence';
 import {
   ConfirmPortfolioImportUseCase,
   PreviewPortfolioImportUseCase,
@@ -263,6 +264,7 @@ const USE_CASES = [
   CorporateActionsUseCase,
   CostEvidenceUseCase,
   CostEvidenceAssessmentUseCase,
+  GetTaxIntelligenceUseCase,
   GetTransactionUseCase,
   ListTransactionsUseCase,
   RectifyPortfolioTransactionUseCase,
