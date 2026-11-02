@@ -289,5 +289,47 @@ describe('API Integration: Investor Notification Center Feed (Phase 5V)', () => 
       expect(res.status).toBe(404);
       expect(res.body.code).toBe('PERSISTENCE.ENTITY_NOT_FOUND');
     });
+
+    it('disambiguates repeated imports of the same file (distinct runs, distinct copy)', async () => {
+      const fileName = 'movimentacao-2026-10-29-11-47-54.xlsx';
+      const runA = randomUUID();
+      const runB = randomUUID();
+      await prisma.integrationRun.create({
+        data: {
+          id: runA,
+          portfolioId: portfolioAId,
+          source: 'B3',
+          status: 'AWAITING_REVIEW',
+          fileName,
+          newCandidates: 8,
+        },
+      });
+      await prisma.integrationRun.create({
+        data: {
+          id: runB,
+          portfolioId: portfolioAId,
+          source: 'B3',
+          status: 'AWAITING_REVIEW',
+          fileName,
+          newCandidates: 96,
+        },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/notifications?category=REVIEW')
+        .set('Authorization', `Bearer ${userAToken}`);
+
+      expect(res.status).toBe(200);
+      const items = res.body.data.filter(
+        (n: { id: string }) => n.id === `review:${runA}:AWAITING_REVIEW` || n.id === `review:${runB}:AWAITING_REVIEW`,
+      );
+      // Both distinct runs survive (no incorrect merge).
+      expect(items).toHaveLength(2);
+      const descriptions = items.map((n: { description: string }) => n.description);
+      // ...but their copy is distinguishable without exposing UUIDs.
+      expect(new Set(descriptions).size).toBe(2);
+      expect(descriptions[0]).toContain(fileName);
+      expect(descriptions.join(' ')).not.toMatch(/00000000|11111111|22222222/);
+    });
   });
 });

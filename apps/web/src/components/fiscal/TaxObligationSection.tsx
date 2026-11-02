@@ -584,7 +584,7 @@ export function TaxObligationSection({ competence }: { competence: string }) {
             <div
               style={{ fontSize: '0.8125rem', color: colors.warning, marginTop: `${spacing.sm}px` }}
             >
-              Não foi possível calcular o valor atualizado com segurança ({adjustment.reasonCode}).
+              Não foi possível calcular o valor atualizado com segurança.
             </div>
           )}
         </Card>

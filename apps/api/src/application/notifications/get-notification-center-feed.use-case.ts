@@ -273,12 +273,26 @@ export class GetNotificationCenterFeedUseCase {
 
     return awaitingRuns.map((run) => {
       const pName = portfolioNameMap.get(run.portfolioId) || 'Carteira';
+      // Disambiguation for repeated imports of the same file (Case B):
+      // distinct runs stay distinct; only human-readable facts are added.
+      const detailParts: string[] = [];
+      if (run.fileName) detailParts.push(String(run.fileName));
+      if (run.newCandidates > 0) {
+        detailParts.push(
+          `${run.newCandidates} ${run.newCandidates === 1 ? 'novo candidato' : 'novos candidatos'}`,
+        );
+      }
+      if (run.conflicts > 0) {
+        detailParts.push(
+          `${run.conflicts} ${run.conflicts === 1 ? 'conflito' : 'conflitos'}`,
+        );
+      }
       return {
         id: `review:${run.id}:AWAITING_REVIEW`,
         category: 'REVIEW',
         priority: 'ACTION_REQUIRED',
         title: `Revisão necessária: ${pName}`,
-        description: `Importação ${run.source} concluída com pendências que necessitam da sua confirmação.`,
+        description: `Importação ${run.source} concluída com pendências que necessitam da sua confirmação${detailParts.length > 0 ? ` (${detailParts.join(' · ')})` : ''}.`,
         occurredAt: run.createdAt.toISOString(),
         dueAt: null,
         portfolioId: run.portfolioId,

@@ -220,6 +220,7 @@ export function CostEvidenceSection({
         </div>
       ) : null}
 
+      {!shouldShowTaxCostDisclosure(assessment?.taxCost) && (
       <div
         style={{
           backgroundColor: colors.warningSubtle,
@@ -233,6 +234,7 @@ export function CostEvidenceSection({
       >
         {COST_EVIDENCE_TAX_MESSAGE}
       </div>
+      )}
 
       {actionError && (
         <div role="alert" style={{ color: colors.negative, fontSize: '0.875rem', marginTop: `${spacing.sm}px` }}>
