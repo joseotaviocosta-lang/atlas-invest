@@ -164,4 +164,182 @@ describe('CTI-3 anchor contract (structural)', () => {
     expect(errorAt).toBeGreaterThan(anchorAt);
     expect(contentAt).toBeGreaterThan(anchorAt);
   });
+
+  it('forwards AbortSignal and uses queryKey parameters in queryFn', () => {
+    const source = fs.readFileSync(panelPath, 'utf8');
+    expect(source).toContain('queryFn: async ({ queryKey, signal })');
+    expect(source).toContain('{ signal }');
+    expect(source).toContain('isAnalyzing');
+  });
+});
+
+describe('CTI competence navigation & query lifecycle regressions (Part L)', () => {
+  const FIXTURE_2026_11 = {
+    status: 'BLOCKED',
+    headline: 'Cálculo tributário bloqueado',
+    summary: 'O Atlas ainda não possui dados suficientes para concluir a apuração de 2026-11 com segurança.',
+    facts: [
+      { code: 'TAX_STATUS', label: 'Situação fiscal da competência', value: 'EMPTY', source: 'TAX_ENGINE' },
+    ],
+    blockers: [
+      { code: 'ANNUAL_READINESS_BLOCKING_REASON', category: 'OTHER_CANONICAL_BLOCKER', priority: 100, title: 'Bloqueio na apuração anual', explanation: 'BLOCKED_POSITIONS_PRESENT' },
+    ],
+    actions: [{ actionId: 'OPEN_ANNUAL_READINESS', label: 'Abrir prontidão anual', priority: 100 }],
+    limitations: ['O Atlas não estima imposto quando faltam dados essenciais.'],
+    sources: [{ kind: 'LEDGER', label: 'Livro-razão de transações' }],
+    generatedAt: '2026-11-02T20:00:00.000Z',
+  };
+
+  const FIXTURE_2026_10 = {
+    status: 'BLOCKED',
+    headline: 'Cálculo tributário bloqueado',
+    summary: 'O Atlas ainda não possui dados suficientes para concluir a apuração de 2026-10 com segurança.',
+    facts: [
+      { code: 'TAX_STATUS', label: 'Situação fiscal da competência', value: 'PARTIAL', source: 'TAX_ENGINE' },
+    ],
+    blockers: [
+      { code: 'ANNUAL_READINESS_BLOCKING_REASON', category: 'OTHER_CANONICAL_BLOCKER', priority: 100, title: 'Bloqueio na apuração anual', explanation: 'BLOCKED_POSITIONS_PRESENT' },
+      { code: 'UNKNOWN_COST_BASIS', category: 'COST_BASIS_INCOMPLETE', priority: 100, title: 'Custo de aquisição incompleto', explanation: 'Há posições com custo de aquisição desconhecido.' },
+      { code: 'UNSUPPORTED_CURRENCY', category: 'OTHER_CANONICAL_BLOCKER', priority: 60, title: 'Pendência fiscal não classificada', explanation: 'Há uma pendência registrada pelo motor fiscal.' },
+    ],
+    actions: [
+      { actionId: 'OPEN_ANNUAL_READINESS', label: 'Abrir prontidão anual', priority: 100 },
+      { actionId: 'REVIEW_POSITIONS', label: 'Revisar posições', priority: 100 },
+      { actionId: 'OPEN_TAX_QUALITY', label: 'Ver pendências fiscais', priority: 60 },
+    ],
+    limitations: ['O Atlas não estima imposto quando faltam dados essenciais.'],
+    sources: [{ kind: 'LEDGER', label: 'Livro-razão de transações' }],
+    generatedAt: '2026-10-31T20:00:00.000Z',
+  };
+
+  const pid = '4a2bee83-d0bd-4c6d-938d-708a4f735f26';
+
+  it('1 & 2. resolves 11/2026 and 10/2026 with correct blocker counts & content', async () => {
+    const { QueryClient, QueryObserver } = await import('@tanstack/react-query');
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    const fetcher = vi.fn().mockImplementation(async ({ queryKey }: { queryKey: readonly string[] }) => {
+      const comp = queryKey[2];
+      return comp === '2026-11' ? FIXTURE_2026_11 : FIXTURE_2026_10;
+    });
+
+    const observer11 = new QueryObserver(queryClient, {
+      queryKey: taxIntelligenceQueryKey(pid, '2026-11'),
+      queryFn: fetcher,
+      enabled: true,
+      staleTime: 30_000,
+    });
+    const sub11 = observer11.subscribe(() => {});
+    await new Promise((r) => setTimeout(r, 20));
+
+    const res11 = observer11.getCurrentResult();
+    expect(res11.status).toBe('success');
+    expect(res11.data?.blockers).toHaveLength(1);
+    expect(res11.data?.blockers[0]?.title).toBe('Bloqueio na apuração anual');
+
+    const observer10 = new QueryObserver(queryClient, {
+      queryKey: taxIntelligenceQueryKey(pid, '2026-10'),
+      queryFn: fetcher,
+      enabled: true,
+      staleTime: 30_000,
+    });
+    const sub10 = observer10.subscribe(() => {});
+    await new Promise((r) => setTimeout(r, 20));
+
+    const res10 = observer10.getCurrentResult();
+    expect(res10.status).toBe('success');
+    expect(res10.data?.blockers).toHaveLength(3);
+    const titles = res10.data?.blockers.map((b: { title: string }) => b.title);
+    expect(titles).toContain('Bloqueio na apuração anual');
+    expect(titles).toContain('Custo de aquisição incompleto');
+    expect(titles).toContain('Pendência fiscal não classificada');
+
+    sub11();
+    sub10();
+  });
+
+  it('3, 4, 5, 8. switching 11 -> 10 -> 11 -> 10 resolves every time and never leaves perpetual loading', async () => {
+    const { QueryClient, QueryObserver } = await import('@tanstack/react-query');
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    const fetcher = vi.fn().mockImplementation(async ({ queryKey }: { queryKey: readonly string[] }) => {
+      const comp = queryKey[2];
+      await new Promise((r) => setTimeout(r, 10));
+      return comp === '2026-11' ? FIXTURE_2026_11 : FIXTURE_2026_10;
+    });
+
+    // Initial 11/2026
+    const observer = new QueryObserver(queryClient, {
+      queryKey: taxIntelligenceQueryKey(pid, '2026-11'),
+      queryFn: fetcher,
+      enabled: true,
+      staleTime: 30_000,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+
+    await new Promise((r) => setTimeout(r, 30));
+    expect(observer.getCurrentResult().data?.blockers).toHaveLength(1);
+
+    // Switch to 10/2026
+    observer.setOptions({
+      queryKey: taxIntelligenceQueryKey(pid, '2026-10'),
+      queryFn: fetcher,
+      enabled: true,
+      staleTime: 30_000,
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    const step10 = observer.getCurrentResult();
+    expect(step10.data?.blockers).toHaveLength(3);
+    expect(step10.isPending).toBe(false);
+
+    // Switch back to 11/2026 (instant from cache)
+    observer.setOptions({
+      queryKey: taxIntelligenceQueryKey(pid, '2026-11'),
+      queryFn: fetcher,
+      enabled: true,
+      staleTime: 30_000,
+    });
+    const step11Cache = observer.getCurrentResult();
+    expect(step11Cache.data?.blockers).toHaveLength(1);
+    expect(step11Cache.isPending).toBe(false);
+
+    // Switch again to 10/2026 (instant from cache)
+    observer.setOptions({
+      queryKey: taxIntelligenceQueryKey(pid, '2026-10'),
+      queryFn: fetcher,
+      enabled: true,
+      staleTime: 30_000,
+    });
+    const step10Cache = observer.getCurrentResult();
+    expect(step10Cache.data?.blockers).toHaveLength(3);
+    expect(step10Cache.isPending).toBe(false);
+
+    unsubscribe();
+  });
+
+  it('7. API error exits loading state and transitions cleanly to error', async () => {
+    const { QueryClient, QueryObserver } = await import('@tanstack/react-query');
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    const fetcher = vi.fn().mockRejectedValue(new Error('Tax intelligence service error'));
+
+    const observer = new QueryObserver(queryClient, {
+      queryKey: taxIntelligenceQueryKey(pid, '2026-10'),
+      queryFn: fetcher,
+      enabled: true,
+      staleTime: 30_000,
+      retry: false,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+
+    await new Promise((r) => setTimeout(r, 30));
+    const result = observer.getCurrentResult();
+
+    expect(result.status).toBe('error');
+    expect(result.isError).toBe(true);
+    expect(result.isPending).toBe(false);
+    expect(result.error?.message).toBe('Tax intelligence service error');
+
+    unsubscribe();
+  });
 });

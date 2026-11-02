@@ -174,6 +174,9 @@ export class ApiClient {
         headers,
       });
     } catch (err) {
+      if ((err as Error)?.name === 'AbortError') {
+        throw err;
+      }
       const isNetworkOffline =
         typeof window !== 'undefined' && typeof navigator !== 'undefined' && !navigator.onLine;
       throw new ApiError(

@@ -11,6 +11,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'apps/web/src'),
+      '@tanstack/react-query': path.resolve(__dirname, 'apps/web/node_modules/@tanstack/react-query'),
       '@atlas/domain': path.resolve(__dirname, 'packages/domain/src/index.ts'),
       '@atlas/ui': path.resolve(__dirname, 'packages/ui/src/index.ts'),
       '@atlas/validation': path.resolve(__dirname, 'packages/validation/src/index.ts'),

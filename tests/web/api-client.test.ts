@@ -81,6 +81,21 @@ describe('Web Foundation: ApiClient & Single-Flight Refresh Mutex', () => {
     });
   });
 
+  it('should re-throw AbortError untouched without wrapping in ApiError', async () => {
+    const abortErr = new Error('The user aborted a request');
+    abortErr.name = 'AbortError';
+    const mockFetch = vi.fn().mockRejectedValue(abortErr);
+    global.fetch = mockFetch as unknown as typeof fetch;
+
+    try {
+      await client.get('/api/v1/portfolios');
+      expect.unreachable('Should have thrown AbortError');
+    } catch (err) {
+      expect((err as Error).name).toBe('AbortError');
+      expect(err instanceof ApiError).toBe(false);
+    }
+  });
+
   it('should execute single-flight refresh on concurrent 401s and retry original requests', async () => {
     useAuthStore.getState().setSession(
       {

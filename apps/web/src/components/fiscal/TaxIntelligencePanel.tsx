@@ -42,9 +42,11 @@ export function TaxIntelligencePanel({
 
   const ctiQuery = useQuery({
     queryKey: taxIntelligenceQueryKey(portfolioId, competence),
-    queryFn: async () => {
+    queryFn: async ({ queryKey, signal }) => {
+      const [, pId, comp] = queryKey as readonly [string, string, string];
       const res = await apiClient.get<{ data: RawTaxIntelligenceResponse }>(
-        `/api/v1/portfolios/${portfolioId}/tax-intelligence?competence=${competence}`,
+        `/api/v1/portfolios/${pId}/tax-intelligence?competence=${comp}`,
+        { signal },
       );
       return res.data;
     },
@@ -55,6 +57,7 @@ export function TaxIntelligencePanel({
 
   const data = ctiQuery.data ?? null;
   const statusView = data ? mapCtiStatusToPresentation(data.status) : null;
+  const isAnalyzing = ctiQuery.isLoading || (!data && ctiQuery.isFetching);
 
   return (
     <Card
@@ -66,7 +69,7 @@ export function TaxIntelligencePanel({
         description="Explicação determinística da situação fiscal desta competência, derivada do estado canônico."
       />
 
-      {ctiQuery.isPending && (
+      {isAnalyzing && (
         <div>
           <div style={{ fontSize: '0.875rem', color: colors.textSecondary }}>
             Analisando a situação fiscal…
@@ -75,7 +78,7 @@ export function TaxIntelligencePanel({
         </div>
       )}
 
-      {ctiQuery.isError && !ctiQuery.isPending && (
+      {ctiQuery.isError && !isAnalyzing && (
         <ErrorState
           title="Explicação indisponível"
           message="Não foi possível carregar a explicação fiscal. O restante da página continua funcionando normalmente."
