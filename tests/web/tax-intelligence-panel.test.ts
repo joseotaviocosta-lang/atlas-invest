@@ -4,6 +4,9 @@ import {
   mapCtiStatusToPresentation,
   mapCtiActionToTarget,
   formatCtiGeneratedAt,
+  resolveBlockerTitle,
+  resolveBlockerExplanation,
+  resolveFactValue,
 } from '@atlas/ui';
 
 // Fixture mirroring the real 2026-10 dry-run shape (BLOCKED overall,
@@ -81,5 +84,56 @@ describe('CTI panel contract (pure presentation mapping)', () => {
   it('formats generation time honestly (panel time, not market freshness)', () => {
     expect(formatCtiGeneratedAt(REAL_SHAPE.generatedAt)).toContain('Explicação gerada em');
     expect(formatCtiGeneratedAt('')).toBe('');
+  });
+});
+
+describe('CTI internal-code hotfix (presentation only)', () => {
+  it('Test 1 — blocker code hidden, title + mapped explanation shown', () => {
+    const title = resolveBlockerTitle('Bloqueio na apuração anual');
+    const explanation = resolveBlockerExplanation(
+      'BLOCKED_POSITIONS_PRESENT',
+    );
+    expect(title).toBe('Bloqueio na apuração anual');
+    expect(explanation).toBe('Há posições de 31/12 com custo ou dados incompletos.');
+    expect(`${title} ${explanation}`).not.toContain('BLOCKED_POSITIONS_PRESENT');
+  });
+
+  it('Test 2 — unknown blocker code hidden, safe title shown', () => {
+    const explanation = resolveBlockerExplanation('SOME_NEW_INTERNAL_CODE');
+    expect(explanation).toBeNull();
+    expect(resolveBlockerTitle('')).toBe('Pendência fiscal');
+    expect(resolveBlockerTitle('  ')).toBe('Pendência fiscal');
+  });
+
+  it('Test 3 — human explanations pass through untouched', () => {
+    const human =
+      'Há posições com unidades sem custo histórico comprovado. Adicione evidências.';
+    expect(resolveBlockerExplanation(human)).toBe(human);
+    expect(resolveBlockerExplanation('')).toBeNull();
+    expect(resolveBlockerExplanation(null)).toBeNull();
+  });
+
+  it('Test 4 — 2026-10 fixture renders without raw identifiers', () => {
+    const blockers = [
+      { title: 'Bloqueio na apuração anual', explanation: 'BLOCKED_POSITIONS_PRESENT' },
+      { title: 'Custo de aquisição incompleto', explanation: 'Há posições com custo desconhecido.' },
+    ];
+    const rendered = blockers
+      .map((b) => `${resolveBlockerTitle(b.title)} ${resolveBlockerExplanation(b.explanation) ?? ''}`)
+      .join(' ');
+    expect(rendered).toContain('Bloqueio na apuração anual');
+    expect(rendered).toContain('Há posições de 31/12');
+    expect(rendered).not.toMatch(/[A-Z]{2,}(?:_[A-Z0-9]+)+/);
+    expect(resolveFactValue('TAX_STATUS', 'PARTIAL')).toBe('Parcial');
+    expect(resolveFactValue('TAX_STATUS', 'WEIRD_FUTURE_STATUS')).toBeNull();
+  });
+
+  it('Test 5 — 2026-11 fixture stable, no raw codes', () => {
+    expect(resolveBlockerExplanation('BLOCKED_POSITIONS_PRESENT')).not.toContain(
+      'BLOCKED_POSITIONS_PRESENT',
+    );
+    expect(resolveFactValue('TAX_STATUS', 'EMPTY')).toBe('Sem dados na competência');
+    expect(resolveFactValue('TAX_DUE', '2494.96 BRL')).toBe('2494.96 BRL');
+    expect(resolveFactValue('ANY', null)).toBeNull();
   });
 });

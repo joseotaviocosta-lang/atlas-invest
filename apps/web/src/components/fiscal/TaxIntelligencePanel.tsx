@@ -14,6 +14,9 @@ import {
   mapCtiStatusToPresentation,
   mapCtiActionToTarget,
   formatCtiGeneratedAt,
+  resolveBlockerTitle,
+  resolveBlockerExplanation,
+  resolveFactValue,
   type RawTaxIntelligenceResponse,
 } from '@atlas/ui';
 
@@ -103,7 +106,10 @@ export function TaxIntelligencePanel({
                   ? '1 pendência prioritária'
                   : `${data.blockers.length} pendências prioritárias`}
               </div>
-              {data.blockers.map((blocker) => (
+              {data.blockers.map((blocker) => {
+                const title = resolveBlockerTitle(blocker.title);
+                const explanation = resolveBlockerExplanation(blocker.explanation);
+                return (
                 <div
                   key={blocker.code}
                   style={{
@@ -113,13 +119,16 @@ export function TaxIntelligencePanel({
                   }}
                 >
                   <div style={{ fontSize: '0.875rem', fontWeight: 600, color: colors.textPrimary }}>
-                    {blocker.title}
+                    {title}
                   </div>
+                  {explanation && (
                   <div style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginTop: '2px' }}>
-                    {blocker.explanation}
+                    {explanation}
                   </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -191,7 +200,7 @@ export function TaxIntelligencePanel({
               >
                 {data.facts.map((fact) => (
                   <div key={fact.code}>
-                    {fact.label}: {fact.value ?? '—'}
+                    {fact.label}: {resolveFactValue(fact.code, fact.value) ?? '—'}
                   </div>
                 ))}
               </div>

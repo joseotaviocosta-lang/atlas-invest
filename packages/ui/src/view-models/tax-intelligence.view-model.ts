@@ -121,3 +121,54 @@ export function formatCtiGeneratedAt(generatedAt: string): string {
   const formatted = formatDate(generatedAt);
   return formatted && formatted !== '—' ? `Explicação gerada em ${formatted}` : '';
 }
+
+/**
+ * Raw engine blocking-reason markers mapped to product copy. Anything not
+ * listed here is an internal identifier and must never reach the UI.
+ */
+const BLOCKING_REASON_DISPLAY: Record<string, string> = {
+  BLOCKED_POSITIONS_PRESENT:
+    'Há posições de 31/12 com custo ou dados incompletos.',
+};
+
+const RAW_CODE_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+
+/**
+ * Resolves a blocker explanation for display. Returns null when there is no
+ * human-readable text — the caller then renders the title only. Raw internal
+ * codes are never returned.
+ */
+export function resolveBlockerExplanation(explanation: string | null): string | null {
+  const text = (explanation ?? '').trim();
+  if (!text) return null;
+  if (BLOCKING_REASON_DISPLAY[text]) return BLOCKING_REASON_DISPLAY[text] as string;
+  if (RAW_CODE_PATTERN.test(text)) return null;
+  return text;
+}
+
+/** Safe title fallback. Never falls back to an internal code. */
+export function resolveBlockerTitle(title: string): string {
+  const text = (title ?? '').trim();
+  if (text) return text;
+  return 'Pendência fiscal';
+}
+
+const MONTHLY_STATUS_LABELS: Record<string, string> = {
+  COMPLETE: 'Concluída',
+  PARTIAL: 'Parcial',
+  BLOCKED: 'Bloqueada',
+  NO_ACTIVITY: 'Sem movimentação tributável',
+  EMPTY: 'Sem dados na competência',
+};
+
+/**
+ * Maps raw monthly-status enum values in facts to product language.
+ * Unknown values degrade to null (rendered as —), never upgraded or exposed.
+ */
+export function resolveFactValue(code: string, value: string | null): string | null {
+  if (value === null) return null;
+  if (code === 'TAX_STATUS') {
+    return MONTHLY_STATUS_LABELS[value] ?? null;
+  }
+  return value;
+}
