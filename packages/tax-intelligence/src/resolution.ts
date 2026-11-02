@@ -42,7 +42,7 @@ export interface TaxResolutionLedgerLotInput {
   readonly quantity: string;
   readonly acquisitionDate: string;
   readonly unitCost?: string;
-  readonly totalCost: string;
+  readonly totalCost?: string;
   readonly currency: string;
 }
 
@@ -179,15 +179,13 @@ export function resolveTaxCost(input: ResolveTaxCostInput): TaxCostResolution {
   const ledgerKeys = new Set<string>();
   for (const lot of input.ledgerLots) {
     let quantity: Quantity;
-    let totalCost: Money;
     let acquisitionDate: LocalDate;
     try {
       quantity = Quantity.from(lot.quantity);
-      totalCost = Money.from(lot.totalCost, lot.currency);
       acquisitionDate = LocalDate.from(lot.acquisitionDate);
     } catch {
       blocked = true;
-      block('INVALID_LOT_INPUT', `Ledger lot '${lot.transactionId}' has malformed quantity, cost or date.`);
+      block('INVALID_LOT_INPUT', `Ledger lot '${lot.transactionId}' has malformed quantity or date.`);
       continue;
     }
     if (!quantity.isPositive()) {
@@ -202,21 +200,33 @@ export function resolveTaxCost(input: ResolveTaxCostInput): TaxCostResolution {
     }
     if (asOf && acquisitionDate.toString() > asOf.toString()) continue;
     let unitCost: Money | undefined;
-    if (lot.unitCost !== undefined) {
-      try {
-        unitCost = Money.from(lot.unitCost, currency);
-      } catch {
-        blocked = true;
-        block('INVALID_LOT_INPUT', `Ledger lot '${lot.transactionId}' has malformed unit cost.`);
-        continue;
-      }
+    let totalCost: Money | undefined;
+    try {
+      if (lot.unitCost !== undefined) unitCost = Money.from(lot.unitCost, currency);
+      if (lot.totalCost !== undefined) totalCost = Money.from(lot.totalCost, currency);
+    } catch {
+      blocked = true;
+      block('INVALID_LOT_INPUT', `Ledger lot '${lot.transactionId}' has malformed cost.`);
+      continue;
+    }
+    if (!unitCost && !totalCost) {
+      blocked = true;
+      block('INVALID_LOT_INPUT', `Ledger lot '${lot.transactionId}' carries no cost side.`);
+      continue;
+    }
+    const resolvedTotal = totalCost ?? unitCost!.multiply(quantity.value);
+    const resolvedUnit = unitCost ?? resolvedTotal.divide(quantity.value);
+    if (unitCost && totalCost && !unitCost.multiply(quantity.value).equals(totalCost)) {
+      blocked = true;
+      block('EVIDENCE_CONFLICT', `Ledger lot '${lot.transactionId}' unit cost × quantity disagrees with its total cost.`);
+      continue;
     }
     const lotKey = computeCostLotKey({
       assetId, accountId, acquisitionDate: acquisitionDate.toString(),
-      quantityCovered: quantity.value, unitCost: unitCost?.amount,
-      totalCost: totalCost.amount, currency,
+      quantityCovered: quantity.value, unitCost: resolvedUnit.amount,
+      totalCost: resolvedTotal.amount, currency,
     });
-    ledgerLots.push({ transactionId: lot.transactionId, quantity, acquisitionDate, unitCost, totalCost, lotKey });
+    ledgerLots.push({ transactionId: lot.transactionId, quantity, acquisitionDate, unitCost: resolvedUnit, totalCost: resolvedTotal, lotKey });
     ledgerKeys.add(lotKey);
   }
 

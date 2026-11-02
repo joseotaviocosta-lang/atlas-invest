@@ -2,9 +2,11 @@ import { Inject, Injectable, BadRequestException } from '@nestjs/common';
 import {
   IAccountRepository,
   IAssetRepository,
+  ICostBasisEvidenceRepository,
   IPortfolioRepository,
   ITaxCompensationElectionRepository,
   ITransactionRepository,
+  type CostBasisEvidenceRow,
 } from '@atlas/database';
 import type { Transaction } from '@atlas/domain';
 import { replayPortfolio } from '@atlas/portfolio-engine';
@@ -23,6 +25,7 @@ import {
 import {
   ACCOUNT_REPOSITORY,
   ASSET_REPOSITORY,
+  COST_EVIDENCE_REPOSITORY,
   PORTFOLIO_REPOSITORY,
   TAX_COMPENSATION_ELECTION_REPOSITORY,
   TRANSACTION_REPOSITORY,
@@ -39,6 +42,11 @@ import {
   type EquityElectionSnapshot,
   type EquityMonthlyFiscalReadModel,
 } from './equity-monthly-fiscal-replay.service';
+import {
+  enrichCanonicalRealizedWithEvidence,
+  isTaxCostEvidenceEnrichmentEnabled,
+  type EvidenceCostTrace,
+} from './evidence-cost-enrichment';
 
 function currentCompetence(): string {
   const now = new Date();
@@ -50,6 +58,7 @@ interface FiscalContext {
   readonly canonicalRealizedByTransactionId: Map<string, CanonicalRealizedResult>;
   readonly assetTypeByAssetId: Map<string, string>;
   readonly institutionByAccountId: Map<string, string>;
+  readonly evidenceCostTrace: readonly EvidenceCostTrace[];
 }
 
 /**
@@ -73,6 +82,8 @@ export class GetMonthlyTaxLiabilityUseCase {
     private readonly accountRepository: IAccountRepository,
     @Inject(TAX_COMPENSATION_ELECTION_REPOSITORY)
     private readonly electionRepository: ITaxCompensationElectionRepository,
+    @Inject(COST_EVIDENCE_REPOSITORY)
+    private readonly evidenceRepository: ICostBasisEvidenceRepository,
     @Inject(TAX_RULE_REGISTRY)
     private readonly ruleRegistry: readonly TaxRuleSet[],
     @Inject(TAX_INPUT_PROVIDER)
@@ -104,11 +115,12 @@ export class GetMonthlyTaxLiabilityUseCase {
   async computeWithEquity(params: { userId: string; competence: string }): Promise<{
     liability: MonthlyTaxLiability;
     equity: EquityMonthlyFiscalReadModel;
+    evidenceCostTrace: readonly EvidenceCostTrace[];
   }> {
     const context = await this.loadContext(params.userId);
     const liability = await this.computeFromContext(context, params.userId, params.competence);
     const equity = await this.computeEquity(context, params.userId, liability.competence.value);
-    return { liability, equity };
+    return { liability, equity, evidenceCostTrace: context.evidenceCostTrace };
   }
 
   /**
@@ -145,8 +157,13 @@ export class GetMonthlyTaxLiabilityUseCase {
               status: 'KNOWN',
             });
           } else {
+            // INCOMPLETE entries keep net proceeds so a future gated
+            // evidence enrichment can recompute gain without re-deriving
+            // engine arithmetic. Consumers ignore non-KNOWN entries.
             canonicalRealizedByTransactionId.set(String(disposal.transactionId), {
+              netProceeds: disposal.netProceeds.amount,
               status: 'INCOMPLETE',
+              currency: disposal.currency,
             });
           }
         }
@@ -154,6 +171,32 @@ export class GetMonthlyTaxLiabilityUseCase {
         // An inconsistent ledger fails closed downstream via MISSING canonical data.
       }
     }
+
+    // CTE-2 gated enrichment (ADR-312, Option A narrow form): the flag is read
+    // exactly once here. Flag OFF skips the evidence query entirely and the
+    // canonical map stays behaviorally identical to pre-CTE-2; the trace
+    // still records every disposal as not evaluated.
+    const enrichmentEnabled = isTaxCostEvidenceEnrichmentEnabled();
+    const evidenceRows: CostBasisEvidenceRow[] = [];
+    if (enrichmentEnabled) {
+      for (const portfolio of portfolios) {
+        evidenceRows.push(
+          ...(await this.evidenceRepository.listCurrentByScope({
+            portfolioId: String(portfolio.id),
+          })),
+        );
+      }
+    }
+    const enriched = enrichCanonicalRealizedWithEvidence({
+      canonicalMap: canonicalRealizedByTransactionId,
+      transactions,
+      evidenceRows,
+      enabled: enrichmentEnabled,
+    });
+    for (const [txId, entry] of enriched.map) {
+      canonicalRealizedByTransactionId.set(txId, entry);
+    }
+    const evidenceCostTrace = enriched.trace;
 
     const assetIds = new Set<string>();
     for (const tx of transactions) {
@@ -172,6 +215,7 @@ export class GetMonthlyTaxLiabilityUseCase {
       canonicalRealizedByTransactionId,
       assetTypeByAssetId,
       institutionByAccountId,
+      evidenceCostTrace,
     };
   }
 

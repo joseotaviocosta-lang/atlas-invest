@@ -96,7 +96,6 @@ precedência do livro; proveniência no trace; sem mutação de ledger/quantidad
 gate default-off/on; revogação recomputa. Estágios CTE-1→CTE-4.
 
 ## 11. CTE-1 as-built (resolução pura)
-
 Implementado em `@atlas/tax-intelligence/src/resolution.ts` (pacote escolhido
 porque `portfolio-engine` está congelado em 1.0.0-rc.1 e `tax-engine` é
 intocável; o pacote já hospeda a cobertura documental e não importa
@@ -115,3 +114,25 @@ blockers intactos, migrations 48. Dívida 47 registrada à parte
 (`MIGRATION_HISTORY_HYGIENE_REQUIRED_BEFORE_PRODUCTION`). Testes automatizados
 futuros usam fixtures sintéticas; evidência real KCRE11 jamais editada,
 revisada, rejeitada ou copiada.
+
+## 12. CTE-2 as-built (integração com gate)
+
+- Flag `TAX_COST_EVIDENCE_ENRICHMENT_ENABLED`, parse estrito `=== 'true'`
+  (ausente/falso/inválido ⇒ false), lida uma única vez em `loadContext`;
+  sem flag no resolver, motor, repositório ou UI; nunca exposta ao browser.
+- Módulo `apps/api/.../fiscal/evidence-cost-enrichment.ts`: adapter
+  BUY/SUBSCRIPTION/BONUS-com-custo (TRANSFER_IN não reconstruível ⇒
+  fail-closed documentado); resolução por alienação com `asOfDate` =
+  tradeDate e posição pré-venda via replay exclusivo do dia anterior
+  (asOf inclusivo incluiria a própria venda); somente
+  `COMPLETE_WITH_VERIFIED_EVIDENCE` enriquece; KNOWN intocado; DAY_TRADE
+  preservado estruturalmente (custo vem da perna BUY intradiária).
+- `loadContext`: entradas INCOMPLETE carregam `netProceeds` (cópia, sem
+  re-derivar); mapa enriquecido in-place; `computeWithEquity` retorna
+  `evidenceCostTrace` aditivo (fora do envelope HTTP); fórmulas intactas.
+  Com flag OFF a query de evidência é pulada mas o trace registra cada
+  disposal como NOT_EVALUATED (equivalência observável).
+- 11 testes de integração + matriz cobrindo flag, precedência, parcial,
+  conflito, over-coverage, supersessão, temporal, moeda, contas, FII,
+  equity-NORMAL e invariância DAY_TRADE. Tax-engine 815/815 e suítes
+  liability/equity (24) verdes com flag OFF.
