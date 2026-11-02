@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import {
   taxIntelligenceQueryKey,
   mapCtiStatusToPresentation,
@@ -135,5 +137,31 @@ describe('CTI internal-code hotfix (presentation only)', () => {
     expect(resolveFactValue('TAX_STATUS', 'EMPTY')).toBe('Sem dados na competência');
     expect(resolveFactValue('TAX_DUE', '2494.96 BRL')).toBe('2494.96 BRL');
     expect(resolveFactValue('ANY', null)).toBeNull();
+  });
+});
+
+describe('CTI-3 anchor contract (structural)', () => {
+  const panelPath = path.join(
+    process.cwd(),
+    'apps/web/src/components/fiscal/TaxIntelligencePanel.tsx',
+  );
+
+  it('Test 5 — panel root carries exactly one id="entenda"', () => {
+    const source = fs.readFileSync(panelPath, 'utf8');
+    const occurrences = source.split('id="entenda"').length - 1;
+    expect(occurrences).toBe(1);
+  });
+
+  it('Test 6 — anchor sits on the always-rendered wrapper (loading/error/content inside)', () => {
+    const source = fs.readFileSync(panelPath, 'utf8');
+    const anchorAt = source.indexOf('id="entenda"');
+    const loadingAt = source.indexOf('Analisando a situação fiscal');
+    const errorAt = source.indexOf('Explicação indisponível');
+    const contentAt = source.indexOf('data.headline');
+    expect(anchorAt).toBeGreaterThan(-1);
+    // All states render beneath the anchored wrapper.
+    expect(loadingAt).toBeGreaterThan(anchorAt);
+    expect(errorAt).toBeGreaterThan(anchorAt);
+    expect(contentAt).toBeGreaterThan(anchorAt);
   });
 });

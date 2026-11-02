@@ -555,7 +555,7 @@ export class GetNotificationCenterFeedUseCase {
           dueAt: null,
           portfolioId,
           portfolioName: pName,
-          actionHref: '/tax',
+          actionHref: '/tax#entenda',
           actionLabel: 'Ver pendências fiscais',
           sourceContext: {
             origin: 'Cost Evidence',

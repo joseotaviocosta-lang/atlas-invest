@@ -121,7 +121,25 @@ describe('API Integration: cost-basis reminders in notification feed', () => {
     // Tax-blocked companion exists (canonical INCOMPLETE), FISCAL/ACTION_REQUIRED.
     const blocked = byPrefix(body, 'tax-blocked:');
     expect(blocked).toHaveLength(1);
-    expect(blocked[0]).toMatchObject({ category: 'FISCAL', priority: 'ACTION_REQUIRED', actionHref: '/tax' });
+    expect(blocked[0]).toMatchObject({ category: 'FISCAL', priority: 'ACTION_REQUIRED', actionHref: '/tax#entenda' });
+  });
+
+  it('CTI-3 deep-link: tax-blocked href targets the explanation anchor, identity untouched', async () => {
+    const petr = await asset('PETR4');
+    await opening(petr, '100');
+    const body = await feed();
+    const blocked = byPrefix(body, 'tax-blocked:');
+    expect(blocked).toHaveLength(1);
+    // Test 1: exact deep-link href.
+    expect(blocked[0]!.actionHref).toBe('/tax#entenda');
+    expect(blocked[0]!.actionLabel).toBe('Ver pendências fiscais');
+    // Test 2/3: stable id, severity and category (dedupe/badge semantics intact).
+    expect(blocked[0]!.id).toBe(`tax-blocked:${portfolioId}:incomplete-cost:v1`);
+    expect(blocked[0]).toMatchObject({ category: 'FISCAL', priority: 'ACTION_REQUIRED' });
+    // Test 4: cost reminder href unchanged by CTI-3.
+    const grouped = byPrefix(body, 'cost-basis:');
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0]!.actionHref).toBe(`/portfolio?portfolioId=${portfolioId}&tab=overview`);
   });
 
   it('suppresses the incomplete item for KCRE11-style COMPLETE documentary coverage', async () => {
