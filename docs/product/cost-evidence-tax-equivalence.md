@@ -95,6 +95,19 @@ precedência do livro; proveniência no trace; sem mutação de ledger/quantidad
 10 negativos; monotonicidade; fallback; fidelidade decimal ("2494.96" verbatim);
 gate default-off/on; revogação recomputa. Estágios CTE-1→CTE-4.
 
+## 11. CTE-1 as-built (resolução pura)
+
+Implementado em `@atlas/tax-intelligence/src/resolution.ts` (pacote escolhido
+porque `portfolio-engine` está congelado em 1.0.0-rc.1 e `tax-engine` é
+intocável; o pacote já hospeda a cobertura documental e não importa
+tax-engine/Prisma — verificado por teste estático). Entrada normalizada
+(`ResolveTaxCostInput`: lotes do livro + linhas de evidência + `asOfDate`
+opcional); `resolveTaxCost` puro com 13 códigos de issue internos
+(`EVIDENCE_*` canônicos + `LEDGER_CURRENCY_MISMATCH`, `INVALID_LOT_INPUT`,
+`UNKNOWN_POSITION_QUANTITY`); média só com cobertura total; KCRE11 dourado
+verifica 2494.96/300 com média de 40 dígitos; 24 testes verdes. Sem endpoint,
+sem gate, sem UI, sem persistência, sem toque em motores. Migrations 48→48.
+
 ## 11. Baseline e dívida
 
 Preservar: ledger 137, replay 109/109, 38/40, KCRE11 300/INCOMPLETE canônico,
