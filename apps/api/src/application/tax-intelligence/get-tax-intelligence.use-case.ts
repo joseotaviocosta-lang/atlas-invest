@@ -21,6 +21,7 @@ import type { FiscalClock } from '../fiscal/fiscal-clock';
 import { GetMonthlyTaxStateUseCase } from '../fiscal/get-monthly-tax-state.use-case';
 import { GetMonthlyTaxLiabilityUseCase } from '../fiscal/get-monthly-tax-liability.use-case';
 import { GetAnnualTaxReadinessUseCase } from '../fiscal/get-annual-tax-readiness.use-case';
+import { isTaxCostEvidenceEnrichmentEnabled } from '../fiscal/evidence-cost-enrichment';
 import { replayPortfolio } from '@atlas/portfolio-engine';
 
 export interface GetTaxIntelligenceQuery {
@@ -143,6 +144,7 @@ export class GetTaxIntelligenceUseCase {
         completeAssets: coverage.completeAssets,
         canonicalIncompleteAssets: coverage.canonicalIncompleteAssets,
         reviewRequiredCount: evidenceRows.filter((row) => row.status === 'REVIEW_REQUIRED').length,
+        taxEnrichmentEnabled: isTaxCostEvidenceEnrichmentEnabled(),
       },
       reconciliationBlockers: [],
       freshness: { asOf: today, lastReplayAt: today },

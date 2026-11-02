@@ -95,6 +95,34 @@ describe('CTI projector — golden cases (PART AD)', () => {
     expect(res.limitations).toContain('Evidências documentais de custo ainda não alimentam o motor tributário.');
   });
 
+  it('4b. enabled flag switches documentary-vs-tax wording (PART J)', () => {    const disabled = projectTaxIntelligence(
+      base({
+        monthly: { status: 'BLOCKED', reasonCode: null, qualityIssues: [], taxDue: null, limitations: [], ruleSetVersion: null, ruleSetStatus: null },
+        cost: { incompleteAssets: 0, partialAssets: 0, completeAssets: 1, canonicalIncompleteAssets: 1, reviewRequiredCount: 0 },
+      }),
+      NOW,
+    );
+    const enabled = projectTaxIntelligence(
+      base({
+        monthly: { status: 'BLOCKED', reasonCode: null, qualityIssues: [], taxDue: null, limitations: [], ruleSetVersion: null, ruleSetStatus: null },
+        cost: { incompleteAssets: 0, partialAssets: 0, completeAssets: 1, canonicalIncompleteAssets: 1, reviewRequiredCount: 0, taxEnrichmentEnabled: true },
+      }),
+      NOW,
+    );
+    expect(enabled.status).toBe('BLOCKED');
+    const fact = enabled.facts.find((f) => f.code === 'DOCUMENTARY_VS_TAX_COST');
+    expect(fact?.value).toContain('complementado por evidência verificada');
+    expect(enabled.limitations).toContain(
+      'O custo complementado por evidência aplica-se somente onde a resolução é completa; o histórico canônico permanece incompleto.',
+    );
+    expect(enabled.limitations).not.toContain(
+      'Evidências documentais de custo ainda não alimentam o motor tributário.',
+    );
+    expect(disabled.limitations).toContain(
+      'Evidências documentais de custo ainda não alimentam o motor tributário.',
+    );
+  });
+
   it('5. EGIE3 unknown event type → explanation without SELL', () => {
     const res = projectTaxIntelligence(
       base({

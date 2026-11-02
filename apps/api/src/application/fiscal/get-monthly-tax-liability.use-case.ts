@@ -1,4 +1,4 @@
-import { Inject, Injectable, BadRequestException } from '@nestjs/common';
+import { Inject, Injectable, BadRequestException, Logger } from '@nestjs/common';
 import {
   IAccountRepository,
   IAssetRepository,
@@ -44,6 +44,7 @@ import {
 } from './equity-monthly-fiscal-replay.service';
 import {
   enrichCanonicalRealizedWithEvidence,
+  detectEnrichedDisposalSignals,
   isTaxCostEvidenceEnrichmentEnabled,
   type EvidenceCostTrace,
 } from './evidence-cost-enrichment';
@@ -71,6 +72,8 @@ interface FiscalContext {
  */
 @Injectable()
 export class GetMonthlyTaxLiabilityUseCase {
+  private readonly logger = new Logger(GetMonthlyTaxLiabilityUseCase.name);
+
   constructor(
     @Inject(PORTFOLIO_REPOSITORY)
     private readonly portfolioRepository: IPortfolioRepository,
@@ -118,6 +121,19 @@ export class GetMonthlyTaxLiabilityUseCase {
     evidenceCostTrace: readonly EvidenceCostTrace[];
   }> {
     const context = await this.loadContext(params.userId);
+    // First-disposal guard (CTE-4, Option A): every evidence-backed disposal
+    // is audit-logged per computation (identifiers and dates only — no
+    // amounts, per log sanitization). No persistence: the Owner audits the
+    // first real occurrence when it appears.
+    for (const signal of detectEnrichedDisposalSignals(context.evidenceCostTrace)) {
+      this.logger.warn({
+        signal: signal.signal,
+        transactionId: signal.transactionId,
+        assetId: signal.assetId,
+        tradeDate: signal.tradeDate,
+        resolutionStatus: signal.resolutionStatus,
+      });
+    }
     const liability = await this.computeFromContext(context, params.userId, params.competence);
     const equity = await this.computeEquity(context, params.userId, liability.competence.value);
     return { liability, equity, evidenceCostTrace: context.evidenceCostTrace };

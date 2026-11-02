@@ -11,9 +11,17 @@ import {
   type CostBasisAssessment,
 } from '@atlas/portfolio-engine';
 import {
+  resolveTaxCost,
+  toTaxResolutionEvidenceRows,
+  toTaxResolutionLedgerLots,
+  type TaxCostResolutionStatus,
+} from '@atlas/tax-intelligence';
+import { isTaxCostEvidenceEnrichmentEnabled } from '../fiscal/evidence-cost-enrichment';
+import {
   EntityNotFoundError,
   CrossPortfolioIntegrityError,
   type ICostBasisEvidenceRepository,
+  type CostBasisEvidenceRow,
 } from '@atlas/database';
 import type {
   ITransactionRepository,
@@ -41,6 +49,15 @@ export interface CostAssessmentPreviewInput {
   evidenceDate?: string;
   sourceReference: string;
   notes?: string;
+}
+
+export interface CostTaxResolutionView {
+  /** Server-declared gate state; UI shows this block only when true. */
+  readonly enrichmentEnabled: boolean;
+  readonly status: TaxCostResolutionStatus | null;
+  readonly resolvedCost: { amount: string; currency: string } | null;
+  readonly ledgerKnownQuantity: string;
+  readonly evidenceKnownQuantity: string;
 }
 
 export interface CostAssessmentPreview {
@@ -107,14 +124,16 @@ export class CostEvidenceAssessmentUseCase {
 
   /**
    * Read-side assessment over persisted VERIFIED evidence. Never writes,
-   * never touches the ledger, never feeds tax.
+   * never touches the ledger, never feeds tax. Carries an additive
+   * tax-cost resolution view (computed always, displayed only when the
+   * server flag is enabled).
    */
   async assess(
     portfolioId: string,
     userId: string,
     accountId: string,
     assetId: string,
-  ): Promise<CostBasisAssessment> {
+  ): Promise<CostBasisAssessment & { taxCost: CostTaxResolutionView }> {
     const { transactions, position } = await this.loadScope(portfolioId, userId, accountId, assetId);
     const rows = await this.evidenceRepository.listCurrentByScope({
       portfolioId,
@@ -122,11 +141,61 @@ export class CostEvidenceAssessmentUseCase {
       assetId,
     });
     const verified = rows.filter((row) => row.status === 'VERIFIED').map(toVerifiedEvidenceLot);
-    return buildCostBasisAssessment({
+    const assessment = buildCostBasisAssessment({
       positionQuantity: position.quantity,
       ledgerLots: summarizeLedgerKnownLots(transactions, { assetId, accountId }),
       evidence: verified,
     });
+    return { ...assessment, taxCost: this.resolveTaxCostView(portfolioId, accountId, assetId, position, transactions, rows) };
+  }
+
+  /**
+   * Pure read-side tax-cost projection for one scope. Runs regardless of the
+   * gate (cheap, same loaded inputs); the UI renders it only when the server
+   * declares enrichment on. Never feeds the tax engine.
+   */
+  private resolveTaxCostView(
+    portfolioId: string,
+    accountId: string,
+    assetId: string,
+    position: { quantity: { value: string }; currency?: string },
+    transactions: Parameters<typeof summarizeLedgerKnownLots>[0],
+    rows: CostBasisEvidenceRow[],
+  ): CostTaxResolutionView {
+    const enrichmentEnabled = isTaxCostEvidenceEnrichmentEnabled();
+    const blank: CostTaxResolutionView = {
+      enrichmentEnabled,
+      status: null,
+      resolvedCost: null,
+      ledgerKnownQuantity: '0',
+      evidenceKnownQuantity: '0',
+    };
+    const candidateCurrency =
+      position.currency ??
+      rows.find((row) => row.currency)?.currency;
+    if (!candidateCurrency) return blank;
+    try {
+      const resolution = resolveTaxCost({
+        portfolioId,
+        accountId,
+        assetId,
+        positionQuantity: position.quantity.value,
+        positionCurrency: candidateCurrency,
+        ledgerLots: toTaxResolutionLedgerLots(transactions, { accountId, assetId }),
+        evidenceRows: toTaxResolutionEvidenceRows(rows),
+      });
+      return {
+        enrichmentEnabled,
+        status: resolution.status,
+        resolvedCost: resolution.resolvedCost
+          ? { amount: resolution.resolvedCost, currency: candidateCurrency }
+          : null,
+        ledgerKnownQuantity: resolution.ledgerKnownQuantity,
+        evidenceKnownQuantity: resolution.evidenceKnownQuantity,
+      };
+    } catch {
+      return blank;
+    }
   }
 
   /**

@@ -13,6 +13,7 @@ import {
   COST_EVIDENCE_ASSESSMENT_LABELS,
   COST_EVIDENCE_TAX_MESSAGE,
   getEvidenceRowViewState,
+  shouldShowTaxCostDisclosure,
 } from '@/lib/cost-evidence-entry';
 
 interface CostAssessment {
@@ -27,6 +28,13 @@ interface CostAssessment {
   averageKnownCostForCoveredQuantity: { amount: string; currency: string } | null;
   appliedEvidenceIds: string[];
   issues: Array<{ code: string; message: string }>;
+  taxCost?: {
+    enrichmentEnabled: boolean;
+    status: string | null;
+    resolvedCost: { amount: string; currency: string } | null;
+    ledgerKnownQuantity: string;
+    evidenceKnownQuantity: string;
+  } | null;
 }
 
 interface EvidenceRow {
@@ -188,6 +196,22 @@ export function CostEvidenceSection({
               Custo comprovado ({cost.currency}): {formatCurrency(cost.amount, cost.currency)}
             </div>
           ))}
+          {shouldShowTaxCostDisclosure(assessment.taxCost) && assessment.taxCost?.resolvedCost && (
+            <div style={{ marginTop: `${spacing.sm}px` }}>
+              <div style={{ fontWeight: 600 }}>
+                Custo fiscal complementado por evidência verificada
+              </div>
+              <div style={{ color: colors.textSecondary }}>
+                Total {formatCurrency(assessment.taxCost.resolvedCost.amount, assessment.taxCost.resolvedCost.currency)}
+                {' '}({formatQuantity(assessment.taxCost.ledgerKnownQuantity)} livro +{' '}
+                {formatQuantity(assessment.taxCost.evidenceKnownQuantity)} evidência)
+              </div>
+              <div style={{ color: colors.textSecondary }}>
+                O custo fiscal está completo com apoio de evidência verificada. O
+                histórico canônico da posição continua incompleto e não foi alterado.
+              </div>
+            </div>
+          )}
           {assessment.issues.map((issue) => (
             <div key={issue.code} role="alert" style={{ color: colors.negative }}>
               {issue.message}

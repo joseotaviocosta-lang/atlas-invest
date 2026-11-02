@@ -183,3 +183,23 @@ export function getEvidenceRowViewState(
         : 'Versão histórica',
   };
 }
+
+/**
+ * Display gate for the tax-cost disclosure block. Pure presentation rule:
+ * the server declares enrichment state; the client only decides visibility.
+ * Shown exclusively for complete tax-cost resolutions under an enabled gate —
+ * never for partial/blocked/unknown states, never when the gate is off.
+ */
+export function shouldShowTaxCostDisclosure(
+  taxCost:
+    | {
+        enrichmentEnabled: boolean;
+        status: string | null;
+        resolvedCost: { amount: string; currency: string } | null;
+      }
+    | null
+    | undefined,
+): boolean {
+  if (!taxCost || !taxCost.enrichmentEnabled || !taxCost.resolvedCost) return false;
+  return taxCost.status === 'COMPLETE_WITH_VERIFIED_EVIDENCE' || taxCost.status === 'COMPLETE_LEDGER_ONLY';
+}

@@ -6,9 +6,9 @@ import {
 import { replayPortfolio } from '@atlas/portfolio-engine';
 import {
   resolveTaxCost,
+  toTaxResolutionEvidenceRows,
+  toTaxResolutionLedgerLots,
   type TaxCostResolutionStatus,
-  type TaxResolutionEvidenceRowInput,
-  type TaxResolutionLedgerLotInput,
 } from '@atlas/tax-intelligence';
 import type { CostBasisEvidenceRow } from '@atlas/database';
 
@@ -61,12 +61,45 @@ export interface EvidenceCostTraceSourceRef {
 
 export interface EvidenceCostTrace {
   readonly transactionId: string;
+  readonly assetId: string;
+  readonly tradeDate: string;
   readonly source: EvidenceCostTraceSource;
   readonly resolutionStatus: TaxCostResolutionStatus | 'NOT_EVALUATED';
   readonly ledgerKnownQuantity?: string;
   readonly evidenceKnownQuantity?: string;
   readonly resolvedCost?: string;
   readonly evidenceSources: readonly EvidenceCostTraceSourceRef[];
+}
+
+/**
+ * First-disposal review signal (CTE-4, Option A + documented limitation).
+ *
+ * Pure derivation: every VERIFIED_EVIDENCE trace entry yields one signal.
+ * Without persistence there is no "first ever" memory across requests, so
+ * the caller logs each signal per computation and the Owner audits the first
+ * real occurrence when it appears. No amounts, no PII — identifiers and
+ * dates only (AGENTS.md log sanitization).
+ */
+export interface EnrichedDisposalSignal {
+  readonly signal: 'EVIDENCE_TAX_DISPOSAL_REVIEW_REQUIRED';
+  readonly transactionId: string;
+  readonly assetId: string;
+  readonly tradeDate: string;
+  readonly resolutionStatus: TaxCostResolutionStatus;
+}
+
+export function detectEnrichedDisposalSignals(
+  trace: readonly EvidenceCostTrace[],
+): EnrichedDisposalSignal[] {
+  return trace
+    .filter((entry) => entry.source === 'VERIFIED_EVIDENCE')
+    .map((entry) => ({
+      signal: 'EVIDENCE_TAX_DISPOSAL_REVIEW_REQUIRED' as const,
+      transactionId: entry.transactionId,
+      assetId: entry.assetId,
+      tradeDate: entry.tradeDate,
+      resolutionStatus: entry.resolutionStatus as TaxCostResolutionStatus,
+    }));
 }
 
 export interface EnrichCanonicalRealizedInput {
@@ -79,73 +112,6 @@ export interface EnrichCanonicalRealizedInput {
 export interface EnrichCanonicalRealizedOutput {
   readonly map: Map<string, CanonicalRealizedResult>;
   readonly trace: readonly EvidenceCostTrace[];
-}
-
-function toLedgerLotInputs(
-  transactions: readonly Transaction[],
-  scope: { accountId: string; assetId: string },
-): TaxResolutionLedgerLotInput[] {
-  const lots: TaxResolutionLedgerLotInput[] = [];
-  for (const tx of transactions) {
-    const txAny = tx as unknown as {
-      type?: string;
-      id?: unknown;
-      accountId?: unknown;
-      assetId?: unknown;
-      quantity?: { value?: unknown };
-      unitPrice?: { amount?: unknown };
-      assignedCost?: { amount?: unknown } | null;
-      tradeDate?: { toString?: () => string } | string;
-      currency?: unknown;
-    };
-    if (String(txAny.accountId) !== scope.accountId || String(txAny.assetId) !== scope.assetId) {
-      continue;
-    }
-    // Matched TRANSFER_IN carried cost is not reconstructible as dated lots
-    // from transaction rows alone — those scopes stay PARTIAL/BLOCKED unless
-    // evidence covers them (documented fail-closed limitation, ADR-312).
-    const tradeDate =
-      typeof txAny.tradeDate === 'string' ? txAny.tradeDate : txAny.tradeDate?.toString?.() ?? '';
-    const base = {
-      transactionId: String(txAny.id),
-      quantity: String(txAny.quantity?.value ?? ''),
-      acquisitionDate: tradeDate,
-      currency: String(txAny.currency ?? ''),
-    };
-    if (txAny.type === 'BUY' || txAny.type === 'SUBSCRIPTION') {
-      // Facts only: the resolver derives a missing cost side exactly and
-      // fails closed on malformed input. Nothing is defaulted or zero-filled.
-      lots.push({
-        ...base,
-        ...(txAny.unitPrice?.amount !== undefined && txAny.unitPrice?.amount !== null
-          ? { unitCost: String(txAny.unitPrice.amount) }
-          : {}),
-      });
-    } else if (txAny.type === 'BONUS' && txAny.assignedCost?.amount) {
-      lots.push({ ...base, totalCost: String(txAny.assignedCost.amount) });
-    }
-  }
-  return lots;
-}
-
-function toEvidenceRowInputs(rows: readonly CostBasisEvidenceRow[]): TaxResolutionEvidenceRowInput[] {
-  return rows.map((row) => ({
-    evidenceId: row.id,
-    evidenceVersion: row.version,
-    evidenceFingerprint: row.fingerprint,
-    evidenceType: row.evidenceType,
-    accountId: row.accountId,
-    assetId: row.assetId,
-    acquisitionDate: row.acquisitionDate,
-    quantityCovered: row.quantityCovered,
-    unitCost: row.unitCost,
-    totalCost: row.totalCost,
-    currency: row.currency,
-    status: row.status,
-    supersedesId: row.supersedesId,
-    verifiedBy: row.confirmedBy,
-    verifiedAt: row.confirmedAt ? row.confirmedAt.toISOString() : null,
-  }));
 }
 
 function traceSourceRefs(rows: readonly CostBasisEvidenceRow[]): EvidenceCostTraceSourceRef[] {
@@ -174,14 +140,6 @@ export function enrichCanonicalRealizedWithEvidence(
   for (const [txId, entry] of input.canonicalMap) {
     const sell = sellsById.get(txId);
     if (!sell) continue;
-    if (entry.status === 'KNOWN') {
-      trace.push({ transactionId: txId, source: 'CANONICAL_LEDGER', resolutionStatus: 'COMPLETE_LEDGER_ONLY', evidenceSources: [] });
-      continue;
-    }
-    if (!input.enabled) {
-      trace.push({ transactionId: txId, source: 'UNKNOWN', resolutionStatus: 'NOT_EVALUATED', evidenceSources: [] });
-      continue;
-    }
     const sellAny = sell as unknown as {
       accountId?: unknown;
       assetId?: unknown;
@@ -192,6 +150,15 @@ export function enrichCanonicalRealizedWithEvidence(
     const accountId = String(sellAny.accountId ?? '');
     const assetId = String(sellAny.assetId ?? '');
     const tradeDate = typeof sellAny.tradeDate === 'string' ? sellAny.tradeDate : sellAny.tradeDate?.toString?.() ?? '';
+    const context = { transactionId: txId, assetId, tradeDate };
+    if (entry.status === 'KNOWN') {
+      trace.push({ ...context, source: 'CANONICAL_LEDGER', resolutionStatus: 'COMPLETE_LEDGER_ONLY', evidenceSources: [] });
+      continue;
+    }
+    if (!input.enabled) {
+      trace.push({ ...context, source: 'UNKNOWN', resolutionStatus: 'NOT_EVALUATED', evidenceSources: [] });
+      continue;
+    }
     const sellQty = String(sellAny.quantity?.value ?? '');
     const currency = String(sellAny.currency ?? '');
     const scopeRows = input.evidenceRows.filter(
@@ -216,7 +183,7 @@ export function enrichCanonicalRealizedWithEvidence(
       const pos = replayed.state.accounts.get(accountId)?.assets.get(assetId);
       if (pos) positionQty = pos.quantity.value;
     } catch {
-      trace.push({ transactionId: txId, source: 'UNKNOWN', resolutionStatus: 'UNKNOWN', evidenceSources: [] });
+      trace.push({ ...context, source: 'UNKNOWN', resolutionStatus: 'UNKNOWN', evidenceSources: [] });
       continue;
     }
 
@@ -226,14 +193,14 @@ export function enrichCanonicalRealizedWithEvidence(
       assetId,
       positionQuantity: positionQty,
       positionCurrency: currency,
-      ledgerLots: toLedgerLotInputs(input.transactions, { accountId, assetId }),
-      evidenceRows: toEvidenceRowInputs(scopeRows),
+      ledgerLots: toTaxResolutionLedgerLots(input.transactions, { accountId, assetId }),
+      evidenceRows: toTaxResolutionEvidenceRows(scopeRows),
       asOfDate: tradeDate,
     });
 
     if (resolution.status !== 'COMPLETE_WITH_VERIFIED_EVIDENCE' || !resolution.resolvedAverageCost) {
       trace.push({
-        transactionId: txId,
+        ...context,
         source: 'UNKNOWN',
         resolutionStatus: resolution.status,
         evidenceSources: [],
@@ -242,7 +209,7 @@ export function enrichCanonicalRealizedWithEvidence(
     }
     if (!entry.netProceeds) {
       trace.push({
-        transactionId: txId,
+        ...context,
         source: 'UNKNOWN',
         resolutionStatus: resolution.status,
         evidenceSources: [],
@@ -260,7 +227,7 @@ export function enrichCanonicalRealizedWithEvidence(
       currency,
     });
     trace.push({
-      transactionId: txId,
+      ...context,
       source: 'VERIFIED_EVIDENCE',
       resolutionStatus: resolution.status,
       ledgerKnownQuantity: resolution.ledgerKnownQuantity,

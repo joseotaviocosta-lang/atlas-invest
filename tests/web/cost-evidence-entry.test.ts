@@ -9,6 +9,7 @@ import {
   normalizeDecimalField,
   buildCostEvidencePayload,
   getEvidenceRowViewState,
+  shouldShowTaxCostDisclosure,
 } from '@/lib/cost-evidence-entry';
 
 describe('Cost evidence entry helpers', () => {
@@ -159,5 +160,36 @@ describe('Cost evidence version currency (stale-action gating)', () => {
     const view = getEvidenceRowViewState(orphan, [orphan]);
     expect(view.isCurrent).toBe(true);
     expect(view.historicalLabel).toBeNull();
+  });
+});
+
+describe('Tax-cost disclosure gate (CTE-4, presentation only)', () => {
+  const complete = {
+    enrichmentEnabled: true,
+    status: 'COMPLETE_WITH_VERIFIED_EVIDENCE',
+    resolvedCost: { amount: '2494.96', currency: 'BRL' },
+  };
+
+  it('shows the block for complete resolutions under an enabled gate', () => {
+    expect(shouldShowTaxCostDisclosure(complete)).toBe(true);
+    expect(
+      shouldShowTaxCostDisclosure({ ...complete, status: 'COMPLETE_LEDGER_ONLY' }),
+    ).toBe(true);
+  });
+
+  it('hides the block when the gate is off, even with complete data', () => {
+    expect(shouldShowTaxCostDisclosure({ ...complete, enrichmentEnabled: false })).toBe(false);
+  });
+
+  it('hides the block for partial/blocked/unknown states', () => {
+    for (const status of ['PARTIAL', 'BLOCKED', 'UNKNOWN', null]) {
+      expect(shouldShowTaxCostDisclosure({ ...complete, status })).toBe(false);
+    }
+  });
+
+  it('hides the block without a resolved cost or without input', () => {
+    expect(shouldShowTaxCostDisclosure({ ...complete, resolvedCost: null })).toBe(false);
+    expect(shouldShowTaxCostDisclosure(null)).toBe(false);
+    expect(shouldShowTaxCostDisclosure(undefined)).toBe(false);
   });
 });

@@ -401,4 +401,30 @@ describe('CostEvidenceUseCase + Assessment (mocked I/O)', () => {
     expect(txList).toHaveLength(3);
     expect(r.transactionRepository.createMany).not.toHaveBeenCalled();
   });
+
+  it('assessment tax-cost view is server-gated (PART W flag semantics)', async () => {
+    const r = repos();
+    const { crud, assess } = useCases(r);
+    const created = await crud.create(PORTFOLIO, USER, draft());
+    const submitted = await crud.submit(PORTFOLIO, USER, created.record.id);
+    await crud.verify(PORTFOLIO, USER, submitted.id);
+
+    delete process.env.TAX_COST_EVIDENCE_ENRICHMENT_ENABLED;
+    const off = await assess.assess(PORTFOLIO, USER, ACCOUNT, ASSET);
+    expect(off.taxCost.enrichmentEnabled).toBe(false);
+    expect(off.taxCost.status).toBe('COMPLETE_WITH_VERIFIED_EVIDENCE');
+    expect(off.taxCost.resolvedCost).toEqual({ amount: '2495', currency: 'BRL' });
+    expect(off.taxCost.ledgerKnownQuantity).toBe('180');
+    expect(off.taxCost.evidenceKnownQuantity).toBe('120');
+
+    process.env.TAX_COST_EVIDENCE_ENRICHMENT_ENABLED = 'true';
+    try {
+      const on = await assess.assess(PORTFOLIO, USER, ACCOUNT, ASSET);
+      expect(on.taxCost.enrichmentEnabled).toBe(true);
+      expect(on.taxCost.status).toBe('COMPLETE_WITH_VERIFIED_EVIDENCE');
+      expect(on.taxCost.resolvedCost).toEqual({ amount: '2495', currency: 'BRL' });
+    } finally {
+      delete process.env.TAX_COST_EVIDENCE_ENRICHMENT_ENABLED;
+    }
+  });
 });

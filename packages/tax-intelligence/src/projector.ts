@@ -266,14 +266,17 @@ export function projectTaxIntelligence(
     });
   }
   // KCRE11 nuance: documentary complete but canonical tax cost still incomplete.
+  // Wording is state-aware: with enrichment enabled, resolved cost may
+  // complement the calculation where complete (PART J).
   const documentaryCompleteButTaxBlocked =
     cost.completeAssets > 0 && cost.canonicalIncompleteAssets > 0;
   if (documentaryCompleteButTaxBlocked) {
     facts.push({
       code: 'DOCUMENTARY_VS_TAX_COST',
       label: 'Cobertura documental × custo fiscal',
-      value:
-        'Há posições com cobertura documental completa cujo custo fiscal canônico permanece incompleto.',
+      value: context.cost.taxEnrichmentEnabled
+        ? 'Há posições com cobertura documental completa cujo custo fiscal é complementado por evidência verificada onde a resolução é completa.'
+        : 'Há posições com cobertura documental completa cujo custo fiscal canônico permanece incompleto.',
       source: 'COST_ASSESSMENT',
     });
   }
@@ -346,7 +349,11 @@ export function projectTaxIntelligence(
     limitations.push('O Atlas não estima imposto quando faltam dados essenciais.');
   }
   if (documentaryCompleteButTaxBlocked) {
-    limitations.push('Evidências documentais de custo ainda não alimentam o motor tributário.');
+    limitations.push(
+      context.cost.taxEnrichmentEnabled
+        ? 'O custo complementado por evidência aplica-se somente onde a resolução é completa; o histórico canônico permanece incompleto.'
+        : 'Evidências documentais de custo ainda não alimentam o motor tributário.',
+    );
   }
   if (context.reconciliationBlockers.length > 0) {
     limitations.push(
@@ -402,4 +409,3 @@ export function projectTaxIntelligence(
     generatedAt: nowIso,
   });
 }
-

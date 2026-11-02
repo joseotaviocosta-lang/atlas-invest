@@ -140,6 +140,13 @@ async function bootstrap() {
   await app.listen(port);
   console.info(`[Atlas API] Server running on http://localhost:${port}`);
   console.info(`[Atlas API] Swagger documentation available at http://localhost:${port}/docs`);
+  // Activation visibility (CTE-4): always log the evidence-enrichment gate
+  // state at boot. No secrets, no PII — boolean only.
+  console.info(
+    `[Atlas API] Tax cost evidence enrichment: ${
+      process.env.TAX_COST_EVIDENCE_ENRICHMENT_ENABLED === 'true' ? 'ENABLED' : 'DISABLED'
+    }`,
+  );
 }
 
 if (process.env.NODE_ENV !== 'test') {

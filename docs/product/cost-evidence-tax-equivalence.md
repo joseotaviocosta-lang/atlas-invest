@@ -116,7 +116,6 @@ futuros usam fixtures sintéticas; evidência real KCRE11 jamais editada,
 revisada, rejeitada ou copiada.
 
 ## 12. CTE-2 as-built (integração com gate)
-
 - Flag `TAX_COST_EVIDENCE_ENRICHMENT_ENABLED`, parse estrito `=== 'true'`
   (ausente/falso/inválido ⇒ false), lida uma única vez em `loadContext`;
   sem flag no resolver, motor, repositório ou UI; nunca exposta ao browser.
@@ -136,3 +135,25 @@ revisada, rejeitada ou copiada.
   conflito, over-coverage, supersessão, temporal, moeda, contas, FII,
   equity-NORMAL e invariância DAY_TRADE. Tax-engine 815/815 e suítes
   liability/equity (24) verdes com flag OFF.
+
+## 13. CTE-4 as-built (ativação local controlada)
+
+- Flag `TAX_COST_EVIDENCE_ENRICHMENT_ENABLED=true` somente no `.env` local
+  (não versionado) + linha comentada no `.env.example`; default de código
+  segue `false`; boot registra `Tax cost evidence enrichment: ENABLED` /
+  `DISABLED` (sem segredos/PII) para auditoria de ativação e rollback.
+- Adapters de lotes/fatos compartilhados em `@atlas/tax-intelligence`
+  (`adapters.ts`: `toTaxResolutionLedgerLots`, `toTaxResolutionEvidenceRows`);
+  `loadContext` e o assessment consomem a mesma lógica (sem duplicação).
+- Disclosure no `CostEvidenceSection` via bloco `taxCost` aditivo do endpoint
+  `assessment` (status + custo resolvido + divisão livro/evidência), visível
+  só com gate ligado (`shouldShowTaxCostDisclosure`); OFF preserva a UI
+  antiga byte a byte. Copy PT-BR com distinção canônica explícita; sem
+  enums internos na tela.
+- CTI state-aware: fato/limitação `DOCUMENTARY_VS_TAX_COST` ramificam por
+  `taxEnrichmentEnabled` (default ausente = OFF, goldens antigos intactos).
+- Guard de primeira alienação: `detectEnrichedDisposalSignals` puro +
+  `Logger.warn` por computação com `{signal, transactionId, assetId,
+  tradeDate, resolutionStatus}` — sem valores, sem PII (Opção A + limitação
+  documentada: sem persistência não há memória de "primeira vez" entre
+  requests; o Owner audita a primeira ocorrência real quando surgir).

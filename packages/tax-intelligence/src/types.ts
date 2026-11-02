@@ -109,6 +109,11 @@ export interface CtiCostInput {
   /** Distinct assets with any canonically INCOMPLETE scope (tax view). */
   readonly canonicalIncompleteAssets: number;
   readonly reviewRequiredCount: number;
+  /**
+   * Whether verified-evidence tax enrichment is active. Absent = disabled:
+   * all existing wording stays exactly as validated with the gate OFF.
+   */
+  readonly taxEnrichmentEnabled?: boolean;
 }
 
 export interface CtiReconciliationBlockerInput {

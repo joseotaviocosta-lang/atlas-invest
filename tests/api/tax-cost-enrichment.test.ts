@@ -4,6 +4,7 @@ import { TransactionFactory } from '@atlas/domain';
 import { GetMonthlyTaxLiabilityUseCase } from '../../apps/api/src/application/fiscal/get-monthly-tax-liability.use-case';
 import {
   enrichCanonicalRealizedWithEvidence,
+  detectEnrichedDisposalSignals,
   isTaxCostEvidenceEnrichmentEnabled,
 } from '../../apps/api/src/application/fiscal/evidence-cost-enrichment';
 import { FISCAL_RULE_REGISTRY } from '../../apps/api/src/application/fiscal/fiscal-rule-registry';
@@ -274,5 +275,23 @@ describe('CTE-2 gated evidence-cost enrichment', () => {
     const out = enrichCanonicalRealizedWithEvidence({ canonicalMap: map, transactions: [], evidenceRows: [], enabled: false });
     expect(out.map).toEqual(map);
     expect(out.trace).toHaveLength(0);
+  });
+
+  it('first-disposal guard signals only VERIFIED_EVIDENCE traces, without amounts', () => {
+    const signals = detectEnrichedDisposalSignals([
+      { transactionId: 't1', assetId: 'a1', tradeDate: '2025-05-10', source: 'VERIFIED_EVIDENCE', resolutionStatus: 'COMPLETE_WITH_VERIFIED_EVIDENCE', evidenceSources: [] },
+      { transactionId: 't2', assetId: 'a1', tradeDate: '2025-05-10', source: 'CANONICAL_LEDGER', resolutionStatus: 'COMPLETE_LEDGER_ONLY', evidenceSources: [] },
+      { transactionId: 't3', assetId: 'a1', tradeDate: '2025-05-10', source: 'UNKNOWN', resolutionStatus: 'NOT_EVALUATED', evidenceSources: [] },
+    ]);
+    expect(signals).toEqual([
+      {
+        signal: 'EVIDENCE_TAX_DISPOSAL_REVIEW_REQUIRED',
+        transactionId: 't1',
+        assetId: 'a1',
+        tradeDate: '2025-05-10',
+        resolutionStatus: 'COMPLETE_WITH_VERIFIED_EVIDENCE',
+      },
+    ]);
+    expect(JSON.stringify(signals)).not.toMatch(/amount|currency|2494|1020/i);
   });
 });
