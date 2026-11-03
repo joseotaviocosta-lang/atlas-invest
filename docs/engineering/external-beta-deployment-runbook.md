@@ -24,11 +24,11 @@ This runbook defines the exact step-by-step procedure for deploying, verifying, 
 
 | Setting | Local Development | Staging (Pre-Deploy Gate) | External Beta (Production) |
 | :--- | :--- | :--- | :--- |
-| **Hosting Model** | Local Windows / Node 22 | Isolated VPS or Sub-stack | Linux VPS + Managed PostgreSQL |
+| **Hosting Model** | Local Windows / Node 22 | Linux VPS (Lightsail `sa-east-1`) | Linux VPS (Lightsail `sa-east-1`) |
 | **Region** | Local Machine | São Paulo (`sa-east-1`) | São Paulo (`sa-east-1`) |
 | **Web URL** | `http://localhost:3000` | `https://staging.atlasinvest.com.br` | `https://app.atlasinvest.com.br` |
 | **API URL** | `http://localhost:3001` | `https://staging-api.atlasinvest.com.br` | `https://api.atlasinvest.com.br` |
-| **Database** | Docker container (`:5434`) | Managed Postgres (Staging DB) | Managed Postgres 16 (`atlas_beta`) |
+| **Database** | Docker container (`:5434`) | Managed Postgres 16 (`atlas_staging`) | Managed Postgres 16 (`atlas_beta`) |
 | **TLS / SSL** | None / Self-signed | Automatic Let's Encrypt (Caddy) | Automatic Let's Encrypt (Caddy) |
 | **Access Model** | Unrestricted local | Owner / Internal QA | Invite-only (`ALLOW_PUBLIC_REGISTRATION=false`) |
 | **Tax Evidence Flag** | `true` (local dev audit) | `false` | `false` (default until real disposal validation) |

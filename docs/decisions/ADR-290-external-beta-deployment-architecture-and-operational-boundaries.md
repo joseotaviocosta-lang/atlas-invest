@@ -197,3 +197,18 @@ Before any external deployment can occur, an explicit Architecture Decision Reco
 - [ADR-038 — Transaction Ledger Determinism](file:///c:/Projetos/atlas-invest/docs/decisions/ADR-038-transaction-ledger.md)
 - [ADR-289 — Tax Compliance Period Close](file:///c:/Projetos/atlas-invest/docs/decisions/ADR-289-tax-compliance-period-close.md)
 - [Reliability & Observability Baseline](file:///c:/Projetos/atlas-invest/docs/engineering/reliability-observability-baseline.md)
+
+---
+
+## 10. Implementation Note — Concrete Provider Selection (Staging & Beta)
+
+*Added: 2026-11-03 during Staging Infrastructure Readiness Gate.*
+
+Following detailed pricing, regional availability, and network isolation evaluation across candidates in the São Paulo (`sa-east-1`) region (AWS Lightsail, AWS EC2+RDS, Vultr, DigitalOcean):
+- **Selected Concrete Vehicle:** **Amazon Lightsail** in the South America (São Paulo) `sa-east-1` region.
+- **Concrete Staging Specification:**
+  - Compute: Lightsail Linux Instance (Ubuntu 24.04 LTS, 1 vCPU, 2 GB RAM, 60 GB SSD) — \$10.00/mo.
+  - Managed Database: Lightsail Managed PostgreSQL 16 Standard Plan (1 vCPU, 1 GB RAM, 40 GB SSD) — \$15.00/mo.
+  - Network: Native Private Mode (0 public database IP, free internal traffic within `sa-east-1`).
+  - Total Staging Baseline Cost: **\$25.00 / month** (~R\$ 136.00 / month).
+- **Reference Plan:** [Staging Infrastructure Provisioning Plan](../engineering/staging-provisioning-plan.md).
