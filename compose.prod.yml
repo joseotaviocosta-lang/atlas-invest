@@ -34,7 +34,7 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-    image: atlas-web:latest
+    image: ${WEB_IMAGE:-atlas-web:latest}
     container_name: atlas_web
     restart: unless-stopped
     environment:
@@ -65,7 +65,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    image: atlas-api:latest
+    image: ${API_IMAGE:-atlas-api:latest}
     container_name: atlas_api
     restart: unless-stopped
     deploy:
