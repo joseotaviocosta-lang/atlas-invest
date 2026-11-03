@@ -1,0 +1,108 @@
+# ============================================================================
+# Project Atlas — Production Compose (External Beta)
+# Reference: docs/decisions/ADR-290-external-beta-deployment-architecture-and-operational-boundaries.md
+# Topology: Caddy (Auto-TLS) -> Web (Next.js 15 Standalone) -> API (NestJS Single Replica)
+# Database: Managed PostgreSQL 16 (external / private VPC endpoint, not in compose)
+# ============================================================================
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: atlas_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    networks:
+      - atlas_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: atlas-web:latest
+    container_name: atlas_web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: "0.0.0.0"
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://app.atlasinvest.com.br}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.atlasinvest.com.br}
+      ATLAS_API_INTERNAL_URL: ${ATLAS_API_INTERNAL_URL:-http://api:3001}
+    expose:
+      - "3000"
+    networks:
+      - atlas_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/login || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: atlas-api:latest
+    container_name: atlas_api
+    restart: unless-stopped
+    deploy:
+      replicas: 1
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      REFRESH_TOKEN_PEPPER: ${REFRESH_TOKEN_PEPPER}
+      PASSWORD_RESET_PEPPER: ${PASSWORD_RESET_PEPPER}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://app.atlasinvest.com.br}
+      ALLOW_PUBLIC_REGISTRATION: ${ALLOW_PUBLIC_REGISTRATION:-false}
+      TAX_COST_EVIDENCE_ENRICHMENT_ENABLED: ${TAX_COST_EVIDENCE_ENRICHMENT_ENABLED:-false}
+      INTEGRATION_SCHEDULER_ENABLED: ${INTEGRATION_SCHEDULER_ENABLED:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    expose:
+      - "3001"
+    networks:
+      - atlas_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+networks:
+  atlas_network:
+    name: atlas_network
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

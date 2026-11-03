@@ -1,0 +1,50 @@
+# ============================================================================
+# Project Atlas — Production Caddyfile (External Beta)
+# Architecture: ADR-290 (Linux VPS + Reverse Proxy)
+# Automated TLS via Let's Encrypt / ZeroSSL
+# ============================================================================
+{
+	email admin@atlasinvest.com.br
+}
+
+(security_headers) {
+	header {
+		# Strict Transport Security (HSTS)
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		# Prevent MIME type sniffing
+		X-Content-Type-Options "nosniff"
+		# Prevent clickjacking
+		X-Frame-Options "DENY"
+		# Modern referrer policy
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Permissions policy
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		# Hide Caddy server signature
+		-Server
+	}
+}
+
+# ----------------------------------------------------------------------------
+# Web Application (Next.js 15 Standalone)
+# ----------------------------------------------------------------------------
+{$APP_DOMAIN:app.atlasinvest.com.br} {
+	import security_headers
+	encode zstd gzip
+
+	reverse_proxy web:3000
+}
+
+# ----------------------------------------------------------------------------
+# Backend API (NestJS)
+# ----------------------------------------------------------------------------
+{$API_DOMAIN:api.atlasinvest.com.br} {
+	import security_headers
+	encode zstd gzip
+
+	# Support B3 Excel/CSV imports up to 25MB
+	request_body {
+		max_size 25MB
+	}
+
+	reverse_proxy api:3001
+}

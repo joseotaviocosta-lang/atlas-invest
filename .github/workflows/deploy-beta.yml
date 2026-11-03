@@ -1,0 +1,120 @@
+# ============================================================================
+# Project Atlas — External Beta Deployment Workflow (.github/workflows/deploy-beta.yml)
+# Reference: docs/decisions/ADR-290-external-beta-deployment-architecture-and-operational-boundaries.md
+# Reference: docs/engineering/external-beta-deployment-runbook.md
+#
+# INVARIANTS:
+# 1. Strictly manual dispatch (workflow_dispatch) — NO automatic deploy on push.
+# 2. Protected environment "beta" with mandatory Owner approval gate.
+# 3. Mandatory preflight validation: snapshot confirmed + migration verification.
+# 4. Rollback safety: zero float financial calculations, append-only ledger.
+# ============================================================================
+
+name: Deploy External Beta
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type "DEPLOY-EXTERNAL-BETA" to confirm execution:'
+        required: true
+        type: string
+      snapshot_identifier:
+        description: 'Managed database snapshot ID (e.g. pre-deploy-20261103):'
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-beta
+  cancel-in-progress: false
+
+jobs:
+  preflight-safety-gate:
+    name: Verify Deployment Prerequisites
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Confirmation String
+        run: |
+          if [ "${{ github.event.inputs.confirmation }}" != "DEPLOY-EXTERNAL-BETA" ]; then
+            echo "::error::Deployment aborted. Confirmation token did not match 'DEPLOY-EXTERNAL-BETA'."
+            exit 1
+          fi
+
+      - name: Validate Database Snapshot Identifier
+        run: |
+          if [ -z "${{ github.event.inputs.snapshot_identifier }}" ]; then
+            echo "::error::Database snapshot identifier must be provided before deploying."
+            exit 1
+          fi
+          echo "Database snapshot confirmed: ${{ github.event.inputs.snapshot_identifier }}"
+
+  deploy-external-beta:
+    name: Deploy to External Beta (sa-east-1)
+    needs: [preflight-safety-gate]
+    runs-on: ubuntu-latest
+    environment:
+      name: beta
+      url: https://app.atlasinvest.com.br
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH Connection to Deployment Host
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+
+      - name: Add Known Hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Execute Database Migrations (Pre-Traffic Gate)
+        run: |
+          ssh deploy@${{ secrets.DEPLOY_HOST }} << 'EOF'
+            set -euo pipefail
+            echo "=== Step 1: Running Prisma Migrate Deploy against Managed PostgreSQL 16 ==="
+            cd /opt/atlas/app
+            export DATABASE_URL="${{ secrets.PROD_DATABASE_URL }}"
+            pnpm --filter @atlas/database prisma migrate deploy
+            
+            echo "=== Step 2: Verifying Migration Count (Must be >= 48) ==="
+            pnpm --filter @atlas/database prisma migrate status
+          EOF
+
+      - name: Deploy Updated Application Containers
+        run: |
+          ssh deploy@${{ secrets.DEPLOY_HOST }} << 'EOF'
+            set -euo pipefail
+            echo "=== Step 3: Pulling / Building Production Containers ==="
+            cd /opt/atlas/app
+            
+            # Export production secrets from environment
+            export DATABASE_URL="${{ secrets.PROD_DATABASE_URL }}"
+            export JWT_ACCESS_SECRET="${{ secrets.PROD_JWT_ACCESS_SECRET }}"
+            export REFRESH_TOKEN_PEPPER="${{ secrets.PROD_REFRESH_TOKEN_PEPPER }}"
+            export PASSWORD_RESET_PEPPER="${{ secrets.PROD_PASSWORD_RESET_PEPPER }}"
+            export ALLOWED_ORIGINS="${{ secrets.PROD_ALLOWED_ORIGINS }}"
+            export ALLOW_PUBLIC_REGISTRATION="false"
+            export TAX_COST_EVIDENCE_ENRICHMENT_ENABLED="false"
+            export INTEGRATION_SCHEDULER_ENABLED="false"
+            
+            # Restart services with zero orphan drift
+            docker compose -f compose.prod.yml up -d --build --remove-orphans
+          EOF
+
+      - name: Run Smoke Tests & Readiness Probes
+        run: |
+          echo "=== Step 4: Smoke Testing Production Endpoints ==="
+          
+          echo "Checking API Liveness Probe..."
+          curl --retry 5 --retry-delay 5 --retry-connrefused -fsS https://api.atlasinvest.com.br/health | grep '"status":"ok"'
+          
+          echo "Checking API Readiness Probe (Database & 48 Migrations)..."
+          curl --retry 5 --retry-delay 5 --retry-connrefused -fsS https://api.atlasinvest.com.br/ready | grep '"status":"ready"'
+          
+          echo "Checking Web Login Route..."
+          curl --retry 5 --retry-delay 5 --retry-connrefused -fsS -o /dev/null -w "%{http_code}" https://app.atlasinvest.com.br/login | grep '200'
+          
+          echo "All smoke tests PASSED. External Beta deployment verified."

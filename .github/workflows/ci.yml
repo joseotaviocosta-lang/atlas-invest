@@ -57,6 +57,9 @@ jobs:
       - name: Deploy Migrations
         run: pnpm db:migrate
 
+      - name: Verify Migration Baseline Status
+        run: pnpm --filter @atlas/database prisma migrate status
+
       - name: Check Code Formatting
         run: pnpm format:check
 
@@ -110,3 +113,8 @@ jobs:
 
       - name: Test Web E2E (Playwright)
         run: pnpm test:web:e2e
+
+      - name: Verify Production Container Builds
+        run: |
+          docker build -t atlas-api:ci -f apps/api/Dockerfile .
+          docker build -t atlas-web:ci -f apps/web/Dockerfile .

@@ -122,85 +122,148 @@ docker build -t atlas-web:$(git rev-parse --short HEAD) -f apps/web/Dockerfile .
 
 ### 6.2. Production `compose.prod.yml`
 
+The production compose file resides at the repository root (`compose.prod.yml`):
+
 ```yaml
 services:
   caddy:
     image: caddy:2-alpine
+    container_name: atlas_caddy
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - web
-      - api
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    networks:
+      - atlas_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
 
   web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
     image: atlas-web:latest
+    container_name: atlas_web
     restart: unless-stopped
     environment:
-      - NODE_ENV=production
-      - PORT=3000
-      - HOSTNAME=0.0.0.0
-      - ATLAS_API_INTERNAL_URL=http://api:3001
-      - NEXT_PUBLIC_API_URL=https://api.atlasinvest.com.br
-      - NEXT_PUBLIC_APP_URL=https://app.atlasinvest.com.br
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: "0.0.0.0"
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://app.atlasinvest.com.br}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.atlasinvest.com.br}
+      ATLAS_API_INTERNAL_URL: ${ATLAS_API_INTERNAL_URL:-http://api:3001}
     expose:
       - "3000"
+    networks:
+      - atlas_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/login || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
 
   api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
     image: atlas-api:latest
+    container_name: atlas_api
     restart: unless-stopped
+    deploy:
+      replicas: 1
     environment:
-      - NODE_ENV=production
-      - API_PORT=3001
-      - DATABASE_URL=postgresql://atlas_user:SECRET@<PRIVATE_DB_HOST>:5432/atlas_beta?schema=public&sslmode=require
-      - JWT_ACCESS_SECRET=SECRET_AT_LEAST_32_CHARS
-      - REFRESH_TOKEN_PEPPER=SECRET_AT_LEAST_32_CHARS
-      - PASSWORD_RESET_PEPPER=SECRET_AT_LEAST_32_CHARS
-      - ALLOWED_ORIGINS=https://app.atlasinvest.com.br
-      - ALLOW_PUBLIC_REGISTRATION=false
-      - TAX_COST_EVIDENCE_ENRICHMENT_ENABLED=false
-      - INTEGRATION_SCHEDULER_ENABLED=false
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      REFRESH_TOKEN_PEPPER: ${REFRESH_TOKEN_PEPPER}
+      PASSWORD_RESET_PEPPER: ${PASSWORD_RESET_PEPPER}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://app.atlasinvest.com.br}
+      ALLOW_PUBLIC_REGISTRATION: ${ALLOW_PUBLIC_REGISTRATION:-false}
+      TAX_COST_EVIDENCE_ENRICHMENT_ENABLED: ${TAX_COST_EVIDENCE_ENRICHMENT_ENABLED:-false}
+      INTEGRATION_SCHEDULER_ENABLED: ${INTEGRATION_SCHEDULER_ENABLED:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     expose:
       - "3001"
+    networks:
+      - atlas_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+networks:
+  atlas_network:
+    name: atlas_network
+    driver: bridge
 
 volumes:
   caddy_data:
   caddy_config:
 ```
 
-### 6.3. Production `Caddyfile`
+### 6.3. Production `deploy/Caddyfile`
+
+The production reverse proxy configuration resides in `deploy/Caddyfile`:
 
 ```caddy
-app.atlasinvest.com.br {
-    encode gzip zstd
-    header {
-        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-        Referrer-Policy "strict-origin-when-cross-origin"
-    }
-    reverse_proxy web:3000 {
-        header_up X-Forwarded-Proto {scheme}
-        header_up X-Forwarded-Host {host}
-    }
+{
+	email admin@atlasinvest.com.br
 }
 
-api.atlasinvest.com.br {
-    encode gzip zstd
-    header {
-        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-    }
-    reverse_proxy api:3001 {
-        header_up X-Forwarded-Proto {scheme}
-        header_up X-Forwarded-Host {host}
-    }
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+}
+
+{$APP_DOMAIN:app.atlasinvest.com.br} {
+	import security_headers
+	encode zstd gzip
+
+	reverse_proxy web:3000
+}
+
+{$API_DOMAIN:api.atlasinvest.com.br} {
+	import security_headers
+	encode zstd gzip
+
+	request_body {
+		max_size 25MB
+	}
+
+	reverse_proxy api:3001
 }
 ```
 
