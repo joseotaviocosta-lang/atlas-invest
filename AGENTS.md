@@ -87,6 +87,10 @@ Este documento define as regras inegociáveis de arquitetura, segurança e desen
    - `tradeDate` e `settlementDate` são armazenadas como `@db.Date` e convertidas utilizando componentes UTC (`getUTCFullYear()`, `getUTCMonth() + 1`, `getUTCDate()`), imunes a fuso horário.
 6. **PROTEÇÃO CROSS-PORTFOLIO:**
    - Garantida na camada de banco de dados pela chave estrangeira composta `(account_id, portfolio_id) REFERENCES accounts(id, portfolio_id)`.
+7. **IMUTABILIDADE ESTRITA DE MIGRATIONS APLICADAS (MIGRATION RELEASE BASELINE):**
+   - Toda migration versionada no repositório (`packages/database/prisma/migrations`) é estritamente imutável.
+   - É terminantemente proibido editar arquivos de migrations já comitados ou aplicados. Qualquer retificação de schema deve ser realizada via nova migration compensatória append-only.
+   - Verificação mandatória de porta antes de operações DDL: `atlas_dev` reside exclusivamente na porta `5434` e `atlas_test` na porta `5433`. A porta `5432` é legada e nunca deve ser alvo de migrações do Atlas.
 
 ---
 
