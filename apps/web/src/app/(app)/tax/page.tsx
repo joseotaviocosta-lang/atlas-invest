@@ -87,9 +87,10 @@ function FiscalContent() {
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: fiscalMonthlyQueryKey(competence),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await apiClient.get<{ data: RawFiscalMonthlyState }>(
         `/api/v1/fiscal/monthly/${competence}`,
+        { signal },
       );
       return res.data;
     },
@@ -107,9 +108,10 @@ function FiscalContent() {
     refetch: refetchLiability,
   } = useQuery({
     queryKey: taxLiabilityQueryKey(competence),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await apiClient.get<{ data: RawMonthlyTaxLiability }>(
         `/api/v1/fiscal/monthly/${competence}/liability`,
+        { signal },
       );
       return res.data;
     },
@@ -124,9 +126,10 @@ function FiscalContent() {
 
   const { data: inputReadinessData } = useQuery({
     queryKey: taxInputReadinessQueryKey(competence),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await apiClient.get<{ data: RawTaxInputReadiness }>(
         `/api/v1/fiscal/inputs/${competence}`,
+        { signal },
       );
       return res.data;
     },

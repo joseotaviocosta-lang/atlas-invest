@@ -1,6 +1,7 @@
 import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { ZodError } from 'zod';
+import { logger } from '@atlas/logger';
 import {
   EntityNotFoundError,
   CrossPortfolioIntegrityError,
@@ -130,15 +131,23 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     const errorName = HTTP_STATUS_NAMES[statusCode] ?? 'Error';
 
-    // Safe logging: log full technical details with requestId on the server, avoiding sensitive payload dumps
+    // Safe structured logging: scrub sensitive fields and attach requestId context
     const logDetail =
       exception instanceof ZodError
         ? JSON.stringify(exception.errors)
         : exception instanceof Error
           ? exception.stack || exception.message
           : String(exception);
-    console.error(
-      `[${new Date().toISOString()}] [${requestId}] ${request.method} ${request.url} -> ${statusCode} (${errorCode}): ${logDetail}`,
+
+    logger.error(
+      `${request.method} ${request.url} -> ${statusCode} (${errorCode}): ${logDetail}`,
+      {
+        requestId,
+        method: request.method,
+        route: request.url,
+        statusCode,
+        errorCode,
+      },
     );
 
     response.status(statusCode).json({

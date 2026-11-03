@@ -75,6 +75,7 @@ export function parseDatabaseUrl(urlStr: string): ParsedDbUrl {
 
 function resolveContainerName(port: number): string {
   if (port === 5433) return 'atlas_postgres_test';
+  if (port === 5434) return 'atlas_postgres_dev5434';
   return 'atlas_postgres';
 }
 

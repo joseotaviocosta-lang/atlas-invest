@@ -19,6 +19,7 @@ import { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule, OpenAPIObject } from '@nestjs/swagger';
 import helmet from 'helmet';
 import * as express from 'express';
+import { logger } from '@atlas/logger';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters';
 
@@ -135,13 +136,49 @@ async function bootstrap() {
   validateProductionSecrets();
   const app = await NestFactory.create(AppModule);
   configureApp(app);
+  app.enableShutdownHooks();
+
+  // Process safety guards: capture and log fatal process events without leaking secrets
+  process.on('unhandledRejection', (reason) => {
+    logger.error('Unhandled Promise Rejection detected in Node process', {
+      reason: reason instanceof Error ? reason.stack || reason.message : String(reason),
+    });
+  });
+
+  process.on('uncaughtException', (err) => {
+    logger.error('Uncaught Exception detected in Node process', {
+      error: err.stack || err.message,
+    });
+    // Controlled fatal exit so process supervisor (e.g. systemd/Docker) initiates clean restart
+    process.exit(1);
+  });
 
   const port = process.env.API_PORT ? parseInt(process.env.API_PORT, 10) : 3001;
   await app.listen(port);
+
+  // Extract safe database host/port/name without passwords/credentials
+  const safeDbTarget = process.env.DATABASE_URL
+    ? (() => {
+        try {
+          const parsed = new URL(process.env.DATABASE_URL!);
+          return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+        } catch {
+          return 'CONFIGURED';
+        }
+      })()
+    : 'NOT_CONFIGURED';
+
+  logger.info('[Atlas API] Server bootstrap complete', {
+    environment: process.env.NODE_ENV || 'development',
+    port,
+    databaseTarget: safeDbTarget,
+    migrationBaseline: 48,
+    taxCostEnrichment:
+      process.env.TAX_COST_EVIDENCE_ENRICHMENT_ENABLED === 'true' ? 'ENABLED' : 'DISABLED',
+  });
+
   console.info(`[Atlas API] Server running on http://localhost:${port}`);
   console.info(`[Atlas API] Swagger documentation available at http://localhost:${port}/docs`);
-  // Activation visibility (CTE-4): always log the evidence-enrichment gate
-  // state at boot. No secrets, no PII — boolean only.
   console.info(
     `[Atlas API] Tax cost evidence enrichment: ${
       process.env.TAX_COST_EVIDENCE_ENRICHMENT_ENABLED === 'true' ? 'ENABLED' : 'DISABLED'
