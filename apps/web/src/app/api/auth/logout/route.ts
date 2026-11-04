@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { API_BASE_URL } from '@/lib/config';
+import { API_BASE_URL, IS_PRODUCTION } from '@/lib/config';
 import {
   REFRESH_COOKIE_NAME,
   LOGGED_IN_COOKIE_NAME,
@@ -41,8 +41,8 @@ export async function POST(req: NextRequest) {
     );
 
     // Clear session cookies
-    response.cookies.set(REFRESH_COOKIE_NAME, '', getClearedCookieOptions());
-    response.cookies.set(LOGGED_IN_COOKIE_NAME, '', getClearedCookieOptions());
+    response.cookies.set(REFRESH_COOKIE_NAME, '', getClearedCookieOptions(IS_PRODUCTION));
+    response.cookies.set(LOGGED_IN_COOKIE_NAME, '', getClearedCookieOptions(IS_PRODUCTION));
 
     return response;
   } catch (error) {
@@ -54,8 +54,8 @@ export async function POST(req: NextRequest) {
       },
       { status: 500 },
     );
-    response.cookies.set(REFRESH_COOKIE_NAME, '', getClearedCookieOptions());
-    response.cookies.set(LOGGED_IN_COOKIE_NAME, '', getClearedCookieOptions());
+    response.cookies.set(REFRESH_COOKIE_NAME, '', getClearedCookieOptions(IS_PRODUCTION));
+    response.cookies.set(LOGGED_IN_COOKIE_NAME, '', getClearedCookieOptions(IS_PRODUCTION));
     return response;
   }
 }

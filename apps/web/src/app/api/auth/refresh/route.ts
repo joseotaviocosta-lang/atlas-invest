@@ -29,8 +29,8 @@ export async function POST(req: NextRequest) {
         },
         { status: 401 },
       );
-      response.cookies.set(REFRESH_COOKIE_NAME, '', getClearedCookieOptions());
-      response.cookies.set(LOGGED_IN_COOKIE_NAME, '', getClearedCookieOptions());
+      response.cookies.set(REFRESH_COOKIE_NAME, '', getClearedCookieOptions(IS_PRODUCTION));
+      response.cookies.set(LOGGED_IN_COOKIE_NAME, '', getClearedCookieOptions(IS_PRODUCTION));
       return response;
     }
 
@@ -65,8 +65,8 @@ export async function POST(req: NextRequest) {
               { status: apiRes.status },
             )
           : NextResponse.json(resData, { status: apiRes.status });
-      response.cookies.set(REFRESH_COOKIE_NAME, '', getClearedCookieOptions());
-      response.cookies.set(LOGGED_IN_COOKIE_NAME, '', getClearedCookieOptions());
+      response.cookies.set(REFRESH_COOKIE_NAME, '', getClearedCookieOptions(IS_PRODUCTION));
+      response.cookies.set(LOGGED_IN_COOKIE_NAME, '', getClearedCookieOptions(IS_PRODUCTION));
       return response;
     }
 

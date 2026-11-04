@@ -21,35 +21,63 @@ export interface CookieOptions {
   maxAge: number;
 }
 
-export function getRefreshCookieOptions(
-  isProduction = process.env.NODE_ENV === 'production',
-): CookieOptions {
+/**
+ * Determines whether authentication cookies must require the Secure attribute.
+ *
+ * Invariants:
+ * 1. Default is secure: ausente/false -> secure: true
+ * 2. Staging HTTP override: Secure=false ONLY when ALLOW_INSECURE_HTTP_AUTH_COOKIES === 'true'.
+ * 3. Does not infer insecure behavior merely from NODE_ENV.
+ * 4. Explicit non-production override (isProduction = false) honored for local dev/testing.
+ */
+export function shouldSecureAuthCookies(isProduction = true): boolean {
+  const allowInsecure = process.env.ALLOW_INSECURE_HTTP_AUTH_COOKIES === 'true';
+  if (allowInsecure) {
+    return false;
+  }
+  return isProduction;
+}
+
+/**
+ * Centralized security options helper for auth cookies.
+ */
+export function getAuthCookieSecurityOptions(
+  isProduction = true,
+): { secure: boolean; sameSite: 'lax' } {
+  return {
+    secure: shouldSecureAuthCookies(isProduction),
+    sameSite: 'lax',
+  };
+}
+
+export function getRefreshCookieOptions(isProduction = true): CookieOptions {
+  const security = getAuthCookieSecurityOptions(isProduction);
   return {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: 'lax',
+    secure: security.secure,
+    sameSite: security.sameSite,
     path: '/',
     maxAge: REFRESH_COOKIE_MAX_AGE,
   };
 }
 
-export function getLoggedInCookieOptions(
-  isProduction = process.env.NODE_ENV === 'production',
-): CookieOptions {
+export function getLoggedInCookieOptions(isProduction = true): CookieOptions {
+  const security = getAuthCookieSecurityOptions(isProduction);
   return {
     httpOnly: false,
-    secure: isProduction,
-    sameSite: 'lax',
+    secure: security.secure,
+    sameSite: security.sameSite,
     path: '/',
     maxAge: REFRESH_COOKIE_MAX_AGE,
   };
 }
 
-export function getClearedCookieOptions(): CookieOptions {
+export function getClearedCookieOptions(isProduction = true): CookieOptions {
+  const security = getAuthCookieSecurityOptions(isProduction);
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: security.secure,
+    sameSite: security.sameSite,
     path: '/',
     maxAge: 0,
   };

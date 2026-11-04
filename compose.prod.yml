@@ -47,6 +47,7 @@ services:
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://app.atlasinvest.com.br}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.atlasinvest.com.br}
       ATLAS_API_INTERNAL_URL: ${ATLAS_API_INTERNAL_URL:-http://api:3001}
+      ALLOW_INSECURE_HTTP_AUTH_COOKIES: ${ALLOW_INSECURE_HTTP_AUTH_COOKIES:-false}
     expose:
       - "3000"
     networks:

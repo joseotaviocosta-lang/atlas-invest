@@ -11,7 +11,8 @@
 	auto_https off
 }
 
-(security_headers) {
+# Common security headers applied to all environments
+(common_security_headers) {
 	header {
 		# Prevent MIME type sniffing
 		X-Content-Type-Options "nosniff"
@@ -26,11 +27,26 @@
 	}
 }
 
+# HTTPS-only security headers (Strict-Transport-Security)
+# RFC 6797 §7.2: An HTTP host MUST NOT send an HSTS header over plain HTTP.
+(https_security_headers) {
+	import common_security_headers
+	header {
+		# Strict Transport Security (HSTS)
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+	}
+}
+
+# Backwards compatibility alias for default security headers
+(security_headers) {
+	import common_security_headers
+}
+
 # ----------------------------------------------------------------------------
 # Staging IP-Only HTTP Access (Temporary: STAGING_IP_ONLY_HTTP_TEMPORARY)
 # ----------------------------------------------------------------------------
 http://{$STAGING_HOST:54.233.66.110} {
-	import security_headers
+	import common_security_headers
 	encode zstd gzip
 
 	# Route API routes to NestJS
@@ -52,13 +68,13 @@ http://{$STAGING_HOST:54.233.66.110} {
 # Future Production Domain Architecture (Restore when official domain is owned)
 # ============================================================================
 # {$APP_DOMAIN:app.atlasinvest.com.br} {
-# 	import security_headers
+# 	import https_security_headers
 # 	encode zstd gzip
 # 	reverse_proxy web:3000
 # }
 #
 # {$API_DOMAIN:api.atlasinvest.com.br} {
-# 	import security_headers
+# 	import https_security_headers
 # 	encode zstd gzip
 # 	request_body {
 # 		max_size 25MB
