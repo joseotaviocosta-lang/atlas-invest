@@ -17,6 +17,8 @@ services:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    environment:
+      STAGING_HOST: ${STAGING_HOST:-54.233.66.110}
     depends_on:
       web:
         condition: service_healthy

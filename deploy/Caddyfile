@@ -1,16 +1,18 @@
 # ============================================================================
-# Project Atlas — Production Caddyfile (External Beta)
+# Project Atlas — Reverse Proxy (Caddyfile)
 # Architecture: ADR-290 (Linux VPS + Reverse Proxy)
-# Automated TLS via Let's Encrypt / ZeroSSL
+# Mode: STAGING_IP_ONLY_HTTP_TEMPORARY
+#
+# Temporary Staging: Plain HTTP on static IPv4 without ACME / TLS certificates.
+# Production (Future): Restore domain blocks when valid domain is provisioned.
 # ============================================================================
 {
-	email admin@atlasinvest.com.br
+	email {$CADDY_EMAIL:admin@atlasinvest.com.br}
+	auto_https off
 }
 
 (security_headers) {
 	header {
-		# Strict Transport Security (HSTS)
-		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
 		# Prevent MIME type sniffing
 		X-Content-Type-Options "nosniff"
 		# Prevent clickjacking
@@ -25,26 +27,41 @@
 }
 
 # ----------------------------------------------------------------------------
-# Web Application (Next.js 15 Standalone)
+# Staging IP-Only HTTP Access (Temporary: STAGING_IP_ONLY_HTTP_TEMPORARY)
 # ----------------------------------------------------------------------------
-{$APP_DOMAIN:app.atlasinvest.com.br} {
+http://{$STAGING_HOST:54.233.66.110} {
 	import security_headers
 	encode zstd gzip
 
-	reverse_proxy web:3000
-}
-
-# ----------------------------------------------------------------------------
-# Backend API (NestJS)
-# ----------------------------------------------------------------------------
-{$API_DOMAIN:api.atlasinvest.com.br} {
-	import security_headers
-	encode zstd gzip
-
-	# Support B3 Excel/CSV imports up to 25MB
-	request_body {
-		max_size 25MB
+	# Route API routes to NestJS
+	@api_routes path /api/v1/* /docs* /health /ready
+	handle @api_routes {
+		request_body {
+			max_size 25MB
+		}
+		reverse_proxy api:3001
 	}
 
-	reverse_proxy api:3001
+	# Route all other requests (Web Next.js: /login, /today, /portfolio, /api/auth/* BFF, _next/*)
+	handle {
+		reverse_proxy web:3000
+	}
 }
+
+# ============================================================================
+# Future Production Domain Architecture (Restore when official domain is owned)
+# ============================================================================
+# {$APP_DOMAIN:app.atlasinvest.com.br} {
+# 	import security_headers
+# 	encode zstd gzip
+# 	reverse_proxy web:3000
+# }
+#
+# {$API_DOMAIN:api.atlasinvest.com.br} {
+# 	import security_headers
+# 	encode zstd gzip
+# 	request_body {
+# 		max_size 25MB
+# 	}
+# 	reverse_proxy api:3001
+# }
