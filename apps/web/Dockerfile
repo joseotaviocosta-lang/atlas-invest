@@ -36,11 +36,12 @@ USER node
 COPY --chown=node:node --from=builder /app/apps/web/public ./apps/web/public
 COPY --chown=node:node --from=builder /app/apps/web/.next/standalone ./
 COPY --chown=node:node --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+COPY --chown=node:node --from=builder /app/apps/web/docker-entrypoint.js ./docker-entrypoint.js
 
 EXPOSE 3000
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:3000/login || exit 1
 
-CMD ["node", "apps/web/server.js"]
+CMD ["node", "docker-entrypoint.js"]
 
