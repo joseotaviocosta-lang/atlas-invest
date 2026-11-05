@@ -5,6 +5,8 @@ import { ProtectedRoute } from './routes/ProtectedRoute';
 import { LoginRoute } from './routes/LoginRoute';
 import { AppLayout } from './layouts/AppLayout';
 import { TodayRoute } from './routes/TodayRoute';
+import { PortfolioRoute } from './routes/PortfolioRoute';
+import { MarketRoute } from './routes/MarketRoute';
 import { PlaceholderRoute } from './routes/PlaceholderRoute';
 
 const RouterComponent = typeof window !== 'undefined' ? HashRouter : MemoryRouter;
@@ -22,24 +24,8 @@ export const App: React.FC = () => {
             <Route element={<AppLayout />}>
               <Route index element={<Navigate to="/today" replace />} />
               <Route path="today" element={<TodayRoute />} />
-              <Route
-                path="portfolio"
-                element={
-                  <PlaceholderRoute
-                    title="Carteira de Investimentos"
-                    description="Consolidação patrimonial, classes de ativos, rentabilidade e operações."
-                  />
-                }
-              />
-              <Route
-                path="market"
-                element={
-                  <PlaceholderRoute
-                    title="Radar de Mercado"
-                    description="Acompanhamento de cotações, proventos e notícias financeiras."
-                  />
-                }
-              />
+              <Route path="portfolio" element={<PortfolioRoute />} />
+              <Route path="market" element={<MarketRoute />} />
               <Route
                 path="tax"
                 element={

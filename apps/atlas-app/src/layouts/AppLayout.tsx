@@ -2,6 +2,8 @@ import React from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../providers/AuthProvider';
 import { Avatar } from '../components/ui';
+import { PortfolioSwitcher } from '../features/portfolio/components/PortfolioSwitcher';
+import { ManualRefreshButton } from '../features/portfolio/components/ManualRefreshButton';
 import { colors, borderRadius, spacing, CANONICAL_NAV_ITEMS } from '@atlas/ui';
 import { getRuntimeConfig } from '../config/runtime';
 
@@ -220,10 +222,14 @@ export const AppLayout: React.FC = () => {
             padding: `0 ${spacing.xl}px`,
           }}
         >
-          <div style={{ fontSize: '1.125rem', fontWeight: 600, color: colors.textPrimary }}>
-            {getCurrentPageTitle()}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+            <div style={{ fontSize: '1.125rem', fontWeight: 600, color: colors.textPrimary }}>
+              {getCurrentPageTitle()}
+            </div>
+            <PortfolioSwitcher />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <ManualRefreshButton variant="outline" />
             <span
               style={{
                 display: 'inline-flex',

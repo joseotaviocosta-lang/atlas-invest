@@ -3,6 +3,7 @@ import React from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from '../../apps/atlas-app/src/providers/AuthProvider';
+import { PortfolioProvider } from '../../apps/atlas-app/src/providers/PortfolioProvider';
 import { ProtectedRoute } from '../../apps/atlas-app/src/routes/ProtectedRoute';
 import { LoginRoute } from '../../apps/atlas-app/src/routes/LoginRoute';
 import { AppLayout } from '../../apps/atlas-app/src/layouts/AppLayout';
@@ -166,11 +167,15 @@ describe('Atlas Desktop Auth & Shell Flow (APP-5)', () => {
   describe('AppLayout & Navigation Shell', () => {
     it('renders sidebar with all canonical navigation items', () => {
       const html = renderToString(
-        <AuthProvider>
-          <MemoryRouter initialEntries={['/today']}>
-            <AppLayout />
-          </MemoryRouter>
-        </AuthProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <PortfolioProvider>
+              <MemoryRouter initialEntries={['/today']}>
+                <AppLayout />
+              </MemoryRouter>
+            </PortfolioProvider>
+          </AuthProvider>
+        </QueryClientProvider>
       );
 
       for (const item of CANONICAL_NAV_ITEMS) {
@@ -185,11 +190,15 @@ describe('Atlas Desktop Auth & Shell Flow (APP-5)', () => {
 
     it('renders user fallback initials when user is anonymous or has no display name', () => {
       const html = renderToString(
-        <AuthProvider>
-          <MemoryRouter initialEntries={['/today']}>
-            <AppLayout />
-          </MemoryRouter>
-        </AuthProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <PortfolioProvider>
+              <MemoryRouter initialEntries={['/today']}>
+                <AppLayout />
+              </MemoryRouter>
+            </PortfolioProvider>
+          </AuthProvider>
+        </QueryClientProvider>
       );
 
       expect(html).toContain('U');
@@ -217,17 +226,18 @@ describe('Atlas Desktop Auth & Shell Flow (APP-5)', () => {
       const html = renderToString(
         <AuthProvider>
           <QueryClientProvider client={queryClient}>
-            <MemoryRouter initialEntries={['/today']}>
-              <TodayRoute />
-            </MemoryRouter>
+            <PortfolioProvider>
+              <MemoryRouter initialEntries={['/today']}>
+                <TodayRoute />
+              </MemoryRouter>
+            </PortfolioProvider>
           </QueryClientProvider>
         </AuthProvider>
       );
 
       expect(html).toContain('Olá, <!-- -->Investidor<!-- -->!');
-      expect(html).toContain('Status da Conexão com o Backend');
-      expect(html).toContain('CONECTADO');
-      expect(html).toContain('Token Rotativo Ativo');
+      expect(html).toContain('Contexto Macroeconômico Oficial');
+      expect(html).toContain('Principais Posições em Custódia');
     });
   });
 

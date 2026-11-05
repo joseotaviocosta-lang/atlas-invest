@@ -1,0 +1,102 @@
+import React from 'react';
+import { usePortfolio } from '../providers/PortfolioProvider';
+import { usePortfolioValuation } from '../features/portfolio/hooks';
+import { MacroIndicatorsGrid } from '../features/market/components/MacroIndicatorsGrid';
+import { QuotesTable } from '../features/market/components/QuotesTable';
+import { ManualRefreshButton } from '../features/portfolio/components/ManualRefreshButton';
+import { Badge } from '../components/ui';
+import { colors, formatDate } from '@atlas/ui';
+
+export const MarketRoute: React.FC = () => {
+  const { selectedPortfolioId } = usePortfolio();
+  const { data: valuationRes, isLoading: isLoadingValuation, isStale } =
+    usePortfolioValuation(selectedPortfolioId);
+
+  const valuation = valuationRes?.data ?? null;
+  const positions = valuation?.positions ?? [];
+  const quoteSummary = valuation?.quoteSummary;
+  const asOfFormatted = valuation?.asOf ? formatDate(valuation.asOf) : null;
+
+  return (
+    <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+      {/* Page Header */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '24px',
+          flexWrap: 'wrap',
+          gap: '16px',
+        }}
+      >
+        <div>
+          <h1
+            style={{
+              margin: '0 0 4px 0',
+              fontSize: '1.75rem',
+              fontWeight: 700,
+              color: colors.textPrimary,
+              letterSpacing: '-0.02em',
+            }}
+          >
+            Radar de Mercado
+          </h1>
+          <p style={{ margin: 0, fontSize: '0.875rem', color: colors.textSecondary }}>
+            Indicadores macroeconômicos e cotações de fechamento (EOD) dos ativos custodiados
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {isStale && (
+            <Badge variant="warning">
+              <span style={{ marginRight: '4px' }}>⚠️</span> Cotações D-1
+            </Badge>
+          )}
+          <ManualRefreshButton variant="primary" />
+        </div>
+      </div>
+
+      {/* Macro Indicators */}
+      <div style={{ marginBottom: '28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+          <h3 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 600, color: colors.textPrimary }}>
+            Indicadores Macroeconômicos Oficiais
+          </h3>
+          <span style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+            Atualização diária / Bacen & IBGE
+          </span>
+        </div>
+        <MacroIndicatorsGrid />
+      </div>
+
+      {/* Quotes Table */}
+      <div style={{ marginBottom: '28px' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '16px',
+          }}
+        >
+          <div>
+            <h3 style={{ margin: '0 0 4px 0', fontSize: '1.0625rem', fontWeight: 600, color: colors.textPrimary }}>
+              Cotações dos Ativos da Carteira
+            </h3>
+            <p style={{ margin: 0, fontSize: '0.8125rem', color: colors.textSecondary }}>
+              Provedor: {quoteSummary?.provider || 'BRAPI EOD'}
+              {asOfFormatted && ` • Data de referência: ${asOfFormatted}`}
+            </p>
+          </div>
+
+          <Badge variant="neutral">
+            {quoteSummary ? `${quoteSummary.quotesAvailable} de ${quoteSummary.totalQuotesRequested} cotações disponíveis` : 'Carregando...'}
+          </Badge>
+        </div>
+
+        <QuotesTable positions={positions} isLoading={isLoadingValuation} />
+      </div>
+    </div>
+  );
+};

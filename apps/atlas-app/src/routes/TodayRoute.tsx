@@ -1,166 +1,128 @@
 import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { usePortfolio } from '../providers/PortfolioProvider';
+import { usePortfolioValuation } from '../features/portfolio/hooks';
+import { PortfolioSummaryCards } from '../features/portfolio/components/PortfolioSummaryCards';
+import { PositionsTable } from '../features/portfolio/components/PositionsTable';
+import { ManualRefreshButton } from '../features/portfolio/components/ManualRefreshButton';
+import { MacroIndicatorsGrid } from '../features/market/components/MacroIndicatorsGrid';
+import { Card, EmptyState, Badge, Button } from '../components/ui';
+import { colors, formatDate } from '@atlas/ui';
 import { useAuth } from '../providers/AuthProvider';
-import { apiClient } from '../lib/api';
-import { colors, borderRadius, spacing } from '@atlas/ui';
-import { getRuntimeConfig } from '../config/runtime';
-import type { AuthUser } from '@atlas/api-client';
 
 export const TodayRoute: React.FC = () => {
-  const { user: localUser } = useAuth();
-  const config = getRuntimeConfig();
+  const { user } = useAuth();
+  const { selectedPortfolio, selectedPortfolioId, portfolios, isLoadingPortfolios } = usePortfolio();
+  const { data: valuationRes, isLoading: isLoadingValuation, isStale } =
+    usePortfolioValuation(selectedPortfolioId);
 
-  // Validate live connection against API with authenticated request
-  const { data: meData, isLoading, error } = useQuery({
-    queryKey: ['auth-me'],
-    queryFn: async () => {
-      const res = await apiClient.get<{ data: AuthUser }>('/api/v1/auth/me');
-      return res.data;
-    },
-    staleTime: 60 * 1000,
-    retry: 1,
-  });
+  const valuation = valuationRes?.data ?? null;
+  const positions = valuation?.positions ?? [];
+  const topPositions = positions.slice(0, 5);
 
-  const currentUser = meData || localUser;
+  const firstName = user?.name ? user.name.split(' ')[0] : 'Investidor';
+  const asOfFormatted = valuation?.asOf ? formatDate(valuation.asOf) : null;
+
+  if (!isLoadingPortfolios && portfolios.length === 0) {
+    return (
+      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+        <Card>
+          <EmptyState
+            title="Nenhuma carteira encontrada"
+            description="Você ainda não possui carteiras cadastradas. Crie uma carteira para começar a acompanhar seu patrimônio."
+          />
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ maxWidth: '960px', margin: '0 auto' }}>
-      {/* Welcome Banner */}
+    <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+      {/* Header with Greeting & Action */}
       <div
         style={{
-          backgroundColor: colors.surface,
-          border: `1px solid ${colors.border}`,
-          borderRadius: `${borderRadius.lg}px`,
-          padding: spacing.xxl,
-          marginBottom: spacing.xl,
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '24px',
+          flexWrap: 'wrap',
+          gap: '16px',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 700, color: colors.textPrimary, letterSpacing: '-0.02em' }}>
-              Olá, {currentUser?.name || 'Investidor'}!
-            </h1>
-            <p style={{ margin: '4px 0 0', fontSize: '0.9375rem', color: colors.textSecondary }}>
-              Bem-vindo ao Atlas Desktop • Gestão Patrimonial Segura
-            </p>
-          </div>
-          <span
+        <div>
+          <h1
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 14px',
-              borderRadius: `${borderRadius.full}px`,
-              backgroundColor: `${colors.positive}15`,
-              color: colors.positive,
-              fontSize: '0.8125rem',
-              fontWeight: 600,
-              border: `1px solid ${colors.positive}30`,
+              margin: '0 0 4px 0',
+              fontSize: '1.75rem',
+              fontWeight: 700,
+              color: colors.textPrimary,
+              letterSpacing: '-0.02em',
             }}
           >
-            <span
-              style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                backgroundColor: colors.positive,
-              }}
-            />
-            CONECTADO
-          </span>
+            Olá, {firstName}!
+          </h1>
+          <p style={{ margin: 0, fontSize: '0.875rem', color: colors.textSecondary }}>
+            Resumo executivo da carteira <strong>{selectedPortfolio?.name || 'Principal'}</strong>
+            {asOfFormatted && ` • Cotações até ${asOfFormatted}`}
+          </p>
         </div>
 
-        {/* User context cards */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: spacing.md,
-            marginTop: spacing.xl,
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: colors.surfaceElevated,
-              border: `1px solid ${colors.border}`,
-              borderRadius: `${borderRadius.md}px`,
-              padding: spacing.lg,
-            }}
-          >
-            <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: colors.textMuted, letterSpacing: '0.05em' }}>
-              E-mail do Usuário
-            </span>
-            <div style={{ fontSize: '0.9375rem', fontWeight: 600, marginTop: '4px', color: colors.textPrimary }}>
-              {currentUser?.email || '—'}
-            </div>
-          </div>
-
-          <div
-            style={{
-              backgroundColor: colors.surfaceElevated,
-              border: `1px solid ${colors.border}`,
-              borderRadius: `${borderRadius.md}px`,
-              padding: spacing.lg,
-            }}
-          >
-            <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: colors.textMuted, letterSpacing: '0.05em' }}>
-              Armazenamento Seguro
-            </span>
-            <div style={{ fontSize: '0.9375rem', fontWeight: 600, marginTop: '4px', color: colors.positive }}>
-              {config.isTauri ? 'Windows Credential Manager' : 'Memory Adapter (Dev)'}
-            </div>
-          </div>
-
-          <div
-            style={{
-              backgroundColor: colors.surfaceElevated,
-              border: `1px solid ${colors.border}`,
-              borderRadius: `${borderRadius.md}px`,
-              padding: spacing.lg,
-            }}
-          >
-            <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: colors.textMuted, letterSpacing: '0.05em' }}>
-              Sessão Ativa
-            </span>
-            <div style={{ fontSize: '0.9375rem', fontWeight: 600, marginTop: '4px', color: colors.accent }}>
-              Token Rotativo Ativo
-            </div>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {isStale && (
+            <Badge variant="warning">
+              <span style={{ marginRight: '4px' }}>⚠️</span> Cotações D-1
+            </Badge>
+          )}
+          <ManualRefreshButton variant="primary" />
         </div>
       </div>
 
-      {/* API Diagnostics Card */}
-      <div
-        style={{
-          backgroundColor: colors.surface,
-          border: `1px solid ${colors.border}`,
-          borderRadius: `${borderRadius.lg}px`,
-          padding: spacing.xl,
-        }}
-      >
-        <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.125rem', fontWeight: 600, color: colors.textPrimary }}>
-          Status da Conexão com o Backend
-        </h3>
-        <p style={{ margin: '0 0 1rem 0', fontSize: '0.875rem', color: colors.textSecondary }}>
-          Comunicação direta via Shared API Client (@atlas/api-client)
-        </p>
+      {/* Summary KPI Cards */}
+      <PortfolioSummaryCards valuation={valuation} isLoading={isLoadingValuation} />
 
+      {/* Macro Indicators Bar */}
+      <div style={{ marginBottom: '28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+          <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: colors.textPrimary }}>
+            Contexto Macroeconômico Oficial
+          </h3>
+          <span style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+            Bacen / Copom / IBGE
+          </span>
+        </div>
+        <MacroIndicatorsGrid />
+      </div>
+
+      {/* Main Asset Snapshot Section */}
+      <div style={{ marginBottom: '28px' }}>
         <div
           style={{
-            backgroundColor: colors.surfaceElevated,
-            borderRadius: `${borderRadius.md}px`,
-            padding: spacing.md,
-            fontSize: '0.8125rem',
-            fontFamily: 'monospace',
-            color: colors.textSecondary,
-            lineHeight: 1.6,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '16px',
           }}
         >
-          <div><strong>Endpoint:</strong> {config.apiUrl}</div>
-          <div><strong>Live Query Status:</strong> {isLoading ? 'Carregando /me...' : error ? `Offline / Falha: ${(error as Error).message}` : '200 OK (/api/v1/auth/me)'}</div>
-          <div><strong>Platform Runtime:</strong> {config.isTauri ? 'Tauri 2 Native Window' : 'Vite Browser Harness'}</div>
+          <div>
+            <h3 style={{ margin: '0 0 4px 0', fontSize: '1.125rem', fontWeight: 600, color: colors.textPrimary }}>
+              Principais Posições em Custódia
+            </h3>
+            <p style={{ margin: 0, fontSize: '0.8125rem', color: colors.textSecondary }}>
+              Visualizando os maiores ativos por volume financeiro
+            </p>
+          </div>
+
+          <Link to="/portfolio" style={{ textDecoration: 'none' }}>
+            <Button variant="outline" size="sm">
+              Ver Carteira Completa ({positions.length}) →
+            </Button>
+          </Link>
         </div>
+
+        <PositionsTable
+          positions={topPositions}
+          isLoading={isLoadingValuation}
+        />
       </div>
     </div>
   );
