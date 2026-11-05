@@ -8,3 +8,4 @@ export * from './Skeleton';
 export * from './EmptyState';
 export * from './StatCard';
 export * from './Modal';
+export * from './ErrorState';

@@ -49,3 +49,19 @@ export const reviewKeys = {
   count: () => [...reviewKeys.all, 'count'] as const,
   detail: (runId: string) => [...reviewKeys.all, 'detail', runId] as const,
 };
+
+export const fiscalKeys = {
+  all: ['fiscal'] as const,
+  monthly: (competence: string) => [...fiscalKeys.all, 'monthly', competence] as const,
+  liability: (competence: string) => [...fiscalKeys.all, 'liability', competence] as const,
+  inputs: (competence: string) => [...fiscalKeys.all, 'inputs', competence] as const,
+  annualPositions: (year: number, portfolioId: string) =>
+    [...fiscalKeys.all, 'annual-positions', year, portfolioId] as const,
+  annualCapitalMarket: (year: number) =>
+    [...fiscalKeys.all, 'annual-capital-market', year] as const,
+  annualIncome: (year: number) => [...fiscalKeys.all, 'annual-income', year] as const,
+  annualReporting: (year: number) => [...fiscalKeys.all, 'annual-reporting', year] as const,
+  compliance: () => [...fiscalKeys.all, 'compliance'] as const,
+  costEvidence: (portfolioId: string) => [...fiscalKeys.all, 'cost-evidence', portfolioId] as const,
+  incomeIntelligence: (portfolioId: string) => [...fiscalKeys.all, 'income-intelligence', portfolioId] as const,
+};
