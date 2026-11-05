@@ -250,7 +250,7 @@ export const TaxRoute: React.FC = () => {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'minmax(0, 1.8fr) minmax(0, 1.2fr)',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
               gap: `${spacing.lg}px`,
               alignItems: 'start',
               marginBottom: `${spacing.lg}px`,

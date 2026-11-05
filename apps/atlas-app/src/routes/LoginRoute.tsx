@@ -69,14 +69,19 @@ export const LoginRoute: React.FC = () => {
         justifyContent: 'center',
         minHeight: '100vh',
         backgroundColor: colors.background,
-        padding: spacing.xl,
+        padding: spacing.md,
+        paddingTop: 'calc(var(--sat, 0px) + 24px)',
+        paddingBottom: 'calc(var(--sab, 0px) + 24px)',
+        paddingLeft: 'calc(var(--sal, 0px) + 16px)',
+        paddingRight: 'calc(var(--sar, 0px) + 16px)',
         fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
         boxSizing: 'border-box',
       }}
+      data-testid="login-route"
     >
-      <div style={{ width: '100%', maxWidth: '440px' }}>
+      <div style={{ width: '100%', maxWidth: '420px' }}>
         {/* Header Branding */}
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
           <div
             style={{
               display: 'inline-flex',
@@ -89,7 +94,7 @@ export const LoginRoute: React.FC = () => {
               color: '#FFFFFF',
               fontSize: '1.5rem',
               fontWeight: 700,
-              marginBottom: '1rem',
+              marginBottom: '0.75rem',
               boxShadow: '0 4px 12px rgba(10, 132, 255, 0.3)',
             }}
           >
@@ -97,7 +102,7 @@ export const LoginRoute: React.FC = () => {
           </div>
           <h1
             style={{
-              margin: '0 0 0.5rem 0',
+              margin: '0 0 0.25rem 0',
               fontSize: '1.75rem',
               fontWeight: 700,
               letterSpacing: '-0.02em',
@@ -123,13 +128,13 @@ export const LoginRoute: React.FC = () => {
             backgroundColor: colors.surface,
             border: `1px solid ${colors.border}`,
             borderRadius: `${borderRadius.lg}px`,
-            padding: '2rem',
+            padding: '1.75rem 1.5rem',
             boxShadow: '0 10px 30px rgba(0, 0, 0, 0.5)',
           }}
         >
           <h2
             style={{
-              margin: '0 0 0.5rem 0',
+              margin: '0 0 0.375rem 0',
               fontSize: '1.25rem',
               fontWeight: 600,
               color: colors.textPrimary,
@@ -139,8 +144,8 @@ export const LoginRoute: React.FC = () => {
           </h2>
           <p
             style={{
-              margin: '0 0 1.5rem 0',
-              fontSize: '0.875rem',
+              margin: '0 0 1.25rem 0',
+              fontSize: '0.8125rem',
               color: colors.textSecondary,
             }}
           >
@@ -165,56 +170,68 @@ export const LoginRoute: React.FC = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit}>
-            <Input
-              label="E-mail"
-              type="email"
-              autoComplete="email"
-              placeholder="investidor@exemplo.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={isLoading}
-              required
-            />
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.md}px` }}>
+            <div>
+              <Input
+                label="E-mail"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                autoCapitalize="none"
+                placeholder="investidor@exemplo.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={isLoading}
+                required
+              />
+            </div>
 
-            <PasswordInput
-              label="Senha"
-              autoComplete="current-password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={isLoading}
-              required
-            />
+            <div>
+              <PasswordInput
+                label="Senha"
+                autoComplete="current-password"
+                placeholder="Digite sua senha"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={isLoading}
+                required
+              />
+            </div>
 
             <Button
               type="submit"
-              fullWidth
+              variant="primary"
+              size="lg"
               isLoading={isLoading}
-              style={{ marginTop: '0.75rem' }}
+              style={{ width: '100%', minHeight: '48px', marginTop: `${spacing.xs}px` }}
+              data-testid="login-submit-button"
             >
               Entrar
             </Button>
           </form>
+        </div>
 
-          {/* Connection Target Hint */}
-          <div
+        {/* Footer info */}
+        <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
+          <span
             style={{
-              marginTop: '1.5rem',
-              paddingTop: '1rem',
-              borderTop: `1px solid ${colors.border}`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
               fontSize: '0.75rem',
-              color: colors.textMuted,
+              color: colors.textSecondary,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
             }}
           >
-            <span>Alvo da API:</span>
-            <span style={{ fontFamily: 'monospace', color: colors.accent }}>
-              {config.apiUrl}
-            </span>
-          </div>
+            <span
+              style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor: colors.positive,
+              }}
+            />
+            {config.isTauri ? 'Dispositivo Instalado' : 'Ambiente Local'}
+          </span>
         </div>
       </div>
     </div>

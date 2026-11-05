@@ -7,6 +7,9 @@ import { ManualRefreshButton } from '../features/portfolio/components/ManualRefr
 import { usePendingReviewsCount } from '../features/imports/hooks';
 import { colors, borderRadius, spacing, CANONICAL_NAV_ITEMS } from '@atlas/ui';
 import { getRuntimeConfig } from '../config/runtime';
+import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useAppLifecycle } from '../hooks/useAppLifecycle';
+import { useAndroidBackButton } from '../hooks/useAndroidBackButton';
 
 export const AppLayout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -14,6 +17,11 @@ export const AppLayout: React.FC = () => {
   const location = useLocation();
   const config = getRuntimeConfig();
   const { data: pendingReviewsCount = 0 } = usePendingReviewsCount();
+  const { isMobile } = useBreakpoint();
+
+  // Lifecycle & hardware back integration
+  useAppLifecycle();
+  useAndroidBackButton();
 
   const handleLogout = async () => {
     await logout();
@@ -34,6 +42,8 @@ export const AppLayout: React.FC = () => {
         return '📑';
       case 'ai':
         return '✨';
+      case 'settings':
+        return '👤';
       default:
         return '●';
     }
@@ -43,11 +53,23 @@ export const AppLayout: React.FC = () => {
     if (location.pathname === '/import' || location.pathname.startsWith('/import/')) {
       return 'Importações & Conciliação';
     }
+    if (location.pathname === '/settings' || location.pathname.startsWith('/settings/')) {
+      return 'Perfil & Configurações';
+    }
     const currentItem = CANONICAL_NAV_ITEMS.find(
       (item) => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)
     );
-    return currentItem ? currentItem.label : 'Atlas Desktop';
+    return currentItem ? currentItem.label : 'Atlas';
   };
+
+  // Mobile canonical 5 bottom tabs
+  const mobileTabs = [
+    { id: 'today', path: '/today', label: 'Hoje', icon: '📅' },
+    { id: 'portfolio', path: '/portfolio', label: 'Carteira', icon: '💼' },
+    { id: 'market', path: '/market', label: 'Mercado', icon: '📈' },
+    { id: 'tax', path: '/tax', label: 'Fiscal', icon: '📑' },
+    { id: 'settings', path: '/settings', label: 'Perfil', icon: '👤' },
+  ];
 
   return (
     <div
@@ -58,17 +80,19 @@ export const AppLayout: React.FC = () => {
         color: colors.textPrimary,
         fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
       }}
+      data-testid="app-layout"
     >
-      {/* Desktop Sidebar */}
+      {/* Desktop Sidebar (hidden on mobile via CSS class desktop-only) */}
       <aside
+        className="desktop-only"
         style={{
           width: '240px',
           borderRight: `1px solid ${colors.border}`,
           backgroundColor: colors.surface,
-          display: 'flex',
           flexDirection: 'column',
           flexShrink: 0,
         }}
+        data-testid="desktop-sidebar"
       >
         {/* Brand header */}
         <div
@@ -108,7 +132,7 @@ export const AppLayout: React.FC = () => {
 
         {/* Navigation items */}
         <nav
-          aria-label="Navegação principal"
+          aria-label="Navegação principal desktop"
           style={{
             padding: `${spacing.base}px ${spacing.sm}px`,
             flex: 1,
@@ -144,6 +168,7 @@ export const AppLayout: React.FC = () => {
                   textDecoration: 'none',
                   transition: 'background-color 0.15s ease, color 0.15s ease',
                   outline: 'none',
+                  minHeight: '44px',
                 }}
               >
                 <span>{getNavIcon(item.id)}</span>
@@ -218,6 +243,8 @@ export const AppLayout: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              minWidth: '44px',
+              minHeight: '44px',
             }}
           >
             <span aria-hidden="true" style={{ fontSize: '1rem' }}>🚪</span>
@@ -226,18 +253,19 @@ export const AppLayout: React.FC = () => {
       </aside>
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        {/* Top Header */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}>
+        {/* Desktop Header */}
         <header
+          className="desktop-only"
           style={{
             height: '60px',
             borderBottom: `1px solid ${colors.border}`,
             backgroundColor: colors.surface,
-            display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: `0 ${spacing.xl}px`,
           }}
+          data-testid="desktop-header"
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
             <div style={{ fontSize: '1.125rem', fontWeight: 600, color: colors.textPrimary }}>
@@ -274,10 +302,141 @@ export const AppLayout: React.FC = () => {
           </div>
         </header>
 
+        {/* Mobile Compact Header (visible only on mobile) */}
+        <header
+          className="mobile-only"
+          style={{
+            minHeight: '54px',
+            paddingTop: 'calc(var(--sat, 0px) + 6px)',
+            paddingBottom: '8px',
+            paddingLeft: 'calc(var(--sal, 0px) + 16px)',
+            paddingRight: 'calc(var(--sar, 0px) + 16px)',
+            borderBottom: `1px solid ${colors.border}`,
+            backgroundColor: colors.surface,
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            position: 'sticky',
+            top: 0,
+            zIndex: 40,
+          }}
+          data-testid="mobile-header"
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px` }}>
+            <div
+              style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: `${borderRadius.sm}px`,
+                backgroundColor: colors.accent,
+                color: '#FFFFFF',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 700,
+                fontSize: '0.875rem',
+              }}
+            >
+              A
+            </div>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: colors.textPrimary }}>
+              {getCurrentPageTitle()}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px` }}>
+            <PortfolioSwitcher />
+            <NavLink
+              to="/settings"
+              aria-label="Perfil"
+              data-testid="mobile-profile-link"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minWidth: '44px',
+                minHeight: '44px',
+                textDecoration: 'none',
+              }}
+            >
+              <Avatar name={user?.name} size="sm" />
+            </NavLink>
+          </div>
+        </header>
+
         {/* Page Content Outlet */}
-        <main style={{ flex: 1, padding: spacing.xxl, overflowY: 'auto' }}>
+        <main
+          style={{
+            flex: 1,
+            padding: isMobile ? `${spacing.base}px` : `${spacing.xxl}px`,
+            paddingBottom: isMobile
+              ? 'calc(var(--bottom-nav-height, 56px) + var(--sab, 0px) + 20px)'
+              : `${spacing.xxl}px`,
+            paddingLeft: isMobile ? 'calc(var(--sal, 0px) + 16px)' : `${spacing.xxl}px`,
+            paddingRight: isMobile ? 'calc(var(--sar, 0px) + 16px)' : `${spacing.xxl}px`,
+            overflowY: 'auto',
+          }}
+          data-testid="main-content"
+        >
           <Outlet />
         </main>
+
+        {/* Mobile Bottom Navigation (visible only on mobile) */}
+        <nav
+          className="mobile-only"
+          aria-label="Navegação móvel inferior"
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 50,
+            backgroundColor: colors.surface,
+            borderTop: `1px solid ${colors.border}`,
+            paddingBottom: 'var(--sab, 0px)',
+            justifyContent: 'space-around',
+            alignItems: 'center',
+            height: 'calc(var(--bottom-nav-height, 56px) + var(--sab, 0px))',
+          }}
+          data-testid="mobile-bottom-nav"
+        >
+          {mobileTabs.map((tab) => {
+            const isActive = location.pathname === tab.path || location.pathname.startsWith(`${tab.path}/`);
+            return (
+              <NavLink
+                key={tab.id}
+                to={tab.path}
+                aria-current={isActive ? 'page' : undefined}
+                data-testid={`bottom-nav-${tab.id}`}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flex: 1,
+                  height: '100%',
+                  minHeight: '44px',
+                  minWidth: '44px',
+                  textDecoration: 'none',
+                  color: isActive ? colors.accent : colors.textSecondary,
+                  transition: 'color 0.15s ease-in-out',
+                  padding: '4px 0',
+                }}
+              >
+                <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>{tab.icon}</span>
+                <span
+                  style={{
+                    fontSize: '0.6875rem',
+                    fontWeight: isActive ? 600 : 500,
+                    marginTop: '2px',
+                    color: isActive ? colors.accent : colors.textSecondary,
+                  }}
+                >
+                  {tab.label}
+                </span>
+              </NavLink>
+            );
+          })}
+        </nav>
       </div>
     </div>
   );

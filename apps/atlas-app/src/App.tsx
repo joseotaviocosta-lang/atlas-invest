@@ -9,6 +9,7 @@ import { PortfolioRoute } from './routes/PortfolioRoute';
 import { MarketRoute } from './routes/MarketRoute';
 import { ImportRoute } from './routes/ImportRoute';
 import { TaxRoute } from './routes/TaxRoute';
+import { SettingsRoute } from './routes/SettingsRoute';
 import { PlaceholderRoute } from './routes/PlaceholderRoute';
 
 const RouterComponent = typeof window !== 'undefined' ? HashRouter : MemoryRouter;
@@ -30,6 +31,7 @@ export const App: React.FC = () => {
               <Route path="import" element={<ImportRoute />} />
               <Route path="market" element={<MarketRoute />} />
               <Route path="tax" element={<TaxRoute />} />
+              <Route path="settings" element={<SettingsRoute />} />
               <Route
                 path="ai"
                 element={
