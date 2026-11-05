@@ -16,6 +16,7 @@ import { PositionsTable } from '../../apps/atlas-app/src/features/portfolio/comp
 import { resolveTokenStorage, isAndroidUserAgent } from '../../apps/atlas-app/src/lib/api';
 import { MemorySecureTokenStorage } from '@atlas/api-client';
 import { TauriSecureTokenStorage } from '../../apps/atlas-app/src/auth/tauri-secure-token-storage';
+import { AndroidSecureTokenStorage } from '../../apps/atlas-app/src/auth/android-secure-token-storage';
 import { portfolioKeys, marketKeys, fiscalKeys } from '../../apps/atlas-app/src/lib/query-keys';
 import { queryClient, clearQueryCache } from '../../apps/atlas-app/src/lib/react-query';
 import type { PositionValuationDto } from '../../apps/atlas-app/src/features/portfolio/types';
@@ -328,7 +329,7 @@ describe('Atlas Android Foundation & Mobile Shell (APP-9)', () => {
   });
 
   describe('11. Security & Storage Strategy Discovery', () => {
-    it('resolves MemorySecureTokenStorage in Android runtime during Phase APP-9', () => {
+    it('resolves AndroidSecureTokenStorage in Android runtime during Phase APP-10', () => {
       // Mock Android navigator
       const originalNavigator = global.navigator;
       try {
@@ -339,7 +340,7 @@ describe('Atlas Android Foundation & Mobile Shell (APP-9)', () => {
 
         expect(isAndroidUserAgent()).toBe(true);
         const storage = resolveTokenStorage(true);
-        expect(storage).toBeInstanceOf(MemorySecureTokenStorage);
+        expect(storage).toBeInstanceOf(AndroidSecureTokenStorage);
       } finally {
         Object.defineProperty(global, 'navigator', {
           value: originalNavigator,

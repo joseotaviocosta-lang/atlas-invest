@@ -244,8 +244,10 @@ dependencies = [
 name = "atlas-app"
 version = "0.1.0"
 dependencies = [
+ "jni",
  "keyring",
  "log",
+ "ndk-context",
  "serde",
  "serde_json",
  "tauri",
