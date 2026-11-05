@@ -36,3 +36,16 @@ export const marketKeys = {
   watchlist: () => [...marketKeys.all, 'watchlist'] as const,
   quotes: (portfolioId: string) => [...marketKeys.all, 'quotes', portfolioId] as const,
 };
+
+export const importKeys = {
+  all: ['imports'] as const,
+  runs: (portfolioId: string) => [...importKeys.all, 'runs', portfolioId] as const,
+  run: (portfolioId: string, runId: string) => [...importKeys.all, 'run', portfolioId, runId] as const,
+};
+
+export const reviewKeys = {
+  all: ['reviews'] as const,
+  lists: (params?: Record<string, unknown>) => [...reviewKeys.all, 'list', params ?? {}] as const,
+  count: () => [...reviewKeys.all, 'count'] as const,
+  detail: (runId: string) => [...reviewKeys.all, 'detail', runId] as const,
+};

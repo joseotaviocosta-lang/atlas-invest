@@ -7,6 +7,7 @@ import { AppLayout } from './layouts/AppLayout';
 import { TodayRoute } from './routes/TodayRoute';
 import { PortfolioRoute } from './routes/PortfolioRoute';
 import { MarketRoute } from './routes/MarketRoute';
+import { ImportRoute } from './routes/ImportRoute';
 import { PlaceholderRoute } from './routes/PlaceholderRoute';
 
 const RouterComponent = typeof window !== 'undefined' ? HashRouter : MemoryRouter;
@@ -25,6 +26,7 @@ export const App: React.FC = () => {
               <Route index element={<Navigate to="/today" replace />} />
               <Route path="today" element={<TodayRoute />} />
               <Route path="portfolio" element={<PortfolioRoute />} />
+              <Route path="import" element={<ImportRoute />} />
               <Route path="market" element={<MarketRoute />} />
               <Route
                 path="tax"

@@ -1,9 +1,10 @@
 import React from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../providers/AuthProvider';
-import { Avatar } from '../components/ui';
+import { Avatar, Badge } from '../components/ui';
 import { PortfolioSwitcher } from '../features/portfolio/components/PortfolioSwitcher';
 import { ManualRefreshButton } from '../features/portfolio/components/ManualRefreshButton';
+import { usePendingReviewsCount } from '../features/imports/hooks';
 import { colors, borderRadius, spacing, CANONICAL_NAV_ITEMS } from '@atlas/ui';
 import { getRuntimeConfig } from '../config/runtime';
 
@@ -12,6 +13,7 @@ export const AppLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const config = getRuntimeConfig();
+  const { data: pendingReviewsCount = 0 } = usePendingReviewsCount();
 
   const handleLogout = async () => {
     await logout();
@@ -24,6 +26,8 @@ export const AppLayout: React.FC = () => {
         return '📅';
       case 'portfolio':
         return '💼';
+      case 'import':
+        return '📥';
       case 'market':
         return '📈';
       case 'tax':
@@ -36,6 +40,9 @@ export const AppLayout: React.FC = () => {
   };
 
   const getCurrentPageTitle = () => {
+    if (location.pathname === '/import' || location.pathname.startsWith('/import/')) {
+      return 'Importações & Conciliação';
+    }
     const currentItem = CANONICAL_NAV_ITEMS.find(
       (item) => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)
     );
@@ -110,7 +117,14 @@ export const AppLayout: React.FC = () => {
             gap: '4px',
           }}
         >
-          {CANONICAL_NAV_ITEMS.map((item) => {
+          {[
+            { id: 'today', path: '/today', label: 'Hoje' },
+            { id: 'portfolio', path: '/portfolio', label: 'Carteira' },
+            { id: 'import', path: '/import', label: 'Importar' },
+            { id: 'market', path: '/market', label: 'Mercado' },
+            { id: 'tax', path: '/tax', label: 'Fiscal' },
+            { id: 'ai', path: '/ai', label: 'IA' },
+          ].map((item) => {
             const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
             return (
               <NavLink
@@ -133,7 +147,10 @@ export const AppLayout: React.FC = () => {
                 }}
               >
                 <span>{getNavIcon(item.id)}</span>
-                <span>{item.label}</span>
+                <span style={{ flex: 1 }}>{item.label}</span>
+                {item.id === 'import' && pendingReviewsCount > 0 && (
+                  <Badge variant="warning">{pendingReviewsCount}</Badge>
+                )}
               </NavLink>
             );
           })}
