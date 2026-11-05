@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { sessionManager } from '../lib/api';
 import { clearQueryCache } from '../lib/react-query';
+import { LocalCache } from '../lib/local-cache';
 import type { AuthState, AuthUser, LoginCredentials } from '@atlas/api-client';
 
 export interface AuthContextValue {
@@ -56,6 +57,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       await sessionManager.logout();
     } finally {
       clearQueryCache();
+      LocalCache.clear();
     }
   }, []);
 

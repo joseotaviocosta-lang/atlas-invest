@@ -33,6 +33,7 @@ export const ManualRefreshButton: React.FC<{ variant?: 'primary' | 'secondary' |
         isLoading={updateMutation.isPending}
         disabled={!selectedPortfolioId || updateMutation.isPending}
         onClick={handleRefresh}
+        style={{ minHeight: '44px' }}
         title="Atualizar cotações de mercado agora"
         data-testid="manual-refresh-button"
       >

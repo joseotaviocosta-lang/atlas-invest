@@ -20,7 +20,8 @@ import {
   AnnualIncomeSection,
   AnnualReportingExportCard,
 } from '../features/fiscal/components';
-import { Card, EmptyState, Badge, Skeleton } from '../components/ui';
+import { Card, EmptyState, Badge, Skeleton, PullToRefresh, OfflineBanner } from '../components/ui';
+import { useAppLifecycle } from '../hooks/useAppLifecycle';
 
 type TaxTab = 'monthly' | 'annual' | 'evidence' | 'compliance';
 
@@ -77,6 +78,20 @@ export const TaxRoute: React.FC = () => {
     selectedPortfolioId ?? undefined
   );
 
+  const { isOnline, triggerManualSync } = useAppLifecycle();
+
+  const handlePullRefresh = async () => {
+    if (isOnline) {
+      await Promise.all([
+        refetchLiability(),
+        refetchMonthly(),
+        refetchPositions(),
+        refetchIncome(),
+        triggerManualSync(),
+      ]);
+    }
+  };
+
   const isCostBlocked =
     (readinessData as unknown as { isComplete?: boolean })?.isComplete === false ||
     readinessData?.liabilityStatus === 'BLOCKED' ||
@@ -108,8 +123,12 @@ export const TaxRoute: React.FC = () => {
   ];
 
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto' }} data-testid="tax-route">
-      {/* Header */}
+    <PullToRefresh onRefresh={handlePullRefresh}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto' }} data-testid="tax-route">
+        {/* Offline Warning Banner */}
+        <OfflineBanner isOffline={!isOnline} />
+
+        {/* Header */}
       <div
         style={{
           display: 'flex',
@@ -191,39 +210,110 @@ export const TaxRoute: React.FC = () => {
         )}
       </div>
 
-      {/* Tabs */}
-      <div
-        style={{
-          display: 'flex',
-          gap: `${spacing.xs}px`,
-          borderBottom: `1px solid ${colors.border}`,
-          marginBottom: `${spacing.lg}px`,
-        }}
-      >
-        {tabs.map((tab) => {
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              data-testid={`tax-tab-${tab.id}`}
-              onClick={() => setActiveTab(tab.id)}
+        {/* Mobile Fiscal Summary Card (Compact, Touch-First) */}
+        <div className="mobile-only" style={{ marginBottom: `${spacing.base}px` }} data-testid="mobile-fiscal-summary-card">
+          <Card style={{ padding: `${spacing.base}px` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div>
+                <span style={{ fontSize: '0.75rem', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Status Fiscal • {competence}
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+                  <Badge variant={isCostBlocked ? 'negative' : 'positive'}>
+                    {isCostBlocked ? 'Cálculo Suspenso' : liabilityData?.statusLabel || 'Regular'}
+                  </Badge>
+                  {isCostBlocked && (
+                    <span style={{ fontSize: '0.75rem', color: colors.negative, fontWeight: 600 }}>
+                      Fail-Closed Ativo
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ fontSize: '0.75rem', color: colors.textSecondary, display: 'block' }}>
+                  DARF Estimado
+                </span>
+                <span style={{ fontSize: '1.25rem', fontWeight: 800, color: colors.textPrimary }}>
+                  {liabilityData?.taxDueFormatted || 'R$ 0,00'}
+                </span>
+              </div>
+            </div>
+
+            <div
               style={{
+                backgroundColor: colors.surfaceElevated,
+                borderRadius: `${borderRadius.md}px`,
+                padding: `${spacing.sm}px`,
+                fontSize: '0.8125rem',
+                color: colors.textSecondary,
+                marginBottom: '12px',
                 display: 'flex',
+                justifyContent: 'space-between',
                 alignItems: 'center',
-                gap: '8px',
-                padding: `${spacing.sm}px ${spacing.md}px`,
-                backgroundColor: 'transparent',
-                border: 'none',
-                borderBottom: isActive ? `2px solid ${colors.accent}` : '2px solid transparent',
-                color: isActive ? colors.accent : colors.textSecondary,
-                fontWeight: isActive ? 600 : 500,
-                fontSize: '0.875rem',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease-in-out',
-                marginBottom: '-1px',
               }}
             >
+              <span>Vencimento do DARF:</span>
+              <strong style={{ color: colors.textPrimary }}>Último dia útil do mês</strong>
+            </div>
+
+            {/* Desktop CTA Banner */}
+            <div
+              style={{
+                borderTop: `1px solid ${colors.border}`,
+                paddingTop: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <span style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+                Relatórios detalhados e guias DARF:
+              </span>
+              <Badge variant="info">
+                Ver detalhes no Desktop 💻
+              </Badge>
+            </div>
+          </Card>
+        </div>
+
+        {/* Tabs */}
+        <div
+          style={{
+            display: 'flex',
+            gap: `${spacing.xs}px`,
+            borderBottom: `1px solid ${colors.border}`,
+            marginBottom: `${spacing.lg}px`,
+            overflowX: 'auto',
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                data-testid={`tax-tab-${tab.id}`}
+                onClick={() => setActiveTab(tab.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: `${spacing.sm}px ${spacing.md}px`,
+                  minHeight: '48px',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  borderBottom: isActive ? `2px solid ${colors.accent}` : '2px solid transparent',
+                  color: isActive ? colors.accent : colors.textSecondary,
+                  fontWeight: isActive ? 600 : 500,
+                  fontSize: '0.875rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease-in-out',
+                  marginBottom: '-1px',
+                  whiteSpace: 'nowrap',
+                }}
+              >
               <span>{tab.icon}</span>
               <span>{tab.label}</span>
             </button>
@@ -461,6 +551,7 @@ export const TaxRoute: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </PullToRefresh>
   );
 };

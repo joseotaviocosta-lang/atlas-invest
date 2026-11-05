@@ -1,17 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { PositionValuationDto } from '../types';
 import { Card, Badge, EmptyState } from '../../../components/ui';
-import { colors, spacing, formatCurrency, formatQuantity, formatPercentage } from '@atlas/ui';
+import { PositionDetailModal } from './PositionDetailModal';
+import { colors, spacing, borderRadius, formatCurrency, formatQuantity, formatPercentage } from '@atlas/ui';
 
 interface PositionsTableProps {
   positions: PositionValuationDto[];
   isLoading?: boolean;
+  totalMarketValue?: string | null;
 }
 
 export const PositionsTable: React.FC<PositionsTableProps> = ({
   positions,
   isLoading = false,
+  totalMarketValue,
 }) => {
+  const [selectedPosition, setSelectedPosition] = useState<PositionValuationDto | null>(null);
+
   if (!isLoading && positions.length === 0) {
     return (
       <Card>
@@ -111,9 +116,11 @@ export const PositionsTable: React.FC<PositionsTableProps> = ({
                 return (
                   <tr
                     key={pos.assetId}
+                    onClick={() => setSelectedPosition(pos)}
                     style={{
                       borderBottom: `1px solid ${colors.border}`,
                       transition: 'background-color 0.15s ease',
+                      cursor: 'pointer',
                     }}
                   >
                     <td style={{ padding: '16px 20px' }}>
@@ -179,6 +186,9 @@ export const PositionsTable: React.FC<PositionsTableProps> = ({
           const currentPriceFormatted = pos.quote
             ? formatCurrency(pos.quote.price, pos.quote.currency)
             : '—';
+          const avgPriceFormatted = pos.averageCost
+            ? formatCurrency(pos.averageCost.amount, pos.averageCost.currency)
+            : '—';
           const marketValueFormatted = pos.marketValue
             ? formatCurrency(pos.marketValue.amount, pos.marketValue.currency)
             : '—';
@@ -197,36 +207,102 @@ export const PositionsTable: React.FC<PositionsTableProps> = ({
             : false;
           const resultColor = isPositive ? colors.positive : isNegative ? colors.negative : colors.textSecondary;
 
+          const weightPercent =
+            (pos as unknown as { weightPercent?: string }).weightPercent ||
+            (pos.marketValue && totalMarketValue && Number(totalMarketValue) > 0
+              ? `${((Number(pos.marketValue.amount) / Number(totalMarketValue)) * 100).toFixed(1)}%`
+              : null);
+
           return (
-            <Card key={pos.assetId} style={{ padding: `${spacing.md}px` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+            <div
+              key={pos.assetId}
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedPosition(pos)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setSelectedPosition(pos);
+                }
+              }}
+              data-testid={`position-mobile-card-${ticker}`}
+              style={{
+                backgroundColor: colors.surface,
+                border: `1px solid ${colors.border}`,
+                borderRadius: `${borderRadius.lg}px`,
+                padding: `${spacing.md}px`,
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                minHeight: '64px',
+                transition: 'transform 0.1s ease, border-color 0.15s ease',
+                outline: 'none',
+              }}
+            >
+              {/* Card Header: Ticker, Type, and Total Market Value */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontWeight: 700, fontSize: '1rem', color: colors.textPrimary }}>
+                    <span style={{ fontWeight: 800, fontSize: '1.0625rem', color: colors.textPrimary }}>
                       {ticker}
                     </span>
                     <Badge variant="neutral">{getAssetTypeLabel(pos.assetType)}</Badge>
+                    {pos.quote && (
+                      <Badge variant={pos.quote.freshness === 'FRESH' ? 'positive' : 'warning'}>
+                        {pos.quote.freshness === 'FRESH' ? 'Em dia' : 'D-1'}
+                      </Badge>
+                    )}
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '2px' }}>
-                    {`${formatQuantity(pos.quantity)} un. • ${currentPriceFormatted}`}
+                  <div style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginTop: '2px' }}>
+                    {`${formatQuantity(pos.quantity)} un. • PM: ${avgPriceFormatted}`}
                   </div>
                 </div>
 
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: 700, fontSize: '1rem', color: colors.textPrimary }}>
+                  <div style={{ fontWeight: 800, fontSize: '1.0625rem', color: colors.textPrimary }}>
                     {marketValueFormatted}
                   </div>
                   {unrealizedAmount && (
-                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: resultColor }}>
+                    <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: resultColor }}>
                       {unrealizedAmount} ({unrealizedPercent})
                     </div>
                   )}
                 </div>
               </div>
-            </Card>
+
+              {/* Card Footer: Current Price, Share/Weight, and Tap Cue */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  paddingTop: '6px',
+                  borderTop: `1px solid ${colors.border}40`,
+                  fontSize: '0.75rem',
+                  color: colors.textSecondary,
+                }}
+              >
+                <div>
+                  Cotação: <strong style={{ color: colors.textPrimary }}>{currentPriceFormatted}</strong>
+                  {weightPercent && ` • Peso: ${weightPercent}`}
+                </div>
+                <span style={{ fontSize: '0.75rem', color: colors.accent, fontWeight: 500 }}>
+                  Ver detalhes →
+                </span>
+              </div>
+            </div>
           );
         })}
       </div>
+
+      {/* Position Detail Modal / Sheet */}
+      <PositionDetailModal
+        position={selectedPosition}
+        isOpen={selectedPosition !== null}
+        onClose={() => setSelectedPosition(null)}
+        totalMarketValue={totalMarketValue}
+      />
     </div>
   );
 };

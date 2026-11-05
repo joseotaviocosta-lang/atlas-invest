@@ -20,7 +20,7 @@ export const AppLayout: React.FC = () => {
   const { isMobile } = useBreakpoint();
 
   // Lifecycle & hardware back integration
-  useAppLifecycle();
+  const { isOnline } = useAppLifecycle();
   useAndroidBackButton();
 
   const handleLogout = async () => {
@@ -341,6 +341,25 @@ export const AppLayout: React.FC = () => {
             <div style={{ fontSize: '1rem', fontWeight: 700, color: colors.textPrimary }}>
               {getCurrentPageTitle()}
             </div>
+            {!isOnline && (
+              <span
+                data-testid="mobile-offline-indicator"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '2px 8px',
+                  borderRadius: `${borderRadius.full}px`,
+                  backgroundColor: `${colors.warning}20`,
+                  color: colors.warning,
+                  fontSize: '0.6875rem',
+                  fontWeight: 600,
+                  border: `1px solid ${colors.warning}40`,
+                }}
+              >
+                📡 Offline
+              </span>
+            )}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px` }}>
