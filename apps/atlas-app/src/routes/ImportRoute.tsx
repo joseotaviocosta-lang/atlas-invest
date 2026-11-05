@@ -19,7 +19,8 @@ import {
   usePendingReviewsCount,
 } from '../features/imports/hooks';
 import { getConfirmEligibility } from '../features/imports/helpers';
-import { Card, EmptyState, Badge } from '../components/ui';
+import { Card, EmptyState, Badge, OfflineBanner } from '../components/ui';
+import { useAppLifecycle } from '../hooks/useAppLifecycle';
 import type { SelectedFilePayload } from '../features/imports/components/FileDropzone';
 import type { RowDecisionState } from '../features/imports/helpers';
 import type { RowDecision, ConfirmPayload } from '../features/imports/types';
@@ -27,6 +28,7 @@ import type { RowDecision, ConfirmPayload } from '../features/imports/types';
 export const ImportRoute: React.FC = () => {
   const navigate = useNavigate();
   const { selectedPortfolio, selectedPortfolioId } = usePortfolio();
+  const { isOnline } = useAppLifecycle();
 
   const [activeTab, setActiveTab] = useState<'new' | 'history' | 'reviews'>('new');
   const [selectedFile, setSelectedFile] = useState<SelectedFilePayload | null>(null);
@@ -95,7 +97,7 @@ export const ImportRoute: React.FC = () => {
 
   // Actions
   const handleAnalyzeFile = () => {
-    if (!selectedFile || !selectedPortfolioId) return;
+    if (!isOnline || !selectedFile || !selectedPortfolioId) return;
     previewMutation.mutate({
       sourceType: selectedFile.hint.sourceType,
       fileName: selectedFile.name,
@@ -105,7 +107,7 @@ export const ImportRoute: React.FC = () => {
   };
 
   const handleConfirmImport = () => {
-    if (!preview || !selectedFile || !selectedPortfolioId) return;
+    if (!isOnline || !preview || !selectedFile || !selectedPortfolioId) return;
 
     const rowDecisions: RowDecision[] = Object.entries(decisions).map(([rowStr, dec]) => ({
       rowNumber: Number(rowStr),
@@ -165,6 +167,12 @@ export const ImportRoute: React.FC = () => {
           Importe extratos B3/CSV, visualize a prévia e reconcilie divergências no livro-razão.
         </p>
       </div>
+
+      {/* Offline Alert */}
+      <OfflineBanner
+        isOffline={!isOnline}
+        message="Modo Offline — importações e conciliações exigem conexão online com o servidor"
+      />
 
       {/* Tabs Subnavigation */}
       <div

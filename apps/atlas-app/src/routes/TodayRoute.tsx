@@ -11,6 +11,7 @@ import { colors, formatDate } from '@atlas/ui';
 import { useAuth } from '../providers/AuthProvider';
 import { useAppLifecycle } from '../hooks/useAppLifecycle';
 import { LocalCache, LocalCacheKeys } from '../lib/local-cache';
+import type { PortfolioValuationData } from '../features/portfolio/types';
 
 export const TodayRoute: React.FC = () => {
   const { user } = useAuth();
@@ -20,21 +21,38 @@ export const TodayRoute: React.FC = () => {
     usePortfolioValuation(selectedPortfolioId);
 
   const valuation = valuationRes?.data ?? null;
-  const isStale = queryIsStale || (valuation?.quoteSummary?.quotesStale ?? 0) > 0;
+
+  // Fast Startup / Offline read: retrieve last known good snapshot if available
+  const cachedValuation = React.useMemo(() => {
+    if (user?.id && selectedPortfolioId) {
+      const res = LocalCache.getResource<PortfolioValuationData>(user.id, 'portfolio_valuation', selectedPortfolioId);
+      if (res?.data) return res.data;
+    }
+    const legacy = LocalCache.get<PortfolioValuationData>(LocalCacheKeys.PORTFOLIO_VALUATION);
+    return legacy?.data ?? null;
+  }, [user?.id, selectedPortfolioId]);
+
+  const effectiveValuation = valuation ?? cachedValuation;
+  const isStale = queryIsStale || (effectiveValuation?.quoteSummary?.quotesStale ?? 0) > 0;
 
   // Cache valuation snapshot for offline fast startup
   useEffect(() => {
     if (valuation) {
-      LocalCache.set(LocalCacheKeys.PORTFOLIO_VALUATION, valuation);
-      LocalCache.set(LocalCacheKeys.LAST_SYNC_TIMESTAMP, Date.now());
+      if (user?.id && selectedPortfolioId) {
+        LocalCache.setResource(user.id, 'portfolio_valuation', valuation, {
+          portfolioId: selectedPortfolioId,
+        });
+      }
+      LocalCache.set(LocalCacheKeys.PORTFOLIO_VALUATION, valuation, { userId: user?.id });
+      LocalCache.set(LocalCacheKeys.LAST_SYNC_TIMESTAMP, Date.now(), { userId: user?.id });
     }
-  }, [valuation]);
+  }, [valuation, user?.id, selectedPortfolioId]);
 
-  const positions = valuation?.positions ?? [];
+  const positions = effectiveValuation?.positions ?? [];
   const topPositions = positions.slice(0, 5);
 
   const firstName = user?.name ? user.name.split(' ')[0] : 'Investidor';
-  const asOfFormatted = valuation?.asOf ? formatDate(valuation.asOf) : null;
+  const asOfFormatted = effectiveValuation?.asOf ? formatDate(effectiveValuation.asOf) : null;
 
   const handlePullRefresh = async () => {
     if (isOnline) {
@@ -44,6 +62,19 @@ export const TodayRoute: React.FC = () => {
   };
 
   if (!isLoadingPortfolios && portfolios.length === 0) {
+    if (!isOnline && !effectiveValuation) {
+      return (
+        <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+          <Card>
+            <EmptyState
+              title="Sem dados disponíveis offline"
+              description="Conecte-se à internet para sincronizar suas carteiras e posições com o servidor Atlas."
+            />
+          </Card>
+        </div>
+      );
+    }
+
     return (
       <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
         <Card>
@@ -107,7 +138,7 @@ export const TodayRoute: React.FC = () => {
         </div>
 
         {/* Summary KPI Cards */}
-        <PortfolioSummaryCards valuation={valuation} isLoading={isLoadingValuation} />
+        <PortfolioSummaryCards valuation={effectiveValuation} isLoading={isLoadingValuation && !effectiveValuation} />
 
         {/* Macro Indicators Bar */}
         <div style={{ marginBottom: '28px' }}>
@@ -150,10 +181,10 @@ export const TodayRoute: React.FC = () => {
 
           <PositionsTable
             positions={topPositions}
-            isLoading={isLoadingValuation}
+            isLoading={isLoadingValuation && !effectiveValuation}
             totalMarketValue={
-              valuation?.totalsByCurrency?.BRL?.marketValue?.amount ||
-              valuation?.totalsByCurrency?.[Object.keys(valuation.totalsByCurrency)[0] || '']?.marketValue?.amount
+              effectiveValuation?.totalsByCurrency?.BRL?.marketValue?.amount ||
+              effectiveValuation?.totalsByCurrency?.[Object.keys(effectiveValuation?.totalsByCurrency ?? {})[0] || '']?.marketValue?.amount
             }
           />
         </div>

@@ -57,9 +57,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       await sessionManager.logout();
     } finally {
       clearQueryCache();
+      if (authState.user?.id) {
+        LocalCache.purgeUser(authState.user.id);
+      }
       LocalCache.clear();
     }
-  }, []);
+  }, [authState.user?.id]);
 
   const value: AuthContextValue = {
     authState,

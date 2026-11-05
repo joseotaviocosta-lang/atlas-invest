@@ -4,11 +4,13 @@ import { colors, borderRadius, spacing } from '@atlas/ui';
 export interface OfflineBannerProps {
   isOffline: boolean;
   lastSyncFormatted?: string | null;
+  message?: string;
 }
 
 export const OfflineBanner: React.FC<OfflineBannerProps> = ({
   isOffline,
   lastSyncFormatted,
+  message,
 }) => {
   if (!isOffline) return null;
 
@@ -33,7 +35,7 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <span aria-hidden="true">📡</span>
-        <span>Modo Offline — exibindo dados em cache</span>
+        <span>{message || 'Modo Offline — exibindo dados em cache'}</span>
       </div>
       {lastSyncFormatted && (
         <span style={{ fontSize: '0.75rem', opacity: 0.85 }}>

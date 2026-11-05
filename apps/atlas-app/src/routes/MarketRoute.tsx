@@ -1,4 +1,5 @@
 import React from 'react';
+import { useAuth } from '../providers/AuthProvider';
 import { usePortfolio } from '../providers/PortfolioProvider';
 import { usePortfolioValuation } from '../features/portfolio/hooks';
 import { MacroIndicatorsGrid } from '../features/market/components/MacroIndicatorsGrid';
@@ -7,18 +8,33 @@ import { ManualRefreshButton } from '../features/portfolio/components/ManualRefr
 import { Badge, PullToRefresh, OfflineBanner } from '../components/ui';
 import { colors, formatDate } from '@atlas/ui';
 import { useAppLifecycle } from '../hooks/useAppLifecycle';
+import { LocalCache, LocalCacheKeys } from '../lib/local-cache';
+import type { PortfolioValuationData } from '../features/portfolio/types';
 
 export const MarketRoute: React.FC = () => {
+  const { user } = useAuth();
   const { selectedPortfolioId } = usePortfolio();
   const { isOnline, triggerManualSync } = useAppLifecycle();
   const { data: valuationRes, isLoading: isLoadingValuation, isStale: queryIsStale, refetch } =
     usePortfolioValuation(selectedPortfolioId);
 
   const valuation = valuationRes?.data ?? null;
-  const isStale = queryIsStale || (valuation?.quoteSummary?.quotesStale ?? 0) > 0;
-  const positions = valuation?.positions ?? [];
-  const quoteSummary = valuation?.quoteSummary;
-  const asOfFormatted = valuation?.asOf ? formatDate(valuation.asOf) : null;
+
+  // Fast Startup / Offline read: retrieve last known good snapshot if available
+  const cachedValuation = React.useMemo(() => {
+    if (user?.id && selectedPortfolioId) {
+      const res = LocalCache.getResource<PortfolioValuationData>(user.id, 'portfolio_valuation', selectedPortfolioId);
+      if (res?.data) return res.data;
+    }
+    const legacy = LocalCache.get<PortfolioValuationData>(LocalCacheKeys.PORTFOLIO_VALUATION);
+    return legacy?.data ?? null;
+  }, [user?.id, selectedPortfolioId]);
+
+  const effectiveValuation = valuation ?? cachedValuation;
+  const isStale = queryIsStale || (effectiveValuation?.quoteSummary?.quotesStale ?? 0) > 0;
+  const positions = effectiveValuation?.positions ?? [];
+  const quoteSummary = effectiveValuation?.quoteSummary;
+  const asOfFormatted = effectiveValuation?.asOf ? formatDate(effectiveValuation.asOf) : null;
 
   const handlePullRefresh = async () => {
     if (isOnline) {
@@ -114,7 +130,7 @@ export const MarketRoute: React.FC = () => {
             </Badge>
           </div>
 
-          <QuotesTable positions={positions} isLoading={isLoadingValuation} />
+          <QuotesTable positions={positions} isLoading={isLoadingValuation && !effectiveValuation} />
         </div>
       </div>
     </PullToRefresh>

@@ -19,7 +19,7 @@ export function useAppLifecycle(onForegroundResume?: () => void): AppLifecycleSt
   });
 
   const [isOnline, setIsOnline] = useState<boolean>(() => {
-    if (typeof navigator !== 'undefined') {
+    if (typeof navigator !== 'undefined' && typeof navigator.onLine === 'boolean') {
       return navigator.onLine;
     }
     return true;

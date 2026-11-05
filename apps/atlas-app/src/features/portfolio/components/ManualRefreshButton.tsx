@@ -3,15 +3,22 @@ import { usePortfolio } from '../../../providers/PortfolioProvider';
 import { useUpdateMarketData } from '../hooks';
 import { Button } from '../../../components/ui';
 import { colors } from '@atlas/ui';
+import { useAppLifecycle } from '../../../hooks/useAppLifecycle';
 
 export const ManualRefreshButton: React.FC<{ variant?: 'primary' | 'secondary' | 'outline' }> = ({
   variant = 'outline',
 }) => {
   const { selectedPortfolioId } = usePortfolio();
+  const { isOnline } = useAppLifecycle();
   const updateMutation = useUpdateMarketData(selectedPortfolioId);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const handleRefresh = async () => {
+    if (!isOnline) {
+      setFeedback('Indisponível offline');
+      setTimeout(() => setFeedback(null), 3000);
+      return;
+    }
     if (!selectedPortfolioId || updateMutation.isPending) return;
     setFeedback(null);
     try {
@@ -31,10 +38,10 @@ export const ManualRefreshButton: React.FC<{ variant?: 'primary' | 'secondary' |
         variant={variant}
         size="sm"
         isLoading={updateMutation.isPending}
-        disabled={!selectedPortfolioId || updateMutation.isPending}
+        disabled={!selectedPortfolioId || updateMutation.isPending || !isOnline}
         onClick={handleRefresh}
         style={{ minHeight: '44px' }}
-        title="Atualizar cotações de mercado agora"
+        title={!isOnline ? 'Atualização indisponível offline' : 'Atualizar cotações de mercado agora'}
         data-testid="manual-refresh-button"
       >
         <span style={{ marginRight: '4px' }} aria-hidden="true">🔄</span>
