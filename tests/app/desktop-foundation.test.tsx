@@ -102,7 +102,7 @@ describe('Atlas Desktop Foundation (APP-3)', () => {
     it('renders full App shell with router and providers without throwing', () => {
       const html = renderToString(<App />);
       expect(html).toContain('Atlas');
-      expect(html).toContain('Desktop Foundation');
+      expect(html).toContain('Carregando Atlas Desktop');
     });
   });
 });

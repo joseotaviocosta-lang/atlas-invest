@@ -467,6 +467,28 @@ describe('Installed Client Authentication (@atlas/api-client/auth)', () => {
         user: null,
       });
     });
+
+    it('21b. restore com erro de rede: preserves refresh token in storage without wiping and sets state anonymous', async () => {
+      await storage.setRefreshToken('valid-offline-refresh-token');
+
+      mockFetch.mockRejectedValueOnce(new Error('Network offline / connection refused'));
+
+      const { session } = createInstalledSession({
+        baseUrl: 'https://api.atlasinvest.com.br',
+        storage,
+      });
+
+      const restoredUser = await session.restoreSession();
+
+      expect(restoredUser).toBeNull();
+      expect(session.getAccessToken()).toBeNull();
+      // Crucial invariant (Parte M): network error must NOT destroy stored refresh token!
+      expect(await storage.getRefreshToken()).toBe('valid-offline-refresh-token');
+      expect(session.getAuthState()).toEqual({
+        status: 'anonymous',
+        user: null,
+      });
+    });
   });
 
   describe('Logout Flow', () => {

@@ -165,6 +165,13 @@ export class SessionManager {
     };
   }
 
+  private isAuthRejection(err: unknown): boolean {
+    if (err instanceof ApiError) {
+      return err.statusCode === 401 || err.statusCode === 403;
+    }
+    return false;
+  }
+
   async refresh(): Promise<string | null> {
     if (!this.client) {
       throw new ApiError('ApiClient not attached to SessionManager', 500, 'AUTH.CLIENT_NOT_ATTACHED');
@@ -184,7 +191,9 @@ export class SessionManager {
         { skipAuth: true },
       );
     } catch (err) {
-      await this.handleAuthFailure();
+      if (this.isAuthRejection(err)) {
+        await this.handleAuthFailure();
+      }
       throw err;
     }
 
@@ -237,8 +246,15 @@ export class SessionManager {
       this.currentUser = user;
       this.setAuthState({ status: 'authenticated', user });
       return user;
-    } catch {
-      await this.handleAuthFailure();
+    } catch (err) {
+      if (this.isAuthRejection(err)) {
+        await this.handleAuthFailure();
+      } else {
+        // Network offline or server 5xx: preserve stored refresh token in secure storage!
+        this.inMemoryAccessToken = null;
+        this.currentUser = null;
+        this.setAuthState({ status: 'anonymous', user: null });
+      }
       return null;
     }
   }
