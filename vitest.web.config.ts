@@ -15,6 +15,7 @@ export default defineConfig({
       '@atlas/domain': path.resolve(__dirname, 'packages/domain/src/index.ts'),
       '@atlas/ui': path.resolve(__dirname, 'packages/ui/src/index.ts'),
       '@atlas/validation': path.resolve(__dirname, 'packages/validation/src/index.ts'),
+      '@atlas/api-client': path.resolve(__dirname, 'packages/api-client/src/index.ts'),
     },
   },
 });

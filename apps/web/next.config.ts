@@ -4,7 +4,7 @@ import { getSecurityHeaders } from './src/lib/security-headers';
 const nextConfig: NextConfig = {
   output: 'standalone',
   reactStrictMode: true,
-  transpilePackages: ['@atlas/domain', '@atlas/ui'],
+  transpilePackages: ['@atlas/api-client', '@atlas/domain', '@atlas/ui'],
   async headers() {
     return [
       {

@@ -7,32 +7,8 @@ import {
 import { clearQueryCache } from '@/lib/react-query';
 import { ApiErrorResponse } from './types';
 
-export class ApiError extends Error {
-  statusCode: number;
-  code?: string;
-  details?: unknown;
-  isOffline?: boolean;
-
-  constructor(
-    message: string,
-    statusCode: number,
-    code?: string,
-    details?: unknown,
-    isOffline = false,
-  ) {
-    super(message);
-    this.name = 'ApiError';
-    this.statusCode = statusCode;
-    this.code = code;
-    this.details = details;
-    this.isOffline = isOffline;
-  }
-}
-
-export interface RequestOptions extends RequestInit {
-  isRetry?: boolean;
-  skipAuth?: boolean;
-}
+import { ApiError, type RequestOptions } from '@atlas/api-client';
+export { ApiError, type RequestOptions };
 
 const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 

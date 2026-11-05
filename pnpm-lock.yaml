@@ -439,6 +439,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@atlas/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
       '@atlas/domain':
         specifier: workspace:*
         version: link:../../packages/domain
@@ -488,6 +491,12 @@ importers:
       '@atlas/portfolio-intelligence':
         specifier: workspace:*
         version: link:../portfolio-intelligence
+    devDependencies:
+      '@atlas/config':
+        specifier: workspace:*
+        version: link:../config
+
+  packages/api-client:
     devDependencies:
       '@atlas/config':
         specifier: workspace:*

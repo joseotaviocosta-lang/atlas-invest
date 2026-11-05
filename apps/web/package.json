@@ -10,6 +10,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@atlas/api-client": "workspace:*",
     "@atlas/domain": "workspace:*",
     "@atlas/ui": "workspace:*",
     "@atlas/validation": "workspace:*",
