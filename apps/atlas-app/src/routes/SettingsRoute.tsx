@@ -5,6 +5,7 @@ import { useAuth } from '../providers/AuthProvider';
 import { usePortfolio } from '../providers/PortfolioProvider';
 import { Card, Avatar, Badge, Button } from '../components/ui';
 import { getRuntimeConfig } from '../config/runtime';
+import { NotificationSettingsSection } from '../features/notifications';
 
 export const SettingsRoute: React.FC = () => {
   const { user, logout } = useAuth();
@@ -103,6 +104,9 @@ export const SettingsRoute: React.FC = () => {
           </div>
         </div>
       </Card>
+
+      {/* Notification Preferences */}
+      <NotificationSettingsSection />
 
       {/* Security Invariants & Storage */}
       <Card>

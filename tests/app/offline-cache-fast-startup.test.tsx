@@ -26,14 +26,12 @@ describe('Atlas Offline Read Cache, Fast Startup & Staleness (APP-12)', () => {
     vi.clearAllMocks();
     clearQueryCache();
     LocalCache.clear();
-    Object.defineProperty(globalThis.navigator, 'onLine', { value: true, configurable: true, writable: true });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     clearQueryCache();
     LocalCache.clear();
-    Object.defineProperty(globalThis.navigator, 'onLine', { value: true, configurable: true, writable: true });
   });
 
   const mockPosition: PositionValuationDto = {

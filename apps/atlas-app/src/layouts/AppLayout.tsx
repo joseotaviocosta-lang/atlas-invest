@@ -4,6 +4,7 @@ import { useAuth } from '../providers/AuthProvider';
 import { Avatar, Badge } from '../components/ui';
 import { PortfolioSwitcher } from '../features/portfolio/components/PortfolioSwitcher';
 import { ManualRefreshButton } from '../features/portfolio/components/ManualRefreshButton';
+import { NotificationBellButton } from '../features/notifications';
 import { usePendingReviewsCount } from '../features/imports/hooks';
 import { colors, borderRadius, spacing, CANONICAL_NAV_ITEMS } from '@atlas/ui';
 import { getRuntimeConfig } from '../config/runtime';
@@ -274,6 +275,7 @@ export const AppLayout: React.FC = () => {
             <PortfolioSwitcher />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <NotificationBellButton />
             <ManualRefreshButton variant="outline" />
             <span
               style={{
@@ -363,6 +365,7 @@ export const AppLayout: React.FC = () => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px` }}>
+            <NotificationBellButton />
             <PortfolioSwitcher />
             <NavLink
               to="/settings"
