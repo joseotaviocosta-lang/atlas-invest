@@ -131,19 +131,34 @@ export class ApiClient {
       acceptHeader === 'text/csv' ||
       acceptHeader === 'text/plain'
     ) {
-      return (await response.text()) as unknown as T;
+      if (typeof response.text === 'function') {
+        return (await response.text()) as unknown as T;
+      }
+      return '' as unknown as T;
     }
 
-    const text = await response.text();
-    if (!text || text.trim() === '') {
-      return undefined as unknown as T;
+    // Parse JSON
+    if (typeof response.json === 'function') {
+      try {
+        return (await response.json()) as T;
+      } catch {
+        return undefined as unknown as T;
+      }
     }
 
-    try {
-      return JSON.parse(text) as T;
-    } catch {
-      return text as unknown as T;
+    if (typeof response.text === 'function') {
+      const text = await response.text();
+      if (!text || text.trim() === '') {
+        return undefined as unknown as T;
+      }
+      try {
+        return JSON.parse(text) as T;
+      } catch {
+        return text as unknown as T;
+      }
     }
+
+    return undefined as unknown as T;
   }
 
   get<T>(path: string, options?: RequestOptions): Promise<T> {
