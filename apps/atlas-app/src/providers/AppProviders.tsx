@@ -4,6 +4,7 @@ import { queryClient } from '../lib/react-query';
 import { AuthProvider } from './AuthProvider';
 import { PortfolioProvider } from './PortfolioProvider';
 import { NotificationProvider } from '../features/notifications';
+import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 
 export interface AppProvidersProps {
   children: ReactNode;
@@ -11,12 +12,14 @@ export interface AppProvidersProps {
 
 export const AppProviders: React.FC<AppProvidersProps> = ({ children }) => {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <PortfolioProvider>
-          <NotificationProvider>{children}</NotificationProvider>
-        </PortfolioProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <PortfolioProvider>
+            <NotificationProvider>{children}</NotificationProvider>
+          </PortfolioProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 };

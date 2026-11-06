@@ -116,6 +116,14 @@ export function configureApp(app: INestApplication): void {
       callback: (err: Error | null, allow?: boolean) => void,
     ) => {
       if (!origin) return callback(null, true);
+      // Installed Tauri / Mobile WebView client origins
+      if (
+        origin === 'tauri://localhost' ||
+        origin === 'http://tauri.localhost' ||
+        origin === 'https://tauri.localhost'
+      ) {
+        return callback(null, true);
+      }
       if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
         return callback(null, true);
       }

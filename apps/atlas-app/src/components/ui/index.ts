@@ -11,3 +11,4 @@ export * from './Modal';
 export * from './ErrorState';
 export * from './PullToRefresh';
 export * from './OfflineBanner';
+export * from './ErrorBoundary';

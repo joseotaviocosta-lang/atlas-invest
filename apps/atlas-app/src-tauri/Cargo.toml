@@ -1,9 +1,14 @@
 [package]
 name = "atlas-app"
 version = "0.1.0"
+default-run = "atlas-app"
 description = "Atlas Desktop Application"
 authors = ["Project Atlas"]
 edition = "2021"
+
+[[bin]]
+name = "atlas-app"
+path = "src/main.rs"
 
 [lib]
 name = "atlas_app_lib"

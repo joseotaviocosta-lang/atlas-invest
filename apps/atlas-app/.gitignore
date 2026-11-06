@@ -1,0 +1,8 @@
+dist/
+dist-release/
+release-artifacts/
+*.keystore
+*.jks
+*.apk
+*.aab
+src-tauri/target/

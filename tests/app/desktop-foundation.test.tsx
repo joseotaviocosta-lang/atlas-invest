@@ -16,7 +16,7 @@ describe('Atlas Desktop Foundation (APP-3)', () => {
   describe('Runtime Configuration', () => {
     it('provides default configuration with local API target and version', () => {
       const config = getRuntimeConfig();
-      expect(config.version).toBe('0.1.0');
+      expect(config.version).toBe('0.1.0-pilot.1');
       expect(config.apiUrl).toContain('3001');
       expect(typeof config.isTauri).toBe('boolean');
     });

@@ -231,37 +231,39 @@ export const NotificationSettingsSection: React.FC = () => {
             )}
           </div>
 
-          {/* Test Harness Button */}
-          <div
-            style={{
-              borderTop: `1px solid ${colors.border}`,
-              paddingTop: spacing.md,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: spacing.sm,
-            }}
-          >
-            <div>
-              <div style={{ fontWeight: 600, color: colors.textPrimary, fontSize: '0.875rem' }}>
-                Harness de Teste Local
+          {/* Test Harness Button (Dev Only) */}
+          {Boolean(import.meta.env.DEV) && (
+            <div
+              style={{
+                borderTop: `1px solid ${colors.border}`,
+                paddingTop: spacing.md,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: spacing.sm,
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 600, color: colors.textPrimary, fontSize: '0.875rem' }}>
+                  Harness de Teste Local (DEV)
+                </div>
+                <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                  Dispara notificação sintética de validação no sistema operacional
+                </div>
               </div>
-              <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
-                Dispara notificação sintética de validação no sistema operacional
+              <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
+                {testStatus && (
+                  <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                    {testStatus}
+                  </span>
+                )}
+                <Button size="sm" variant="secondary" onClick={handleTestNotification}>
+                  Enviar Teste
+                </Button>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
-              {testStatus && (
-                <span style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
-                  {testStatus}
-                </span>
-              )}
-              <Button size="sm" variant="secondary" onClick={handleTestNotification}>
-                Enviar Teste
-              </Button>
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </Card>
