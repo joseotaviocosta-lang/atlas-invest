@@ -156,6 +156,29 @@ export const TodayRoute: React.FC = () => {
         {/* Offline Warning Banner */}
         <OfflineBanner isOffline={!isOnline} lastSyncFormatted={asOfFormatted} />
 
+        {/* PARTE R: Startup Loading Banner when preparing local data service */}
+        {isLoadingPortfolios && !effectiveValuation && (
+          <div style={{ marginBottom: `${spacing.md}px` }} data-testid="startup-loading-view">
+            <Card>
+              <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px` }}>
+                <div
+                  style={{
+                    width: '16px',
+                    height: '16px',
+                    border: `2px solid ${colors.surfaceElevated}`,
+                    borderTopColor: colors.accent,
+                    borderRadius: '50%',
+                    animation: 'spin 1s linear infinite',
+                  }}
+                />
+                <span style={{ fontSize: '0.875rem', color: colors.textSecondary }}>
+                  Iniciando Atlas... Preparando serviço de dados local ({config.dataBackendLabel})
+                </span>
+              </div>
+            </Card>
+          </div>
+        )}
+
         {/* Header with Greeting & Action */}
         <div
           style={{

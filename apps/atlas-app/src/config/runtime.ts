@@ -46,12 +46,6 @@ export function getRuntimeConfig(): AppRuntimeConfig {
 
   const environment: AppEnvironment = envMode || (isDev ? 'development' : 'pilot');
 
-  const defaultApiUrl = isDev ? 'http://localhost:3001' : 'http://54.233.66.110';
-
-  const apiUrl =
-    (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_ATLAS_API_URL) ||
-    defaultApiUrl;
-
   const isTauri =
     typeof window !== 'undefined' &&
     ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
@@ -69,6 +63,17 @@ export function getRuntimeConfig(): AppRuntimeConfig {
     isTauri,
     isAndroid
   );
+
+  const defaultApiUrl =
+    runtimeMode === 'DESKTOP_LOCAL_OWNER'
+      ? 'http://127.0.0.1:3001'
+      : isDev
+        ? 'http://localhost:3001'
+        : 'http://54.233.66.110';
+
+  const apiUrl =
+    (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_ATLAS_API_URL) ||
+    defaultApiUrl;
 
   const isLocalBackend = apiUrl.includes('localhost') || apiUrl.includes('127.0.0.1');
   const dataBackendLabel = isLocalBackend

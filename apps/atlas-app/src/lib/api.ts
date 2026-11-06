@@ -26,7 +26,13 @@ const runtimeConfig = getRuntimeConfig();
 
 export const tokenStorage = resolveTokenStorage(runtimeConfig.isTauri);
 
+const defaultHeaders =
+  runtimeConfig.runtimeMode === 'DESKTOP_LOCAL_OWNER'
+    ? { 'x-atlas-client': 'desktop-local' }
+    : undefined;
+
 export const { client: apiClient, session: sessionManager } = createInstalledSession({
   baseUrl: runtimeConfig.apiUrl,
   storage: tokenStorage,
+  defaultHeaders,
 });

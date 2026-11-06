@@ -8,4 +8,6 @@ export * from './services/password-hasher.interface';
 export * from './services/argon2-password-hasher.service';
 export * from './services/token.service';
 export * from './services/password-reset-notifier.interface';
+export * from './services/local-owner-bootstrap.service';
+export * from './constants/local-owner.constants';
 export * from './dto';

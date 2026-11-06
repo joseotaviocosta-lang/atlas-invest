@@ -11,6 +11,23 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { TokenService } from '../services/token.service';
 import { SESSION_REPOSITORY } from '../../database/tokens';
 import { ISessionRepository } from '@atlas/database';
+import {
+  LOCAL_OWNER_USER_ID,
+  LOCAL_OWNER_SESSION_ID,
+  ATLAS_CLIENT_HEADER,
+  DESKTOP_LOCAL_CLIENT_VALUE,
+} from '../constants/local-owner.constants';
+
+export function isLoopbackAddress(ip?: string): boolean {
+  if (!ip) return false;
+  const cleanIp = ip.trim().toLowerCase();
+  return (
+    cleanIp === '127.0.0.1' ||
+    cleanIp === '::1' ||
+    cleanIp === '::ffff:127.0.0.1' ||
+    cleanIp === 'localhost'
+  );
+}
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -34,6 +51,37 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<Request>();
+    const clientHeader = request.headers[ATLAS_CLIENT_HEADER];
+
+    // Desktop Local Owner Mode loopback bypass
+    if (clientHeader === DESKTOP_LOCAL_CLIENT_VALUE) {
+      const clientIp = request.ip || request.socket?.remoteAddress;
+      if (!isLoopbackAddress(clientIp)) {
+        throw new UnauthorizedException({
+          message: 'Desktop local owner mode is only accessible via loopback interface.',
+          code: 'AUTH.LOOPBACK_ONLY',
+        });
+      }
+
+      const isLocalModeAllowed =
+        process.env.NODE_ENV !== 'production' ||
+        process.env.ATLAS_LOCAL_OWNER_MODE === 'true';
+
+      if (!isLocalModeAllowed) {
+        throw new UnauthorizedException({
+          message: 'Desktop local owner mode is disabled on this server.',
+          code: 'AUTH.LOCAL_MODE_DISABLED',
+        });
+      }
+
+      (request as Request & { user: unknown }).user = {
+        userId: LOCAL_OWNER_USER_ID,
+        sessionId: LOCAL_OWNER_SESSION_ID,
+      };
+
+      return true;
+    }
+
     const authHeader = request.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {

@@ -138,6 +138,8 @@
     "benchmark:smoke": "tsx --tsconfig tsconfig.smoke.json scripts/benchmark-smoke.ts",
     "benchmark:rate-smoke": "tsx --tsconfig tsconfig.smoke.json scripts/benchmark-rate-smoke.ts",
     "bootstrap:owner": "tsx --tsconfig tsconfig.smoke.json scripts/bootstrap-owner.ts",
+    "desktop:api": "tsx scripts/desktop-local-runtime.ts",
+    "desktop:local": "powershell -ExecutionPolicy Bypass -File scripts/start-desktop-local.ps1 -LaunchApp",
     "db:generate": "pnpm --filter @atlas/database generate",
     "db:migrate": "pnpm --filter @atlas/database migrate",
     "db:seed": "pnpm --filter @atlas/database seed",

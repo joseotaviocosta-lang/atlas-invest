@@ -7,6 +7,7 @@ import { TokenService } from './services/token.service';
 import { PASSWORD_RESET_NOTIFIER } from './services/password-reset-notifier.interface';
 import { createPasswordResetNotifier } from './services/email/email-notifier.factory';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { LocalOwnerBootstrapService } from './services/local-owner-bootstrap.service';
 import {
   RegisterUserUseCase,
   LoginUseCase,
@@ -41,8 +42,16 @@ const USE_CASES = [
       useFactory: () => createPasswordResetNotifier(),
     },
     JwtAuthGuard,
+    LocalOwnerBootstrapService,
     ...USE_CASES,
   ],
-  exports: [PASSWORD_HASHER, TokenService, PASSWORD_RESET_NOTIFIER, JwtAuthGuard, ...USE_CASES],
+  exports: [
+    PASSWORD_HASHER,
+    TokenService,
+    PASSWORD_RESET_NOTIFIER,
+    JwtAuthGuard,
+    LocalOwnerBootstrapService,
+    ...USE_CASES,
+  ],
 })
 export class AuthModule {}
