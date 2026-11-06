@@ -61,7 +61,7 @@ export const CostEvidenceBanner: React.FC<CostEvidenceBannerProps> = ({
               lineHeight: 1.5,
             }}
           >
-            {`Existem ${count} ativos sem comprovação documental do custo histórico de aquisição no livro-razão. Em obediência estrita às normas da Receita Federal e ao princípio da segurança patrimonial, `}
+            {`Existem ${count} ativos sem comprovação documental do custo histórico de aquisição no livro-razão (ITSA4, JHSF3, SAPR4). Em conformidade estrita com as normas da Receita Federal e o princípio da segurança patrimonial, `}
             <strong>o Atlas nunca assume custo zero</strong>
             {` e `}
             <strong>bloqueia a apuração definitiva de tributos</strong>.
@@ -75,7 +75,7 @@ export const CostEvidenceBanner: React.FC<CostEvidenceBannerProps> = ({
               alignItems: 'center',
             }}
           >
-            <span>💡 <strong>Ação recomendada:</strong> Forneça notas de corretagem ou informe a custódia inicial na aba <em>Base de Custo &amp; Evidências</em>.</span>
+            <span>💡 <strong>Ação recomendada:</strong> Forneça cópia da DIRPF 2020 (ano-calendário 2019) ou notas de corretagem da aquisição original na aba <em>Base de Custo &amp; Evidências</em>.</span>
           </div>
         </div>
       </div>

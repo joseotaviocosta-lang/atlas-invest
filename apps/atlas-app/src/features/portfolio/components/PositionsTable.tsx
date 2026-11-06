@@ -87,9 +87,12 @@ export const PositionsTable: React.FC<PositionsTableProps> = ({
             <tbody>
               {positions.map((pos) => {
                 const ticker = pos.ticker || pos.assetId.slice(0, 8);
+                const isIncompleteCost = pos.costBasisStatus === 'INCOMPLETE';
                 const avgPriceFormatted = pos.averageCost
                   ? formatCurrency(pos.averageCost.amount, pos.averageCost.currency)
-                  : '—';
+                  : isIncompleteCost
+                    ? '— (Pendente)'
+                    : '—';
                 const currentPriceFormatted = pos.quote
                   ? formatCurrency(pos.quote.price, pos.quote.currency)
                   : '—';
@@ -134,7 +137,7 @@ export const PositionsTable: React.FC<PositionsTableProps> = ({
                     <td style={{ padding: '16px 16px', textAlign: 'right', fontWeight: 500, color: colors.textPrimary }}>
                       {formatQuantity(pos.quantity)}
                     </td>
-                    <td style={{ padding: '16px 16px', textAlign: 'right', color: colors.textSecondary }}>
+                    <td style={{ padding: '16px 16px', textAlign: 'right', color: isIncompleteCost ? colors.warning : colors.textSecondary }}>
                       {avgPriceFormatted}
                     </td>
                     <td style={{ padding: '16px 16px', textAlign: 'right', fontWeight: 600, color: colors.textPrimary }}>
@@ -183,12 +186,15 @@ export const PositionsTable: React.FC<PositionsTableProps> = ({
       >
         {positions.map((pos) => {
           const ticker = pos.ticker || pos.assetId.slice(0, 8);
+          const isIncompleteCost = pos.costBasisStatus === 'INCOMPLETE';
           const currentPriceFormatted = pos.quote
             ? formatCurrency(pos.quote.price, pos.quote.currency)
             : '—';
           const avgPriceFormatted = pos.averageCost
             ? formatCurrency(pos.averageCost.amount, pos.averageCost.currency)
-            : '—';
+            : isIncompleteCost
+              ? '— (Pendente)'
+              : '—';
           const marketValueFormatted = pos.marketValue
             ? formatCurrency(pos.marketValue.amount, pos.marketValue.currency)
             : '—';

@@ -4,6 +4,7 @@ import { usePortfolio } from '../providers/PortfolioProvider';
 import { usePortfolioValuation } from '../features/portfolio/hooks';
 import { PortfolioSummaryCards } from '../features/portfolio/components/PortfolioSummaryCards';
 import { PositionsTable } from '../features/portfolio/components/PositionsTable';
+import { DocumentaryExceptionsBanner } from '../features/portfolio/components/DocumentaryExceptionsBanner';
 import { ManualRefreshButton } from '../features/portfolio/components/ManualRefreshButton';
 import { MacroIndicatorsGrid } from '../features/market/components/MacroIndicatorsGrid';
 import { Card, EmptyState, Badge, Button, PullToRefresh, OfflineBanner } from '../components/ui';
@@ -241,6 +242,9 @@ export const TodayRoute: React.FC = () => {
 
         {/* Main Asset Snapshot Section */}
         <div style={{ marginBottom: '28px' }}>
+          {/* Documentary Exceptions Notice (Non-invasive) */}
+          <DocumentaryExceptionsBanner positions={positions} />
+
           <div
             style={{
               display: 'flex',

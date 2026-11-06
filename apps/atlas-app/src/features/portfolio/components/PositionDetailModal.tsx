@@ -30,12 +30,17 @@ export const PositionDetailModal: React.FC<PositionDetailModalProps> = ({
   if (!position) return null;
 
   const ticker = position.ticker || position.assetId.slice(0, 8);
+  const isIncompleteCost = position.costBasisStatus === 'INCOMPLETE';
   const avgPriceFormatted = position.averageCost
     ? formatCurrency(position.averageCost.amount, position.averageCost.currency)
-    : '—';
+    : isIncompleteCost
+      ? '— (Pendente)'
+      : '—';
   const totalCostFormatted = position.totalCost
     ? formatCurrency(position.totalCost.amount, position.totalCost.currency)
-    : '—';
+    : isIncompleteCost
+      ? '— (Pendente)'
+      : '—';
   const currentPriceFormatted = position.quote
     ? formatCurrency(position.quote.price, position.quote.currency)
     : '—';
@@ -230,8 +235,8 @@ export const PositionDetailModal: React.FC<PositionDetailModalProps> = ({
           style={{
             padding: `${spacing.md}px`,
             borderRadius: `${borderRadius.md}px`,
-            backgroundColor: `${colors.accent}10`,
-            border: `1px solid ${colors.accent}30`,
+            backgroundColor: `${isIncompleteCost ? colors.warning : colors.accent}10`,
+            border: `1px solid ${isIncompleteCost ? colors.warning : colors.accent}30`,
             display: 'flex',
             flexDirection: 'column',
             gap: '6px',
@@ -242,12 +247,13 @@ export const PositionDetailModal: React.FC<PositionDetailModalProps> = ({
               Status da Base de Custo
             </span>
             <Badge variant={position.costBasisStatus === 'KNOWN' ? 'positive' : 'warning'}>
-              {position.costBasisStatus === 'KNOWN' ? 'AUDITADO VIA LEDGER' : 'INCOMPLETO'}
+              {position.costBasisStatus === 'KNOWN' ? 'AUDITADO VIA LEDGER' : 'DOCUMENTAÇÃO PENDENTE'}
             </Badge>
           </div>
           <span style={{ fontSize: '0.75rem', color: colors.textSecondary, lineHeight: 1.5 }}>
-            Posição calculada matematicamente sob demanda a partir do histórico imutável de transações.
-            Modo estritamente de consulta (read-only).
+            {isIncompleteCost
+              ? 'Aquisição original anterior a 28/11/2019 pendente de comprovação documental (ex: DIRPF 2020 ou notas de corretagem da época). Custódia, proventos e cotações operam normalmente.'
+              : 'Posição calculada matematicamente sob demanda a partir do histórico imutável de transações. Modo estritamente de consulta (read-only).'}
           </span>
         </div>
 

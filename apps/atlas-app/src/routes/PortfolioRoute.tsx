@@ -4,6 +4,7 @@ import { usePortfolio } from '../providers/PortfolioProvider';
 import { usePortfolioValuation } from '../features/portfolio/hooks';
 import { PortfolioSummaryCards } from '../features/portfolio/components/PortfolioSummaryCards';
 import { PositionsTable } from '../features/portfolio/components/PositionsTable';
+import { DocumentaryExceptionsBanner } from '../features/portfolio/components/DocumentaryExceptionsBanner';
 import { AllocationSection } from '../features/portfolio/components/AllocationSection';
 import { PerformanceSection } from '../features/portfolio/components/PerformanceSection';
 import { HistorySection } from '../features/portfolio/components/HistorySection';
@@ -196,6 +197,7 @@ export const PortfolioRoute: React.FC = () => {
         {activeTab === 'positions' && (
           <div>
             <PortfolioSummaryCards valuation={effectiveValuation} isLoading={isLoadingValuation && !effectiveValuation} />
+            <DocumentaryExceptionsBanner positions={positions} />
             <PositionsTable
               positions={positions}
               isLoading={isLoadingValuation && !effectiveValuation}
