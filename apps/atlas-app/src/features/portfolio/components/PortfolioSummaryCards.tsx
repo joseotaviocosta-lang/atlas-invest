@@ -101,7 +101,7 @@ export const PortfolioSummaryCards: React.FC<PortfolioSummaryCardsProps> = ({
         label="Cobertura de Cotações"
         value={coveragePercent}
         subValue={`${valuedPositions} de ${totalPositions} posições precificadas`}
-        changeType={!isPartial && totalPositions > 0 ? 'positive' : 'warning'}
+        changeType={!isPartial && totalPositions > 0 ? 'positive' : 'neutral'}
         isPlaceholder={isLoading || totalPositions === 0}
       />
     </div>

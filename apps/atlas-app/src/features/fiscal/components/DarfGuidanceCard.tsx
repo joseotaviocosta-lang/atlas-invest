@@ -52,10 +52,6 @@ export const DarfGuidanceCard: React.FC<DarfGuidanceCardProps> = ({
   const darfCode =
     (effectiveLiability as unknown as { darfCode?: string })?.darfCode ?? '6015';
 
-  const blockingReason =
-    (effectiveLiability as unknown as { blockingReason?: string })?.blockingReason ??
-    'Custo de aquisição documentalmente incompleto (ITSA4, JHSF3, SAPR4).';
-
   return (
     <Card
       data-testid="darf-guidance-card"

@@ -42,27 +42,24 @@ export const FiscalSummaryCards: React.FC<FiscalSummaryCardsProps> = ({
     );
   }
 
-  const effectiveIncompleteCount =
-    inputReadiness !== undefined && inputReadiness !== null
-      ? (inputReadiness.incompleteAssetsCount ?? 0)
-      : (incompleteCostCount ?? 3);
+  const readiness = inputReadiness as unknown as {
+    incompleteAssetsCount?: number;
+    isComplete?: boolean;
+    liabilityStatus?: string;
+  } | null;
 
-  const isCostIncomplete =
-    Boolean(
-      effectiveLiability?.isBlocked ||
-      effectiveLiability?.status === 'BLOCKED' ||
-      inputReadiness?.liabilityStatus === 'BLOCKED' ||
-      (inputReadiness as unknown as { isComplete?: boolean })?.isComplete === false ||
-      (!inputReadiness && effectiveIncompleteCount > 0)
-    );
+  const effectiveIncompleteCount =
+    readiness !== undefined && readiness !== null
+      ? (readiness.incompleteAssetsCount ?? (readiness.isComplete === false ? 2 : 0))
+      : (incompleteCostCount ?? 3);
 
   const isBlocked =
     Boolean(
       effectiveLiability?.isBlocked ||
       effectiveLiability?.status === 'BLOCKED' ||
-      inputReadiness?.liabilityStatus === 'BLOCKED' ||
-      (inputReadiness && !inputReadiness.isComplete) ||
-      (!inputReadiness && effectiveIncompleteCount > 0)
+      readiness?.liabilityStatus === 'BLOCKED' ||
+      (readiness && readiness.isComplete === false) ||
+      (!readiness && effectiveIncompleteCount > 0)
     );
 
   // Tax due: FAIL-CLOSED: if blocked, NEVER display R$ 0,00!
@@ -138,7 +135,7 @@ export const FiscalSummaryCards: React.FC<FiscalSummaryCardsProps> = ({
             ? `${auditedCount} de ${totalPositionsCount} posições auditadas (${effectiveIncompleteCount} pendentes)`
             : 'Replay determinístico verificado'
         }
-        changeType={effectiveIncompleteCount > 0 ? 'warning' : 'positive'}
+        changeType={effectiveIncompleteCount > 0 ? 'neutral' : 'positive'}
       />
     </div>
   );
