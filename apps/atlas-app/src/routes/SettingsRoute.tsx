@@ -7,6 +7,7 @@ import { Card, Avatar, Badge, Button } from '../components/ui';
 import { getRuntimeConfig } from '../config/runtime';
 import { NotificationSettingsSection } from '../features/notifications';
 import { exportDiagnostics } from '../lib/diagnostics';
+import { MarketDataProviderCard } from '../features/market/components/MarketDataProviderCard';
 
 export const SettingsRoute: React.FC = () => {
   const { user, logout, runtimeMode, clearLocalData } = useAuth();
@@ -176,6 +177,9 @@ export const SettingsRoute: React.FC = () => {
           </div>
         </div>
       </Card>
+
+      {/* Market Data Provider Status & Configuration (APP-16A) */}
+      <MarketDataProviderCard />
 
       {/* Notification Preferences */}
       <NotificationSettingsSection />

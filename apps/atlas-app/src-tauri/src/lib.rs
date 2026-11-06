@@ -20,6 +20,21 @@ fn storage_clear_refresh_token() -> Result<(), String> {
 }
 
 #[tauri::command]
+fn storage_get_market_data_status() -> Result<bool, String> {
+    storage::get_brapi_api_key().map(|opt| opt.is_some())
+}
+
+#[tauri::command]
+fn storage_set_brapi_api_key(token: String) -> Result<(), String> {
+    storage::set_brapi_api_key(&token)
+}
+
+#[tauri::command]
+fn storage_clear_brapi_api_key() -> Result<(), String> {
+    storage::clear_brapi_api_key()
+}
+
+#[tauri::command]
 async fn runtime_start(
     app: tauri::AppHandle,
     state: tauri::State<'_, Arc<LocalRuntimeManager>>,
@@ -86,6 +101,9 @@ pub fn run() {
             storage_get_refresh_token,
             storage_set_refresh_token,
             storage_clear_refresh_token,
+            storage_get_market_data_status,
+            storage_set_brapi_api_key,
+            storage_clear_brapi_api_key,
             runtime_start,
             runtime_get_status,
             runtime_get_diagnostics,

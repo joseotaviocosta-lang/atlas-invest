@@ -6,9 +6,35 @@ import { colors, spacing, borderRadius, formatCurrency, formatDate } from '@atla
 interface QuotesTableProps {
   positions: PositionValuationDto[];
   isLoading?: boolean;
+  isConfigured?: boolean;
 }
 
-export const QuotesTable: React.FC<QuotesTableProps> = ({ positions, isLoading = false }) => {
+export const QuotesTable: React.FC<QuotesTableProps> = ({
+  positions,
+  isLoading = false,
+  isConfigured = false,
+}) => {
+
+  const getStatusBadge = (pos: PositionValuationDto) => {
+    const quote = pos.quote;
+    if (quote) {
+      const isFresh = quote.freshness === 'FRESH';
+      return (
+        <Badge variant={isFresh ? 'positive' : 'warning'}>
+          {isFresh ? 'FRESCA' : 'STALE'}
+        </Badge>
+      );
+    }
+    const isSupported = !pos.assetType || ['STOCK', 'FII', 'ETF', 'BDR'].includes(pos.assetType);
+    if (!isSupported) {
+      return <Badge variant="neutral">NÃO SUPORTADO</Badge>;
+    }
+    if (!isConfigured) {
+      return <Badge variant="warning">REQUER AUTENTICAÇÃO</Badge>;
+    }
+    return <Badge variant="neutral">SEM COTAÇÃO</Badge>;
+  };
+
   if (!isLoading && positions.length === 0) {
     return (
       <Card>
@@ -89,13 +115,7 @@ export const QuotesTable: React.FC<QuotesTableProps> = ({ positions, isLoading =
                       {source}
                     </td>
                     <td style={{ padding: '16px 20px', textAlign: 'right' }}>
-                      {quote ? (
-                        <Badge variant={quote.freshness === 'FRESH' ? 'positive' : 'warning'}>
-                          {quote.freshness === 'FRESH' ? 'FRESCA' : 'STALE (D-1)'}
-                        </Badge>
-                      ) : (
-                        <Badge variant="neutral">SEM COTAÇÃO (Requer Token)</Badge>
-                      )}
+                      {getStatusBadge(pos)}
                     </td>
                   </tr>
                 );
@@ -143,16 +163,10 @@ export const QuotesTable: React.FC<QuotesTableProps> = ({ positions, isLoading =
                   <span style={{ fontWeight: 800, fontSize: '1.0625rem', color: colors.textPrimary }}>
                     {ticker}
                   </span>
-                  {quote ? (
-                    <Badge variant={quote.freshness === 'FRESH' ? 'positive' : 'warning'}>
-                      {quote.freshness === 'FRESH' ? 'FRESCA' : 'D-1'}
-                    </Badge>
-                  ) : (
-                    <Badge variant="neutral">SEM COTAÇÃO (Requer Token)</Badge>
-                  )}
+                  {getStatusBadge(pos)}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '2px' }}>
-                  {quote ? `${dateFormatted} • ${source}` : 'Aguardando token de mercado'}
+                  {quote ? `${dateFormatted} • ${source}` : isConfigured ? 'Sem cotação disponível' : 'Requer autenticação BRAPI'}
                 </div>
               </div>
 

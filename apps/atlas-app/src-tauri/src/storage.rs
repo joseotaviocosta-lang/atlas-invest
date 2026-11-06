@@ -8,6 +8,47 @@ use jni::JavaVM;
 
 pub const SERVICE_NAME: &str = "Project Atlas";
 pub const REFRESH_TOKEN_ACCOUNT: &str = "refresh-token";
+pub const BRAPI_ACCOUNT: &str = "brapi-api-key";
+
+#[cfg(not(target_os = "android"))]
+pub fn get_brapi_api_key() -> Result<Option<String>, String> {
+    let entry = Entry::new(SERVICE_NAME, BRAPI_ACCOUNT)
+        .map_err(|e| format!("Failed to access credential store: {}", e))?;
+
+    match entry.get_password() {
+        Ok(password) => Ok(Some(password)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(format!("Failed to retrieve BRAPI key: {}", e)),
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+pub fn set_brapi_api_key(token: &str) -> Result<(), String> {
+    if token.trim().is_empty() {
+        return Err("Cannot persist empty BRAPI key".to_string());
+    }
+
+    let entry = Entry::new(SERVICE_NAME, BRAPI_ACCOUNT)
+        .map_err(|e| format!("Failed to access credential store: {}", e))?;
+
+    entry
+        .set_password(token)
+        .map_err(|e| format!("Failed to store BRAPI key: {}", e))?;
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "android"))]
+pub fn clear_brapi_api_key() -> Result<(), String> {
+    let entry = Entry::new(SERVICE_NAME, BRAPI_ACCOUNT)
+        .map_err(|e| format!("Failed to access credential store: {}", e))?;
+
+    match entry.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(format!("Failed to clear BRAPI key: {}", e)),
+    }
+}
 
 #[cfg(not(target_os = "android"))]
 pub fn get_refresh_token() -> Result<Option<String>, String> {
@@ -175,6 +216,22 @@ pub fn set_refresh_token(token: &str) -> Result<(), String> {
 }
 
 #[cfg(target_os = "android")]
+pub fn get_brapi_api_key() -> Result<Option<String>, String> {
+    Ok(None)
+}
+
+#[cfg(target_os = "android")]
+pub fn set_brapi_api_key(_token: &str) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "android")]
+pub fn clear_brapi_api_key() -> Result<(), String> {
+    Ok(())
+}
+
+
+#[cfg(target_os = "android")]
 pub fn clear_refresh_token() -> Result<(), String> {
     with_context_and_env(|env, context| {
         let helper_class = load_helper_class(env, context)?;
@@ -199,3 +256,19 @@ pub fn clear_refresh_token() -> Result<(), String> {
         Ok(())
     })
 }
+
+#[cfg(target_os = "android")]
+pub fn get_brapi_api_key() -> Result<Option<String>, String> {
+    Ok(None)
+}
+
+#[cfg(target_os = "android")]
+pub fn set_brapi_api_key(_token: &str) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "android")]
+pub fn clear_brapi_api_key() -> Result<(), String> {
+    Ok(())
+}
+

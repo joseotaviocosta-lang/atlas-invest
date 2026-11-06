@@ -1,4 +1,5 @@
 import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../providers/AuthProvider';
 import { usePortfolio } from '../providers/PortfolioProvider';
 import { usePortfolioValuation } from '../features/portfolio/hooks';
@@ -9,6 +10,7 @@ import { Badge, PullToRefresh, OfflineBanner } from '../components/ui';
 import { colors, formatDate } from '@atlas/ui';
 import { useAppLifecycle } from '../hooks/useAppLifecycle';
 import { LocalCache, LocalCacheKeys } from '../lib/local-cache';
+import { apiClient } from '../lib/api';
 import type { PortfolioValuationData } from '../features/portfolio/types';
 
 export const MarketRoute: React.FC = () => {
@@ -17,6 +19,14 @@ export const MarketRoute: React.FC = () => {
   const { isOnline, triggerManualSync } = useAppLifecycle();
   const { data: valuationRes, isLoading: isLoadingValuation, isStale: queryIsStale, refetch } =
     usePortfolioValuation(selectedPortfolioId);
+
+  const { data: statusRes } = useQuery<{ data: { authenticated: boolean; provider: string } }>({
+    queryKey: ['market-data-provider-status'],
+    queryFn: () => apiClient.get<{ data: { authenticated: boolean; provider: string } }>('/api/v1/market/provider-status'),
+    staleTime: 60 * 1000,
+  });
+
+  const isConfigured = Boolean(statusRes?.data?.authenticated);
 
   const valuation = valuationRes?.data ?? null;
 
@@ -120,7 +130,7 @@ export const MarketRoute: React.FC = () => {
                 Cotações dos Ativos da Carteira
               </h3>
               <p style={{ margin: 0, fontSize: '0.8125rem', color: colors.textSecondary }}>
-                Provedor: {quoteSummary?.provider || 'BRAPI EOD'} • {asOfFormatted ? `Cotações de ${asOfFormatted}` : 'Aguardando sincronização'}
+                Provedor: {quoteSummary?.provider || 'BRAPI EOD'} • {isConfigured ? 'Autenticado' : 'Modo público limitado'} • {asOfFormatted ? `Cotações de ${asOfFormatted}` : 'Aguardando sincronização'}
               </p>
             </div>
 
@@ -129,7 +139,11 @@ export const MarketRoute: React.FC = () => {
             </Badge>
           </div>
 
-          <QuotesTable positions={positions} isLoading={isLoadingValuation && !effectiveValuation} />
+          <QuotesTable
+            positions={positions}
+            isLoading={isLoadingValuation && !effectiveValuation}
+            isConfigured={isConfigured}
+          />
         </div>
       </div>
     </PullToRefresh>

@@ -313,8 +313,8 @@ describe('APP-15J: Daily Use Correctness & Honest States', () => {
       );
 
       expect(html).toContain('ITSA4');
-      expect(html).toContain('SEM COTAÇÃO (Requer Token)');
-      expect(html).toContain('Aguardando token de mercado');
+      expect(html).toContain('REQUER AUTENTICAÇÃO');
+      expect(html).toContain('Requer autenticação BRAPI');
       // When quote is null, source should be "—", never claiming "BRAPI EOD"
       expect(html).toContain('—');
     });

@@ -28,27 +28,36 @@ import { BENCHMARK_OBSERVATION_REPOSITORY, MARKET_QUOTE_REPOSITORY } from '../da
 import { IBenchmarkObservationRepository, IMarketQuoteRepository } from '@atlas/database';
 import { PersistedHistoricalMarketDataProvider } from './persisted-historical-market-data.provider';
 import { PersistedBenchmarkDataProvider } from './persisted-benchmark-data.provider';
+import { MarketDataConfigService } from './market-data-config.service';
+
+let sharedMarketDataProvider: MarketDataProvider | null = null;
+let sharedHistoricalProvider: HistoricalMarketDataProvider | null = null;
+let sharedIngestionProvider: HistoricalMarketDataProvider | null = null;
 
 function createMarketDataProvider(): MarketDataProvider {
+  if (sharedMarketDataProvider) return sharedMarketDataProvider;
   const defaultProvider = process.env.NODE_ENV === 'test' ? 'IN_MEMORY' : 'BRAPI';
   const providerName = (process.env.MARKET_DATA_PROVIDER ?? defaultProvider).trim().toUpperCase();
   const token = process.env.MARKET_DATA_API_TOKEN ?? process.env.BRAPI_API_KEY;
   const timeoutMs = parseInt(process.env.MARKET_DATA_TIMEOUT_MS ?? '10000', 10);
 
   if (providerName === 'BRAPI') {
-    return new BrapiProviderAdapter({ token, timeoutMs });
+    sharedMarketDataProvider = new BrapiProviderAdapter({ token, timeoutMs });
+    return sharedMarketDataProvider;
   }
   if (process.env.NODE_ENV === 'production') {
     throw new Error(
       `Security invariant violated: Market data provider '${providerName}' is invalid. Fallback to InMemoryMarketDataProvider is strictly prohibited in production.`,
     );
   }
-  return new InMemoryMarketDataProvider();
+  sharedMarketDataProvider = new InMemoryMarketDataProvider();
+  return sharedMarketDataProvider;
 }
 
 function createHistoricalProvider(
   quoteRepo?: IMarketQuoteRepository,
 ): HistoricalMarketDataProvider {
+  if (sharedHistoricalProvider) return sharedHistoricalProvider;
   const providerName = (
     process.env.HISTORICAL_MARKET_DATA_PROVIDER ??
     process.env.MARKET_DATA_PROVIDER ??
@@ -64,23 +73,28 @@ function createHistoricalProvider(
   const maxLookback = parseInt(process.env.HISTORICAL_MARKET_DATA_MAX_LOOKBACK_DAYS ?? '7', 10);
 
   if (providerName === 'PERSISTED' && quoteRepo) {
-    return new PersistedHistoricalMarketDataProvider(quoteRepo);
+    sharedHistoricalProvider = new PersistedHistoricalMarketDataProvider(quoteRepo);
+    return sharedHistoricalProvider;
   }
   if (providerName === 'BRAPI') {
-    return new BrapiHistoricalMarketDataProvider({ token, timeoutMs });
+    sharedHistoricalProvider = new BrapiHistoricalMarketDataProvider({ token, timeoutMs });
+    return sharedHistoricalProvider;
   }
   if (providerName === 'STOOQ') {
-    return new StooqHistoricalMarketDataProvider({ timeoutMs, maxLookbackDays: maxLookback });
+    sharedHistoricalProvider = new StooqHistoricalMarketDataProvider({ timeoutMs, maxLookbackDays: maxLookback });
+    return sharedHistoricalProvider;
   }
   if (process.env.NODE_ENV === 'production') {
     throw new Error(
       `Security invariant violated: Historical market data provider '${providerName}' is invalid. Fallback to InMemoryHistoricalMarketDataProvider is strictly prohibited in production.`,
     );
   }
-  return new InMemoryHistoricalMarketDataProvider({ maxLookbackDays: maxLookback });
+  sharedHistoricalProvider = new InMemoryHistoricalMarketDataProvider({ maxLookbackDays: maxLookback });
+  return sharedHistoricalProvider;
 }
 
 function createHistoricalIngestionProvider(): HistoricalMarketDataProvider {
+  if (sharedIngestionProvider) return sharedIngestionProvider;
   const defaultProvider = process.env.NODE_ENV === 'test' ? 'IN_MEMORY' : 'BRAPI';
   const providerName = (
     process.env.HISTORICAL_MARKET_DATA_INGESTION_PROVIDER ??
@@ -97,17 +111,20 @@ function createHistoricalIngestionProvider(): HistoricalMarketDataProvider {
   const maxLookback = parseInt(process.env.HISTORICAL_MARKET_DATA_MAX_LOOKBACK_DAYS ?? '7', 10);
 
   if (providerName === 'BRAPI') {
-    return new BrapiHistoricalMarketDataProvider({ token, timeoutMs });
+    sharedIngestionProvider = new BrapiHistoricalMarketDataProvider({ token, timeoutMs });
+    return sharedIngestionProvider;
   }
   if (providerName === 'STOOQ') {
-    return new StooqHistoricalMarketDataProvider({ timeoutMs, maxLookbackDays: maxLookback });
+    sharedIngestionProvider = new StooqHistoricalMarketDataProvider({ timeoutMs, maxLookbackDays: maxLookback });
+    return sharedIngestionProvider;
   }
   if (process.env.NODE_ENV === 'production') {
     throw new Error(
       `Security invariant violated: Ingestion market data provider '${providerName}' is invalid. Fallback to InMemoryHistoricalMarketDataProvider is strictly prohibited in production.`,
     );
   }
-  return new InMemoryHistoricalMarketDataProvider({ maxLookbackDays: maxLookback });
+  sharedIngestionProvider = new InMemoryHistoricalMarketDataProvider({ maxLookbackDays: maxLookback });
+  return sharedIngestionProvider;
 }
 
 function createBenchmarkProvider(
@@ -169,6 +186,7 @@ function createRateBenchmarkProvider(
 @Global()
 @Module({
   providers: [
+    MarketDataConfigService,
     {
       provide: MARKET_DATA_PROVIDER,
       useFactory: () => createMarketDataProvider(),
@@ -196,6 +214,7 @@ function createRateBenchmarkProvider(
     },
   ],
   exports: [
+    MarketDataConfigService,
     MARKET_DATA_PROVIDER,
     HISTORICAL_MARKET_DATA_PROVIDER,
     HISTORICAL_MARKET_DATA_INGESTION_PROVIDER,

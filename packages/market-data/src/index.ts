@@ -1813,15 +1813,51 @@ export interface BrapiAdapterOptions {
   fetchFn?: typeof fetch;
 }
 
+/**
+ * Resolves the BRAPI token across environment variables and the secure local
+ * desktop secrets file (%LOCALAPPDATA%\Atlas\secrets.json).
+ * Never leaks the token to logs or unauthenticated callers.
+ */
+export function resolveBrapiToken(
+  env: Record<string, string | undefined> = process.env,
+): string | undefined {
+  if (env.BRAPI_API_KEY && env.BRAPI_API_KEY.trim()) {
+    return env.BRAPI_API_KEY.trim();
+  }
+  if (env.MARKET_DATA_API_TOKEN && env.MARKET_DATA_API_TOKEN.trim()) {
+    return env.MARKET_DATA_API_TOKEN.trim();
+  }
+  try {
+    const localAppData =
+      env.LOCALAPPDATA ||
+      (env.USERPROFILE ? `${env.USERPROFILE}\\AppData\\Local` : undefined);
+    if (localAppData && typeof require !== 'undefined') {
+      const fs = require('fs');
+      const path = require('path');
+      const secretsPath = path.join(localAppData, 'Atlas', 'secrets.json');
+      if (fs.existsSync(secretsPath)) {
+        const raw = fs.readFileSync(secretsPath, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.BRAPI_API_KEY === 'string' && parsed.BRAPI_API_KEY.trim()) {
+          return parsed.BRAPI_API_KEY.trim();
+        }
+      }
+    }
+  } catch {
+    // Secret file is optional
+  }
+  return undefined;
+}
+
 export class BrapiProviderAdapter implements MarketDataProvider {
   readonly provider: MarketDataSource = 'BRAPI';
-  private readonly token?: string;
+  private token?: string;
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
   private readonly fetchFn: typeof fetch;
 
   constructor(options: BrapiAdapterOptions = {}) {
-    this.token = options.token ?? process.env.MARKET_DATA_API_TOKEN ?? process.env.BRAPI_API_KEY;
+    this.token = options.token ?? resolveBrapiToken();
     this.baseUrl = (
       options.baseUrl ??
       process.env.BRAPI_BASE_URL ??
@@ -1829,6 +1865,14 @@ export class BrapiProviderAdapter implements MarketDataProvider {
     ).replace(/\/+$/, '');
     this.timeoutMs = options.timeoutMs ?? MARKET_DATA_DEFAULT_TIMEOUT_MS;
     this.fetchFn = options.fetchFn ?? globalThis.fetch;
+  }
+
+  setToken(token?: string): void {
+    this.token = token && token.trim() ? token.trim() : undefined;
+  }
+
+  hasToken(): boolean {
+    return Boolean(this.token && this.token.length > 0);
   }
 
   async getQuote(ref: MarketDataAssetRef): Promise<MarketQuote> {
@@ -1916,6 +1960,19 @@ export class BrapiProviderAdapter implements MarketDataProvider {
             retryable: false,
           });
           continue;
+        }
+
+        if (res.status === 429) {
+          // Retry once after a short delay on 429
+          try {
+            await new Promise((r) => setTimeout(r, 1000));
+            res = await this.fetchFn(url.toString(), {
+              method: 'GET',
+              headers,
+            });
+          } catch {
+            // Keep original 429 status on retry failure
+          }
         }
 
         if (res.status === 429) {
@@ -2013,13 +2070,13 @@ export class BrapiProviderAdapter implements MarketDataProvider {
 
 export class BrapiHistoricalMarketDataProvider implements HistoricalMarketDataProvider {
   readonly provider: MarketDataSource = 'BRAPI';
-  private readonly token?: string;
+  private token?: string;
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
   private readonly fetchFn: typeof fetch;
 
   constructor(options: BrapiAdapterOptions = {}) {
-    this.token = options.token ?? process.env.MARKET_DATA_API_TOKEN ?? process.env.BRAPI_API_KEY;
+    this.token = options.token ?? resolveBrapiToken();
     this.baseUrl = (
       options.baseUrl ??
       process.env.BRAPI_BASE_URL ??
@@ -2027,6 +2084,14 @@ export class BrapiHistoricalMarketDataProvider implements HistoricalMarketDataPr
     ).replace(/\/+$/, '');
     this.timeoutMs = options.timeoutMs ?? MARKET_DATA_DEFAULT_TIMEOUT_MS;
     this.fetchFn = options.fetchFn ?? globalThis.fetch;
+  }
+
+  setToken(token?: string): void {
+    this.token = token && token.trim() ? token.trim() : undefined;
+  }
+
+  hasToken(): boolean {
+    return Boolean(this.token && this.token.length > 0);
   }
 
   async getDailyPrice(
