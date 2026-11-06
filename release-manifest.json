@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "project": "Project Atlas",
+  "version": "0.1.0-pilot.1",
+  "buildType": "release",
+  "commit": "03dfe82",
+  "environment": "pilot",
+  "generatedAt": "2026-11-05T22:54:00Z",
+  "api": {
+    "targetHost": "54.233.66.110",
+    "protocol": "http",
+    "note": "Temporary staging/pilot IP endpoint. Blocked for production release pending valid HTTPS domain delegation."
+  },
+  "artifacts": [
+    {
+      "name": "Atlas-0.1.0-pilot.1-win64-setup.exe",
+      "platform": "windows",
+      "arch": "x64",
+      "format": "nsis-setup",
+      "sizeBytes": 2732916,
+      "sizeMB": "2.61 MB",
+      "sha256": "29952e21750e79d476b4b27f2fe95d9809eee43a59f44dce7622e3ae5de2506f",
+      "installMode": "currentUser",
+      "requiresAdmin": false
+    },
+    {
+      "name": "Atlas-0.1.0-pilot.1-arm64.apk",
+      "platform": "android",
+      "arch": "aarch64",
+      "format": "apk",
+      "sizeBytes": 11942300,
+      "sizeMB": "11.39 MB",
+      "sha256": "d5aacc68b8b831ba7e49d989123c3e89073a64a05b1c583e35769838c9f33437",
+      "signed": true,
+      "signatureSchemes": ["v2", "v3"]
+    }
+  ],
+  "security": {
+    "cleartextInRelease": false,
+    "secretsContained": false,
+    "userRegistrationPublic": false
+  }
+}
