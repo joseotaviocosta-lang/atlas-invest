@@ -10,7 +10,8 @@ import { TransactionalEmailSender } from './transactional-email.interface';
 
 export function createPasswordResetNotifier(): PasswordResetNotifier {
   const isTest = process.env.NODE_ENV === 'test' || process.env.EMAIL_PROVIDER === 'TEST';
-  const isProduction = process.env.NODE_ENV === 'production';
+  const isLocalOwner = process.env.ATLAS_LOCAL_OWNER_MODE === 'true';
+  const isProduction = process.env.NODE_ENV === 'production' && !isLocalOwner;
   const provider = (process.env.EMAIL_PROVIDER || '').trim().toUpperCase();
 
   // Test mode strictly preserves in-memory behavior for automated test suites

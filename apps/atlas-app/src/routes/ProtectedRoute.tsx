@@ -2,9 +2,13 @@ import React from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../providers/AuthProvider';
 import { colors } from '@atlas/ui';
+import { useNativeRuntime } from '../features/runtime/useNativeRuntime';
+import { StartupScreen } from '../features/runtime/StartupScreen';
+import { DiagnosticScreen } from '../features/runtime/DiagnosticScreen';
 
 export const ProtectedRoute: React.FC = () => {
   const { isRestoring, isAuthenticated, runtimeMode } = useAuth();
+  const { isInitializing, isReady, status, error, diagnostics, restartRuntime } = useNativeRuntime();
 
   if (isRestoring) {
     return (
@@ -39,9 +43,23 @@ export const ProtectedRoute: React.FC = () => {
     );
   }
 
-  // In DESKTOP_LOCAL_OWNER, the local owner profile is granted direct access.
-  // Never redirect to /login.
+  // In DESKTOP_LOCAL_OWNER, verify native local runtime state
   if (runtimeMode === 'DESKTOP_LOCAL_OWNER') {
+    if (error) {
+      return (
+        <DiagnosticScreen
+          error={error}
+          status={status}
+          diagnostics={diagnostics}
+          onRetry={restartRuntime}
+        />
+      );
+    }
+
+    if (isInitializing || !isReady) {
+      return <StartupScreen status={status} />;
+    }
+
     return <Outlet />;
   }
 

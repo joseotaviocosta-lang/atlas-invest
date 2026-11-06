@@ -51,6 +51,18 @@ export function createOpenApiDocument(app: INestApplication): OpenAPIObject {
 }
 
 export function validateProductionSecrets(): void {
+  if (process.env.ATLAS_LOCAL_OWNER_MODE === 'true') {
+    if (!process.env.JWT_ACCESS_SECRET) {
+      process.env.JWT_ACCESS_SECRET = 'atlas-desktop-local-owner-jwt-access-secret-production-32chars';
+    }
+    if (!process.env.REFRESH_TOKEN_PEPPER) {
+      process.env.REFRESH_TOKEN_PEPPER = 'atlas-desktop-local-owner-refresh-pepper-production-32chars';
+    }
+    if (!process.env.PASSWORD_RESET_PEPPER) {
+      process.env.PASSWORD_RESET_PEPPER = 'atlas-desktop-local-owner-reset-pepper-production-32chars';
+    }
+  }
+
   if (process.env.NODE_ENV === 'production') {
     const requiredSecrets = [
       { name: 'JWT_ACCESS_SECRET', value: process.env.JWT_ACCESS_SECRET },

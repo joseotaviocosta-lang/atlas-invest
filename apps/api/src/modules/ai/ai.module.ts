@@ -34,7 +34,10 @@ import { FakeAiProvider } from '@atlas/ai-engine';
         if (process.env.OPENAI_API_KEY) {
           return new OpenAiProvider();
         }
-        if (process.env.NODE_ENV === 'production') {
+        if (
+          process.env.NODE_ENV === 'production' &&
+          process.env.ATLAS_LOCAL_OWNER_MODE !== 'true'
+        ) {
           throw new Error(
             'Security invariant violated: OPENAI_API_KEY must be configured in production. Fallback to FakeAiProvider is strictly prohibited in production.',
           );
