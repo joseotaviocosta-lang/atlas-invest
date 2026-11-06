@@ -15,42 +15,42 @@ export const MacroIndicatorsGrid: React.FC = () => {
       id: 'IBOVESPA',
       label: 'IBOVESPA',
       value: '—',
-      subValue: 'Integração oficial B3',
-      isPlaceholder: true,
+      subValue: 'Integração ainda não disponível',
+      isPlaceholder: isLoading,
     },
     {
       id: 'SELIC_META',
       label: 'SELIC META',
-      value: selicTarget?.rate ?? '—',
+      value: selicTarget?.rate ? `${selicTarget.rate}%` : 'Ainda não atualizado',
       subValue: selicTarget
         ? `Meta Copom (${selicTarget.effectiveDate})`
-        : 'Meta Copom — aguardando dados',
-      isPlaceholder: isLoading || !selicTarget,
+        : 'Aguardando sincronização do Bacen',
+      isPlaceholder: isLoading,
     },
     {
       id: 'SELIC_EFETIVA',
       label: 'SELIC EFETIVA',
-      value: selicEffective?.rate ?? '—',
+      value: selicEffective?.rate ? `${selicEffective.rate}%` : 'Ainda não atualizado',
       subValue: selicEffective
         ? `Taxa anualizada (${selicEffective.effectiveDate})`
-        : 'Taxa anualizada — aguardando dados',
-      isPlaceholder: isLoading || !selicEffective,
+        : 'Aguardando sincronização do Bacen',
+      isPlaceholder: isLoading,
     },
     {
       id: 'IPCA',
       label: 'IPCA (MENSAL)',
-      value: ipca?.value ?? '—',
+      value: ipca?.value ? `${ipca.value}%` : 'Ainda não atualizado',
       subValue: ipca
         ? `Variação mensal (${ipca.referenceMonth})`
-        : 'Inflação oficial IBGE/Bacen',
-      isPlaceholder: isLoading || !ipca,
+        : 'Aguardando sincronização do IBGE',
+      isPlaceholder: isLoading,
     },
     {
       id: 'PTAX',
       label: 'DÓLAR (PTAX)',
-      value: '—',
-      subValue: 'Cotação Bacen oficial',
-      isPlaceholder: true,
+      value: 'Ainda não atualizado',
+      subValue: 'Aguardando sincronização do Bacen',
+      isPlaceholder: isLoading,
     },
   ];
 

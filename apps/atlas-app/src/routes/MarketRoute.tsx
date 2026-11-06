@@ -120,13 +120,12 @@ export const MarketRoute: React.FC = () => {
                 Cotações dos Ativos da Carteira
               </h3>
               <p style={{ margin: 0, fontSize: '0.8125rem', color: colors.textSecondary }}>
-                Provedor: {quoteSummary?.provider || 'BRAPI EOD'}
-                {asOfFormatted && ` • Data de referência: ${asOfFormatted}`}
+                Provedor: {quoteSummary?.provider || 'BRAPI EOD'} • {asOfFormatted ? `Cotações de ${asOfFormatted}` : 'Aguardando sincronização'}
               </p>
             </div>
 
-            <Badge variant="neutral">
-              {quoteSummary ? `${quoteSummary.quotesAvailable} de ${quoteSummary.totalQuotesRequested} cotações disponíveis` : 'Carregando...'}
+            <Badge variant={quoteSummary && quoteSummary.quotesAvailable < quoteSummary.totalQuotesRequested ? 'warning' : 'neutral'}>
+              {quoteSummary ? `${quoteSummary.quotesAvailable} de ${quoteSummary.totalQuotesRequested} precificados` : 'Carregando...'}
             </Badge>
           </div>
 

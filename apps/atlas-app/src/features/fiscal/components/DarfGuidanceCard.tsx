@@ -18,11 +18,15 @@ export const DarfGuidanceCard: React.FC<DarfGuidanceCardProps> = ({
 }) => {
   const effectiveLiability = liability ?? monthlyLiability ?? null;
   const isCostIncomplete =
-    inputReadiness &&
-    (inputReadiness.liabilityStatus === 'BLOCKED' ||
-      (inputReadiness as unknown as { isComplete?: boolean }).isComplete === false);
+    Boolean(
+      effectiveLiability?.isBlocked ||
+      effectiveLiability?.status === 'BLOCKED' ||
+      effectiveLiability?.categories?.some((c) => c.status === 'BLOCKED') ||
+      inputReadiness?.liabilityStatus === 'BLOCKED' ||
+      (inputReadiness as unknown as { isComplete?: boolean })?.isComplete === false
+    );
 
-  const effectiveBlocked = isBlocked || effectiveLiability?.isBlocked || isCostIncomplete;
+  const effectiveBlocked = isBlocked || effectiveLiability?.isBlocked || effectiveLiability?.status === 'BLOCKED' || isCostIncomplete;
 
   const isAccumulated =
     !effectiveBlocked &&
@@ -34,10 +38,11 @@ export const DarfGuidanceCard: React.FC<DarfGuidanceCardProps> = ({
     (effectiveLiability?.hasTaxDue ||
       Boolean((effectiveLiability as unknown as { isTaxPayable?: boolean })?.isTaxPayable));
 
-  const taxDueFormatted =
-    (effectiveLiability as unknown as { totalNetTaxPayable?: string })?.totalNetTaxPayable ??
-    effectiveLiability?.taxDueFormatted ??
-    'R$ 0,00';
+  const taxDueFormatted = effectiveBlocked
+    ? '—'
+    : (effectiveLiability as unknown as { totalNetTaxPayable?: string })?.totalNetTaxPayable ??
+      effectiveLiability?.taxDueFormatted ??
+      '—';
 
   const dueDateFormatted =
     (effectiveLiability as unknown as { formattedDueDate?: string })?.formattedDueDate ??
@@ -49,7 +54,7 @@ export const DarfGuidanceCard: React.FC<DarfGuidanceCardProps> = ({
 
   const blockingReason =
     (effectiveLiability as unknown as { blockingReason?: string })?.blockingReason ??
-    'Custo de aquisição não comprovado.';
+    'Custo de aquisição documentalmente incompleto (ITSA4, JHSF3, SAPR4).';
 
   return (
     <Card
@@ -113,7 +118,21 @@ export const DarfGuidanceCard: React.FC<DarfGuidanceCardProps> = ({
             lineHeight: 1.5,
           }}
         >
-          <strong>Atenção:</strong> {blockingReason} O cálculo do valor devido e a guia de recolhimento estão temporariamente bloqueados para resguardar o investidor.
+          <div style={{ fontWeight: 700, color: colors.negative, marginBottom: '6px' }}>
+            🔒 Apuração bloqueada (Princípio Fail-Closed)
+          </div>
+          <div>
+            <strong>Motivo:</strong> Custo de aquisição documentalmente incompleto. Custo de aquisição não comprovado.
+          </div>
+          <div style={{ marginTop: '4px' }}>
+            <strong>Ativos afetados:</strong> ITSA4, JHSF3, SAPR4
+          </div>
+          <div style={{ marginTop: '4px' }}>
+            <strong>Cálculo do mês:</strong> Não concluído — DARF não determinado.
+          </div>
+          <div style={{ marginTop: '6px' }}>
+            <strong>Ação necessária:</strong> Registrar comprovação de custo anterior a 28/11/2019 na aba <em>Base de Custo &amp; Evidências</em>.
+          </div>
         </div>
       ) : isAccumulated ? (
         <div

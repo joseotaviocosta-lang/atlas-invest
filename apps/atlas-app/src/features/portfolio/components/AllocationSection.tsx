@@ -45,6 +45,9 @@ export const AllocationSection: React.FC = () => {
   const primaryCurrency = currencyKeys[0] ?? 'BRL';
   const bucket = currencies[primaryCurrency];
 
+  const formattedCoverage = formatPercentage(valuationCoveragePercent, { decimalPlaces: 2 });
+  const isPartial = Number(valuationCoveragePercent) < 99.9;
+
   if (!bucket || (bucket.byAssetClass.length === 0 && bucket.byAsset.length === 0)) {
     return (
       <Card>
@@ -58,13 +61,16 @@ export const AllocationSection: React.FC = () => {
 
   return (
     <Card>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h3 style={{ margin: '0 0 4px 0', fontSize: '1.125rem', fontWeight: 600, color: colors.textPrimary }}>
-            Distribuição Patrimonial
-          </h3>
-          <p style={{ margin: 0, fontSize: '0.8125rem', color: colors.textSecondary }}>
-            Cobertura de cotações: {valuationCoveragePercent}% • Moeda: {primaryCurrency}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: colors.textPrimary }}>
+              {isPartial ? 'Distribuição das Posições Precificadas' : 'Distribuição Patrimonial'}
+            </h3>
+            {isPartial && <Badge variant="warning">Parcial</Badge>}
+          </div>
+          <p style={{ margin: '4px 0 0 0', fontSize: '0.8125rem', color: colors.textSecondary }}>
+            Cobertura de cotações: {formattedCoverage} • Moeda: {primaryCurrency}
           </p>
         </div>
 
@@ -114,6 +120,24 @@ export const AllocationSection: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {isPartial && (
+        <div
+          style={{
+            marginBottom: '20px',
+            padding: '12px 16px',
+            backgroundColor: 'rgba(234, 179, 8, 0.08)',
+            border: `1px solid ${colors.warning}40`,
+            borderRadius: `${borderRadius.md}px`,
+            fontSize: '0.8125rem',
+            color: colors.textPrimary,
+            lineHeight: 1.5,
+          }}
+          data-testid="partial-allocation-notice"
+        >
+          ⚠️ <strong>Alocação Parcial:</strong> Este gráfico reflete exclusivamente o subconjunto de ativos com cotação de mercado disponível ({formattedCoverage}). Ele <strong>não representa a totalidade da carteira</strong> enquanto houver ativos sem cotação.
+        </div>
+      )}
 
       {tab === 'class' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

@@ -144,7 +144,9 @@ export const PortfolioRoute: React.FC = () => {
                 <span style={{ marginRight: '4px' }}>⚠️</span> Cotações D-1
               </Badge>
             )}
-            <ManualRefreshButton variant="primary" />
+            <div className="mobile-only">
+              <ManualRefreshButton variant="primary" />
+            </div>
           </div>
         </div>
 

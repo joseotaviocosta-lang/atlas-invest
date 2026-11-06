@@ -111,3 +111,4 @@ A execução do replay determinístico no banco local `atlas_local` consolida o 
 
 1. **Uso Diário pelo Owner:** O investidor pode utilizar o Atlas Desktop no seu cotidiano para acompanhar sua carteira real de 36 ativos e cotações.
 2. **Resolução Documental Futura:** Caso o Owner localize futuramente a declaração de IRPF 2020 ou as notas de corretagem de 2019, o custo de ITSA4, JHSF3 e SAPR4 poderá ser registrado através da camada de evidências da API, desbloqueando a apuração de 10/2026 de forma 100% auditada.
+

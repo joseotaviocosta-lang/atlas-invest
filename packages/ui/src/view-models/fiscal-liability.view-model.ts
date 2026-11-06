@@ -121,6 +121,7 @@ export interface LiabilityCategoryVM {
 export interface TaxLossBalanceVM {
   categoryLabel: string;
   currency: string;
+  amount?: string;
   amountFormatted: string;
   provenance: string;
 }
@@ -141,6 +142,8 @@ export interface MonthlyTaxLiabilityViewModel {
   categories: LiabilityCategoryVM[];
   openingLosses: TaxLossBalanceVM[];
   closingLosses: TaxLossBalanceVM[];
+  totalOpeningLossFormatted: string;
+  totalClosingLossFormatted: string;
   qualityLabels: string[];
   limitations: string[];
   trace: Array<{
@@ -164,6 +167,29 @@ const STATUS: Record<string, { label: string; color: string }> = {
 
 function money(value: FiscalMoney | null): string {
   return value ? formatCurrency(value.amount, value.currency) : '—';
+}
+
+function sumFiscalMoneyAmounts(items: Array<{ amount: FiscalMoney }>): string {
+  let totalCents = 0n;
+  let currency = 'BRL';
+  for (const item of items) {
+    if (item.amount) {
+      currency = item.amount.currency || currency;
+      const raw = item.amount.amount || '0';
+      const isNeg = raw.startsWith('-');
+      const absRaw = isNeg ? raw.slice(1) : raw;
+      const [intPart = '0', fracPart = ''] = absRaw.split('.');
+      const paddedFrac = (fracPart + '00').slice(0, 2);
+      const cents = BigInt(intPart) * 100n + BigInt(paddedFrac);
+      totalCents += isNeg ? -cents : cents;
+    }
+  }
+  const isNeg = totalCents < 0n;
+  const abs = isNeg ? -totalCents : totalCents;
+  const intStr = (abs / 100n).toString();
+  const fracStr = (abs % 100n).toString().padStart(2, '0');
+  const sumStr = `${isNeg ? '-' : ''}${intStr}.${fracStr}`;
+  return formatCurrency(sumStr, currency);
 }
 
 export function mapToMonthlyTaxLiabilityViewModel(
@@ -208,6 +234,7 @@ export function mapToMonthlyTaxLiabilityViewModel(
     b.map((x) => ({
       categoryLabel: fiscalCategoryLabel(x.category),
       currency: x.currency,
+      amount: x.amount?.amount,
       amountFormatted: money(x.amount),
       provenance: x.provenance,
     }));
@@ -250,6 +277,8 @@ export function mapToMonthlyTaxLiabilityViewModel(
     categories,
     openingLosses: lossVm(data.openingLossBalances ?? []),
     closingLosses: lossVm(data.closingLossBalances ?? []),
+    totalOpeningLossFormatted: sumFiscalMoneyAmounts(data.openingLossBalances ?? []),
+    totalClosingLossFormatted: sumFiscalMoneyAmounts(data.closingLossBalances ?? []),
     qualityLabels,
     limitations: data.limitations ?? [],
     trace,

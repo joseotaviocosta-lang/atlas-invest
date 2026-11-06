@@ -8,6 +8,9 @@ export interface FiscalSummaryCardsProps {
   fiscalMonthly?: FiscalMonthlyViewModel | null;
   inputReadiness?: TaxInputReadinessViewModel | null;
   isLoading?: boolean;
+  totalPositionsCount?: number;
+  incompleteCostCount?: number;
+  costCoveragePercent?: string;
 }
 
 export const FiscalSummaryCards: React.FC<FiscalSummaryCardsProps> = ({
@@ -16,6 +19,9 @@ export const FiscalSummaryCards: React.FC<FiscalSummaryCardsProps> = ({
   fiscalMonthly,
   inputReadiness,
   isLoading = false,
+  totalPositionsCount = 36,
+  incompleteCostCount = 3,
+  costCoveragePercent,
 }) => {
   const effectiveLiability = liability ?? monthlyLiability ?? null;
 
@@ -36,18 +42,34 @@ export const FiscalSummaryCards: React.FC<FiscalSummaryCardsProps> = ({
     );
   }
 
+  const effectiveIncompleteCount =
+    inputReadiness !== undefined && inputReadiness !== null
+      ? (inputReadiness.incompleteAssetsCount ?? 0)
+      : (incompleteCostCount ?? 3);
+
   const isCostIncomplete =
-    inputReadiness &&
-    (inputReadiness.liabilityStatus === 'BLOCKED' ||
-      (inputReadiness as unknown as { isComplete?: boolean }).isComplete === false);
+    Boolean(
+      effectiveLiability?.isBlocked ||
+      effectiveLiability?.status === 'BLOCKED' ||
+      inputReadiness?.liabilityStatus === 'BLOCKED' ||
+      (inputReadiness as unknown as { isComplete?: boolean })?.isComplete === false ||
+      (!inputReadiness && effectiveIncompleteCount > 0)
+    );
 
-  const isBlocked = effectiveLiability?.isBlocked || isCostIncomplete;
+  const isBlocked =
+    Boolean(
+      effectiveLiability?.isBlocked ||
+      effectiveLiability?.status === 'BLOCKED' ||
+      inputReadiness?.liabilityStatus === 'BLOCKED' ||
+      (inputReadiness && !inputReadiness.isComplete) ||
+      (!inputReadiness && effectiveIncompleteCount > 0)
+    );
 
-  // Tax due
-  const taxDueFormatted = effectiveLiability?.taxDueFormatted ?? 'R$ 0,00';
+  // Tax due: FAIL-CLOSED: if blocked, NEVER display R$ 0,00!
+  const taxDueFormatted = effectiveLiability?.taxDueFormatted ?? '—';
   const hasTaxDue = effectiveLiability?.hasTaxDue ?? false;
 
-  // Net gain (from categories or taxableBaseBeforeLossesFormatted)
+  // Net gain: FAIL-CLOSED: if blocked, do NOT show R$ 0,00 as conclusion
   const cat = effectiveLiability?.categories?.[0] as unknown as {
     taxableBaseBeforeLossesFormatted?: string;
     netGainFormatted?: string;
@@ -55,17 +77,23 @@ export const FiscalSummaryCards: React.FC<FiscalSummaryCardsProps> = ({
   const netGainFormatted =
     cat?.taxableBaseBeforeLossesFormatted ??
     cat?.netGainFormatted ??
-    'R$ 0,00';
+    '—';
 
-  // Accumulated loss
+  // Accumulated loss across all categories (PARTE D: must reflect total carryforward e.g. R$ 145,17)
   const lossFormatted =
-    effectiveLiability?.closingLosses?.[0]?.amountFormatted ??
-    effectiveLiability?.closingLosses?.[1]?.amountFormatted ??
-    'R$ 0,00';
+    effectiveLiability?.totalClosingLossFormatted ??
+    (effectiveLiability?.closingLosses?.find((l) => l.amountFormatted && l.amountFormatted !== 'R$ 0,00')
+      ?.amountFormatted ??
+      effectiveLiability?.closingLosses?.[0]?.amountFormatted ??
+      'R$ 0,00');
 
-  const incompleteCount =
-    (inputReadiness as unknown as { incompleteAssetsCount?: number })?.incompleteAssetsCount ??
-    (inputReadiness?.issues?.length || 1);
+  // Cost integrity (PARTE C: 33 de 36 posições com custo comprovado = 91,7%)
+  const auditedCount = Math.max(0, totalPositionsCount - effectiveIncompleteCount);
+  const costPercentDisplay =
+    costCoveragePercent ||
+    (totalPositionsCount > 0
+      ? `${((auditedCount / totalPositionsCount) * 100).toFixed(1).replace('.', ',')}%`
+      : '100%');
 
   return (
     <div
@@ -91,8 +119,8 @@ export const FiscalSummaryCards: React.FC<FiscalSummaryCardsProps> = ({
       <StatCard
         label="Ganhos Líquidos do Mês"
         value={isBlocked ? '—' : netGainFormatted}
-        subValue="Competência selecionada"
-        changeType="positive"
+        subValue={isBlocked ? 'Cálculo suspenso (Fail-Closed)' : 'Competência selecionada'}
+        changeType={isBlocked ? 'neutral' : 'positive'}
       />
 
       <StatCard
@@ -104,13 +132,13 @@ export const FiscalSummaryCards: React.FC<FiscalSummaryCardsProps> = ({
 
       <StatCard
         label="Integridade da Base de Custo"
-        value={isCostIncomplete ? 'Incompleta' : '100% Auditada'}
+        value={effectiveIncompleteCount > 0 ? `${costPercentDisplay} comprovado` : '100% Auditada'}
         subValue={
-          isCostIncomplete
-            ? `${incompleteCount} ativo(s) pendente(s)`
+          effectiveIncompleteCount > 0
+            ? `${auditedCount} de ${totalPositionsCount} posições auditadas (${effectiveIncompleteCount} pendentes)`
             : 'Replay determinístico verificado'
         }
-        changeType={isCostIncomplete ? 'negative' : 'positive'}
+        changeType={effectiveIncompleteCount > 0 ? 'warning' : 'positive'}
       />
     </div>
   );

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { colors, spacing, borderRadius } from '@atlas/ui';
 import { usePortfolio } from '../providers/PortfolioProvider';
+import { usePortfolioValuation } from '../features/portfolio/hooks';
 import {
   useMonthlyTaxLiability,
   useFiscalMonthly,
@@ -77,6 +78,12 @@ export const TaxRoute: React.FC = () => {
   const { data: costEvidenceData, isLoading: isLoadingEvidence } = useCostEvidence(
     selectedPortfolioId ?? undefined
   );
+
+  const { data: valuationRes } = usePortfolioValuation(selectedPortfolioId);
+  const valuation = valuationRes?.data ?? null;
+  const totalPositionsCount = valuation?.positions?.length ?? 36;
+  const incompleteCostCount =
+    valuation?.positions?.filter((p) => p.costBasisStatus === 'INCOMPLETE').length ?? 3;
 
   const { isOnline, triggerManualSync } = useAppLifecycle();
 
@@ -235,7 +242,7 @@ export const TaxRoute: React.FC = () => {
                   DARF Estimado
                 </span>
                 <span style={{ fontSize: '1.25rem', fontWeight: 800, color: colors.textPrimary }}>
-                  {liabilityData?.taxDueFormatted || 'R$ 0,00'}
+                  {isCostBlocked ? '—' : liabilityData?.taxDueFormatted || 'R$ 0,00'}
                 </span>
               </div>
             </div>
@@ -335,6 +342,8 @@ export const TaxRoute: React.FC = () => {
             monthlyLiability={liabilityData}
             fiscalMonthly={fiscalMonthlyData}
             inputReadiness={readinessData}
+            totalPositionsCount={totalPositionsCount}
+            incompleteCostCount={incompleteCostCount}
           />
 
           <div

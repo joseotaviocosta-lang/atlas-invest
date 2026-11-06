@@ -61,7 +61,7 @@ export const QuotesTable: React.FC<QuotesTableProps> = ({ positions, isLoading =
                   ? formatCurrency(quote.price, quote.currency)
                   : '—';
                 const dateFormatted = quote?.asOf ? formatDate(quote.asOf) : '—';
-                const source = quote?.source || 'BRAPI EOD';
+                const source = quote?.source || (quote ? 'BRAPI EOD' : '—');
 
                 return (
                   <tr
@@ -94,7 +94,7 @@ export const QuotesTable: React.FC<QuotesTableProps> = ({ positions, isLoading =
                           {quote.freshness === 'FRESH' ? 'FRESCA' : 'STALE (D-1)'}
                         </Badge>
                       ) : (
-                        <Badge variant="neutral">SEM COTAÇÃO</Badge>
+                        <Badge variant="neutral">SEM COTAÇÃO (Requer Token)</Badge>
                       )}
                     </td>
                   </tr>
@@ -121,7 +121,7 @@ export const QuotesTable: React.FC<QuotesTableProps> = ({ positions, isLoading =
             ? formatCurrency(quote.price, quote.currency)
             : '—';
           const dateFormatted = quote?.asOf ? formatDate(quote.asOf) : '—';
-          const source = quote?.source || 'BRAPI EOD';
+          const source = quote?.source || (quote ? 'BRAPI EOD' : '—');
 
           return (
             <div
@@ -148,11 +148,11 @@ export const QuotesTable: React.FC<QuotesTableProps> = ({ positions, isLoading =
                       {quote.freshness === 'FRESH' ? 'FRESCA' : 'D-1'}
                     </Badge>
                   ) : (
-                    <Badge variant="neutral">SEM COTAÇÃO</Badge>
+                    <Badge variant="neutral">SEM COTAÇÃO (Requer Token)</Badge>
                   )}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '2px' }}>
-                  {dateFormatted} • {source}
+                  {quote ? `${dateFormatted} • ${source}` : 'Aguardando token de mercado'}
                 </div>
               </div>
 

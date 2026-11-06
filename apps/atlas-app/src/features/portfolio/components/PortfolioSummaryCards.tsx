@@ -43,37 +43,57 @@ export const PortfolioSummaryCards: React.FC<PortfolioSummaryCardsProps> = ({
 
   const totalPositions = valuation?.summary?.totalPositions ?? 0;
   const valuedPositions = valuation?.summary?.valuedPositions ?? 0;
-  const coveragePercent = valuation?.summary?.valuationCoveragePercent
-    ? `${valuation.summary.valuationCoveragePercent}%`
+  const isPartial = totalPositions > 0 && valuedPositions < totalPositions;
+
+  const rawCoverage = valuation?.summary?.valuationCoveragePercent
+    ? valuation.summary.valuationCoveragePercent
     : totalPositions > 0
-    ? `${Math.round((valuedPositions / totalPositions) * 100)}%`
-    : '100%';
+    ? ((valuedPositions / totalPositions) * 100).toString()
+    : '100';
+
+  const coveragePercent =
+    rawCoverage === '100' || rawCoverage === '0'
+      ? `${rawCoverage}%`
+      : formatPercentage(rawCoverage, { decimalPlaces: 2 });
 
   return (
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
         gap: '16px',
         marginBottom: '24px',
+        minWidth: 0,
       }}
     >
       <StatCard
-        label="Patrimônio Total"
+        label={isPartial ? 'Patrimônio Precificado' : 'Patrimônio Total'}
         value={marketValue}
-        subValue={primaryCurrency ? `Moeda base: ${primaryCurrency}` : undefined}
+        subValue={
+          isPartial
+            ? `${valuedPositions} de ${totalPositions} posições precificadas`
+            : primaryCurrency
+            ? `Moeda base: ${primaryCurrency}`
+            : undefined
+        }
         isPlaceholder={isLoading || !marketValue}
       />
       <StatCard
-        label="Custo de Aquisição"
+        label={isPartial ? 'Custo das Posições Precificadas' : 'Custo de Aquisição'}
         value={costBasis}
-        subValue="Custo médio apurado via ledger"
+        subValue={isPartial ? 'Custo das posições com cotação' : 'Custo médio apurado via ledger'}
         isPlaceholder={isLoading || !costBasis}
       />
       <StatCard
-        label="Resultado Não Realizado"
+        label={isPartial ? 'Resultado das Posições Precificadas' : 'Resultado Não Realizado'}
         value={unrealizedAmount}
-        subValue={unrealizedPercent ? `Rentabilidade: ${unrealizedPercent}` : undefined}
+        subValue={
+          unrealizedPercent
+            ? isPartial
+              ? `Rentabilidade parcial: ${unrealizedPercent}`
+              : `Rentabilidade: ${unrealizedPercent}`
+            : undefined
+        }
         changeType={changeType}
         isPlaceholder={isLoading || !unrealizedAmount}
       />
@@ -81,7 +101,7 @@ export const PortfolioSummaryCards: React.FC<PortfolioSummaryCardsProps> = ({
         label="Cobertura de Cotações"
         value={coveragePercent}
         subValue={`${valuedPositions} de ${totalPositions} posições precificadas`}
-        changeType={valuedPositions === totalPositions && totalPositions > 0 ? 'positive' : 'neutral'}
+        changeType={!isPartial && totalPositions > 0 ? 'positive' : 'warning'}
         isPlaceholder={isLoading || totalPositions === 0}
       />
     </div>

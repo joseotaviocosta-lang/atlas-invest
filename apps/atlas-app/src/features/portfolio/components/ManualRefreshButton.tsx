@@ -11,11 +11,11 @@ export const ManualRefreshButton: React.FC<{ variant?: 'primary' | 'secondary' |
   const { selectedPortfolioId } = usePortfolio();
   const { isOnline } = useAppLifecycle();
   const updateMutation = useUpdateMarketData(selectedPortfolioId);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ message: string; type: 'positive' | 'warning' | 'negative' } | null>(null);
 
   const handleRefresh = async () => {
     if (!isOnline) {
-      setFeedback('Indisponível offline');
+      setFeedback({ message: 'Indisponível offline', type: 'warning' });
       setTimeout(() => setFeedback(null), 3000);
       return;
     }
@@ -24,12 +24,34 @@ export const ManualRefreshButton: React.FC<{ variant?: 'primary' | 'secondary' |
     try {
       const receipt = await updateMutation.mutateAsync();
       const updated = receipt.quotesUpdated ?? 0;
-      setFeedback(`Atualizado (${updated} cotações)`);
-      setTimeout(() => setFeedback(null), 4000);
+      const requested = receipt.quotesRequested ?? 0;
+      const unpriced = Math.max(0, requested - updated);
+
+      if (receipt.status === 'FAILED') {
+        setFeedback({ message: receipt.message || 'Falha na atualização', type: 'negative' });
+      } else if (unpriced > 0 && requested > 0) {
+        setFeedback({
+          message: `${updated}/${requested} atualizadas (${unpriced} sem cotação)`,
+          type: 'warning',
+        });
+      } else {
+        setFeedback({
+          message: `Atualizado (${updated} cotações)`,
+          type: 'positive',
+        });
+      }
+      setTimeout(() => setFeedback(null), 5000);
     } catch {
-      setFeedback('Falha na atualização');
+      setFeedback({ message: 'Falha na atualização', type: 'negative' });
       setTimeout(() => setFeedback(null), 4000);
     }
+  };
+
+  const getFeedbackColor = () => {
+    if (!feedback) return colors.textSecondary;
+    if (feedback.type === 'negative') return colors.negative;
+    if (feedback.type === 'warning') return colors.warning;
+    return colors.positive;
   };
 
   return (
@@ -52,11 +74,11 @@ export const ManualRefreshButton: React.FC<{ variant?: 'primary' | 'secondary' |
           style={{
             fontSize: '0.75rem',
             fontWeight: 500,
-            color: feedback.includes('Falha') ? colors.negative : colors.positive,
+            color: getFeedbackColor(),
             animation: 'fadeIn 0.2s ease',
           }}
         >
-          {feedback}
+          {feedback.message}
         </span>
       )}
     </div>

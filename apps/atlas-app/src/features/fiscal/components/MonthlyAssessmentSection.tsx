@@ -42,11 +42,18 @@ export const MonthlyAssessmentSection: React.FC<MonthlyAssessmentSectionProps> =
     );
   }
 
+  const effectiveBlocked = Boolean(
+    effectiveLiability?.isBlocked ||
+    effectiveLiability?.status === 'BLOCKED' ||
+    effectiveLiability?.categories?.some((c) => c.status === 'BLOCKED')
+  );
+
   const categories = effectiveLiability?.categories ?? [];
   const isExempt =
-    (fiscalMonthly as unknown as { isExempt?: boolean })?.isExempt ||
-    (fiscalMonthly as unknown as { isEquityExempt?: boolean })?.isEquityExempt ||
-    categories.some((c) => (c as unknown as { isExempt?: boolean }).isExempt);
+    !effectiveBlocked &&
+    ((fiscalMonthly as unknown as { isExempt?: boolean })?.isExempt ||
+      (fiscalMonthly as unknown as { isEquityExempt?: boolean })?.isEquityExempt ||
+      categories.some((c) => (c as unknown as { isExempt?: boolean }).isExempt));
 
   const salesTotalFormatted =
     (fiscalMonthly as unknown as { salesTotal?: string })?.salesTotal ??
@@ -78,11 +85,15 @@ export const MonthlyAssessmentSection: React.FC<MonthlyAssessmentSectionProps> =
           </div>
         </div>
 
-        {isExempt && (
+        {effectiveBlocked ? (
+          <Badge variant="negative">
+            Apuração Bloqueada (Fail-Closed)
+          </Badge>
+        ) : isExempt ? (
           <Badge variant="positive">
             Isenção de R$ 20.000 Aplicada (Vendas: {salesTotalFormatted})
           </Badge>
-        )}
+        ) : null}
       </div>
 
       <div style={{ overflowX: 'auto' }}>
@@ -108,7 +119,9 @@ export const MonthlyAssessmentSection: React.FC<MonthlyAssessmentSectionProps> =
             {categories.length === 0 ? (
               <tr>
                 <td colSpan={6} style={{ padding: `${spacing.lg}px`, textAlign: 'center', color: colors.textSecondary }}>
-                  Nenhuma alienação com apuração tributária nesta competência.
+                  {effectiveBlocked
+                    ? 'Apuração bloqueada por ausência de custo de aquisição comprovado (Fail-Closed).'
+                    : 'Nenhuma alienação com apuração tributária nesta competência.'}
                 </td>
               </tr>
             ) : (
@@ -116,6 +129,7 @@ export const MonthlyAssessmentSection: React.FC<MonthlyAssessmentSectionProps> =
                 const cat = c as unknown as {
                   category?: string;
                   categoryLabel?: string;
+                  status?: string;
                   taxRateLabel?: string;
                   rateFormatted?: string;
                   grossGain?: string;
@@ -128,22 +142,34 @@ export const MonthlyAssessmentSection: React.FC<MonthlyAssessmentSectionProps> =
                   taxDueFormatted?: string;
                 };
 
+                const catBlocked = effectiveBlocked || cat.status === 'BLOCKED';
                 const catLabel = cat.categoryLabel || cat.category || 'Geral';
                 const rate = cat.taxRateLabel || cat.rateFormatted || '15%';
-                const gain = cat.grossGain || cat.taxableBaseBeforeLossesFormatted || 'R$ 0,00';
-                const lossComp = cat.compensatedLoss || cat.lossAppliedFormatted || 'R$ 0,00';
+                const gain = catBlocked
+                  ? '— (Bloqueado)'
+                  : cat.grossGain || cat.taxableBaseBeforeLossesFormatted || 'R$ 0,00';
+                const lossComp = catBlocked
+                  ? '—'
+                  : cat.compensatedLoss || cat.lossAppliedFormatted || 'R$ 0,00';
                 const irrf = cat.withheldTax || cat.withholdingAppliedFormatted || 'R$ 0,00';
-                const tax = cat.netTaxDue || cat.taxDueFormatted || 'R$ 0,00';
+                const tax = catBlocked
+                  ? '— (Não determinado)'
+                  : cat.netTaxDue || cat.taxDueFormatted || 'R$ 0,00';
 
                 return (
                   <tr key={catLabel} style={{ borderBottom: `1px solid ${colors.border}40` }}>
                     <td style={{ padding: '0.625rem 0.875rem', fontWeight: 600, color: colors.textPrimary }}>
                       {catLabel}
+                      {catBlocked && (
+                        <span style={{ marginLeft: '6px', fontSize: '0.6875rem', color: colors.negative }}>
+                          (Bloqueado)
+                        </span>
+                      )}
                     </td>
                     <td style={{ padding: '0.625rem 0.875rem', textAlign: 'right', color: colors.textSecondary }}>
                       {rate}
                     </td>
-                    <td style={{ padding: '0.625rem 0.875rem', textAlign: 'right', color: colors.positive }}>
+                    <td style={{ padding: '0.625rem 0.875rem', textAlign: 'right', color: catBlocked ? colors.textSecondary : colors.positive }}>
                       {gain}
                     </td>
                     <td style={{ padding: '0.625rem 0.875rem', textAlign: 'right', color: colors.textSecondary }}>
@@ -152,7 +178,7 @@ export const MonthlyAssessmentSection: React.FC<MonthlyAssessmentSectionProps> =
                     <td style={{ padding: '0.625rem 0.875rem', textAlign: 'right', color: colors.negative }}>
                       {irrf}
                     </td>
-                    <td style={{ padding: '0.625rem 0.875rem', textAlign: 'right', fontWeight: 700, color: colors.textPrimary }}>
+                    <td style={{ padding: '0.625rem 0.875rem', textAlign: 'right', fontWeight: 700, color: catBlocked ? colors.negative : colors.textPrimary }}>
                       {tax}
                     </td>
                   </tr>

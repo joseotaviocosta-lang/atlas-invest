@@ -93,6 +93,8 @@ export const ReviewInboxSection: React.FC<ReviewInboxSectionProps> = ({
                 ? `${item.pairReview.decidedPairs} de ${item.pairReview.totalPairs} pares decididos`
                 : null;
 
+            const hasActionableItems = item.metrics.newRecords > 0 || item.metrics.conflicts > 0;
+
             return (
               <Card
                 key={item.id}
@@ -106,17 +108,42 @@ export const ReviewInboxSection: React.FC<ReviewInboxSectionProps> = ({
                 }}
               >
                 <div style={{ flex: 1, minWidth: '280px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px`, marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px`, marginBottom: '6px' }}>
                     <Badge variant={severityVariant}>{item.severity}</Badge>
                     <span style={{ fontWeight: 600, color: colors.textPrimary, fontSize: '0.9375rem' }}>
                       {sourceDesc} · {item.portfolioName ?? 'Carteira'}
                     </span>
                     <span style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
-                      {formatDateTime(item.createdAt)}
+                      (Execução {item.runId.slice(0, 8)}) • {formatDateTime(item.createdAt)}
                     </span>
                   </div>
 
-                  <div style={{ display: 'flex', gap: `${spacing.xs}px`, flexWrap: 'wrap', marginTop: '6px' }}>
+                  {/* Quantitative Metrics Breakdown */}
+                  <div style={{ display: 'flex', gap: `${spacing.xs}px`, flexWrap: 'wrap', marginTop: '6px', marginBottom: '8px' }}>
+                    {item.metrics.newRecords > 0 && (
+                      <Badge variant="positive">✨ {item.metrics.newRecords} novas operações</Badge>
+                    )}
+                    {item.metrics.unsupported > 0 && (
+                      <Badge variant="neutral">ℹ️ {item.metrics.unsupported} registros não suportados</Badge>
+                    )}
+                    {item.metrics.probableDuplicates > 0 && (
+                      <Badge variant="warning">⚠️ {item.metrics.probableDuplicates} duplicatas prováveis</Badge>
+                    )}
+                    {item.metrics.conflicts > 0 && (
+                      <Badge variant="negative">🚨 {item.metrics.conflicts} conflitos</Badge>
+                    )}
+                  </div>
+
+                  {/* Context and Impact Explanation */}
+                  <div style={{ fontSize: '0.8125rem', color: colors.textSecondary, marginBottom: '6px', lineHeight: 1.4 }}>
+                    {hasActionableItems
+                      ? 'Operações identificadas aguardam confirmação do investidor para integração definitiva no ledger de transações.'
+                      : item.metrics.unsupported > 0
+                      ? 'Registros em formato não mapeado pela B3 foram ignorados na apuração sem alterar o saldo das posições ativas.'
+                      : 'Execução finalizada com identificação de duplicidades já existentes no histórico da carteira.'}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: `${spacing.xs}px`, flexWrap: 'wrap', marginTop: '4px' }}>
                     {item.reasonCodes.map((code) => (
                       <span
                         key={code}
@@ -142,7 +169,7 @@ export const ReviewInboxSection: React.FC<ReviewInboxSectionProps> = ({
 
                 <div>
                   <Button
-                    variant="primary"
+                    variant={hasActionableItems ? 'primary' : 'outline'}
                     onClick={() => setSelectedRunId(item.runId)}
                     style={{ fontSize: '0.8125rem', padding: '0.375rem 0.875rem' }}
                   >
