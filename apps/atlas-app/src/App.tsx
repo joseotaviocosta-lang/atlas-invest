@@ -11,16 +11,23 @@ import { ImportRoute } from './routes/ImportRoute';
 import { TaxRoute } from './routes/TaxRoute';
 import { SettingsRoute } from './routes/SettingsRoute';
 import { PlaceholderRoute } from './routes/PlaceholderRoute';
+import { getRuntimeConfig } from './config/runtime';
 
 const RouterComponent = typeof window !== 'undefined' ? HashRouter : MemoryRouter;
 
 export const App: React.FC = () => {
+  const config = getRuntimeConfig();
+  const isLocalOwner = config.runtimeMode === 'DESKTOP_LOCAL_OWNER';
+
   return (
     <AppProviders>
       <RouterComponent>
         <Routes>
-          {/* Public login route */}
-          <Route path="/login" element={<LoginRoute />} />
+          {/* Public login route only active in REMOTE_AUTHENTICATED mode */}
+          <Route
+            path="/login"
+            element={isLocalOwner ? <Navigate to="/today" replace /> : <LoginRoute />}
+          />
 
           {/* Protected routes wrapped in ProtectedRoute and AppLayout */}
           <Route path="/" element={<ProtectedRoute />}>

@@ -1,5 +1,7 @@
 export type AppEnvironment = 'development' | 'staging' | 'pilot' | 'production';
 
+export type AtlasRuntimeMode = 'DESKTOP_LOCAL_OWNER' | 'REMOTE_AUTHENTICATED';
+
 export interface AppRuntimeConfig {
   apiUrl: string;
   isTauri: boolean;
@@ -8,6 +10,29 @@ export interface AppRuntimeConfig {
   commitSha: string;
   buildType: 'debug' | 'release';
   buildDate: string;
+  runtimeMode: AtlasRuntimeMode;
+  dataBackendLabel: string;
+  isLocalBackend: boolean;
+}
+
+export function resolveRuntimeMode(
+  envMode?: string,
+  isTauri?: boolean,
+  isAndroid?: boolean
+): AtlasRuntimeMode {
+  if (envMode === 'DESKTOP_LOCAL_OWNER' || envMode === 'REMOTE_AUTHENTICATED') {
+    return envMode;
+  }
+  // Android is intended for remote authenticated operation
+  if (isAndroid) {
+    return 'REMOTE_AUTHENTICATED';
+  }
+  // Windows Desktop (Tauri) default is DESKTOP_LOCAL_OWNER
+  if (isTauri) {
+    return 'DESKTOP_LOCAL_OWNER';
+  }
+  // Default for non-Tauri browser harness unless explicitly set
+  return 'REMOTE_AUTHENTICATED';
 }
 
 export function getRuntimeConfig(): AppRuntimeConfig {
@@ -31,13 +56,32 @@ export function getRuntimeConfig(): AppRuntimeConfig {
     typeof window !== 'undefined' &&
     ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
 
+  const isAndroid =
+    typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
+
+  const rawRuntimeMode =
+    typeof import.meta !== 'undefined' &&
+    import.meta.env &&
+    import.meta.env.VITE_ATLAS_RUNTIME_MODE;
+
+  const runtimeMode: AtlasRuntimeMode = resolveRuntimeMode(
+    rawRuntimeMode,
+    isTauri,
+    isAndroid
+  );
+
+  const isLocalBackend = apiUrl.includes('localhost') || apiUrl.includes('127.0.0.1');
+  const dataBackendLabel = isLocalBackend
+    ? `Local API (${apiUrl})`
+    : `Remote Development API (${apiUrl})`;
+
   const commitSha =
     (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_ATLAS_COMMIT_SHA) ||
     '03dfe82';
 
   const buildDate =
     (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_ATLAS_BUILD_DATE) ||
-    '2026-11-05';
+    '2026-11-06';
 
   const buildType: 'debug' | 'release' = isDev ? 'debug' : 'release';
 
@@ -49,5 +93,8 @@ export function getRuntimeConfig(): AppRuntimeConfig {
     commitSha,
     buildType,
     buildDate,
+    runtimeMode,
+    dataBackendLabel,
+    isLocalBackend,
   };
 }

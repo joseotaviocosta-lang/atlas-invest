@@ -4,7 +4,7 @@ import { useAuth } from '../providers/AuthProvider';
 import { colors } from '@atlas/ui';
 
 export const ProtectedRoute: React.FC = () => {
-  const { isRestoring, isAuthenticated } = useAuth();
+  const { isRestoring, isAuthenticated, runtimeMode } = useAuth();
 
   if (isRestoring) {
     return (
@@ -39,6 +39,13 @@ export const ProtectedRoute: React.FC = () => {
     );
   }
 
+  // In DESKTOP_LOCAL_OWNER, the local owner profile is granted direct access.
+  // Never redirect to /login.
+  if (runtimeMode === 'DESKTOP_LOCAL_OWNER') {
+    return <Outlet />;
+  }
+
+  // In REMOTE_AUTHENTICATED, require active authenticated session
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }

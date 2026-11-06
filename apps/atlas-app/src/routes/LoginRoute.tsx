@@ -16,7 +16,12 @@ export const LoginRoute: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // If already authenticated, redirect to /today immediately
+  // In DESKTOP_LOCAL_OWNER, login route is not used; redirect directly to /today
+  if (config.runtimeMode === 'DESKTOP_LOCAL_OWNER') {
+    return <Navigate to="/today" replace />;
+  }
+
+  // If already authenticated in remote mode, redirect to /today immediately
   if (!isRestoring && isAuthenticated) {
     return <Navigate to="/today" replace />;
   }

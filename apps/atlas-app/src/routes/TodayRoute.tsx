@@ -7,15 +7,25 @@ import { PositionsTable } from '../features/portfolio/components/PositionsTable'
 import { ManualRefreshButton } from '../features/portfolio/components/ManualRefreshButton';
 import { MacroIndicatorsGrid } from '../features/market/components/MacroIndicatorsGrid';
 import { Card, EmptyState, Badge, Button, PullToRefresh, OfflineBanner } from '../components/ui';
-import { colors, formatDate } from '@atlas/ui';
+import { colors, formatDate, spacing } from '@atlas/ui';
 import { useAuth } from '../providers/AuthProvider';
 import { useAppLifecycle } from '../hooks/useAppLifecycle';
 import { LocalCache, LocalCacheKeys } from '../lib/local-cache';
+import { getRuntimeConfig } from '../config/runtime';
+import { exportDiagnostics } from '../lib/diagnostics';
 import type { PortfolioValuationData } from '../features/portfolio/types';
 
 export const TodayRoute: React.FC = () => {
   const { user } = useAuth();
-  const { selectedPortfolio, selectedPortfolioId, portfolios, isLoadingPortfolios } = usePortfolio();
+  const config = getRuntimeConfig();
+  const {
+    selectedPortfolio,
+    selectedPortfolioId,
+    portfolios,
+    isLoadingPortfolios,
+    isErrorPortfolios,
+    refetchPortfolios,
+  } = usePortfolio();
   const { isOnline, triggerManualSync } = useAppLifecycle();
   const { data: valuationRes, isLoading: isLoadingValuation, isStale: queryIsStale, refetch } =
     usePortfolioValuation(selectedPortfolioId);
@@ -60,6 +70,59 @@ export const TodayRoute: React.FC = () => {
       await triggerManualSync();
     }
   };
+
+  // PARTE T: Startup Failure when backend data service is unavailable
+  if (isErrorPortfolios && !effectiveValuation) {
+    return (
+      <div style={{ maxWidth: '1100px', margin: '0 auto' }} data-testid="startup-failure-view">
+        <Card>
+          <div style={{ textAlign: 'center', padding: `${spacing.xl}px ${spacing.md}px` }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '48px',
+                height: '48px',
+                borderRadius: '50%',
+                backgroundColor: `${colors.negative}15`,
+                color: colors.negative,
+                marginBottom: `${spacing.md}px`,
+                fontSize: '24px',
+              }}
+            >
+              ⚠
+            </div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: colors.textPrimary, margin: `0 0 ${spacing.xs}px 0` }}>
+              O Atlas não conseguiu iniciar o serviço de dados.
+            </h2>
+            <p style={{ margin: `0 auto ${spacing.md}px auto`, fontSize: '0.875rem', color: colors.textSecondary, maxWidth: '540px', lineHeight: 1.5 }}>
+              Não foi possível estabelecer comunicação com o serviço de dados ({config.dataBackendLabel}).
+              Verifique a conectividade com o backend ou tente novamente.
+            </p>
+            <div style={{ display: 'flex', gap: `${spacing.sm}px`, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <Button variant="primary" size="sm" onClick={() => refetchPortfolios()} data-testid="retry-backend-btn">
+                Tentar novamente
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={async () => {
+                  await exportDiagnostics({ isAuthenticated: true, hasActivePortfolio: false });
+                }}
+                data-testid="export-diagnostics-btn"
+              >
+                Exportar Diagnóstico
+              </Button>
+            </div>
+            <div style={{ marginTop: `${spacing.md}px`, fontSize: '0.75rem', color: colors.textSecondary }}>
+              Status do serviço: {isOnline ? 'Online (Falha de resposta da API)' : 'Dispositivo desconectado (Offline)'}
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   if (!isLoadingPortfolios && portfolios.length === 0) {
     if (!isOnline && !effectiveValuation) {

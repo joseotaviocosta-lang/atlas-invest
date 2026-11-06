@@ -18,6 +18,10 @@ export interface SanitizedDiagnosticPackage {
     commitSha: string;
     buildDate: string;
   };
+  runtime: {
+    mode: string;
+    dataBackend: string;
+  };
   device: {
     platform: 'Windows' | 'Android' | 'Browser';
     isTauri: boolean;
@@ -123,6 +127,10 @@ export function generateSanitizedDiagnostics(options?: {
       buildType: config.buildType,
       commitSha: config.commitSha,
       buildDate: config.buildDate,
+    },
+    runtime: {
+      mode: config.runtimeMode,
+      dataBackend: config.dataBackendLabel,
     },
     device: {
       platform,

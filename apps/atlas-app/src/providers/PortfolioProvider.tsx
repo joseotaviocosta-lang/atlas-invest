@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { usePortfolios } from '../features/portfolio/hooks';
 import type { PortfolioDto } from '../features/portfolio/types';
+import { getRuntimeConfig } from '../config/runtime';
+import { DEFAULT_LOCAL_OWNER_PORTFOLIO } from '../auth/local-owner';
+import { useAuth } from './AuthProvider';
 
 interface PortfolioContextValue {
   portfolios: PortfolioDto[];
@@ -17,11 +20,27 @@ const PortfolioContext = createContext<PortfolioContextValue | null>(null);
 const STORAGE_KEY = 'atlas.selected_portfolio_id';
 
 export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  let isLocalOwner = false;
+  try {
+    const auth = useAuth();
+    isLocalOwner = auth.runtimeMode === 'DESKTOP_LOCAL_OWNER';
+  } catch {
+    const config = getRuntimeConfig();
+    isLocalOwner = config.runtimeMode === 'DESKTOP_LOCAL_OWNER';
+  }
+
   const { data: rawPortfolios = [], isLoading, isError, refetch } = usePortfolios();
 
   const portfolios = useMemo(() => {
-    return Array.isArray(rawPortfolios) ? rawPortfolios : [];
-  }, [rawPortfolios]);
+    if (Array.isArray(rawPortfolios) && rawPortfolios.length > 0) {
+      return rawPortfolios;
+    }
+    // In local owner mode, provide deterministic local owner portfolio fallback
+    if (isLocalOwner) {
+      return [DEFAULT_LOCAL_OWNER_PORTFOLIO];
+    }
+    return [];
+  }, [rawPortfolios, isLocalOwner]);
 
   const [selectedId, setSelectedId] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
