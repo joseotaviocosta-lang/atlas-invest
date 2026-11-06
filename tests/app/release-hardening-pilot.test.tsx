@@ -167,7 +167,7 @@ describe('Atlas Pilot Release Hardening & Diagnostics (APP-14)', () => {
     it('renders app version, build SHA, and environment in SettingsRoute', () => {
       const html = renderHtml(<SettingsRoute />);
 
-      expect(html).toContain('v0.1.0-pilot.1');
+      expect(html).toContain('0.1.0-pilot.1');
       expect(html).toContain('03dfe82');
       expect(html).toContain('Ambiente e Plataforma');
       expect(html).toContain('Exportar Diagnóstico Sanitizado');

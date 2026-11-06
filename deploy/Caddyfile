@@ -1,14 +1,14 @@
 # ============================================================================
 # Project Atlas — Reverse Proxy (Caddyfile)
 # Architecture: ADR-290 (Linux VPS + Reverse Proxy)
-# Mode: STAGING_IP_ONLY_HTTP_TEMPORARY
 #
-# Temporary Staging: Plain HTTP on static IPv4 without ACME / TLS certificates.
-# Production (Future): Restore domain blocks when valid domain is provisioned.
+# Supported Modes:
+# 1. Controlled Hostname Mode (HTTPS with automated ACME/Let's Encrypt)
+#    Activated when PILOT_API_DOMAIN is defined (e.g. api.yourdomain.com)
+# 2. Temporary IP-Only Mode (HTTP only on static IPv4 without TLS)
 # ============================================================================
 {
-	email {$CADDY_EMAIL:admin@atlasinvest.com.br}
-	auto_https off
+	email {$CADDY_EMAIL:ops@localhost}
 }
 
 # Common security headers applied to all environments
@@ -43,7 +43,29 @@
 }
 
 # ----------------------------------------------------------------------------
-# Staging IP-Only HTTP Access (Temporary: STAGING_IP_ONLY_HTTP_TEMPORARY)
+# Controlled Hostname HTTPS API (Pilot / Production)
+# Activated when PILOT_API_DOMAIN is set (e.g. api.ownerdomain.com)
+# ----------------------------------------------------------------------------
+{$PILOT_API_DOMAIN} {
+	import https_security_headers
+	encode zstd gzip
+
+	@api_routes path /api/v1/* /docs* /health /ready
+	handle @api_routes {
+		request_body {
+			max_size 25MB
+		}
+		reverse_proxy api:3001
+	}
+
+	# Fallback response for unrouted requests
+	handle {
+		respond "Atlas API Gateway — Not Found" 404
+	}
+}
+
+# ----------------------------------------------------------------------------
+# Staging IP-Only HTTP Access (Temporary fallback)
 # ----------------------------------------------------------------------------
 http://{$STAGING_HOST:54.233.66.110} {
 	import common_security_headers
@@ -63,21 +85,3 @@ http://{$STAGING_HOST:54.233.66.110} {
 		reverse_proxy web:3000
 	}
 }
-
-# ============================================================================
-# Future Production Domain Architecture (Restore when official domain is owned)
-# ============================================================================
-# {$APP_DOMAIN:app.atlasinvest.com.br} {
-# 	import https_security_headers
-# 	encode zstd gzip
-# 	reverse_proxy web:3000
-# }
-#
-# {$API_DOMAIN:api.atlasinvest.com.br} {
-# 	import https_security_headers
-# 	encode zstd gzip
-# 	request_body {
-# 		max_size 25MB
-# 	}
-# 	reverse_proxy api:3001
-# }

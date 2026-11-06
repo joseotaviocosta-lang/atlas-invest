@@ -102,7 +102,7 @@ export const SettingsRoute: React.FC = () => {
           <div>
             <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Versão do App</div>
             <div style={{ fontWeight: 600, color: colors.textPrimary }}>
-              {`v${config.version}`}
+              v{config.version}
             </div>
           </div>
           <div>
