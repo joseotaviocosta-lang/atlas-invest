@@ -439,24 +439,11 @@ impl LocalRuntimeManager {
             "atlas-desktop-local-owner-reset-pepper-production-32chars",
         );
 
-        // Resolve BRAPI_API_KEY securely from credential store, secrets.json, or environment
-        let brapi_token = crate::storage::get_brapi_api_key().ok().flatten().or_else(|| {
-            if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
-                let secrets_file = PathBuf::from(localappdata).join("Atlas").join("secrets.json");
-                if secrets_file.exists() {
-                    if let Ok(content) = std::fs::read_to_string(secrets_file) {
-                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                            if let Some(key) = json.get("BRAPI_API_KEY").and_then(|v| v.as_str()) {
-                                if !key.trim().is_empty() {
-                                    return Some(key.trim().to_string());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            std::env::var("BRAPI_API_KEY").ok().filter(|k| !k.trim().is_empty())
-        });
+        // Resolve BRAPI_API_KEY securely from credential store (Windows Credential Manager) or environment
+        let brapi_token = crate::storage::get_brapi_api_key()
+            .ok()
+            .flatten()
+            .or_else(|| std::env::var("BRAPI_API_KEY").ok().filter(|k| !k.trim().is_empty()));
 
         if let Some(token) = brapi_token {
             cmd.env("BRAPI_API_KEY", token);

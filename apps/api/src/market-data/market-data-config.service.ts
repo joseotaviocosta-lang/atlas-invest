@@ -56,9 +56,12 @@ export class MarketDataConfigService {
         if (fs.existsSync(secretsFile)) {
           const raw = fs.readFileSync(secretsFile, 'utf8');
           const data = JSON.parse(raw);
-          if (data && typeof data.BRAPI_API_KEY === 'string' && data.BRAPI_API_KEY.trim().length > 0) {
+          if (data && data.configured === true) {
             source = 'LOCAL_SECRET_STORE';
-            hasToken = true;
+            // If in memory we also have token, authenticated = true
+            if (this.marketDataProvider instanceof BrapiProviderAdapter && this.marketDataProvider.hasToken()) {
+              hasToken = true;
+            }
           }
         }
       } catch {
@@ -110,13 +113,17 @@ export class MarketDataConfigService {
         }
       }
 
-      currentData.BRAPI_API_KEY = cleanToken;
+      // Store non-sensitive metadata only. Never store plaintext tokens on disk.
+      currentData.provider = 'BRAPI';
+      currentData.configured = true;
+      currentData.updatedAt = new Date().toISOString();
+      delete currentData.BRAPI_API_KEY; // purge any legacy plaintext key
       fs.writeFileSync(secretsFile, JSON.stringify(currentData, null, 2), {
         encoding: 'utf8',
         mode: 0o600,
       });
     } catch (err) {
-      this.logger.error('Failed to write local secret store', { error: String(err) });
+      this.logger.error('Failed to write local secret metadata', { error: String(err) });
     }
 
     // Update process.env and memory instances
@@ -144,8 +151,15 @@ export class MarketDataConfigService {
     const secretsFile = this.getSecretsFilePath();
     try {
       if (fs.existsSync(secretsFile)) {
-        const raw = fs.readFileSync(secretsFile, 'utf8');
-        const currentData = JSON.parse(raw);
+        let currentData: Record<string, unknown> = {};
+        try {
+          currentData = JSON.parse(fs.readFileSync(secretsFile, 'utf8'));
+        } catch {
+          currentData = {};
+        }
+        currentData.provider = 'BRAPI';
+        currentData.configured = false;
+        currentData.updatedAt = new Date().toISOString();
         delete currentData.BRAPI_API_KEY;
         fs.writeFileSync(secretsFile, JSON.stringify(currentData, null, 2), {
           encoding: 'utf8',

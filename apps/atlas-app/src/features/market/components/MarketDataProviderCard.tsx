@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { invoke } from '@tauri-apps/api/core';
 import { Card, Badge, Button } from '../../../components/ui';
 import { colors, spacing, borderRadius } from '@atlas/ui';
 import { apiClient } from '../../../lib/api';
+import { getRuntimeConfig } from '../../../config/runtime';
 
 export interface ProviderStatusDto {
   provider: string;
@@ -24,11 +26,20 @@ export const MarketDataProviderCard: React.FC = () => {
   });
 
   const saveMutation = useMutation({
-    mutationFn: (token: string) =>
-      apiClient.post<{ data: ProviderStatusDto }>('/api/v1/market/configure-token', { token }),
+    mutationFn: async (token: string) => {
+      const isTauri = getRuntimeConfig().isTauri;
+      if (isTauri) {
+        try {
+          await invoke('storage_set_brapi_api_key', { token });
+        } catch {
+          // Continue to API hot-update even if native keyring has warning
+        }
+      }
+      return apiClient.post<{ data: ProviderStatusDto }>('/api/v1/market/configure-token', { token });
+    },
     onSuccess: () => {
       setTokenInput('');
-      setFeedback({ message: 'Chave salva com sucesso no secret storage local.', type: 'positive' });
+      setFeedback({ message: 'Chave salva com sucesso no Windows Credential Manager.', type: 'positive' });
       queryClient.invalidateQueries({ queryKey: ['market-data-provider-status'] });
       setTimeout(() => setFeedback(null), 4000);
     },
@@ -40,7 +51,17 @@ export const MarketDataProviderCard: React.FC = () => {
   });
 
   const clearMutation = useMutation({
-    mutationFn: () => apiClient.delete<{ data: ProviderStatusDto }>('/api/v1/market/configure-token'),
+    mutationFn: async () => {
+      const isTauri = getRuntimeConfig().isTauri;
+      if (isTauri) {
+        try {
+          await invoke('storage_clear_brapi_api_key');
+        } catch {
+          // Continue to API hot-update
+        }
+      }
+      return apiClient.delete<{ data: ProviderStatusDto }>('/api/v1/market/configure-token');
+    },
     onSuccess: () => {
       setFeedback({ message: 'Chave removida. Provedor revertido ao modo público.', type: 'warning' });
       queryClient.invalidateQueries({ queryKey: ['market-data-provider-status'] });
@@ -69,8 +90,8 @@ export const MarketDataProviderCard: React.FC = () => {
   };
 
   const getSourceLabel = (src?: string) => {
-    if (src === 'ENVIRONMENT') return 'Variável de Ambiente';
-    if (src === 'LOCAL_SECRET_STORE') return 'Armazenamento Seguro Local (secrets.json)';
+    if (src === 'ENVIRONMENT') return 'Windows Credential Manager / Ambiente';
+    if (src === 'LOCAL_SECRET_STORE') return 'Armazenamento Seguro Local';
     return 'Não configurada (Modo público limitado)';
   };
 

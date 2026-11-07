@@ -83,7 +83,7 @@ describe('APP-16A: Market Data Completeness & Authenticated BRAPI Provider', () 
     ]);
 
     expect(res.quotes).toHaveLength(1);
-    expect(capturedUrl).toContain('token=test_brapi_secret_token_123');
+    expect(capturedUrl).not.toContain('token=');
     expect(capturedHeaders['Authorization']).toBe('Bearer test_brapi_secret_token_123');
   });
 
@@ -253,9 +253,9 @@ describe('APP-16A: Market Data Completeness & Authenticated BRAPI Provider', () 
 
   // 9. dynamic setToken updates live adapter instance
   it('9. dynamic setToken updates adapter state without requiring restart', async () => {
-    let capturedUrl = '';
-    const mockFetch: typeof fetch = async (input) => {
-      capturedUrl = String(input);
+    let capturedHeaders: Record<string, string> = {};
+    const mockFetch: typeof fetch = async (_input, init) => {
+      capturedHeaders = (init?.headers as Record<string, string>) || {};
       return new Response(
         JSON.stringify({
           results: [
@@ -280,7 +280,7 @@ describe('APP-16A: Market Data Completeness & Authenticated BRAPI Provider', () 
     await adapter.getQuotes([
       { assetId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', ticker: 'PETR4', exchange: 'B3', currency: 'BRL', assetType: 'STOCK' },
     ]);
-    expect(capturedUrl).toContain('token=newly_configured_key_456');
+    expect(capturedHeaders['Authorization']).toBe('Bearer newly_configured_key_456');
 
     adapter.setToken(undefined);
     expect(adapter.hasToken()).toBe(false);
@@ -297,8 +297,10 @@ describe('APP-16A: Market Data Completeness & Authenticated BRAPI Provider', () 
   // 11. Historical provider also supports dynamic token
   it('11. BrapiHistoricalMarketDataProvider supports dynamic token and authentication parameter', async () => {
     let capturedUrl = '';
-    const mockFetch: typeof fetch = async (input) => {
+    let capturedHeaders: Record<string, string> = {};
+    const mockFetch: typeof fetch = async (input, init) => {
       capturedUrl = String(input);
+      capturedHeaders = (init?.headers as Record<string, string>) || {};
       return new Response(
         JSON.stringify({
           results: [
@@ -322,7 +324,8 @@ describe('APP-16A: Market Data Completeness & Authenticated BRAPI Provider', () 
       LocalDate.from('2026-11-01'),
       LocalDate.from('2026-11-06'),
     );
-    expect(capturedUrl).toContain('token=initial_key');
+    expect(capturedUrl).not.toContain('token=');
+    expect(capturedHeaders['Authorization']).toBe('Bearer initial_key');
 
     histProvider.setToken('updated_key');
     await histProvider.getDailyPrices(
@@ -330,7 +333,8 @@ describe('APP-16A: Market Data Completeness & Authenticated BRAPI Provider', () 
       LocalDate.from('2026-11-01'),
       LocalDate.from('2026-11-06'),
     );
-    expect(capturedUrl).toContain('token=updated_key');
+    expect(capturedUrl).not.toContain('token=');
+    expect(capturedHeaders['Authorization']).toBe('Bearer updated_key');
   });
 
   // 12. secret redaction (token never leaked in errors, string representations, or logs)

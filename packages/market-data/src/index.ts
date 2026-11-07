@@ -1814,8 +1814,9 @@ export interface BrapiAdapterOptions {
 }
 
 /**
- * Resolves the BRAPI token across environment variables and the secure local
- * desktop secrets file (%LOCALAPPDATA%\Atlas\secrets.json).
+ * Resolves the BRAPI token across environment variables.
+ * On Windows Desktop, the Tauri parent process retrieves the token from
+ * Windows Credential Manager and injects it via BRAPI_API_KEY in memory.
  * Never leaks the token to logs or unauthenticated callers.
  */
 export function resolveBrapiToken(
@@ -1826,25 +1827,6 @@ export function resolveBrapiToken(
   }
   if (env.MARKET_DATA_API_TOKEN && env.MARKET_DATA_API_TOKEN.trim()) {
     return env.MARKET_DATA_API_TOKEN.trim();
-  }
-  try {
-    const localAppData =
-      env.LOCALAPPDATA ||
-      (env.USERPROFILE ? `${env.USERPROFILE}\\AppData\\Local` : undefined);
-    if (localAppData && typeof require !== 'undefined') {
-      const fs = require('fs');
-      const path = require('path');
-      const secretsPath = path.join(localAppData, 'Atlas', 'secrets.json');
-      if (fs.existsSync(secretsPath)) {
-        const raw = fs.readFileSync(secretsPath, 'utf8');
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed.BRAPI_API_KEY === 'string' && parsed.BRAPI_API_KEY.trim()) {
-          return parsed.BRAPI_API_KEY.trim();
-        }
-      }
-    }
-  } catch {
-    // Secret file is optional
   }
   return undefined;
 }
@@ -1906,9 +1888,6 @@ export class BrapiProviderAdapter implements MarketDataProvider {
         const symbol = symbolObj.providerSymbol;
 
         const url = new URL(`${this.baseUrl}/quote/${encodeURIComponent(symbol)}`);
-        if (this.token) {
-          url.searchParams.set('token', this.token);
-        }
 
         const headers: Record<string, string> = {
           'User-Agent': 'Atlas-Invest/0.1.0',
@@ -2135,9 +2114,6 @@ export class BrapiHistoricalMarketDataProvider implements HistoricalMarketDataPr
     const url = new URL(`${this.baseUrl}/quote/${encodeURIComponent(symbol)}`);
     url.searchParams.set('range', range);
     url.searchParams.set('interval', '1d');
-    if (this.token) {
-      url.searchParams.set('token', this.token);
-    }
 
     const headers: Record<string, string> = {
       'User-Agent': 'Atlas-Invest/0.1.0',
