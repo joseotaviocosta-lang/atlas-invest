@@ -24,7 +24,7 @@ import { MarketService } from './market.service';
 import { MarketDataConfigService } from '../../market-data/market-data-config.service';
 
 export class ConfigureMarketDataTokenDto {
-  @ApiProperty({ description: 'Chave de API do provedor de mercado (BRAPI)', example: 'abc123xyz' })
+  @ApiProperty({ type: String, description: 'Chave de API do provedor de mercado (BRAPI)', example: 'abc123xyz' })
   token!: string;
 }
 

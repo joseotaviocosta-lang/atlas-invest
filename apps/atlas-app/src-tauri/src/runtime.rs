@@ -115,6 +115,26 @@ pub struct LocalRuntimeManager {
     pub single_instance: Mutex<Option<SingleInstanceGuard>>,
 }
 
+fn sanitize_runtime_text(text: &str) -> String {
+    let mut out = String::new();
+    for line in text.lines() {
+        let mut sanitized_line = line.to_string();
+        if let Some(pos) = sanitized_line.find("postgresql://") {
+            if let Some(at_pos) = sanitized_line[pos..].find('@') {
+                let prefix = &sanitized_line[..pos];
+                let suffix = &sanitized_line[pos + at_pos..];
+                sanitized_line = format!("{}postgresql://atlas:***{}", prefix, suffix);
+            }
+        }
+        if sanitized_line.contains("Bearer ") {
+            sanitized_line = sanitized_line.replace("Bearer ", "Bearer *** ");
+        }
+        out.push_str(&sanitized_line);
+        out.push('\n');
+    }
+    out
+}
+
 fn chrono_now() -> String {
     // Simple ISO 8601 timestamp without external chrono dependency
     format!("{:?}", std::time::SystemTime::now())
@@ -449,6 +469,27 @@ impl LocalRuntimeManager {
             cmd.env("BRAPI_API_KEY", token);
         }
 
+        // Setup api.log for capturing stdout and stderr
+        let api_log_path = std::env::var("LOCALAPPDATA")
+            .map(|l| PathBuf::from(l).join("Atlas").join("api.log"))
+            .unwrap_or_else(|_| PathBuf::from("api.log"));
+
+        if let Some(parent) = api_log_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        if let Ok(log_file) = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&api_log_path)
+        {
+            if let Ok(err_file) = log_file.try_clone() {
+                cmd.stdout(std::process::Stdio::from(log_file));
+                cmd.stderr(std::process::Stdio::from(err_file));
+            }
+        }
+
         #[cfg(target_os = "windows")]
         cmd.creation_flags(CREATE_NO_WINDOW);
 
@@ -460,7 +501,7 @@ impl LocalRuntimeManager {
             *guard = Some(child);
         }
 
-        // Poll /ready until connected (up to 30s)
+        // Poll /ready until connected (up to 30s) with early exit detection
         self.update_status(
             "running",
             "starting",
@@ -471,6 +512,30 @@ impl LocalRuntimeManager {
         let start = Instant::now();
         while start.elapsed() < Duration::from_secs(30) {
             std::thread::sleep(Duration::from_millis(600));
+
+            // Early exit detection: check if child process has terminated
+            if let Ok(mut guard) = self.api_child.lock() {
+                if let Some(child) = guard.as_mut() {
+                    match child.try_wait() {
+                        Ok(Some(status)) => {
+                            let recent_stderr = Self::read_recent_api_log(&api_log_path);
+                            let exit_code = status.code().unwrap_or(-1);
+                            let err_msg = format!(
+                                "O serviço local encerrou prematuramente (código: {}).\nDiagnóstico: {}",
+                                exit_code,
+                                recent_stderr.trim()
+                            );
+                            self.log(&err_msg);
+                            return Err(err_msg);
+                        }
+                        Ok(None) => {} // Still running
+                        Err(e) => {
+                            self.log(&format!("Aviso: erro ao verificar processo da API: {}", e));
+                        }
+                    }
+                }
+            }
+
             match Self::check_api_ready(API_PORT) {
                 Ok(true) => {
                     self.log(&format!(
@@ -486,7 +551,22 @@ impl LocalRuntimeManager {
             }
         }
 
-        Err("Tempo esgotado aguardando a API local responder /ready com status: ok (30s)".to_string())
+        let timeout_details = Self::read_recent_api_log(&api_log_path);
+        Err(format!(
+            "Tempo esgotado aguardando a API local responder /ready com status: ok (30s). Detalhes: {}",
+            timeout_details.trim()
+        ))
+    }
+
+    fn read_recent_api_log(path: &Path) -> String {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            let lines: Vec<&str> = content.lines().collect();
+            let start = if lines.len() > 15 { lines.len() - 15 } else { 0 };
+            let tail = lines[start..].join("\n");
+            sanitize_runtime_text(&tail)
+        } else {
+            "Sem registros de log disponíveis".to_string()
+        }
     }
 
     pub fn start(&self, app_handle: &tauri::AppHandle) -> Result<RuntimeStatus, String> {
