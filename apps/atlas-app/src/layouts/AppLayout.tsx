@@ -44,7 +44,7 @@ export const AppLayout: React.FC = () => {
       case 'ai':
         return '✨';
       case 'settings':
-        return '👤';
+        return '⚙️';
       default:
         return '●';
     }
@@ -55,7 +55,7 @@ export const AppLayout: React.FC = () => {
       return 'Importações & Conciliação';
     }
     if (location.pathname === '/settings' || location.pathname.startsWith('/settings/')) {
-      return 'Perfil & Configurações';
+      return 'Configurações';
     }
     const currentItem = CANONICAL_NAV_ITEMS.find(
       (item) => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)
@@ -149,6 +149,7 @@ export const AppLayout: React.FC = () => {
             { id: 'market', path: '/market', label: 'Mercado' },
             { id: 'tax', path: '/tax', label: 'Fiscal' },
             { id: 'ai', path: '/ai', label: 'IA' },
+            { id: 'settings', path: '/settings', label: 'Configurações' },
           ].map((item) => {
             const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
             return (
@@ -156,6 +157,7 @@ export const AppLayout: React.FC = () => {
                 key={item.id}
                 to={item.path}
                 aria-current={isActive ? 'page' : undefined}
+                data-testid={`desktop-nav-${item.id}`}
                 style={{
                   display: 'flex',
                   alignItems: 'center',

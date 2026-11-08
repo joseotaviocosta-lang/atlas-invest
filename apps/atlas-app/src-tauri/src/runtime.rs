@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::Manager;
@@ -115,24 +115,50 @@ pub struct LocalRuntimeManager {
     pub single_instance: Mutex<Option<SingleInstanceGuard>>,
 }
 
-fn sanitize_runtime_text(text: &str) -> String {
-    let mut out = String::new();
-    for line in text.lines() {
-        let mut sanitized_line = line.to_string();
-        if let Some(pos) = sanitized_line.find("postgresql://") {
-            if let Some(at_pos) = sanitized_line[pos..].find('@') {
-                let prefix = &sanitized_line[..pos];
-                let suffix = &sanitized_line[pos + at_pos..];
-                sanitized_line = format!("{}postgresql://atlas:***{}", prefix, suffix);
-            }
-        }
-        if sanitized_line.contains("Bearer ") {
-            sanitized_line = sanitized_line.replace("Bearer ", "Bearer *** ");
-        }
-        out.push_str(&sanitized_line);
-        out.push('\n');
+fn redact_value(text: String, marker: &str) -> String {
+    let mut out = text;
+    while let Some(start) = out.find(marker) {
+        let value_start = start + marker.len();
+        let end = out[value_start..].find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | ',' | '&' | '}')).map(|offset| value_start + offset).unwrap_or(out.len());
+        out.replace_range(value_start..end, "[REDACTED]");
     }
     out
+}
+
+fn sanitize_runtime_text(text: &str) -> String {
+    let mut out = text.to_string();
+    while let Some(start) = out.find("postgresql://") {
+        let value_start = start + "postgresql://".len();
+        if let Some(at) = out[value_start..].find('@') {
+            let end = value_start + at;
+            out.replace_range(value_start..end, "[REDACTED]");
+        } else { break; }
+    }
+    for marker in ["Bearer ", "DATABASE_URL=", "BRAPI_API_KEY=", "MARKET_DATA_API_TOKEN=", "password=", "token=", "api_key="] {
+        out = redact_value(out, marker);
+    }
+    for marker in ["\"token\":\"", "\"password\":\"", "\"apiKey\":\""] {
+        out = redact_value(out, marker);
+    }
+    out
+}
+
+fn capture_sanitized_stream<R: Read + Send + 'static>(stream: R, path: PathBuf) {
+    std::thread::spawn(move || {
+        let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) else { return; };
+        let mut stream = stream;
+        let mut bytes = [0u8; 1024]; let mut line = Vec::new(); let mut truncated = false;
+        while let Ok(read) = stream.read(&mut bytes) {
+            if read == 0 { break; }
+            for byte in &bytes[..read] {
+                if *byte == b'\n' {
+                    let safe = if truncated { "[runtime output truncated]".to_string() } else { sanitize_runtime_text(&String::from_utf8_lossy(&line)) };
+                    let _ = writeln!(file, "{}", safe); line.clear(); truncated = false;
+                } else if line.len() < 16 * 1024 { line.push(*byte); } else { truncated = true; }
+            }
+        }
+        if !line.is_empty() || truncated { let _ = writeln!(file, "{}", if truncated { "[runtime output truncated]".to_string() } else { sanitize_runtime_text(&String::from_utf8_lossy(&line)) }); }
+    });
 }
 
 fn chrono_now() -> String {
@@ -484,18 +510,20 @@ impl LocalRuntimeManager {
             .truncate(true)
             .open(&api_log_path)
         {
-            if let Ok(err_file) = log_file.try_clone() {
-                cmd.stdout(std::process::Stdio::from(log_file));
-                cmd.stderr(std::process::Stdio::from(err_file));
-            }
+            drop(log_file);
         }
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
 
         #[cfg(target_os = "windows")]
         cmd.creation_flags(CREATE_NO_WINDOW);
 
-        let child = cmd
+        let mut child = cmd
             .spawn()
             .map_err(|e| format!("Falha ao iniciar processo da API local: {}", e))?;
+
+        if let Some(stdout) = child.stdout.take() { capture_sanitized_stream(stdout, api_log_path.clone()); }
+        if let Some(stderr) = child.stderr.take() { capture_sanitized_stream(stderr, api_log_path.clone()); }
 
         if let Ok(mut guard) = self.api_child.lock() {
             *guard = Some(child);
@@ -650,5 +678,29 @@ impl LocalRuntimeManager {
             },
             "recent_logs": logs,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_runtime_text;
+
+    #[test]
+    fn removes_known_synthetic_secrets_without_hiding_diagnostics() {
+        let secret = "synthetic-token-Alpha_123";
+        let input = format!("DATABASE_URL=postgresql://user:p%40ss@db/test Authorization: Bearer {} BRAPI_API_KEY={} connection refused", secret, secret);
+        let output = sanitize_runtime_text(&input);
+        assert!(!output.contains(secret));
+        assert!(!output.contains("p%40ss"));
+        assert!(output.contains("connection refused"));
+        assert!(output.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn removes_json_and_multiline_synthetic_secrets() {
+        let secret = "synthetic-json-secret";
+        let output = sanitize_runtime_text(&format!("{{\"token\":\"{}\"}}\nMARKET_DATA_API_TOKEN={}", secret, secret));
+        assert!(!output.contains(secret));
+        assert!(output.contains("[REDACTED]"));
     }
 }
