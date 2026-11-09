@@ -2702,7 +2702,7 @@ export class BrazilianOfficialCalendarProvider {
 // Macroeconomic Series Contracts & Providers
 // ============================================================================
 
-export type MacroSeriesId = 'IPCA' | 'SELIC_TARGET' | 'SELIC_EFFECTIVE' | 'PTAX';
+export type MacroSeriesId = 'IPCA' | 'SELIC_TARGET' | 'SELIC_EFFECTIVE' | 'PTAX' | 'IBOVESPA';
 
 export type MacroFrequency = 'MONTHLY' | 'EVENT_DRIVEN' | 'DAILY';
 
@@ -2789,10 +2789,15 @@ export interface MacroContextSummary {
     readonly status?: MacroStatus;
   };
   readonly ibovespa?: {
-    readonly value: string; // "—"
-    readonly status: 'OFFICIAL_SOURCE_UNAVAILABLE';
-    readonly message: string; // "Integração ainda não disponível"
-    readonly source?: string;
+    readonly value: string; // e.g. "168.498 pts" or "—"
+    readonly points?: string; // raw decimal points
+    readonly formattedValue?: string; // "168.498 pts"
+    readonly referenceDate?: string; // YYYY-MM-DD
+    readonly referenceDateFormatted?: string; // DD/MM/YYYY
+    readonly source: string;
+    readonly freshness?: MacroFreshness;
+    readonly status: MacroStatus;
+    readonly message?: string;
   };
 }
 
@@ -2817,7 +2822,8 @@ export function evaluateMacroFreshness(
       return daysDiff <= 60 ? 'FRESH' : 'STALE';
     }
     case 'SELIC_EFFECTIVE':
-    case 'PTAX': {
+    case 'PTAX':
+    case 'IBOVESPA': {
       // Daily business day series: up to 4 calendar days accommodates standard weekends and 3-day holiday weekends.
       return daysDiff <= 4 ? 'FRESH' : 'STALE';
     }
@@ -3010,5 +3016,211 @@ export class BcbMacroDataProvider implements IMacroDataProvider {
 
     const results = this.parseRows(seriesId, meta, json);
     return results.filter((obs) => obs.referenceDate.compare(from) >= 0 && obs.referenceDate.compare(to) <= 0);
+  }
+}
+
+/**
+ * BRAPI Macro Benchmark Provider.
+ * Fetches Ibovespa index benchmark (^BVSP) with index points, closing levels, and dates.
+ * Uses authenticated BRAPI token when available.
+ */
+export class BrapiMacroBenchmarkProvider implements IMacroDataProvider {
+  private readonly timeoutMs: number;
+  private readonly fetchFn: typeof fetch;
+  private token?: string;
+
+  constructor(options: { token?: string; timeoutMs?: number; fetchFn?: typeof fetch } = {}) {
+    this.token = options.token;
+    this.timeoutMs = options.timeoutMs ?? 15000;
+    this.fetchFn = options.fetchFn ?? globalThis.fetch;
+  }
+
+  setToken(token?: string): void {
+    this.token = token;
+  }
+
+  hasToken(): boolean {
+    return Boolean(this.token && this.token.trim().length > 0);
+  }
+
+  private async fetchWithRetry(url: string, retries = 2): Promise<Response> {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+      try {
+        const headers: Record<string, string> = {
+          'User-Agent': 'Atlas-MarketData/1.0',
+          'Accept': 'application/json',
+        };
+        if (this.token && this.token.trim().length > 0) {
+          headers['Authorization'] = `Bearer ${this.token.trim()}`;
+        }
+
+        const response = await this.fetchFn(url, {
+          signal: controller.signal,
+          headers,
+        });
+        clearTimeout(timer);
+        if (response.ok) return response;
+        if (response.status === 429 || response.status >= 500) {
+          if (attempt < retries) {
+            await new Promise((r) => setTimeout(r, 400 * Math.pow(2, attempt)));
+            continue;
+          }
+        }
+        throw new Error(`BRAPI benchmark provider error: HTTP ${response.status}`);
+      } catch (err) {
+        clearTimeout(timer);
+        lastErr = err;
+        if (attempt < retries) {
+          await new Promise((r) => setTimeout(r, 400 * Math.pow(2, attempt)));
+          continue;
+        }
+      }
+    }
+    throw new Error(
+      `BRAPI benchmark provider unavailable: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
+    );
+  }
+
+  private async fetchIbovespaData(count: number): Promise<MacroObservation[]> {
+    const url = 'https://brapi.dev/api/quote/%5EBVSP?range=1mo&interval=1d';
+    const response = await this.fetchWithRetry(url);
+
+    let json: {
+      results?: Array<{
+        symbol?: string;
+        shortName?: string;
+        regularMarketPrice?: number | string;
+        regularMarketTime?: string;
+        historicalDataPrice?: Array<{
+          date?: number;
+          close?: number | string;
+          adjustedClose?: number | string;
+        }>;
+      }>;
+    };
+
+    try {
+      json = (await response.json()) as never;
+    } catch {
+      throw new Error('BRAPI benchmark invalid JSON response');
+    }
+
+    const result = json?.results?.[0];
+    if (!result || result.regularMarketPrice == null) {
+      return [];
+    }
+
+    const obsMap = new Map<string, MacroObservation>();
+
+    // 1. Process historical daily rows if available
+    if (Array.isArray(result.historicalDataPrice)) {
+      for (const item of result.historicalDataPrice) {
+        if (!item.date || (item.close == null && item.adjustedClose == null)) continue;
+        const d = new Date(item.date * 1000);
+        let refDate: LocalDate;
+        try {
+          refDate = LocalDate.fromParts(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+        } catch {
+          continue;
+        }
+
+        const closeVal = String(item.close ?? item.adjustedClose).trim();
+        if (!/^-?\d+(\.\d+)?$/.test(closeVal)) continue;
+
+        try {
+          const valDecimal = Quantity.from(closeVal);
+          obsMap.set(
+            refDate.toString(),
+            Object.freeze({
+              seriesId: 'IBOVESPA',
+              referenceDate: refDate,
+              value: valDecimal,
+              unit: 'INDEX_POINTS',
+              frequency: 'DAILY',
+              source: 'BRAPI',
+              publishedAt: d,
+            }),
+          );
+        } catch {
+          // Skip invalid decimal
+        }
+      }
+    }
+
+    // 2. Process latest quote from regularMarketPrice and regularMarketTime
+    if (result.regularMarketTime && result.regularMarketPrice != null) {
+      const pubDate = new Date(result.regularMarketTime);
+      try {
+        const refDate = LocalDate.fromParts(
+          pubDate.getUTCFullYear(),
+          pubDate.getUTCMonth() + 1,
+          pubDate.getUTCDate(),
+        );
+        const priceStr = String(result.regularMarketPrice).trim();
+        if (/^-?\d+(\.\d+)?$/.test(priceStr)) {
+          const valDecimal = Quantity.from(priceStr);
+          obsMap.set(
+            refDate.toString(),
+            Object.freeze({
+              seriesId: 'IBOVESPA',
+              referenceDate: refDate,
+              value: valDecimal,
+              unit: 'INDEX_POINTS',
+              frequency: 'DAILY',
+              source: 'BRAPI',
+              publishedAt: pubDate,
+            }),
+          );
+        }
+      } catch {
+        // Skip invalid date or decimal
+      }
+    }
+
+    const observations = Array.from(obsMap.values()).sort((a, b) =>
+      a.referenceDate.compare(b.referenceDate),
+    );
+
+    return count > 0 ? observations.slice(-count) : observations;
+  }
+
+  async getObservation(seriesId: MacroSeriesId, date: LocalDate): Promise<MacroObservation> {
+    if (seriesId !== 'IBOVESPA') {
+      throw new Error(`BrapiMacroBenchmarkProvider only supports IBOVESPA series, got ${seriesId}`);
+    }
+    const list = await this.getObservations(seriesId, date, date);
+    const found = list.find((obs) => obs.referenceDate.toString() === date.toString());
+    if (!found) {
+      throw new Error(`Macro benchmark observation not found for ${seriesId} on ${date.toString()}`);
+    }
+    return found;
+  }
+
+  async getLatestObservations(
+    seriesId: MacroSeriesId,
+    count: number = 10,
+  ): Promise<MacroObservation[]> {
+    if (seriesId !== 'IBOVESPA') {
+      throw new Error(`BrapiMacroBenchmarkProvider only supports IBOVESPA series, got ${seriesId}`);
+    }
+    return this.fetchIbovespaData(count);
+  }
+
+  async getObservations(
+    seriesId: MacroSeriesId,
+    from: LocalDate,
+    to: LocalDate,
+  ): Promise<MacroObservation[]> {
+    if (seriesId !== 'IBOVESPA') {
+      throw new Error(`BrapiMacroBenchmarkProvider only supports IBOVESPA series, got ${seriesId}`);
+    }
+    if (from.compare(to) > 0) throw new Error('Invalid range: from cannot be after to');
+    const all = await this.fetchIbovespaData(60);
+    return all.filter(
+      (obs) => obs.referenceDate.compare(from) >= 0 && obs.referenceDate.compare(to) <= 0,
+    );
   }
 }

@@ -80,8 +80,14 @@ export const MacroIndicatorsGrid: React.FC = () => {
     {
       id: 'IBOVESPA',
       label: 'IBOVESPA',
-      value: ibovespa?.value || '—',
-      subValue: ibovespa?.message || 'Integração ainda não disponível',
+      value:
+        ibovespa?.status === 'AVAILABLE'
+          ? ibovespa.formattedValue || ibovespa.value
+          : ibovespa?.value || '—',
+      subValue:
+        ibovespa?.status === 'AVAILABLE'
+          ? `Fechamento ${ibovespa.referenceDateFormatted || ibovespa.referenceDate} • ${ibovespa.source || 'BRAPI'}`
+          : ibovespa?.message || 'Integração ainda não disponível',
       isPlaceholder: isLoading,
     },
     {

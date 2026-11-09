@@ -32,9 +32,14 @@ export interface MacroPtaxSeries {
 
 export interface MacroIbovespaSeries {
   value: string;
-  status: 'OFFICIAL_SOURCE_UNAVAILABLE';
-  message: string;
+  points?: string;
+  formattedValue?: string;
+  referenceDate?: string;
+  referenceDateFormatted?: string;
   source?: string;
+  freshness?: 'FRESH' | 'STALE';
+  status: 'AVAILABLE' | 'OFFICIAL_SOURCE_UNAVAILABLE' | 'NO_DATA' | 'ERROR';
+  message?: string;
 }
 
 export interface MacroContextResponse {

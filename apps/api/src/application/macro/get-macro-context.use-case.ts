@@ -29,12 +29,43 @@ export class GetMacroContextUseCase {
   ) {}
 
   async execute(): Promise<MacroContextSummary> {
-    const [ipca, selicTarget, selicEffective, ptax] = await Promise.all([
+    const [ipca, selicTarget, selicEffective, ptax, ibovespa] = await Promise.all([
       this.macroRepository.findLatest('IPCA'),
       this.macroRepository.findLatest('SELIC_TARGET'),
       this.macroRepository.findLatest('SELIC_EFFECTIVE'),
       this.macroRepository.findLatest('PTAX'),
+      this.macroRepository.findLatest('IBOVESPA'),
     ]);
+
+    let formattedIbovespa: MacroContextSummary['ibovespa'];
+    if (ibovespa) {
+      let formattedPoints = '—';
+      try {
+        const pointsNum = Math.round(Number(ibovespa.value));
+        formattedPoints = `${pointsNum.toLocaleString('pt-BR')} pts`;
+      } catch {
+        formattedPoints = `${ibovespa.value} pts`;
+      }
+
+      formattedIbovespa = {
+        value: formattedPoints,
+        formattedValue: formattedPoints,
+        points: ibovespa.value,
+        referenceDate: ibovespa.referenceDate.toString(),
+        referenceDateFormatted: formatDateBr(ibovespa.referenceDate),
+        source: ibovespa.source || 'BRAPI',
+        freshness: evaluateMacroFreshness('IBOVESPA', ibovespa.referenceDate),
+        status: 'AVAILABLE',
+        message: `Fechamento ${formatDateBr(ibovespa.referenceDate)} • ${ibovespa.source || 'BRAPI'}`,
+      };
+    } else {
+      formattedIbovespa = {
+        value: '—',
+        status: 'OFFICIAL_SOURCE_UNAVAILABLE',
+        message: 'Integração ainda não disponível',
+        source: 'B3 (Oficial)',
+      };
+    }
 
     return {
       ipcaMonthly: ipca
@@ -87,12 +118,7 @@ export class GetMacroContextUseCase {
           }
         : undefined,
 
-      ibovespa: {
-        value: '—',
-        status: 'OFFICIAL_SOURCE_UNAVAILABLE',
-        message: 'Integração ainda não disponível',
-        source: 'B3 (Oficial)',
-      },
+      ibovespa: formattedIbovespa,
     };
   }
 }

@@ -206,14 +206,14 @@ describe('PROJECT ATLAS — APP-16B: Macro Data Completeness (Backend & Provider
       expect(receipt1.overallStatus).toBe('SUCCESS');
       expect(receipt1.indicators.PTAX?.inserted).toBe(1);
       expect(receipt1.indicators.SELIC_EFFECTIVE?.inserted).toBe(1);
-      expect(repo.store.size).toBe(4);
+      expect(repo.store.size).toBe(5);
 
       // Run 2: duplicate sync must be UNCHANGED (idempotent, no duplicates)
       const receipt2 = await syncUseCase.execute(mockProvider);
       expect(receipt2.overallStatus).toBe('SUCCESS');
       expect(receipt2.indicators.PTAX?.inserted).toBe(0);
       expect(receipt2.indicators.PTAX?.unchanged).toBe(1);
-      expect(repo.store.size).toBe(4); // size did not grow!
+      expect(repo.store.size).toBe(5); // size did not grow!
     });
 
     it('tolerates partial provider failure without aborting remaining indicators', async () => {

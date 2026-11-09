@@ -178,4 +178,35 @@ describe('PROJECT ATLAS — APP-16B: Macro Indicators Completeness (UI & Present
     expect(html).toContain('13,75% a.a.');
     expect(html).toContain('R$ 5,4212');
   });
+
+  it('renders IBOVESPA with formatted index points, reference date, and BRAPI source when available', () => {
+    queryClient.setQueryData(marketKeys.macroContext(), {
+      data: {
+        ibovespa: {
+          value: '168.498 pts',
+          formattedValue: '168.498 pts',
+          points: '168498.45',
+          referenceDate: '2026-11-09',
+          referenceDateFormatted: '09/11/2026',
+          source: 'BRAPI',
+          freshness: 'FRESH',
+          status: 'AVAILABLE',
+          message: 'Fechamento 09/11/2026 • BRAPI',
+        },
+      },
+    });
+
+    const html = renderToString(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MacroIndicatorsGrid />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain('IBOVESPA');
+    expect(html).toContain('168.498 pts');
+    expect(html).toContain('Fechamento 09/11/2026 • BRAPI');
+    expect(html).not.toContain('Integração ainda não disponível');
+  });
 });

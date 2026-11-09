@@ -2,6 +2,7 @@ import { Injectable, Inject, Logger } from '@nestjs/common';
 import {
   MacroSeriesId,
   BcbMacroDataProvider,
+  BrapiMacroBenchmarkProvider,
   IMacroDataProvider,
 } from '@atlas/market-data';
 import { IMacroRepository } from '@atlas/database';
@@ -33,21 +34,26 @@ export class SyncMacroDataUseCase {
   ) {}
 
   async execute(providerOverride?: IMacroDataProvider): Promise<SyncMacroDataReceipt> {
-    const provider: IMacroDataProvider =
-      providerOverride ?? new BcbMacroDataProvider({ timeoutMs: 15000 });
+    const defaultBcbProvider = new BcbMacroDataProvider({ timeoutMs: 15000 });
+    const defaultBrapiProvider = new BrapiMacroBenchmarkProvider({
+      token: process.env.BRAPI_API_KEY || process.env.MARKET_DATA_API_TOKEN,
+      timeoutMs: 15000,
+    });
 
-    const seriesToSync: MacroSeriesId[] = [
-      'SELIC_TARGET',
-      'SELIC_EFFECTIVE',
-      'IPCA',
-      'PTAX',
+    const seriesConfig: Array<{ seriesId: MacroSeriesId; provider: IMacroDataProvider }> = [
+      { seriesId: 'SELIC_TARGET', provider: providerOverride ?? defaultBcbProvider },
+      { seriesId: 'SELIC_EFFECTIVE', provider: providerOverride ?? defaultBcbProvider },
+      { seriesId: 'IPCA', provider: providerOverride ?? defaultBcbProvider },
+      { seriesId: 'PTAX', provider: providerOverride ?? defaultBcbProvider },
+      { seriesId: 'IBOVESPA', provider: providerOverride ?? defaultBrapiProvider },
     ];
 
     const results: Record<string, MacroIndicatorSyncResult> = {};
     let successCount = 0;
     let failureCount = 0;
 
-    for (const seriesId of seriesToSync) {
+    for (const item of seriesConfig) {
+      const { seriesId, provider } = item;
       const startTime = Date.now();
       try {
         let observations;
