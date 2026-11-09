@@ -25,6 +25,18 @@ export const ReviewInboxSection: React.FC<ReviewInboxSectionProps> = ({
   onSelectSeverity,
 }) => {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [categoryTab, setCategoryTab] = useState<'ACTIONABLE' | 'INFORMATIVE' | 'HISTORICAL' | 'ALL'>('ACTIONABLE');
+
+  const actionableCount = reviews.filter((r) => r.isActionable !== false && r.isHistorical !== true).length;
+  const informativeCount = reviews.filter((r) => r.isInformative === true).length;
+  const historicalCount = reviews.filter((r) => r.isHistorical === true).length;
+
+  const categoryTabs = [
+    { id: 'ACTIONABLE' as const, label: 'Ação Necessária', count: actionableCount, badgeVariant: 'warning' as const },
+    { id: 'INFORMATIVE' as const, label: 'Informativo', count: informativeCount, badgeVariant: 'neutral' as const },
+    { id: 'HISTORICAL' as const, label: 'Histórico', count: historicalCount, badgeVariant: 'neutral' as const },
+    { id: 'ALL' as const, label: 'Todas', count: reviews.length, badgeVariant: 'neutral' as const },
+  ];
 
   const filterOptions = [
     { value: 'ALL', label: 'Todas as Gravidades' },
@@ -33,9 +45,69 @@ export const ReviewInboxSection: React.FC<ReviewInboxSectionProps> = ({
     { value: 'ERROR', label: 'Erro' },
   ];
 
+  const categoryFiltered = reviews.filter((item) => {
+    if (categoryTab === 'ACTIONABLE') {
+      return item.isActionable !== false && item.isHistorical !== true;
+    }
+    if (categoryTab === 'INFORMATIVE') {
+      return item.isInformative === true;
+    }
+    if (categoryTab === 'HISTORICAL') {
+      return item.isHistorical === true;
+    }
+    return true;
+  });
+
+  const displayedReviews = categoryFiltered.filter((item) => {
+    if (selectedSeverity === 'ALL') return true;
+    return item.severity === selectedSeverity;
+  });
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.lg}px` }}>
-      {/* Filter Tabs */}
+      {/* Category Tabs: Actionable vs Informative vs Historical vs All */}
+      <div
+        style={{
+          display: 'flex',
+          gap: `${spacing.sm}px`,
+          borderBottom: `1px solid ${colors.border}`,
+          paddingBottom: `${spacing.xs}px`,
+        }}
+      >
+        {categoryTabs.map((tab) => {
+          const isActive = categoryTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setCategoryTab(tab.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '0.5rem 1rem',
+                border: 'none',
+                borderBottom: isActive ? `2px solid ${colors.accent}` : '2px solid transparent',
+                backgroundColor: 'transparent',
+                color: isActive ? colors.accent : colors.textSecondary,
+                fontWeight: isActive ? 600 : 500,
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {tab.label}
+              {tab.count > 0 && (
+                <Badge variant={isActive ? tab.badgeVariant : 'neutral'} style={{ fontSize: '0.6875rem' }}>
+                  {tab.count}
+                </Badge>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Severity Filter Tabs */}
       <div style={{ display: 'flex', gap: `${spacing.sm}px`, flexWrap: 'wrap' }}>
         {filterOptions.map((opt) => {
           const isActive = selectedSeverity === opt.value;
@@ -68,16 +140,28 @@ export const ReviewInboxSection: React.FC<ReviewInboxSectionProps> = ({
           <Skeleton width="100%" height="56px" style={{ marginBottom: `${spacing.md}px` }} />
           <Skeleton width="100%" height="56px" />
         </Card>
-      ) : reviews.length === 0 ? (
+      ) : displayedReviews.length === 0 ? (
         <Card>
           <EmptyState
-            title="Nenhuma pendência de conciliação"
-            description="Não existem execuções aguardando revisão ou pendências de conciliação no momento."
+            title={
+              categoryTab === 'ACTIONABLE'
+                ? 'Nenhuma ação necessária no momento'
+                : categoryTab === 'INFORMATIVE'
+                ? 'Nenhum aviso informativo'
+                : categoryTab === 'HISTORICAL'
+                ? 'Nenhum histórico arquivado'
+                : 'Nenhuma pendência encontrada'
+            }
+            description={
+              categoryTab === 'ACTIONABLE'
+                ? 'Todas as conciliações e integrações estão em dia. Execuções antigas ou já substituídas foram arquivadas.'
+                : 'Não existem registros correspondentes ao filtro selecionado.'
+            }
           />
         </Card>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.md}px` }}>
-          {reviews.map((item) => {
+          {displayedReviews.map((item) => {
             const sourceDesc = describeImportRunSource(item.source, null);
             const severityVariant =
               item.severity === 'ERROR'

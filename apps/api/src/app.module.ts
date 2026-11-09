@@ -24,6 +24,7 @@ import { WatchlistModule } from './modules/watchlist/watchlist.module';
 import { MarketModule } from './modules/market/market.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PrivacyModule } from './modules/privacy/privacy.module';
+import { BackupModule } from './modules/backup/backup.module';
 import {
   RequestIdMiddleware,
   UnifiedAnnualNoStoreMiddleware,
@@ -61,6 +62,7 @@ import {
     MarketModule,
     NotificationsModule,
     PrivacyModule,
+    BackupModule,
   ],
 
   providers: [

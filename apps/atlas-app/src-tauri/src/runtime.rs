@@ -495,13 +495,23 @@ impl LocalRuntimeManager {
             cmd.env("BRAPI_API_KEY", token);
         }
 
-        // Setup api.log for capturing stdout and stderr
+        // Setup api.log for capturing stdout and stderr with rotation
         let api_log_path = std::env::var("LOCALAPPDATA")
             .map(|l| PathBuf::from(l).join("Atlas").join("api.log"))
             .unwrap_or_else(|_| PathBuf::from("api.log"));
 
         if let Some(parent) = api_log_path.parent() {
             let _ = std::fs::create_dir_all(parent);
+        }
+
+        if api_log_path.exists() {
+            if let Ok(meta) = std::fs::metadata(&api_log_path) {
+                // Rotate if log exceeds 2MB
+                if meta.len() > 2 * 1024 * 1024 {
+                    let old_log = api_log_path.with_extension("log.old");
+                    let _ = std::fs::rename(&api_log_path, old_log);
+                }
+            }
         }
 
         if let Ok(log_file) = std::fs::OpenOptions::new()

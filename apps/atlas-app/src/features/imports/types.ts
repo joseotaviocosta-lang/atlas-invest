@@ -220,6 +220,10 @@ export interface ReviewItem {
   status: string;
   severity: ReviewSeverity;
   reasonCodes: string[];
+  category?: 'ACTIONABLE' | 'INFORMATIVE' | 'HISTORICAL' | 'RESOLVED';
+  isActionable?: boolean;
+  isHistorical?: boolean;
+  isInformative?: boolean;
   pairReview: { status: string; totalPairs: number; decidedPairs: number };
   metrics: ReviewMetrics;
   createdAt: string;

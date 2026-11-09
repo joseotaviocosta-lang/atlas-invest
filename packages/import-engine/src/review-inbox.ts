@@ -35,6 +35,8 @@ export type ReviewReasonCode = (typeof REVIEW_REASON_CODES)[number];
 export const REVIEW_SEVERITIES = ['REVIEW', 'WARNING', 'ERROR'] as const;
 export type ReviewSeverity = (typeof REVIEW_SEVERITIES)[number];
 
+export type ReviewCategory = 'ACTIONABLE' | 'INFORMATIVE' | 'HISTORICAL' | 'RESOLVED';
+
 const SEVERITY_RANK: Record<ReviewSeverity, number> = {
   REVIEW: 1,
   WARNING: 2,
@@ -87,6 +89,10 @@ export interface IntegrationReviewItem {
     partial: boolean;
   };
   createdAt: string;
+  category?: ReviewCategory;
+  isActionable?: boolean;
+  isHistorical?: boolean;
+  isInformative?: boolean;
 }
 
 function reasonsForAwaitingReview(run: ReviewRunInput): ReviewReasonCode[] {
@@ -107,6 +113,12 @@ function toItem(
   run: ReviewRunInput,
   severity: ReviewSeverity,
   reasons: ReviewReasonCode[],
+  meta?: {
+    category?: ReviewCategory;
+    isActionable?: boolean;
+    isHistorical?: boolean;
+    isInformative?: boolean;
+  },
 ): IntegrationReviewItem {
   return {
     id: run.id,
@@ -130,6 +142,10 @@ function toItem(
       partial: run.partial,
     },
     createdAt: run.createdAt,
+    category: meta?.category ?? 'ACTIONABLE',
+    isActionable: meta?.isActionable ?? true,
+    isHistorical: meta?.isHistorical ?? false,
+    isInformative: meta?.isInformative ?? false,
   };
 }
 
@@ -152,6 +168,11 @@ export function deriveReviewItems(runs: readonly ReviewRunInput[]): IntegrationR
 
   const items: IntegrationReviewItem[] = [];
   for (const run of runs) {
+    const key = `${run.portfolioId}:${run.source}`;
+    const newerExecution = (byIntegration.get(key) ?? []).some(
+      (other) => other.id !== run.id && other.createdAt > run.createdAt,
+    );
+
     if (run.status === 'AWAITING_REVIEW') {
       const reasons = reasonsForAwaitingReview(run);
       if (reasons.length === 0) continue;
@@ -168,16 +189,42 @@ export function deriveReviewItems(runs: readonly ReviewRunInput[]): IntegrationR
         reconciliationIssue
           ? 'WARNING'
           : 'REVIEW';
-      items.push(toItem(run, severity, reasons));
+
+      const isHistorical = newerExecution;
+      const isInformative =
+        !isHistorical &&
+        run.newCandidates === 0 &&
+        run.conflicts === 0 &&
+        run.probableDuplicates === 0 &&
+        !reconciliationIssue;
+      const isActionable = !isHistorical && !isInformative;
+
+      const category: ReviewCategory = isHistorical
+        ? 'HISTORICAL'
+        : isInformative
+          ? 'INFORMATIVE'
+          : 'ACTIONABLE';
+
+      items.push(
+        toItem(run, severity, reasons, {
+          category,
+          isActionable,
+          isHistorical,
+          isInformative,
+        }),
+      );
       continue;
     }
     if (run.status === 'FAILED') {
-      const key = `${run.portfolioId}:${run.source}`;
-      const newerExecution = (byIntegration.get(key) ?? []).some(
-        (other) => other.id !== run.id && other.createdAt > run.createdAt,
-      );
       if (newerExecution) continue;
-      items.push(toItem(run, 'ERROR', ['SYNC_FAILED']));
+      items.push(
+        toItem(run, 'ERROR', ['SYNC_FAILED'], {
+          category: 'ACTIONABLE',
+          isActionable: true,
+          isHistorical: false,
+          isInformative: false,
+        }),
+      );
     }
   }
 

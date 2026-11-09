@@ -31,7 +31,7 @@ export interface ListReviewsInput {
   severity?: ReviewSeverity | null;
   portfolioId?: string | null;
   source?: string | null;
-  state?: 'PENDING' | 'RESOLVED' | 'ALL' | null;
+  state?: 'PENDING' | 'RESOLVED' | 'ACTIONABLE' | 'INFORMATIVE' | 'HISTORICAL' | 'ALL' | null;
 }
 
 export interface ReviewedReviewItem extends IntegrationReviewItem {
@@ -199,7 +199,13 @@ export class IntegrationReviewService {
         ? reviewed
         : input.state === 'RESOLVED'
           ? reviewed.filter((item) => item.pairReview.status === 'RESOLVED')
-          : reviewed.filter((item) => item.pairReview.status !== 'RESOLVED');
+          : input.state === 'ACTIONABLE'
+            ? reviewed.filter((item) => item.isActionable && item.pairReview.status !== 'RESOLVED')
+            : input.state === 'INFORMATIVE'
+              ? reviewed.filter((item) => item.isInformative)
+              : input.state === 'HISTORICAL'
+                ? reviewed.filter((item) => item.isHistorical)
+                : reviewed.filter((item) => item.pairReview.status !== 'RESOLVED');
 
     let pendingPairs = 0;
     let resolvedPairs = 0;
@@ -380,7 +386,8 @@ export class IntegrationReviewService {
     const { ids } = await this.ownedPortfolios(userId);
     const rows = await this.runs.listRecentByPortfolioIds(ids, 200);
     const items = deriveReviewItems(rows.map((row) => this.toDerivationInput(row)));
-    return { pendingCount: items.length, truncated: rows.length >= 200 };
+    const actionable = items.filter((item) => item.isActionable);
+    return { pendingCount: actionable.length, truncated: rows.length >= 200 };
   }
 }
 

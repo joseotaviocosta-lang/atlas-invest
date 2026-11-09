@@ -5,6 +5,7 @@ import { usePortfolioValuation } from '../features/portfolio/hooks';
 import { PortfolioSummaryCards } from '../features/portfolio/components/PortfolioSummaryCards';
 import { PositionsTable } from '../features/portfolio/components/PositionsTable';
 import { DocumentaryExceptionsBanner } from '../features/portfolio/components/DocumentaryExceptionsBanner';
+import { OperationalHealthSummary } from '../features/portfolio/components/OperationalHealthSummary';
 import { ManualRefreshButton } from '../features/portfolio/components/ManualRefreshButton';
 import { MacroIndicatorsGrid } from '../features/market/components/MacroIndicatorsGrid';
 import { Card, EmptyState, Badge, Button, PullToRefresh, OfflineBanner } from '../components/ui';
@@ -225,6 +226,9 @@ export const TodayRoute: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Discrete Operational Health Pill (APP-16D) */}
+        <OperationalHealthSummary valuation={effectiveValuation} />
 
         {/* Summary KPI Cards */}
         <PortfolioSummaryCards valuation={effectiveValuation} isLoading={isLoadingValuation && !effectiveValuation} />

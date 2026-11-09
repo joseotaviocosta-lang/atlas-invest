@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { colors, spacing } from '@atlas/ui';
+import { colors, spacing, borderRadius } from '@atlas/ui';
 import { useAuth } from '../providers/AuthProvider';
 import { usePortfolio } from '../providers/PortfolioProvider';
 import { Card, Avatar, Badge, Button } from '../components/ui';
@@ -8,12 +8,16 @@ import { getRuntimeConfig } from '../config/runtime';
 import { NotificationSettingsSection } from '../features/notifications';
 import { exportDiagnostics } from '../lib/diagnostics';
 import { MarketDataProviderCard } from '../features/market/components/MarketDataProviderCard';
+import { LocalBackupCard, RestoreReadinessCard } from '../features/backup';
+
+export type SettingsTab = 'ALL' | 'profile' | 'market' | 'backup' | 'notifications' | 'diagnostics' | 'system';
 
 export const SettingsRoute: React.FC = () => {
   const { user, logout, runtimeMode, clearLocalData } = useAuth();
-  const { selectedPortfolio, portfolios } = usePortfolio();
+  const { selectedPortfolio } = usePortfolio();
   const navigate = useNavigate();
   const config = getRuntimeConfig();
+  const [activeTab, setActiveTab] = useState<SettingsTab>('ALL');
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [isConfirmingClear, setIsConfirmingClear] = useState(false);
   const [clearStatus, setClearStatus] = useState<string | null>(null);
@@ -65,8 +69,34 @@ export const SettingsRoute: React.FC = () => {
 
   const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
 
+  const tabs: Array<{ id: SettingsTab; label: string; icon: string }> = [
+    { id: 'ALL', label: 'Todas as Seções', icon: '📋' },
+    { id: 'profile', label: 'Perfil', icon: '👤' },
+    { id: 'market', label: 'Mercado', icon: '📈' },
+    { id: 'backup', label: 'Backup', icon: '💾' },
+    { id: 'notifications', label: 'Notificações', icon: '🔔' },
+    { id: 'diagnostics', label: 'Diagnóstico', icon: '🩺' },
+    { id: 'system', label: 'Sistema', icon: 'ℹ️' },
+  ];
+
+  const showProfile = activeTab === 'ALL' || activeTab === 'profile';
+  const showMarket = activeTab === 'ALL' || activeTab === 'market';
+  const showBackup = activeTab === 'ALL' || activeTab === 'backup';
+  const showNotifications = activeTab === 'ALL' || activeTab === 'notifications';
+  const showDiagnostics = activeTab === 'ALL' || activeTab === 'diagnostics';
+  const showSystem = activeTab === 'ALL' || activeTab === 'system';
+
   return (
-    <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: `${spacing.lg}px` }} data-testid="settings-route">
+    <div
+      style={{
+        maxWidth: '850px',
+        margin: '0 auto',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: `${spacing.lg}px`,
+      }}
+      data-testid="settings-route"
+    >
       <div>
         <h1
           style={{
@@ -79,219 +109,316 @@ export const SettingsRoute: React.FC = () => {
           Perfil &amp; Configurações
         </h1>
         <p style={{ margin: 0, fontSize: '0.875rem', color: colors.textSecondary }}>
-          Gerenciamento de conta, conectividade e auditoria de segurança da sessão
+          Gerenciamento local, conectividade de dados, retenção de backups e auditoria do sistema
         </p>
       </div>
 
-      {/* User Identity Card */}
-      <Card>
-        <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.md}px` }}>
-          <Avatar name={isLocalOwner ? 'Owner' : user?.name} size="lg" />
-          <div style={{ flex: 1, overflow: 'hidden' }}>
-            <h2
+      {/* Navigation Sub-Tabs (PARTE W) */}
+      <div
+        style={{
+          display: 'flex',
+          gap: `${spacing.xs}px`,
+          borderBottom: `1px solid ${colors.border}`,
+          overflowX: 'auto',
+          paddingBottom: `${spacing.xs}px`,
+        }}
+      >
+        {tabs.map((t) => {
+          const isActive = activeTab === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setActiveTab(t.id)}
               style={{
-                margin: '0 0 2px 0',
-                fontSize: '1.125rem',
-                fontWeight: 700,
-                color: colors.textPrimary,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '0.5rem 0.875rem',
+                borderRadius: `${borderRadius.md}px`,
+                border: 'none',
+                backgroundColor: isActive ? `${colors.accent}15` : 'transparent',
+                color: isActive ? colors.accent : colors.textSecondary,
+                fontWeight: isActive ? 600 : 500,
+                fontSize: '0.875rem',
+                cursor: 'pointer',
                 whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
+                transition: 'all 0.15s ease',
               }}
             >
-              {isLocalOwner ? 'Owner' : (user?.name || 'Investidor Atlas')}
-            </h2>
+              <span>{t.icon}</span>
+              <span>{t.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Section: Perfil */}
+      {showProfile && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.lg}px` }}>
+          <Card>
+            <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.md}px` }}>
+              <Avatar name={isLocalOwner ? 'Owner' : user?.name} size="lg" />
+              <div style={{ flex: 1, overflow: 'hidden' }}>
+                <h2
+                  style={{
+                    margin: '0 0 2px 0',
+                    fontSize: '1.125rem',
+                    fontWeight: 700,
+                    color: colors.textPrimary,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {isLocalOwner ? 'Owner' : (user?.name || 'Investidor Atlas')}
+                </h2>
+                <div
+                  style={{
+                    fontSize: '0.8125rem',
+                    color: colors.textSecondary,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {isLocalOwner ? 'Perfil: Owner (Desktop Local)' : (user?.email || 'investidor@atlas.com.br')}
+                </div>
+                <div style={{ marginTop: `${spacing.xs}px` }}>
+                  {isLocalOwner ? (
+                    <Badge variant="neutral">Modo Desktop Local</Badge>
+                  ) : (
+                    <Badge variant="positive">Sessão Autenticada</Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Section: Sistema & Metadados (Ambiente e Plataforma) */}
+      {showSystem && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.lg}px` }}>
+          <Card>
+            <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, color: colors.textPrimary, margin: `0 0 ${spacing.md}px 0` }}>
+              Ambiente e Plataforma
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: `${spacing.md}px`, fontSize: '0.8125rem' }}>
+              <div>
+                <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Versão do App</div>
+                <div style={{ fontWeight: 600, color: colors.textPrimary }}>
+                  v{config.version}
+                </div>
+              </div>
+              <div>
+                <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Build SHA</div>
+                <div style={{ fontWeight: 600, color: colors.textPrimary, fontFamily: 'monospace' }}>
+                  {config.commitSha}
+                </div>
+              </div>
+              <div>
+                <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Data do Build</div>
+                <div style={{ fontWeight: 600, color: colors.textPrimary }}>
+                  {config.buildDate}
+                </div>
+              </div>
+              <div>
+                <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Modo de Operação</div>
+                <div style={{ fontWeight: 600, color: colors.textPrimary }}>
+                  {isLocalOwner ? 'Desktop Local (Owner)' : 'Autenticado Remoto'}
+                </div>
+              </div>
+              <div>
+                <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Plataforma</div>
+                <div style={{ fontWeight: 600, color: colors.textPrimary }}>
+                  {isAndroid ? 'Android (ARM64)' : config.isTauri ? 'Windows Desktop (Tauri 2)' : 'Web / Harness'}
+                </div>
+              </div>
+              <div>
+                <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Runtime</div>
+                <div style={{ fontWeight: 600, color: colors.textPrimary }}>Tauri 2 Unified App</div>
+              </div>
+              <div>
+                <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Ambiente</div>
+                <div style={{ fontWeight: 600, color: colors.textPrimary, textTransform: 'capitalize' }}>
+                  {config.environment} ({config.buildType})
+                </div>
+              </div>
+              <div>
+                <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Backend de Dados</div>
+                <div style={{ fontWeight: 600, color: colors.textPrimary, wordBreak: 'break-all' }}>
+                  {config.dataBackendLabel}
+                </div>
+              </div>
+              <div>
+                <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Banco de Dados Local</div>
+                <div style={{ fontWeight: 600, color: colors.textPrimary }}>
+                  atlas_local (Porta 5434)
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, color: colors.textPrimary, margin: `0 0 ${spacing.xs}px 0` }}>
+              Estratégia de Atualização &amp; Manutenção Local
+            </h3>
+            <p style={{ margin: `0 0 ${spacing.sm}px 0`, fontSize: '0.8125rem', color: colors.textSecondary, lineHeight: 1.5 }}>
+              O Atlas opera em regime local-first com banco de dados isolado. Atualizações de versão aplicam apenas pacotes
+              validados com integridade de schema e migrações idempotentes.
+            </p>
             <div
               style={{
-                fontSize: '0.8125rem',
+                padding: `${spacing.sm}px ${spacing.md}px`,
+                borderRadius: `${borderRadius.md}px`,
+                backgroundColor: colors.surfaceHover,
+                border: `1px solid ${colors.border}`,
+                fontSize: '0.75rem',
                 color: colors.textSecondary,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
+                lineHeight: 1.5,
               }}
             >
-              {isLocalOwner ? 'Perfil: Owner (Desktop Local)' : (user?.email || 'investidor@atlas.com.br')}
+              <strong style={{ color: colors.textPrimary }}>Prática Recomendada:</strong> Antes de aplicar novos pacotes ou executáveis,
+              gere um backup local pelo módulo de Backup (aba Backup) para garantir prontidão de restauração fail-safe.
             </div>
-            <div style={{ marginTop: `${spacing.xs}px` }}>
-              {isLocalOwner ? (
-                <Badge variant="neutral">Modo Desktop Local</Badge>
-              ) : (
-                <Badge variant="positive">Sessão Autenticada</Badge>
-              )}
-            </div>
-          </div>
+          </Card>
         </div>
-      </Card>
+      )}
 
-      {/* Device & Platform Environment */}
-      <Card>
-        <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, color: colors.textPrimary, margin: `0 0 ${spacing.md}px 0` }}>
-          Ambiente e Plataforma
-        </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: `${spacing.md}px`, fontSize: '0.8125rem' }}>
-          <div>
-            <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Versão do App</div>
-            <div style={{ fontWeight: 600, color: colors.textPrimary }}>
-              v{config.version}
-            </div>
-          </div>
-          <div>
-            <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Modo de Operação</div>
-            <div style={{ fontWeight: 600, color: colors.textPrimary }}>
-              {isLocalOwner ? 'Desktop Local (Owner)' : 'Autenticado Remoto'}
-            </div>
-          </div>
-          <div>
-            <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Ambiente</div>
-            <div style={{ fontWeight: 600, color: colors.textPrimary, textTransform: 'capitalize' }}>
-              {config.environment} ({config.buildType})
-            </div>
-          </div>
-          <div>
-            <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Build SHA</div>
-            <div style={{ fontWeight: 600, color: colors.textPrimary, fontFamily: 'monospace' }}>
-              {config.commitSha}
-            </div>
-          </div>
-          <div>
-            <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Plataforma</div>
-            <div style={{ fontWeight: 600, color: colors.textPrimary }}>
-              {isAndroid ? 'Android (ARM64)' : config.isTauri ? 'Windows Desktop' : 'Web / Harness'}
-            </div>
-          </div>
-          <div>
-            <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Runtime</div>
-            <div style={{ fontWeight: 600, color: colors.textPrimary }}>Tauri 2 Unified App</div>
-          </div>
-          <div>
-            <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Backend de Dados</div>
-            <div style={{ fontWeight: 600, color: colors.textPrimary, wordBreak: 'break-all' }}>
-              {config.dataBackendLabel}
-            </div>
-          </div>
-          <div>
-            <div style={{ color: colors.textSecondary, marginBottom: '2px' }}>Carteiras Ativas</div>
-            <div style={{ fontWeight: 600, color: colors.textPrimary }}>
-              {portfolios.length} ({selectedPortfolio?.name || 'Padrão'})
-            </div>
-          </div>
+      {/* Section: Mercado */}
+      {showMarket && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.lg}px` }}>
+          <MarketDataProviderCard />
         </div>
-      </Card>
+      )}
 
-      {/* Market Data Provider Status & Configuration (APP-16A) */}
-      <MarketDataProviderCard />
-
-      {/* Notification Preferences */}
-      <NotificationSettingsSection />
-
-      {/* Diagnostics and Support */}
-      <Card>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.sm}px` }}>
-          <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, color: colors.textPrimary, margin: 0 }}>
-            Diagnóstico e Suporte Técnico
-          </h3>
-          <p style={{ margin: 0, fontSize: '0.8125rem', color: colors.textSecondary, lineHeight: 1.5 }}>
-            Gera um relatório técnico seguro para diagnóstico em caso de instabilidade. O pacote é estritamente
-            sanitizado contra tokens, senhas, CPF ou dados bancários/financeiros completos.
-          </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px`, marginTop: `${spacing.xs}px`, flexWrap: 'wrap' }}>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleExportDiagnostics}
-              data-testid="settings-export-diagnostics-btn"
-            >
-              Exportar Diagnóstico Sanitizado
-            </Button>
-            {exportStatus && (
-              <span style={{ fontSize: '0.8125rem', color: colors.accent, fontWeight: 500 }}>
-                {exportStatus}
-              </span>
-            )}
-          </div>
+      {/* Section: Backup */}
+      {showBackup && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.lg}px` }}>
+          <LocalBackupCard />
+          <RestoreReadinessCard />
         </div>
-      </Card>
+      )}
 
-      {/* Security Invariants & Storage */}
-      <Card>
-        <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, color: colors.textPrimary, margin: `0 0 ${spacing.sm}px 0` }}>
-          Segurança e Armazenamento Local
-        </h3>
-        <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.8125rem', color: colors.textSecondary, lineHeight: 1.6 }}>
-          {isLocalOwner ? (
-            <>
-              <li>
-                <strong style={{ color: colors.textPrimary }}>Modo de Operação:</strong> Desktop Local para uso pessoal exclusivo do Owner (Zero tráfego de autenticação remota).
-              </li>
-              <li>
-                <strong style={{ color: colors.textPrimary }}>Armazenamento Seguro:</strong> Sem credenciais ou tokens remotos armazenados no Credential Manager.
-              </li>
-              <li>
-                <strong style={{ color: colors.textPrimary }}>Isolamento de Cache:</strong> Namespace exclusivo <code>atlas.cache.v1.local-owner</code>.
-              </li>
-            </>
-          ) : (
-            <>
-              <li>
-                <strong style={{ color: colors.textPrimary }}>Access Token (JWT):</strong> Mantido estritamente em memória volátil (Zero persistência em disco).
-              </li>
-              <li>
-                <strong style={{ color: colors.textPrimary }}>Segurança de Armazenamento:</strong> Proibido uso de localStorage ou texto plano para refresh tokens.
-              </li>
-              <li>
-                <strong style={{ color: colors.textPrimary }}>Permissões Mínimas:</strong> Operação restrita a tráfego de rede (INTERNET).
-              </li>
-            </>
-          )}
-        </ul>
+      {/* Section: Notificações */}
+      {showNotifications && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.lg}px` }}>
+          <NotificationSettingsSection />
+        </div>
+      )}
 
-        {/* Local Data Management (PARTE H) */}
-        {isLocalOwner && (
-          <div style={{ marginTop: `${spacing.md}px`, paddingTop: `${spacing.md}px`, borderTop: `1px solid ${colors.border}` }}>
-            <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: colors.textPrimary, marginBottom: `${spacing.xs}px` }}>
-              Gerenciamento de Dados Locais
-            </div>
-            <p style={{ margin: `0 0 ${spacing.sm}px 0`, fontSize: '0.75rem', color: colors.textSecondary }}>
-              Permite limpar o cache de consultas e leituras offline. Não afeta a base de dados PostgreSQL.
-            </p>
-            {!isConfirmingClear ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setIsConfirmingClear(true)}
-                data-testid="settings-clear-cache-btn"
-              >
-                Limpar Cache Local
-              </Button>
-            ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px` }}>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={handleClearLocalCache}
-                  data-testid="settings-confirm-clear-cache-btn"
-                >
-                  Confirmar Limpeza
-                </Button>
+      {/* Section: Diagnóstico */}
+      {showDiagnostics && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.lg}px` }}>
+          <Card>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.sm}px` }}>
+              <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, color: colors.textPrimary, margin: 0 }}>
+                Diagnóstico e Suporte Técnico
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.8125rem', color: colors.textSecondary, lineHeight: 1.5 }}>
+                Gera um relatório técnico seguro para diagnóstico em caso de instabilidade. O pacote é estritamente
+                sanitizado contra tokens, senhas, CPF ou dados bancários/financeiros completos.
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px`, marginTop: `${spacing.xs}px`, flexWrap: 'wrap' }}>
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => setIsConfirmingClear(false)}
+                  onClick={handleExportDiagnostics}
+                  data-testid="settings-export-diagnostics-btn"
                 >
-                  Cancelar
+                  Exportar Diagnóstico Sanitizado
                 </Button>
+                {exportStatus && (
+                  <span style={{ fontSize: '0.8125rem', color: colors.accent, fontWeight: 500 }}>
+                    {exportStatus}
+                  </span>
+                )}
               </div>
-            )}
-            {clearStatus && (
-              <div style={{ marginTop: `${spacing.xs}px`, fontSize: '0.75rem', color: colors.accent }}>
-                {clearStatus}
-              </div>
-            )}
-          </div>
-        )}
-      </Card>
+            </div>
+          </Card>
 
-      {/* Action: Fechar Atlas (Local) vs Logout (Remoto) */}
+          <Card>
+            <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, color: colors.textPrimary, margin: `0 0 ${spacing.sm}px 0` }}>
+              Segurança e Armazenamento Local
+            </h3>
+            <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.8125rem', color: colors.textSecondary, lineHeight: 1.6 }}>
+              {isLocalOwner ? (
+                <>
+                  <li>
+                    <strong style={{ color: colors.textPrimary }}>Modo de Operação:</strong> Desktop Local para uso pessoal exclusivo do Owner (Zero tráfego de autenticação remota).
+                  </li>
+                  <li>
+                    <strong style={{ color: colors.textPrimary }}>Armazenamento Seguro:</strong> Sem credenciais ou tokens remotos armazenados no Credential Manager.
+                  </li>
+                  <li>
+                    <strong style={{ color: colors.textPrimary }}>Isolamento de Cache:</strong> Namespace exclusivo <code>atlas.cache.v1.local-owner</code>.
+                  </li>
+                </>
+              ) : (
+                <>
+                  <li>
+                    <strong style={{ color: colors.textPrimary }}>Access Token (JWT):</strong> Mantido estritamente em memória volátil (Zero persistência em disco).
+                  </li>
+                  <li>
+                    <strong style={{ color: colors.textPrimary }}>Segurança de Armazenamento:</strong> Proibido uso de localStorage ou texto plano para refresh tokens.
+                  </li>
+                  <li>
+                    <strong style={{ color: colors.textPrimary }}>Permissões Mínimas:</strong> Operação restrita a tráfego de rede (INTERNET).
+                  </li>
+                </>
+              )}
+            </ul>
+
+            {/* Local Data Management */}
+            {isLocalOwner && (
+              <div style={{ marginTop: `${spacing.md}px`, paddingTop: `${spacing.md}px`, borderTop: `1px solid ${colors.border}` }}>
+                <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: colors.textPrimary, marginBottom: `${spacing.xs}px` }}>
+                  Gerenciamento de Dados Locais
+                </div>
+                <p style={{ margin: `0 0 ${spacing.sm}px 0`, fontSize: '0.75rem', color: colors.textSecondary }}>
+                  Permite limpar o cache de consultas e leituras offline. Não afeta a base de dados PostgreSQL.
+                </p>
+                {!isConfirmingClear ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setIsConfirmingClear(true)}
+                    data-testid="settings-clear-cache-btn"
+                  >
+                    Limpar Cache Local
+                  </Button>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: `${spacing.sm}px` }}>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={handleClearLocalCache}
+                      data-testid="settings-confirm-clear-cache-btn"
+                    >
+                      Confirmar Limpeza
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setIsConfirmingClear(false)}
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
+                )}
+                {clearStatus && (
+                  <div style={{ marginTop: `${spacing.xs}px`, fontSize: '0.75rem', color: colors.accent }}>
+                    {clearStatus}
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* App Exit / Logout action */}
       <div style={{ marginTop: `${spacing.sm}px` }}>
         {isLocalOwner ? (
           <Button
@@ -299,7 +426,7 @@ export const SettingsRoute: React.FC = () => {
             size="md"
             onClick={handleCloseAtlas}
             data-testid="settings-close-app-btn"
-            style={{ width: '100%', minHeight: '48px', justifyContent: 'center' }}
+            style={{ width: '100%', minHeight: '44px', justifyContent: 'center' }}
           >
             Fechar Atlas
           </Button>
@@ -309,7 +436,7 @@ export const SettingsRoute: React.FC = () => {
             size="md"
             onClick={handleLogout}
             data-testid="settings-logout-btn"
-            style={{ width: '100%', minHeight: '48px', justifyContent: 'center' }}
+            style={{ width: '100%', minHeight: '44px', justifyContent: 'center' }}
           >
             Encerrar Sessão (Logout)
           </Button>
@@ -318,4 +445,3 @@ export const SettingsRoute: React.FC = () => {
     </div>
   );
 };
-

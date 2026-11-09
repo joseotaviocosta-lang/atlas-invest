@@ -19,6 +19,10 @@ export interface IntegrationReviewResponse {
   status: string;
   severity: string;
   reasonCodes: string[];
+  category?: string;
+  isActionable?: boolean;
+  isHistorical?: boolean;
+  isInformative?: boolean;
   pairReview: {
     status: string;
     totalPairs: number;
@@ -59,6 +63,10 @@ export function mapIntegrationReviewToResponse(
     status: item.status,
     severity: item.severity,
     reasonCodes: [...item.reasonCodes],
+    category: item.category,
+    isActionable: item.isActionable,
+    isHistorical: item.isHistorical,
+    isInformative: item.isInformative,
     pairReview: { ...item.pairReview },
     metrics: { ...item.metrics },
     createdAt: item.createdAt,

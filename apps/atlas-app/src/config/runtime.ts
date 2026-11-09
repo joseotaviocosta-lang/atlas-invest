@@ -86,7 +86,7 @@ export function getRuntimeConfig(): AppRuntimeConfig {
 
   const buildDate =
     (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_ATLAS_BUILD_DATE) ||
-    '2026-11-06';
+    '2026-11-09';
 
   const buildType: 'debug' | 'release' = isDev ? 'debug' : 'release';
 

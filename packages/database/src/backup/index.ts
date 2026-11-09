@@ -79,6 +79,22 @@ function resolveContainerName(port: number): string {
   return 'atlas_postgres';
 }
 
+export function findPgDumpExecutable(): string | null {
+  if (process.env.PG_DUMP_PATH && fs.existsSync(process.env.PG_DUMP_PATH)) {
+    return process.env.PG_DUMP_PATH;
+  }
+  const defaultWinPaths = [
+    'C:\\Program Files\\PostgreSQL\\18\\bin\\pg_dump.exe',
+    'C:\\Program Files\\PostgreSQL\\17\\bin\\pg_dump.exe',
+    'C:\\Program Files\\PostgreSQL\\16\\bin\\pg_dump.exe',
+    'C:\\Program Files\\PostgreSQL\\15\\bin\\pg_dump.exe',
+  ];
+  for (const p of defaultWinPaths) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
 function getRepoRootDir(): string {
   // Walks up until package.json with name "atlas-invest" is found
   let current = __dirname;
@@ -126,20 +142,45 @@ export async function createDatabaseBackup(options?: BackupOptions): Promise<Bac
   const filePath = path.join(outputDir, filename);
   const checksumPath = `${filePath}.sha256`;
 
-  // Execute pg_dump streaming through docker
+  const nativePgDump = findPgDumpExecutable();
+
+  // Execute pg_dump streaming through native binary or docker
   await new Promise<void>((resolve, reject) => {
     const writeStream = fs.createWriteStream(filePath);
-    const dumpProcess = spawn('docker', [
-      'exec',
-      container,
-      'pg_dump',
-      '-U',
-      parsed.user,
-      '-d',
-      parsed.database,
-      '--no-owner',
-      '--no-privileges',
-    ]);
+
+    const dumpProcess = nativePgDump
+      ? spawn(
+          nativePgDump,
+          [
+            '-h',
+            parsed.host,
+            '-p',
+            String(parsed.port),
+            '-U',
+            parsed.user,
+            '-d',
+            parsed.database,
+            '--no-owner',
+            '--no-privileges',
+          ],
+          {
+            env: {
+              ...process.env,
+              PGPASSWORD: parsed.password || 'atlas',
+            },
+          },
+        )
+      : spawn('docker', [
+          'exec',
+          container,
+          'pg_dump',
+          '-U',
+          parsed.user,
+          '-d',
+          parsed.database,
+          '--no-owner',
+          '--no-privileges',
+        ]);
 
     dumpProcess.stdout.pipe(writeStream);
 
@@ -158,7 +199,7 @@ export async function createDatabaseBackup(options?: BackupOptions): Promise<Bac
         }
         reject(
           new Error(
-            `pg_dump failed with exit code ${code} for container ${container}: ${errorOutput}`,
+            `pg_dump failed with exit code ${code}: ${errorOutput}`,
           ),
         );
       }
@@ -189,6 +230,148 @@ export async function createDatabaseBackup(options?: BackupOptions): Promise<Bac
     database: parsed.database,
     timestamp: new Date().toISOString(),
   };
+}
+
+export interface BackupMetadata {
+  filename: string;
+  filePath: string;
+  checksumPath: string | null;
+  checksumValid: boolean | null;
+  sizeBytes: number;
+  createdAt: string;
+  isManual: boolean;
+}
+
+export interface BackupRetentionPolicy {
+  maxDaily?: number;
+  maxWeekly?: number;
+  maxMonthly?: number;
+}
+
+export function listBackups(customOutputDir?: string): BackupMetadata[] {
+  const repoRoot = getRepoRootDir();
+  const dir = customOutputDir || path.join(repoRoot, 'backups');
+  if (!fs.existsSync(dir)) return [];
+
+  const files = fs.readdirSync(dir);
+  const sqlFiles = files.filter((f) => f.endsWith('.sql'));
+
+  const backups: BackupMetadata[] = [];
+  for (const filename of sqlFiles) {
+    const filePath = path.join(dir, filename);
+    try {
+      const stat = fs.statSync(filePath);
+      const checksumPath = `${filePath}.sha256`;
+      const hasChecksum = fs.existsSync(checksumPath);
+      let checksumValid: boolean | null = null;
+
+      if (hasChecksum) {
+        try {
+          const checksumContent = fs.readFileSync(checksumPath, 'utf-8').trim();
+          const expectedChecksum = checksumContent.split(/\s+/)[0] ?? '';
+          const fileBuffer = fs.readFileSync(filePath);
+          const calculatedChecksum = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+          checksumValid = calculatedChecksum.toLowerCase() === expectedChecksum.toLowerCase();
+        } catch {
+          checksumValid = false;
+        }
+      }
+
+      const isManual =
+        filename.includes('_manual_') ||
+        filename.includes('_pre_') ||
+        filename.includes('_post_') ||
+        filename.startsWith('atlas_local_pre_') ||
+        filename.startsWith('atlas_local_post_');
+
+      backups.push({
+        filename,
+        filePath,
+        checksumPath: hasChecksum ? checksumPath : null,
+        checksumValid,
+        sizeBytes: stat.size,
+        createdAt: stat.mtime.toISOString(),
+        isManual,
+      });
+    } catch {
+      // Ignore unreadable or transient files
+    }
+  }
+
+  return backups.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
+
+export function applyRetentionPolicy(
+  customOutputDir?: string,
+  policy?: BackupRetentionPolicy,
+): { kept: string[]; deleted: string[] } {
+  const maxDaily = policy?.maxDaily ?? 7;
+  const maxWeekly = policy?.maxWeekly ?? 4;
+  const maxMonthly = policy?.maxMonthly ?? 3;
+
+  const backups = listBackups(customOutputDir);
+  const kept: string[] = [];
+  const deleted: string[] = [];
+
+  // Manual backups are ALWAYS preserved
+  const autoBackups = backups.filter((b) => !b.isManual);
+  for (const manual of backups.filter((b) => b.isManual)) {
+    kept.push(manual.filename);
+  }
+
+  const dailyBuckets = new Set<string>();
+  const weeklyBuckets = new Set<string>();
+  const monthlyBuckets = new Set<string>();
+
+  for (const backup of autoBackups) {
+    const d = new Date(backup.createdAt);
+    const dayKey = d.toISOString().slice(0, 10);
+    const monthKey = d.toISOString().slice(0, 7);
+
+    const target = new Date(d.valueOf());
+    const dayNr = (d.getUTCDay() + 6) % 7;
+    target.setUTCDate(target.getUTCDate() - dayNr + 3);
+    const firstThursday = target.valueOf();
+    target.setUTCMonth(0, 1);
+    if (target.getUTCDay() !== 4) {
+      target.setUTCMonth(0, 1 + ((4 - target.getUTCDay() + 7) % 7));
+    }
+    const weekNumber = 1 + Math.ceil((firstThursday - target.valueOf()) / 604800000);
+    const weekKey = `${d.getUTCFullYear()}-W${String(weekNumber).padStart(2, '0')}`;
+
+    let shouldKeep = false;
+
+    if (dailyBuckets.size < maxDaily) {
+      dailyBuckets.add(dayKey);
+      shouldKeep = true;
+    }
+    if (weeklyBuckets.size < maxWeekly && !weeklyBuckets.has(weekKey)) {
+      weeklyBuckets.add(weekKey);
+      shouldKeep = true;
+    }
+    if (monthlyBuckets.size < maxMonthly && !monthlyBuckets.has(monthKey)) {
+      monthlyBuckets.add(monthKey);
+      shouldKeep = true;
+    }
+
+    if (shouldKeep) {
+      kept.push(backup.filename);
+    } else {
+      deleted.push(backup.filename);
+      try {
+        if (fs.existsSync(backup.filePath)) {
+          fs.unlinkSync(backup.filePath);
+        }
+        if (backup.checksumPath && fs.existsSync(backup.checksumPath)) {
+          fs.unlinkSync(backup.checksumPath);
+        }
+      } catch {
+        // Ignore deletion errors
+      }
+    }
+  }
+
+  return { kept, deleted };
 }
 
 /**

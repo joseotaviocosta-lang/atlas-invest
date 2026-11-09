@@ -10,6 +10,7 @@ import {
   ImportHistorySection,
   ReviewInboxSection,
 } from '../features/imports/components';
+import { ImportSourceGuidanceCard } from '../features/imports/components/ImportSourceGuidanceCard';
 import {
   usePreviewImport,
   useConfirmImport,
@@ -253,6 +254,9 @@ export const ImportRoute: React.FC = () => {
             />
           ) : (
             <>
+              {/* Guidance on Formats and Workflow */}
+              {!selectedFile && <ImportSourceGuidanceCard />}
+
               {/* Step 1: Dropzone */}
               <FileDropzone
                 onFileSelect={handleFileSelect}
