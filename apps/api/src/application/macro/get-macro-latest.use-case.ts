@@ -17,12 +17,12 @@ export class GetMacroLatestUseCase {
 
   async execute(params: GetMacroLatestParams): Promise<MacroObservation> {
     const sId = params.seriesId.trim().toUpperCase() as MacroSeriesId;
-    if (sId !== 'IPCA' && sId !== 'SELIC_TARGET' && sId !== 'SELIC_EFFECTIVE') {
+    if (sId !== 'IPCA' && sId !== 'SELIC_TARGET' && sId !== 'SELIC_EFFECTIVE' && sId !== 'PTAX') {
       throw new BadRequestException({
         statusCode: 400,
         error: 'Bad Request',
         code: 'VALIDATION.INVALID_MACRO_SERIES',
-        message: `Unsupported macro series '${params.seriesId}'. Must be IPCA, SELIC_TARGET, or SELIC_EFFECTIVE.`,
+        message: `Unsupported macro series '${params.seriesId}'. Must be IPCA, SELIC_TARGET, SELIC_EFFECTIVE, or PTAX.`,
       });
     }
 

@@ -12,6 +12,7 @@ import {
   GetMacroCoverageUseCase,
   GetMacroLatestUseCase,
   GetMacroContextUseCase,
+  SyncMacroDataUseCase,
 } from '../../application/macro';
 
 export class UpdateMacroDto {
@@ -33,11 +34,13 @@ export class MacroController {
     private readonly getMacroLatestUseCase: GetMacroLatestUseCase,
     @Inject(GetMacroContextUseCase)
     private readonly getMacroContextUseCase: GetMacroContextUseCase,
+    @Inject(SyncMacroDataUseCase)
+    private readonly syncMacroDataUseCase: SyncMacroDataUseCase,
   ) {}
 
   @Get('context')
   @ApiOperation({
-    summary: 'Get unified macroeconomic context (latest IPCA, SELIC_TARGET, and SELIC_EFFECTIVE)',
+    summary: 'Get unified macroeconomic context (latest IPCA, SELIC_TARGET, SELIC_EFFECTIVE, and PTAX)',
   })
   @ApiResponse({ status: 200, description: 'Macro context summary' })
   async getContext() {
@@ -45,14 +48,25 @@ export class MacroController {
     return { data };
   }
 
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Synchronize official macroeconomic indicators from authoritative sources (Bacen & IBGE)',
+  })
+  @ApiResponse({ status: 200, description: 'Macro synchronization receipt' })
+  async refreshMacro() {
+    const data = await this.syncMacroDataUseCase.execute();
+    return { data };
+  }
+
   @Get(':seriesId/coverage')
   @ApiOperation({
     summary:
-      'Get persisted coverage for a macroeconomic series (IPCA, SELIC_TARGET, SELIC_EFFECTIVE)',
+      'Get persisted coverage for a macroeconomic series (IPCA, SELIC_TARGET, SELIC_EFFECTIVE, PTAX)',
   })
   @ApiParam({
     name: 'seriesId',
-    description: 'Macro series identifier (IPCA, SELIC_TARGET, SELIC_EFFECTIVE)',
+    description: 'Macro series identifier (IPCA, SELIC_TARGET, SELIC_EFFECTIVE, PTAX)',
     example: 'IPCA',
   })
   @ApiResponse({ status: 200, description: 'Macro coverage details' })
@@ -68,7 +82,7 @@ export class MacroController {
   })
   @ApiParam({
     name: 'seriesId',
-    description: 'Macro series identifier (IPCA, SELIC_TARGET, SELIC_EFFECTIVE)',
+    description: 'Macro series identifier (IPCA, SELIC_TARGET, SELIC_EFFECTIVE, PTAX)',
     example: 'SELIC_TARGET',
   })
   @ApiResponse({ status: 200, description: 'Latest macro observation' })
@@ -95,7 +109,7 @@ export class MacroController {
   })
   @ApiParam({
     name: 'seriesId',
-    description: 'Macro series identifier (IPCA, SELIC_TARGET, SELIC_EFFECTIVE)',
+    description: 'Macro series identifier (IPCA, SELIC_TARGET, SELIC_EFFECTIVE, PTAX)',
     example: 'IPCA',
   })
   @ApiBody({ type: UpdateMacroDto })

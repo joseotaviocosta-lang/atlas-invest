@@ -2702,11 +2702,15 @@ export class BrazilianOfficialCalendarProvider {
 // Macroeconomic Series Contracts & Providers
 // ============================================================================
 
-export type MacroSeriesId = 'IPCA' | 'SELIC_TARGET' | 'SELIC_EFFECTIVE';
+export type MacroSeriesId = 'IPCA' | 'SELIC_TARGET' | 'SELIC_EFFECTIVE' | 'PTAX';
 
 export type MacroFrequency = 'MONTHLY' | 'EVENT_DRIVEN' | 'DAILY';
 
-export type MacroUnit = 'PERCENT' | 'PERCENT_PER_ANNUM' | 'INDEX_POINTS';
+export type MacroUnit = 'PERCENT' | 'PERCENT_PER_ANNUM' | 'INDEX_POINTS' | 'BRL_PER_USD';
+
+export type MacroFreshness = 'FRESH' | 'STALE';
+
+export type MacroStatus = 'AVAILABLE' | 'NO_DATA' | 'ERROR' | 'OFFICIAL_SOURCE_UNAVAILABLE';
 
 export interface MacroObservation {
   readonly id?: string;
@@ -2748,20 +2752,82 @@ export interface MacroCoverage {
 export interface MacroContextSummary {
   readonly ipcaMonthly?: {
     readonly referenceMonth: string; // YYYY-MM
-    readonly value: string; // e.g. "0.44%"
+    readonly referenceMonthFormatted?: string; // MM/YYYY
+    readonly value: string; // e.g. "0.82%"
+    readonly formattedValue?: string; // e.g. "0,82% no mês"
     readonly publishedAt?: string;
     readonly source: string;
+    readonly freshness?: MacroFreshness;
+    readonly status?: MacroStatus;
   };
   readonly selicTarget?: {
-    readonly rate: string; // e.g. "10.75% a.a."
+    readonly rate: string; // e.g. "13.75% a.a."
+    readonly formattedValue?: string; // e.g. "13,75% a.a."
     readonly effectiveDate: string; // YYYY-MM-DD
+    readonly effectiveDateFormatted?: string; // DD/MM/YYYY
     readonly source: string;
+    readonly freshness?: MacroFreshness;
+    readonly status?: MacroStatus;
   };
   readonly selicEffective?: {
-    readonly rate: string; // e.g. "10.65% a.a."
+    readonly rate: string; // e.g. "13.65% a.a."
+    readonly formattedValue?: string; // e.g. "13,65% a.a."
     readonly effectiveDate: string; // YYYY-MM-DD
+    readonly effectiveDateFormatted?: string; // DD/MM/YYYY
     readonly source: string;
+    readonly freshness?: MacroFreshness;
+    readonly status?: MacroStatus;
   };
+  readonly ptax?: {
+    readonly rate: string; // e.g. "R$ 5,5007"
+    readonly value: string; // e.g. "5.5007"
+    readonly effectiveDate: string; // YYYY-MM-DD
+    readonly effectiveDateFormatted?: string; // DD/MM/YYYY
+    readonly source: string;
+    readonly convention: string; // "Venda (Fechamento PTAX)"
+    readonly freshness?: MacroFreshness;
+    readonly status?: MacroStatus;
+  };
+  readonly ibovespa?: {
+    readonly value: string; // "—"
+    readonly status: 'OFFICIAL_SOURCE_UNAVAILABLE';
+    readonly message: string; // "Integração ainda não disponível"
+    readonly source?: string;
+  };
+}
+
+export function evaluateMacroFreshness(
+  seriesId: MacroSeriesId,
+  referenceDate: LocalDate,
+  asOfDate?: LocalDate,
+): MacroFreshness {
+  const now = asOfDate ?? LocalDate.fromParts(
+    new Date().getUTCFullYear(),
+    new Date().getUTCMonth() + 1,
+    new Date().getUTCDate(),
+  );
+
+  const tRef = Date.UTC(referenceDate.year, referenceDate.month - 1, referenceDate.day);
+  const tNow = Date.UTC(now.year, now.month - 1, now.day);
+  const daysDiff = Math.max(0, Math.round((tNow - tRef) / (24 * 60 * 60 * 1000)));
+
+  switch (seriesId) {
+    case 'SELIC_TARGET': {
+      // Event-driven: Copom meetings occur every ~45 days. Fresh within 60 calendar days.
+      return daysDiff <= 60 ? 'FRESH' : 'STALE';
+    }
+    case 'SELIC_EFFECTIVE':
+    case 'PTAX': {
+      // Daily business day series: up to 4 calendar days accommodates standard weekends and 3-day holiday weekends.
+      return daysDiff <= 4 ? 'FRESH' : 'STALE';
+    }
+    case 'IPCA': {
+      // Monthly series: published around day 10 of following month. Fresh if within ~65 calendar days.
+      return daysDiff <= 65 ? 'FRESH' : 'STALE';
+    }
+    default:
+      return 'FRESH';
+  }
 }
 
 export interface IMacroDataProvider {
@@ -2771,6 +2837,10 @@ export interface IMacroDataProvider {
     from: LocalDate,
     to: LocalDate,
   ): Promise<MacroObservation[]>;
+  getLatestObservations?(
+    seriesId: MacroSeriesId,
+    count?: number,
+  ): Promise<MacroObservation[]>;
 }
 
 /**
@@ -2779,6 +2849,7 @@ export interface IMacroDataProvider {
  * - IPCA: SGS 433 (Monthly variation %)
  * - SELIC_TARGET: SGS 432 (Copom Target rate % a.a.)
  * - SELIC_EFFECTIVE: SGS 1178 (Annualized effective rate base 252 % a.a.)
+ * - PTAX: SGS 10813 (Taxa de câmbio - Livre - Dólar americano (venda) - diária)
  */
 export class BcbMacroDataProvider implements IMacroDataProvider {
   private readonly timeoutMs: number;
@@ -2801,59 +2872,54 @@ export class BcbMacroDataProvider implements IMacroDataProvider {
         return { sgsId: '432', unit: 'PERCENT_PER_ANNUM', frequency: 'EVENT_DRIVEN' };
       case 'SELIC_EFFECTIVE':
         return { sgsId: '1178', unit: 'PERCENT_PER_ANNUM', frequency: 'DAILY' };
+      case 'PTAX':
+        return { sgsId: '10813', unit: 'BRL_PER_USD', frequency: 'DAILY' };
       default:
         throw new Error(`Unsupported macro series ID: ${seriesId}`);
     }
   }
 
-  async getObservation(seriesId: MacroSeriesId, date: LocalDate): Promise<MacroObservation> {
-    const list = await this.getObservations(seriesId, date, date);
-    const found = list.find((obs) => obs.referenceDate.toString() === date.toString());
-    if (!found) {
-      throw new Error(`Macro observation not found for ${seriesId} on ${date.toString()}`);
+  private async fetchWithRetry(url: string, retries = 2): Promise<Response> {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+      try {
+        const response = await this.fetchFn(url, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Atlas-MarketData/1.0',
+            'Accept': 'application/json',
+          },
+        });
+        clearTimeout(timer);
+        if (response.ok) return response;
+        if (response.status === 429 || response.status >= 500) {
+          if (attempt < retries) {
+            await new Promise((r) => setTimeout(r, 400 * Math.pow(2, attempt)));
+            continue;
+          }
+        }
+        throw new Error(`BCB SGS macro provider error: HTTP ${response.status}`);
+      } catch (err) {
+        clearTimeout(timer);
+        lastErr = err;
+        if (attempt < retries) {
+          await new Promise((r) => setTimeout(r, 400 * Math.pow(2, attempt)));
+          continue;
+        }
+      }
     }
-    return found;
+    throw new Error(
+      `BCB SGS macro provider unavailable: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
+    );
   }
 
-  async getObservations(
+  private parseRows(
     seriesId: MacroSeriesId,
-    from: LocalDate,
-    to: LocalDate,
-  ): Promise<MacroObservation[]> {
-    if (from.compare(to) > 0) throw new Error('Invalid range: from cannot be after to');
-
-    const meta = this.mapSeriesToSgsId(seriesId);
-
-    const formatDate = (d: LocalDate): string =>
-      `${String(d.day).padStart(2, '0')}/${String(d.month).padStart(2, '0')}/${d.year}`;
-
-    const url = `https://api.bcb.gov.br/dados/serie/bcdata.sgs.${meta.sgsId}/dados?formato=json&dataInicial=${formatDate(from)}&dataFinal=${formatDate(to)}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-
-    let response: Response;
-    try {
-      response = await this.fetchFn(url, { signal: controller.signal });
-    } catch (err) {
-      clearTimeout(timer);
-      throw new Error(
-        `BCB SGS macro provider unavailable: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    } finally {
-      clearTimeout(timer);
-    }
-
-    if (!response.ok) {
-      throw new Error(`BCB SGS macro provider error: HTTP ${response.status}`);
-    }
-
-    let json: Array<{ data: string; valor: string }>;
-    try {
-      json = (await response.json()) as never;
-    } catch {
-      throw new Error('BCB SGS macro invalid JSON response');
-    }
-
+    meta: { sgsId: string; unit: MacroUnit; frequency: MacroFrequency },
+    json: Array<{ data: string; valor: string }>,
+  ): MacroObservation[] {
     const results: MacroObservation[] = [];
     for (const row of json) {
       if (!row.data || !row.valor) continue;
@@ -2869,8 +2935,6 @@ export class BcbMacroDataProvider implements IMacroDataProvider {
       } catch {
         continue;
       }
-
-      if (refDate.compare(from) < 0 || refDate.compare(to) > 0) continue;
 
       const valStr = row.valor.trim().replace(',', '.');
       if (!/^-?\d+(\.\d+)?$/.test(valStr)) continue;
@@ -2891,7 +2955,60 @@ export class BcbMacroDataProvider implements IMacroDataProvider {
         // Skip unparseable decimal rows
       }
     }
-
     return results;
+  }
+
+  async getObservation(seriesId: MacroSeriesId, date: LocalDate): Promise<MacroObservation> {
+    const list = await this.getObservations(seriesId, date, date);
+    const found = list.find((obs) => obs.referenceDate.toString() === date.toString());
+    if (!found) {
+      throw new Error(`Macro observation not found for ${seriesId} on ${date.toString()}`);
+    }
+    return found;
+  }
+
+  async getLatestObservations(
+    seriesId: MacroSeriesId,
+    count: number = 10,
+  ): Promise<MacroObservation[]> {
+    const meta = this.mapSeriesToSgsId(seriesId);
+    const url = `https://api.bcb.gov.br/dados/serie/bcdata.sgs.${meta.sgsId}/dados/ultimos/${count}?formato=json`;
+    const response = await this.fetchWithRetry(url);
+
+    let json: Array<{ data: string; valor: string }>;
+    try {
+      json = (await response.json()) as never;
+    } catch {
+      throw new Error('BCB SGS macro invalid JSON response');
+    }
+
+    const rows = this.parseRows(seriesId, meta, json);
+    return rows.sort((a, b) => a.referenceDate.compare(b.referenceDate));
+  }
+
+  async getObservations(
+    seriesId: MacroSeriesId,
+    from: LocalDate,
+    to: LocalDate,
+  ): Promise<MacroObservation[]> {
+    if (from.compare(to) > 0) throw new Error('Invalid range: from cannot be after to');
+
+    const meta = this.mapSeriesToSgsId(seriesId);
+
+    const formatDate = (d: LocalDate): string =>
+      `${String(d.day).padStart(2, '0')}/${String(d.month).padStart(2, '0')}/${d.year}`;
+
+    const url = `https://api.bcb.gov.br/dados/serie/bcdata.sgs.${meta.sgsId}/dados?formato=json&dataInicial=${formatDate(from)}&dataFinal=${formatDate(to)}`;
+    const response = await this.fetchWithRetry(url);
+
+    let json: Array<{ data: string; valor: string }>;
+    try {
+      json = (await response.json()) as never;
+    } catch {
+      throw new Error('BCB SGS macro invalid JSON response');
+    }
+
+    const results = this.parseRows(seriesId, meta, json);
+    return results.filter((obs) => obs.referenceDate.compare(from) >= 0 && obs.referenceDate.compare(to) <= 0);
   }
 }

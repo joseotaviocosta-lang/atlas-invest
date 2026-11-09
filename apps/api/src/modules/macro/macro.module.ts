@@ -5,6 +5,7 @@ import {
   GetMacroCoverageUseCase,
   GetMacroLatestUseCase,
   GetMacroContextUseCase,
+  SyncMacroDataUseCase,
 } from '../../application/macro';
 import { MacroController } from './macro.controller';
 
@@ -16,12 +17,14 @@ import { MacroController } from './macro.controller';
     GetMacroCoverageUseCase,
     GetMacroLatestUseCase,
     GetMacroContextUseCase,
+    SyncMacroDataUseCase,
   ],
   exports: [
     UpdateMacroDataUseCase,
     GetMacroCoverageUseCase,
     GetMacroLatestUseCase,
     GetMacroContextUseCase,
+    SyncMacroDataUseCase,
   ],
 })
 export class MacroModule {}
