@@ -5,6 +5,7 @@ import {
   OpportunityConfidence,
   OPPORTUNITY_MODEL_VERSION,
   FiiDividendCalendarEvent,
+  FiiCashSourceEvent,
 } from './types';
 import { EquityOpportunityScorer } from './equity-scorer';
 import { FiiOpportunityScorer } from './fii-scorer';
@@ -59,14 +60,24 @@ export class OpportunityRadarEngine {
     const maxResults = params.maxResults ?? 5;
     const enableDividendCalendarStrategy = params.enableDividendCalendarStrategy ?? true;
 
-    // 1. Detect Reinvestment Chains across all FII dividend events (APP-16I)
+    // 1. Detect Reinvestment Chains across all FII dividend events (APP-16I / APP-16I-R2)
     const rawFiiEvents: FiiDividendCalendarEvent[] = [];
+    const allRecentPaidSources: FiiCashSourceEvent[] = [];
     for (const a of params.assets) {
-      if (a.assetType === 'FII' && a.dividendCalendar) {
-        rawFiiEvents.push(a.dividendCalendar);
+      if (a.assetType === 'FII') {
+        if (a.dividendCalendar) {
+          rawFiiEvents.push(a.dividendCalendar);
+        }
+        if (a.recentPaidDividends && a.recentPaidDividends.length > 0) {
+          allRecentPaidSources.push(...a.recentPaidDividends);
+        }
       }
     }
-    const reinvestmentResult = detectReinvestmentChains(rawFiiEvents, analysisDate);
+    const reinvestmentResult = detectReinvestmentChains(
+      rawFiiEvents,
+      analysisDate,
+      allRecentPaidSources,
+    );
 
     const evaluatedItems: OpportunityRadarItem[] = [];
     let totalCoverageSum = 0;
@@ -92,6 +103,7 @@ export class OpportunityRadarEngine {
         const isReinvestmentCandidate = reinvestmentResult.candidateTickers.has(input.ticker);
         const bestChain = reinvestmentResult.bestChainByTarget.get(input.ticker);
         const targetTicker = reinvestmentResult.targetTickerBySource.get(input.ticker) ?? null;
+        const otherSourcesCount = reinvestmentResult.otherSourcesCountByTarget.get(input.ticker) ?? 0;
 
         enrichedCalendar = {
           ...input.dividendCalendar,
@@ -110,6 +122,10 @@ export class OpportunityRadarEngine {
             bestChain?.futureCashExpected ?? input.dividendCalendar.futureCashExpected ?? false,
           reinvestmentChainTargetTicker:
             input.dividendCalendar.reinvestmentChainTargetTicker || targetTicker,
+          reinvestmentEstimatedCash:
+            bestChain?.estimatedCashReceived ?? input.dividendCalendar.reinvestmentEstimatedCash ?? null,
+          reinvestmentOtherSourcesCount:
+            otherSourcesCount || input.dividendCalendar.reinvestmentOtherSourcesCount || 0,
         };
       }
 
@@ -174,6 +190,7 @@ export class OpportunityRadarEngine {
           risks: Object.freeze(risks),
           news: Object.freeze(effectiveNews),
           dividendCalendar: enrichedCalendar ? Object.freeze(enrichedCalendar) : undefined,
+          recentPaidDividends: input.recentPaidDividends ? Object.freeze(input.recentPaidDividends) : undefined,
           dataFreshness: input.quoteFreshness ?? 'UNKNOWN',
           dataProvenance: Object.freeze(provenance),
           updatedAt: referenceDate.toISOString(),
@@ -233,6 +250,7 @@ export class OpportunityRadarEngine {
       totalFiiEligible,
       totalFiiRanked: topFiiItems.length,
       reinvestmentChains: Object.freeze(reinvestmentResult.chains),
+      allRecentPaidSources: Object.freeze(allRecentPaidSources),
       dividendCalendarStrategyEnabled: enableDividendCalendarStrategy,
       lowConfidenceItems: Object.freeze(lowConfidenceItems),
       allEvaluatedItems: Object.freeze(evaluatedItems),

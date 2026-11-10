@@ -437,26 +437,45 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
                 <div
                   style={{
                     marginTop: `${spacing.xs}px`,
-                    padding: '6px 10px',
+                    padding: '8px 12px',
                     borderRadius: `${borderRadius.sm}px`,
                     backgroundColor: item.dividendCalendar.cashAvailableNow ? `${colors.positive}12` : `${colors.accent}12`,
                     color: item.dividendCalendar.cashAvailableNow ? colors.positive : colors.accent,
-                    fontWeight: 600,
                     fontSize: '0.75rem',
+                    lineHeight: 1.5,
                   }}
                 >
-                  {item.dividendCalendar.cashAvailableNow ? (
-                    <span>
-                      {`♻ Caixa já disponível: provento recebido${item.dividendCalendar.reinvestmentSourceTicker ? ` de ${item.dividendCalendar.reinvestmentSourceTicker}` : ''} já se encontra disponível para novo aporte antes da data-com deste fundo.`}
-                    </span>
-                  ) : item.dividendCalendar.futureCashExpected ? (
-                    <span>
-                      {`🗓 Cadeia futura planejada: provento previsto${item.dividendCalendar.reinvestmentSourceTicker ? ` de ${item.dividendCalendar.reinvestmentSourceTicker}` : ''} poderá ser reinvestido antes da data-com deste fundo.`}
-                    </span>
-                  ) : (
-                    <span>
-                      ♻ Potencial de Rotação: Caixa recebido de outros proventos da carteira pode ser reutilizado para novo aporte antes da data-com deste fundo.
-                    </span>
+                  <div style={{ fontWeight: 600, marginBottom: '2px' }}>
+                    {item.dividendCalendar.cashAvailableNow ? (
+                      <span>
+                        {`♻ Caixa já disponível: provento recebido${item.dividendCalendar.reinvestmentSourceTicker ? ` de ${item.dividendCalendar.reinvestmentSourceTicker}` : ''} já se encontra disponível para novo aporte antes da data-com deste fundo.`}
+                      </span>
+                    ) : item.dividendCalendar.futureCashExpected ? (
+                      <span>
+                        {`🗓 Cadeia futura planejada: provento previsto${item.dividendCalendar.reinvestmentSourceTicker ? ` de ${item.dividendCalendar.reinvestmentSourceTicker}` : ''} poderá ser reinvestido antes da data-com deste fundo.`}
+                      </span>
+                    ) : (
+                      <span>
+                        ♻ Potencial de Rotação: Caixa recebido de outros proventos da carteira pode ser reutilizado para novo aporte antes da data-com deste fundo.
+                      </span>
+                    )}
+                  </div>
+                  {item.dividendCalendar.reinvestmentSourceTicker && (
+                    <div style={{ fontSize: '0.6875rem', opacity: 0.9 }}>
+                      <span>{`Origem potencial do reinvestimento: ${item.dividendCalendar.reinvestmentSourceTicker}`}</span>
+                      {item.dividendCalendar.reinvestmentEstimatedCash !== null &&
+                        item.dividendCalendar.reinvestmentEstimatedCash !== undefined && (
+                          <span style={{ marginLeft: '8px' }}>
+                            {`• Provento estimado da posição: ${formatCurrency(item.dividendCalendar.reinvestmentEstimatedCash)}`}
+                          </span>
+                        )}
+                      {Boolean(item.dividendCalendar.reinvestmentOtherSourcesCount) &&
+                        item.dividendCalendar.reinvestmentOtherSourcesCount! > 0 && (
+                          <span style={{ marginLeft: '8px' }}>
+                            {`• (+${item.dividendCalendar.reinvestmentOtherSourcesCount} outras fontes de caixa recentes)`}
+                          </span>
+                        )}
+                    </div>
                   )}
                 </div>
               )}
@@ -563,7 +582,7 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
             </div>
           )}
           <div>
-            <strong>Modelo:</strong> opportunity-v2.1 • <strong>Análise atualizada às:</strong> {formattedUpdatedAt}
+            <strong>Modelo:</strong> opportunity-v2.2 • <strong>Análise atualizada às:</strong> {formattedUpdatedAt}
           </div>
           <div style={{ marginTop: '4px', fontStyle: 'italic', color: colors.disabledText }}>
             Radar puramente informativo baseado nos dados disponíveis. Não executa ordens de compra ou venda e não garante desempenho futuro.

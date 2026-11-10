@@ -5,6 +5,7 @@ import {
   OpportunityAssetInput,
   OpportunityNewsItem,
   FiiDividendCalendarEvent,
+  FiiCashSourceEvent,
   formatIsoDateString,
 } from '@atlas/market-data';
 import {
@@ -197,6 +198,10 @@ export class GetOpportunityRadarUseCase {
           lastDatePrior?: string | null;
           exDate?: string | null;
         } | null,
+        recentPaidDividends: [] as Array<{
+          paymentDate?: string | null;
+          rate?: number | null;
+        }>,
       };
 
       const brapiToken =
@@ -209,6 +214,7 @@ export class GetOpportunityRadarUseCase {
             ticker,
             isFii,
             token: brapiToken,
+            referenceDate: now,
           });
           extIntel = {
             priceEarnings: fetched.priceEarnings ?? null,
@@ -225,6 +231,7 @@ export class GetOpportunityRadarUseCase {
             news: fetched.news || [],
             analystConsensus: fetched.analystConsensus ?? null,
             dividendEvent: fetched.dividendEvent ?? null,
+            recentPaidDividends: fetched.recentPaidDividends ?? [],
           };
         } catch {
           // Fail-closed to neutral
@@ -322,6 +329,27 @@ export class GetOpportunityRadarUseCase {
         }
       }
 
+      // Build FII Recent Paid Sources if asset is FII (APP-16I-R2)
+      let recentPaidDividends: FiiCashSourceEvent[] | undefined = undefined;
+      if (isFii && extIntel.recentPaidDividends && extIntel.recentPaidDividends.length > 0) {
+        const qtyNum = parseFloat(pos.quantity) || 0;
+        recentPaidDividends = extIntel.recentPaidDividends
+          .filter((p) => p.paymentDate)
+          .map((p) => {
+            const amount = p.rate !== null && p.rate !== undefined ? p.rate : null;
+            const estimatedCash =
+              amount !== null && qtyNum > 0 ? Math.round(amount * qtyNum * 100) / 100 : null;
+            return {
+              ticker,
+              paymentDate: p.paymentDate!,
+              amountPerShare: amount,
+              source: 'BRAPI_DIVIDENDS',
+              paidRecently: true,
+              estimatedCashReceived: estimatedCash,
+            };
+          });
+      }
+
       const assetInput: OpportunityAssetInput = {
         assetId: pos.assetId,
         ticker,
@@ -352,6 +380,7 @@ export class GetOpportunityRadarUseCase {
         fiiDividendYield: extIntel.fiiDividendYield,
         fiiSegment: extIntel.fiiSegment,
         dividendCalendar,
+        recentPaidDividends,
         recentNews: combinedNews,
         analystConsensus: extIntel.analystConsensus,
       };

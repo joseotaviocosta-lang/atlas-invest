@@ -2,7 +2,8 @@ import {
   FiiDividendCalendarEvent,
   FiiDividendEligibilityStatus,
   FiiReinvestmentChain,
-  FiiReinvestmentChainType,
+  FiiCashSourceEvent,
+  RECENT_PAID_LOOKBACK_DAYS,
 } from './types';
 
 /**
@@ -205,6 +206,58 @@ export function selectRelevantDividendEvent(
 }
 
 /**
+ * Selects events that were recently paid (paymentDate <= referenceDateStr) within lookback window (APP-16I-R2).
+ * Lookback: diff(referenceDate, paymentDate) >= 0 && diff(referenceDate, paymentDate) <= lookbackDays.
+ * Sorted: paymentDate DESC, rate DESC, ticker ASC.
+ * Deduplicated by: `${ticker}|${paymentDate}|${recordDate}|${rate}`.
+ */
+export function selectRecentPaidDividendEvents(
+  events: NormalizedDividendEvent[],
+  referenceDateStr: string,
+  lookbackDays: number = RECENT_PAID_LOOKBACK_DAYS,
+  ticker = '',
+): FiiCashSourceEvent[] {
+  if (!events || events.length === 0) {
+    return [];
+  }
+
+  const seenKeys = new Set<string>();
+  const candidates: FiiCashSourceEvent[] = [];
+
+  for (const e of events) {
+    if (!e.paymentDate) continue;
+    // paymentDate must be <= referenceDateStr (payment has already completed)
+    if (e.paymentDate > referenceDateStr) continue;
+
+    // Must be within lookback window: referenceDate - paymentDate <= lookbackDays
+    const daysSincePayment = diffCalendarDays(referenceDateStr, e.paymentDate);
+    if (daysSincePayment < 0 || daysSincePayment > lookbackDays) continue;
+
+    const dedupeKey = `${ticker}|${e.paymentDate}|${e.recordDate ?? ''}|${e.rate ?? 0}`;
+    if (seenKeys.has(dedupeKey)) continue;
+    seenKeys.add(dedupeKey);
+
+    candidates.push({
+      ticker,
+      paymentDate: e.paymentDate,
+      amountPerShare: e.rate,
+      source: 'BRAPI_DIVIDENDS',
+      paidRecently: true,
+    });
+  }
+
+  // Sort: paymentDate DESC (most recent payment first), rate DESC, ticker ASC
+  return candidates.sort((a, b) => {
+    const cmp = b.paymentDate.localeCompare(a.paymentDate);
+    if (cmp !== 0) return cmp;
+    const rA = a.amountPerShare ?? 0;
+    const rB = b.amountPerShare ?? 0;
+    if (rA !== rB) return rB - rA;
+    return a.ticker.localeCompare(b.ticker);
+  });
+}
+
+/**
  * Pure deterministic calculation of dividend eligibility relative to the reference date (APP-16I / APP-16I-R1).
  *
  * Strict Entitlement Rule:
@@ -319,13 +372,14 @@ export interface ReinvestmentDetectionResult {
   candidateTickers: Set<string>;
   bestChainByTarget: Map<string, FiiReinvestmentChain>;
   targetTickerBySource: Map<string, string>;
+  otherSourcesCountByTarget: Map<string, number>;
 }
 
 /**
- * Detects cross-FII dividend reinvestment sequences in the portfolio (APP-16I / APP-16I-R1).
+ * Detects cross-FII dividend reinvestment sequences in the portfolio (APP-16I / APP-16I-R1 / APP-16I-R2).
  *
  * Sequence:
- * FII A pays dividend on sourcePaymentDate
+ * FII A pays dividend on sourcePaymentDate (cash arrives in account)
  * -> Cash becomes available (AVAILABLE_CASH_CHAIN if sourcePaymentDate <= referenceDate, else PLANNED_FUTURE_CHAIN)
  * -> FII B has targetRecordDate >= sourcePaymentDate and targetRecordDate >= referenceDateStr
  * -> Cash can be deployed into FII B before targetRecordDate.
@@ -333,38 +387,80 @@ export interface ReinvestmentDetectionResult {
 export function detectReinvestmentChains(
   events: FiiDividendCalendarEvent[],
   referenceDateStr: string,
+  recentPaidSources?: FiiCashSourceEvent[],
 ): ReinvestmentDetectionResult {
   const chains: FiiReinvestmentChain[] = [];
   const candidateTickers = new Set<string>();
   const bestChainByTarget = new Map<string, FiiReinvestmentChain>();
   const targetTickerBySource = new Map<string, string>();
+  const otherSourcesCountByTarget = new Map<string, number>();
   const seenChainKeys = new Set<string>();
+  const sourcesByTarget = new Map<string, Set<string>>();
 
-  // Filter valid events
-  const validEvents = events.filter((e) => e.eventStatus !== 'UNKNOWN');
+  // Target candidates: FIIs with valid recordDate >= referenceDateStr
+  const validTargetEvents = events.filter(
+    (e) => e.eventStatus !== 'UNKNOWN' && e.recordDate && e.recordDate >= referenceDateStr,
+  );
 
-  for (const source of validEvents) {
-    if (!source.paymentDate) continue;
+  // Available Cash Sources:
+  // 1. From explicit recentPaidSources if provided
+  // 2. Also from events where paymentDate <= referenceDateStr (backward compatibility with fixtures)
+  const availableCashSourcesMap = new Map<
+    string,
+    { ticker: string; paymentDate: string; estimatedCashReceived?: number | null }
+  >();
 
-    for (const target of validEvents) {
-      if (source.ticker === target.ticker || !target.recordDate) continue;
+  if (recentPaidSources && recentPaidSources.length > 0) {
+    for (const s of recentPaidSources) {
+      if (s.paidRecently && s.paymentDate <= referenceDateStr) {
+        const key = `${s.ticker}|${s.paymentDate}`;
+        if (!availableCashSourcesMap.has(key)) {
+          availableCashSourcesMap.set(key, {
+            ticker: s.ticker,
+            paymentDate: s.paymentDate,
+            estimatedCashReceived: s.estimatedCashReceived ?? null,
+          });
+        }
+      }
+    }
+  }
 
-      // Target must still be eligible for purchase from reference date onwards
-      if (target.recordDate < referenceDateStr) continue;
+  for (const s of events) {
+    if (s.eventStatus !== 'UNKNOWN' && s.paymentDate && s.paymentDate <= referenceDateStr) {
+      const daysSince = diffCalendarDays(referenceDateStr, s.paymentDate);
+      if (daysSince >= 0 && daysSince <= RECENT_PAID_LOOKBACK_DAYS) {
+        const key = `${s.ticker}|${s.paymentDate}`;
+        if (!availableCashSourcesMap.has(key)) {
+          availableCashSourcesMap.set(key, {
+            ticker: s.ticker,
+            paymentDate: s.paymentDate,
+            estimatedCashReceived: null,
+          });
+        }
+      }
+    }
+  }
 
-      // Reinvestment feasible only if target recordDate >= source paymentDate
+  // Future Cash Sources (events with paymentDate > referenceDateStr)
+  const futureCashSources = events.filter(
+    (e) => e.eventStatus !== 'UNKNOWN' && e.paymentDate && e.paymentDate > referenceDateStr,
+  );
+
+  for (const target of validTargetEvents) {
+    if (!target.recordDate) continue;
+
+    // 1. Evaluate Available Cash Sources (real cash already received)
+    for (const source of availableCashSourcesMap.values()) {
+      if (source.ticker === target.ticker) continue;
+
+      // Must be target.recordDate >= source.paymentDate
+      if (target.recordDate < source.paymentDate) continue;
+
       const gap = diffCalendarDays(target.recordDate, source.paymentDate);
-
-      // Reasonable cash deployment window (0 to 20 days)
       if (gap >= 0 && gap <= 20) {
         const sourceMonth = source.paymentDate.slice(0, 7);
         const targetMonth = target.recordDate.slice(0, 7);
         const sameMonth = sourceMonth === targetMonth;
-
-        const isCashAvailableNow = source.paymentDate <= referenceDateStr;
-        const chainType: FiiReinvestmentChainType = isCashAvailableNow
-          ? 'AVAILABLE_CASH_CHAIN'
-          : 'PLANNED_FUTURE_CHAIN';
 
         const dedupeKey = `${source.ticker}|${target.ticker}|${source.paymentDate}|${target.recordDate}`;
         if (!seenChainKeys.has(dedupeKey)) {
@@ -377,28 +473,87 @@ export function detectReinvestmentChains(
             targetRecordDate: target.recordDate,
             daysGap: gap,
             sameMonth,
-            chainType,
-            cashAvailableNow: isCashAvailableNow,
-            futureCashExpected: !isCashAvailableNow,
+            chainType: 'AVAILABLE_CASH_CHAIN',
+            cashAvailableNow: true,
+            futureCashExpected: false,
+            estimatedCashReceived: source.estimatedCashReceived ?? null,
           };
 
           chains.push(chain);
-
           candidateTickers.add(target.ticker);
 
-          // Deterministic selection of the best chain for this target
+          if (!sourcesByTarget.has(target.ticker)) {
+            sourcesByTarget.set(target.ticker, new Set());
+          }
+          sourcesByTarget.get(target.ticker)!.add(source.ticker);
+
           const existingBest = bestChainByTarget.get(target.ticker);
           if (!existingBest || isBetterChain(chain, existingBest)) {
             bestChainByTarget.set(target.ticker, chain);
           }
 
-          // Link source to target
           if (!targetTickerBySource.has(source.ticker)) {
             targetTickerBySource.set(source.ticker, target.ticker);
           }
         }
       }
     }
+
+    // 2. Evaluate Planned Future Sources
+    for (const futureSource of futureCashSources) {
+      if (!futureSource.paymentDate || futureSource.ticker === target.ticker) continue;
+
+      // Must be target.recordDate >= futureSource.paymentDate
+      if (target.recordDate < futureSource.paymentDate) continue;
+
+      const gap = diffCalendarDays(target.recordDate, futureSource.paymentDate);
+      if (gap >= 0 && gap <= 20) {
+        const sourceMonth = futureSource.paymentDate.slice(0, 7);
+        const targetMonth = target.recordDate.slice(0, 7);
+        const sameMonth = sourceMonth === targetMonth;
+
+        const dedupeKey = `${futureSource.ticker}|${target.ticker}|${futureSource.paymentDate}|${target.recordDate}`;
+        if (!seenChainKeys.has(dedupeKey)) {
+          seenChainKeys.add(dedupeKey);
+
+          const chain: FiiReinvestmentChain = {
+            sourceTicker: futureSource.ticker,
+            sourcePaymentDate: futureSource.paymentDate,
+            targetTicker: target.ticker,
+            targetRecordDate: target.recordDate,
+            daysGap: gap,
+            sameMonth,
+            chainType: 'PLANNED_FUTURE_CHAIN',
+            cashAvailableNow: false,
+            futureCashExpected: true,
+            estimatedCashReceived: null,
+          };
+
+          chains.push(chain);
+          candidateTickers.add(target.ticker);
+
+          if (!sourcesByTarget.has(target.ticker)) {
+            sourcesByTarget.set(target.ticker, new Set());
+          }
+          sourcesByTarget.get(target.ticker)!.add(futureSource.ticker);
+
+          const existingBest = bestChainByTarget.get(target.ticker);
+          if (!existingBest || isBetterChain(chain, existingBest)) {
+            bestChainByTarget.set(target.ticker, chain);
+          }
+
+          if (!targetTickerBySource.has(futureSource.ticker)) {
+            targetTickerBySource.set(futureSource.ticker, target.ticker);
+          }
+        }
+      }
+    }
+  }
+
+  // Populate otherSourcesCountByTarget (count of other distinct sources)
+  for (const [targetTicker, sourceSet] of sourcesByTarget.entries()) {
+    const otherCount = Math.max(0, sourceSet.size - 1);
+    otherSourcesCountByTarget.set(targetTicker, otherCount);
   }
 
   return {
@@ -406,27 +561,47 @@ export function detectReinvestmentChains(
     candidateTickers,
     bestChainByTarget,
     targetTickerBySource,
+    otherSourcesCountByTarget,
   };
 }
 
 /**
  * Deterministic comparison: is chainA better than chainB for a given target?
  * 1. AVAILABLE_CASH_CHAIN beats PLANNED_FUTURE_CHAIN (money in hand > future money)
- * 2. Smaller daysGap
- * 3. Earlier sourcePaymentDate
- * 4. Alphabetical sourceTicker
+ * 2. If both available cash, prefer more recent paymentDate (DESC)
+ * 3. If both future cash, prefer sooner paymentDate (ASC)
+ * 4. Smaller daysGap
+ * 5. Higher estimatedCashReceived
+ * 6. Alphabetical sourceTicker
  */
 function isBetterChain(a: FiiReinvestmentChain, b: FiiReinvestmentChain): boolean {
   if (a.cashAvailableNow && !b.cashAvailableNow) return true;
   if (!a.cashAvailableNow && b.cashAvailableNow) return false;
 
+  // If both available cash, more recent payment date is fresher
+  if (a.cashAvailableNow && b.cashAvailableNow) {
+    const dateCmp = a.sourcePaymentDate.localeCompare(b.sourcePaymentDate);
+    if (dateCmp !== 0) {
+      return dateCmp > 0;
+    }
+  }
+
+  // If both future cash, sooner payment date is closer
+  if (!a.cashAvailableNow && !b.cashAvailableNow) {
+    const dateCmp = a.sourcePaymentDate.localeCompare(b.sourcePaymentDate);
+    if (dateCmp !== 0) {
+      return dateCmp < 0;
+    }
+  }
+
   if (a.daysGap !== b.daysGap) {
     return a.daysGap < b.daysGap;
   }
 
-  const dateCmp = a.sourcePaymentDate.localeCompare(b.sourcePaymentDate);
-  if (dateCmp !== 0) {
-    return dateCmp < 0;
+  const cashA = a.estimatedCashReceived ?? 0;
+  const cashB = b.estimatedCashReceived ?? 0;
+  if (cashA !== cashB) {
+    return cashA > cashB;
   }
 
   return a.sourceTicker.localeCompare(b.sourceTicker) < 0;

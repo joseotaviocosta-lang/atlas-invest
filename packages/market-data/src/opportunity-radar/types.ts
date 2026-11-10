@@ -1,11 +1,13 @@
 /**
- * Project Atlas — Opportunity Radar Domain Types (APP-16F / APP-16G / APP-16H / APP-16I)
+ * Project Atlas — Opportunity Radar Domain Types (APP-16F / APP-16G / APP-16H / APP-16I / APP-16I-R1 / APP-16I-R2)
  *
  * Deterministic scoring, data quality normalization, dividend calendar strategy, and explainability models.
- * Model version: opportunity-v2
+ * Model version: opportunity-v2.2
  */
 
-export const OPPORTUNITY_MODEL_VERSION = 'opportunity-v2.1';
+export const OPPORTUNITY_MODEL_VERSION = 'opportunity-v2.2';
+
+export const RECENT_PAID_LOOKBACK_DAYS = 20;
 
 export type OpportunityAssetType = 'STOCK' | 'FII';
 
@@ -17,11 +19,20 @@ export type OpportunityFreshness = 'FRESH' | 'STALE' | 'UNKNOWN';
 
 export type OpportunityNewsSourceType = 'OFFICIAL_REGULATORY' | 'CORPORATE_IR' | 'FINANCIAL_MEDIA';
 
-export type FiiDividendEventStatus = 'ANNOUNCED' | 'HISTORICAL_PATTERN' | 'UNKNOWN';
+export type FiiDividendEventStatus = 'ANNOUNCED' | 'HISTORICAL_PATTERN' | 'PAID' | 'UNKNOWN';
 
 export type FiiDividendEligibilityStatus = 'ELIGIBLE' | 'RECORD_DATE_TODAY' | 'EX_DIVIDEND' | 'UNKNOWN';
 
 export type FiiReinvestmentChainType = 'AVAILABLE_CASH_CHAIN' | 'PLANNED_FUTURE_CHAIN';
+
+export interface FiiCashSourceEvent {
+  ticker: string;
+  paymentDate: string; // YYYY-MM-DD
+  amountPerShare: number | null;
+  source: string;
+  paidRecently: boolean;
+  estimatedCashReceived?: number | null;
+}
 
 export interface FiiDividendCalendarEvent {
   ticker: string;
@@ -41,6 +52,8 @@ export interface FiiDividendCalendarEvent {
   cashAvailableNow?: boolean;
   futureCashExpected?: boolean;
   reinvestmentChainTargetTicker?: string | null;
+  reinvestmentEstimatedCash?: number | null;
+  reinvestmentOtherSourcesCount?: number;
   isPaymentPending?: boolean;
 }
 
@@ -54,6 +67,7 @@ export interface FiiReinvestmentChain {
   chainType: FiiReinvestmentChainType;
   cashAvailableNow: boolean;
   futureCashExpected: boolean;
+  estimatedCashReceived?: number | null;
 }
 
 export interface OpportunityNewsItem {
@@ -131,8 +145,9 @@ export interface OpportunityAssetInput {
   fiiSegment?: string | null;
   fiiLiquidity?: number | null;
 
-  // FII Dividend Calendar (APP-16I)
+  // FII Dividend Calendar & Recent Paid Sources (APP-16I / APP-16I-R2)
   dividendCalendar?: FiiDividendCalendarEvent;
+  recentPaidDividends?: FiiCashSourceEvent[];
 
   // News & Events
   recentNews?: OpportunityNewsItem[];
@@ -158,6 +173,7 @@ export interface OpportunityRadarItem {
   risks: readonly string[];
   news: readonly OpportunityNewsItem[];
   dividendCalendar?: FiiDividendCalendarEvent;
+  recentPaidDividends?: readonly FiiCashSourceEvent[];
   dataFreshness: OpportunityFreshness;
   dataProvenance?: OpportunityDataProvenance;
   updatedAt: string; // ISO-8601
@@ -176,6 +192,7 @@ export interface OpportunityRadarResult {
   totalFiiEligible: number;
   totalFiiRanked: number;
   reinvestmentChains?: readonly FiiReinvestmentChain[];
+  allRecentPaidSources?: readonly FiiCashSourceEvent[];
   dividendCalendarStrategyEnabled?: boolean;
   lowConfidenceItems?: readonly OpportunityRadarItem[];
   allEvaluatedItems?: readonly OpportunityRadarItem[];

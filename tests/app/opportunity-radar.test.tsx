@@ -90,7 +90,7 @@ describe('PROJECT ATLAS — APP-16F: Daily Opportunity Radar (Frontend Component
     portfolioId,
     analysisDate: '2026-11-10',
     updatedAt: '2026-11-10T09:00:00.000Z',
-    modelVersion: 'opportunity-v2.1',
+    modelVersion: 'opportunity-v2.2',
     totalEligible: 36,
     totalRanked: 2,
     items: [mockItem1, mockItem2],
@@ -397,7 +397,7 @@ describe('PROJECT ATLAS — APP-16F: Daily Opportunity Radar (Frontend Component
     expect(html).toContain('Calendário de Proventos &amp; Reinvestimento');
     expect(html).toContain('Dentro do período com direito');
     expect(html).toContain('Potencial de Rotação');
-    expect(html).toContain('opportunity-v2.1');
+    expect(html).toContain('opportunity-v2.2');
   });
 
   it('14. renders available cash reinvestment badge and data-ex in modal (APP-16I-R1)', () => {

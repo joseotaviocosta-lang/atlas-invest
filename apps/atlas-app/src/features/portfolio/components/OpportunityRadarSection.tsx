@@ -573,12 +573,18 @@ export const OpportunityRadarSection: React.FC<OpportunityRadarSectionProps> = (
                               </Badge>
                             )}
                             {item.dividendCalendar.cashAvailableNow ? (
-                              <span style={{ color: colors.positive, fontWeight: 600 }} title="Caixa já disponível para reinvestimento">
-                                ♻ Caixa disponível
+                              <span
+                                style={{ color: colors.positive, fontWeight: 600 }}
+                                title="♻ Caixa de provento recente pode ser direcionado aqui"
+                              >
+                                ♻ Caixa de provento recente
                               </span>
                             ) : item.dividendCalendar.futureCashExpected ? (
-                              <span style={{ color: colors.accent, fontWeight: 600 }} title="Cadeia de reinvestimento futura planejada">
-                                🗓 Cadeia planejada
+                              <span
+                                style={{ color: colors.accent, fontWeight: 600 }}
+                                title="🗓 Próxima rotação planejada"
+                              >
+                                🗓 Próxima rotação planejada
                               </span>
                             ) : item.dividendCalendar.sameMonthReinvestmentCandidate ? (
                               <span style={{ color: colors.accent, fontWeight: 600 }}>

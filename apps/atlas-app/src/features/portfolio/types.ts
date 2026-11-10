@@ -208,12 +208,21 @@ export interface IngestionReceiptDto {
 }
 
 // ---------------------------------------------------------------------------
-// Opportunity Radar (APP-16F / APP-16H / APP-16I / APP-16I-R1)
+// Opportunity Radar (APP-16F / APP-16H / APP-16I / APP-16I-R1 / APP-16I-R2)
 // ---------------------------------------------------------------------------
 
-export type FiiDividendEventStatusDto = 'ANNOUNCED' | 'HISTORICAL_PATTERN' | 'UNKNOWN';
+export type FiiDividendEventStatusDto = 'ANNOUNCED' | 'HISTORICAL_PATTERN' | 'PAID' | 'UNKNOWN';
 export type FiiDividendEligibilityStatusDto = 'ELIGIBLE' | 'RECORD_DATE_TODAY' | 'EX_DIVIDEND' | 'UNKNOWN';
 export type FiiReinvestmentChainTypeDto = 'AVAILABLE_CASH_CHAIN' | 'PLANNED_FUTURE_CHAIN';
+
+export interface FiiCashSourceEventDto {
+  ticker: string;
+  paymentDate: string;
+  amountPerShare: number | null;
+  source: string;
+  paidRecently: boolean;
+  estimatedCashReceived?: number | null;
+}
 
 export interface FiiDividendCalendarEventDto {
   ticker: string;
@@ -233,6 +242,8 @@ export interface FiiDividendCalendarEventDto {
   cashAvailableNow?: boolean;
   futureCashExpected?: boolean;
   reinvestmentChainTargetTicker?: string | null;
+  reinvestmentEstimatedCash?: number | null;
+  reinvestmentOtherSourcesCount?: number;
   isPaymentPending?: boolean;
 }
 
@@ -246,6 +257,7 @@ export interface FiiReinvestmentChainDto {
   chainType: FiiReinvestmentChainTypeDto;
   cashAvailableNow: boolean;
   futureCashExpected: boolean;
+  estimatedCashReceived?: number | null;
 }
 
 export interface OpportunityNewsItemDto {
@@ -293,6 +305,7 @@ export interface OpportunityRadarItemDto {
   risks: string[];
   news: OpportunityNewsItemDto[];
   dividendCalendar?: FiiDividendCalendarEventDto;
+  recentPaidDividends?: FiiCashSourceEventDto[];
   dataFreshness: 'FRESH' | 'STALE' | 'UNKNOWN';
   dataProvenance?: OpportunityDataProvenanceDto;
   updatedAt: string;
@@ -311,6 +324,7 @@ export interface OpportunityRadarResponseDto {
   totalFiiEligible?: number;
   totalFiiRanked?: number;
   reinvestmentChains?: FiiReinvestmentChainDto[];
+  allRecentPaidSources?: FiiCashSourceEventDto[];
   dividendCalendarStrategyEnabled?: boolean;
   lowConfidenceItems?: OpportunityRadarItemDto[];
   overallCoveragePercent?: number;

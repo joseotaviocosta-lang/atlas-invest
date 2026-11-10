@@ -3,7 +3,9 @@ import {
   formatIsoDateString,
   normalizeDividendEvent,
   selectRelevantDividendEvent,
+  selectRecentPaidDividendEvents,
   NormalizedDividendEvent,
+  RECENT_PAID_LOOKBACK_DAYS,
 } from '@atlas/market-data';
 
 export interface FetchedDividendEvent {
@@ -34,6 +36,7 @@ export interface FetchedAssetIntelligence {
   news: OpportunityNewsItem[];
   analystConsensus?: 'BUY' | 'HOLD' | 'SELL' | 'UNKNOWN' | null;
   dividendEvent?: FetchedDividendEvent | null;
+  recentPaidDividends?: FetchedDividendEvent[];
 }
 
 /**
@@ -82,6 +85,7 @@ export async function fetchBrapiAssetIntelligence(params: {
   token?: string;
   baseUrl?: string;
   timeoutMs?: number;
+  referenceDate?: Date;
 }): Promise<FetchedAssetIntelligence> {
   const result: FetchedAssetIntelligence = {
     news: [],
@@ -182,9 +186,10 @@ export async function fetchBrapiAssetIntelligence(params: {
             result.historicalPrices = item.historicalDataPrice;
           }
 
-          // Process dividend calendar if available (APP-16I / APP-16I-R1)
+          // Process dividend calendar if available (APP-16I / APP-16I-R1 / APP-16I-R2)
           if (item.dividendsData?.cashDividends && Array.isArray(item.dividendsData.cashDividends)) {
-            const todayStr = formatIsoDateString(new Date(), 'America/Sao_Paulo');
+            const referenceDate = params.referenceDate ?? new Date();
+            const todayStr = formatIsoDateString(referenceDate, 'America/Sao_Paulo');
             const normalizedList: NormalizedDividendEvent[] = [];
             for (const d of item.dividendsData.cashDividends) {
               const norm = normalizeDividendEvent(d);
@@ -206,6 +211,21 @@ export async function fetchBrapiAssetIntelligence(params: {
             } else {
               result.dividendEvent = null;
             }
+
+            const recentPaid = selectRecentPaidDividendEvents(
+              normalizedList,
+              todayStr,
+              RECENT_PAID_LOOKBACK_DAYS,
+              params.ticker,
+            );
+            result.recentPaidDividends = recentPaid.map((p) => ({
+              paymentDate: p.paymentDate,
+              rate: p.amountPerShare,
+              relatedTo: null,
+              approvedOn: null,
+              lastDatePrior: null,
+              exDate: null,
+            }));
           }
         }
       }
