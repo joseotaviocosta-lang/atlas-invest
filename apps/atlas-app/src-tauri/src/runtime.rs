@@ -36,68 +36,7 @@ impl Default for RuntimeStatus {
     }
 }
 
-pub struct SingleInstanceGuard {
-    #[cfg(target_os = "windows")]
-    handle: *mut std::ffi::c_void,
-}
-
-unsafe impl Send for SingleInstanceGuard {}
-unsafe impl Sync for SingleInstanceGuard {}
-
-impl SingleInstanceGuard {
-    #[cfg(target_os = "windows")]
-    pub fn acquire() -> Result<Self, String> {
-        use std::ffi::OsStr;
-        use std::os::windows::ffi::OsStrExt;
-
-        extern "system" {
-            fn CreateMutexW(
-                lpMutexAttributes: *mut std::ffi::c_void,
-                bInitialOwner: i32,
-                lpName: *const u16,
-            ) -> *mut std::ffi::c_void;
-            fn GetLastError() -> u32;
-            fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
-        }
-
-        const ERROR_ALREADY_EXISTS: u32 = 183;
-
-        let name: Vec<u16> = OsStr::new("Global\\Atlas_Desktop_SingleInstance_Mutex\0")
-            .encode_wide()
-            .collect();
-
-        unsafe {
-            let handle = CreateMutexW(std::ptr::null_mut(), 1, name.as_ptr());
-            if handle.is_null() {
-                return Err("Não foi possível criar o mutex de instância única do Atlas".to_string());
-            }
-            if GetLastError() == ERROR_ALREADY_EXISTS {
-                CloseHandle(handle);
-                return Err("Outra instância do Atlas Desktop já está em execução no computador".to_string());
-            }
-            Ok(Self { handle })
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    pub fn acquire() -> Result<Self, String> {
-        Ok(Self {})
-    }
-}
-
-impl Drop for SingleInstanceGuard {
-    fn drop(&mut self) {
-        #[cfg(target_os = "windows")]
-        if !self.handle.is_null() {
-            extern "system" {
-                fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
-            }
-            unsafe {
-                CloseHandle(self.handle);
-            }
-        }
-    }
-}
+pub use crate::lifecycle::SingleInstanceGuard;
 
 fn clean_path(path: &Path) -> PathBuf {
     let s = path.to_string_lossy();
@@ -113,28 +52,54 @@ pub struct LocalRuntimeManager {
     pub status: Mutex<RuntimeStatus>,
     pub diagnostics_log: Mutex<Vec<String>>,
     pub single_instance: Mutex<Option<SingleInstanceGuard>>,
+    pub single_instance_role: Mutex<String>,
 }
 
 fn redact_value(text: String, marker: &str) -> String {
-    let mut out = text;
-    while let Some(start) = out.find(marker) {
+    let mut out = String::new();
+    let mut remainder = text.as_str();
+    while let Some(start) = remainder.find(marker) {
+        out.push_str(&remainder[..start]);
+        out.push_str(marker);
         let value_start = start + marker.len();
-        let end = out[value_start..].find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | ',' | '&' | '}')).map(|offset| value_start + offset).unwrap_or(out.len());
-        out.replace_range(value_start..end, "[REDACTED]");
+        let value_slice = &remainder[value_start..];
+        let end_offset = value_slice
+            .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | ',' | '&' | '}'))
+            .unwrap_or(value_slice.len());
+        out.push_str("[REDACTED]");
+        remainder = &value_slice[end_offset..];
     }
+    out.push_str(remainder);
     out
 }
 
 fn sanitize_runtime_text(text: &str) -> String {
-    let mut out = text.to_string();
-    while let Some(start) = out.find("postgresql://") {
-        let value_start = start + "postgresql://".len();
-        if let Some(at) = out[value_start..].find('@') {
-            let end = value_start + at;
-            out.replace_range(value_start..end, "[REDACTED]");
-        } else { break; }
+    let mut out = String::new();
+    let mut remainder = text;
+    while let Some(start) = remainder.find("postgresql://") {
+        out.push_str(&remainder[..start]);
+        out.push_str("postgresql://");
+        let val_slice = &remainder[start + "postgresql://".len()..];
+        if let Some(at) = val_slice.find('@') {
+            out.push_str("[REDACTED]");
+            remainder = &val_slice[at..];
+        } else {
+            out.push_str(val_slice);
+            remainder = "";
+            break;
+        }
     }
-    for marker in ["Bearer ", "DATABASE_URL=", "BRAPI_API_KEY=", "MARKET_DATA_API_TOKEN=", "password=", "token=", "api_key="] {
+    out.push_str(remainder);
+
+    for marker in [
+        "Bearer ",
+        "DATABASE_URL=",
+        "BRAPI_API_KEY=",
+        "MARKET_DATA_API_TOKEN=",
+        "password=",
+        "token=",
+        "api_key=",
+    ] {
         out = redact_value(out, marker);
     }
     for marker in ["\"token\":\"", "\"password\":\"", "\"apiKey\":\""] {
@@ -173,6 +138,16 @@ impl LocalRuntimeManager {
             status: Mutex::new(RuntimeStatus::default()),
             diagnostics_log: Mutex::new(Vec::new()),
             single_instance: Mutex::new(None),
+            single_instance_role: Mutex::new("UNKNOWN".to_string()),
+        }
+    }
+
+    pub fn set_single_instance(&self, guard: Option<SingleInstanceGuard>, role: String) {
+        if let Ok(mut g) = self.single_instance.lock() {
+            *g = guard;
+        }
+        if let Ok(mut r) = self.single_instance_role.lock() {
+            *r = role;
         }
     }
 
@@ -613,10 +588,16 @@ impl LocalRuntimeManager {
         // 1. Acquire single instance guard if not already held
         if let Ok(mut guard) = self.single_instance.lock() {
             if guard.is_none() {
-                match SingleInstanceGuard::acquire() {
-                    Ok(g) => {
+                match crate::lifecycle::acquire_or_handle_secondary() {
+                    Ok(crate::lifecycle::SingleInstanceAction::Primary(g))
+                    | Ok(crate::lifecycle::SingleInstanceAction::Recovered(g)) => {
                         *guard = Some(g);
                         self.log("SingleInstanceGuard adquirido com sucesso.");
+                    }
+                    Ok(crate::lifecycle::SingleInstanceAction::SecondaryRestored) => {
+                        let msg = "Outra instância ativa do Atlas foi focalizada.".to_string();
+                        self.update_status("idle", "idle", "idle", &msg);
+                        return Err(msg);
                     }
                     Err(e) => {
                         self.update_status("failed", "failed", "failed", &e);
@@ -660,6 +641,13 @@ impl LocalRuntimeManager {
                 self.log("Processo filho da API finalizado com sucesso.");
             }
         }
+        // Explicitly release single instance guard so subsequent launches are not blocked
+        if let Ok(mut guard) = self.single_instance.lock() {
+            if let Some(g) = guard.take() {
+                drop(g);
+                self.log("SingleInstanceGuard liberado com sucesso.");
+            }
+        }
         // PostgreSQL is intentionally kept running for instant subsequent launches
         self.log("PostgreSQL mantido em execução para reinicialização rápida.");
     }
@@ -673,8 +661,19 @@ impl LocalRuntimeManager {
 
         let runtime_files = self.find_runtime_files(app_handle).ok();
 
+        let main_window = app_handle.get_webview_window("main");
+        let main_window_exists = main_window.is_some();
+        let main_window_visible = main_window.as_ref().and_then(|w| w.is_visible().ok()).unwrap_or(false);
+        let main_window_focused = main_window.as_ref().and_then(|w| w.is_focused().ok()).unwrap_or(false);
+
         serde_json::json!({
             "status": status,
+            "window": {
+                "mainWindowExists": main_window_exists,
+                "mainWindowVisible": main_window_visible,
+                "mainWindowFocused": main_window_focused,
+            },
+            "singleInstanceRole": self.single_instance_role.lock().map(|r| r.clone()).unwrap_or_else(|_| "UNKNOWN".to_string()),
             "ports": {
                 "postgres_5434": pg_port_open,
                 "api_3001": api_port_open,

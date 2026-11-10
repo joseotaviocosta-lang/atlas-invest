@@ -1,7 +1,9 @@
+pub mod lifecycle;
 pub mod runtime;
 pub mod storage;
 
 use std::sync::Arc;
+use tauri::Manager;
 use runtime::{LocalRuntimeManager, RuntimeStatus};
 
 #[tauri::command]
@@ -80,7 +82,26 @@ async fn runtime_restart(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 1. Single Instance check BEFORE initializing WebView2 or Tauri Builder
+    let single_instance_action = match lifecycle::acquire_or_handle_secondary() {
+        Ok(lifecycle::SingleInstanceAction::Primary(guard)) => (Some(guard), "PRIMARY".to_string()),
+        Ok(lifecycle::SingleInstanceAction::SecondaryRestored) => {
+            log::info!("[SINGLE_INSTANCE_SECONDARY] Janela existente encontrada e restaurada. Encerrando processo secundário.");
+            return;
+        }
+        Ok(lifecycle::SingleInstanceAction::Recovered(guard)) => {
+            log::warn!("[SINGLE_INSTANCE_RECOVERED] Instância primária órfã recuperada com sucesso.");
+            (Some(guard), "RECOVERED".to_string())
+        }
+        Err(e) => {
+            eprintln!("Falha na verificação de instância única: {}", e);
+            log::error!("Falha na verificação de instância única: {}", e);
+            return;
+        }
+    };
+
     let runtime_mgr = Arc::new(LocalRuntimeManager::new());
+    runtime_mgr.set_single_instance(single_instance_action.0, single_instance_action.1);
     let shutdown_mgr = Arc::clone(&runtime_mgr);
 
     tauri::Builder::default()
@@ -109,17 +130,31 @@ pub fn run() {
             runtime_get_diagnostics,
             runtime_restart,
         ])
-        .on_window_event(move |_window, event| {
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
-                shutdown_mgr.shutdown();
+        .setup(|_app| {
+            log::info!("[WINDOW_CREATED] Janela principal criada com sucesso.");
+            Ok(())
+        })
+        .on_window_event(move |window, event| {
+            match event {
+                tauri::WindowEvent::CloseRequested { .. } => {
+                    log::info!("[WINDOW_CLOSE_REQUESTED] Fechamento da janela principal solicitado pelo usuário.");
+                    shutdown_mgr.shutdown();
+                    log::info!("[APP_EXIT_REQUESTED] Encerrando aplicação Tauri.");
+                    window.app_handle().exit(0);
+                }
+                tauri::WindowEvent::Destroyed => {
+                    log::info!("[WINDOW_DESTROYED] Janela principal destruída.");
+                    shutdown_mgr.shutdown();
+                    window.app_handle().exit(0);
+                }
+                _ => {}
             }
         })
-        .setup(|_app| Ok(()))
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(move |_app_handle, event| {
             if let tauri::RunEvent::ExitRequested { .. } = event {
-                // Final safety shutdown
+                log::info!("[APP_EXIT_REQUESTED] RunEvent::ExitRequested processado.");
             }
         });
 }

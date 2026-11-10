@@ -19,6 +19,11 @@ export interface RuntimeDiagnostics {
     node_bin: string;
     bundle_cjs: string;
   };
+  window?: {
+    mainWindowExists: boolean;
+    mainWindowVisible: boolean;
+    mainWindowFocused: boolean;
+  };
+  singleInstanceRole?: string;
   recent_logs: string[];
 }
-

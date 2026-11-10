@@ -120,5 +120,35 @@ describe('Project Atlas — Native Local Runtime Orchestration (APP-15C-R1)', ()
       expect(parsed.overall).toBe('ready');
       expect(parsed.message).toBe('Atlas pronto para uso local');
     });
+
+    it('ensures runtime diagnostics supports window lifecycle and single instance role', () => {
+      const diag: RuntimeDiagnostics = {
+        status: {
+          postgres: 'running',
+          api: 'ready',
+          overall: 'ready',
+          message: 'Atlas pronto para uso local',
+          timestamp: new Date().toISOString(),
+        },
+        ports: { postgres_5434: true, api_3001: true, api_ready: true },
+        paths: {
+          postgres_bin: 'postgres.exe',
+          postgres_data: 'pg_data',
+          node_bin: 'node.exe',
+          bundle_cjs: 'bundle.cjs',
+        },
+        window: {
+          mainWindowExists: true,
+          mainWindowVisible: true,
+          mainWindowFocused: true,
+        },
+        singleInstanceRole: 'PRIMARY',
+        recent_logs: ['[LOG] Ready'],
+      };
+
+      expect(diag.window?.mainWindowExists).toBe(true);
+      expect(diag.window?.mainWindowVisible).toBe(true);
+      expect(diag.singleInstanceRole).toBe('PRIMARY');
+    });
   });
 });
