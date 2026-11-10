@@ -206,3 +206,57 @@ export interface IngestionReceiptDto {
   status: 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'EMPTY';
   message?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Opportunity Radar (APP-16F)
+// ---------------------------------------------------------------------------
+
+export interface OpportunityNewsItemDto {
+  id: string;
+  headline: string;
+  source: string;
+  publishedAt: string;
+  canonicalUrl?: string;
+  sentiment: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'MIXED' | 'UNKNOWN';
+  relevance: number;
+}
+
+export interface OpportunityScoreComponentsDto {
+  portfolioFit: number;
+  valuation: number;
+  momentum: number;
+  priceOpportunity: number;
+  news: number;
+  outlook: number;
+}
+
+export interface OpportunityRadarItemDto {
+  ticker: string;
+  name: string;
+  assetId: string;
+  assetType: 'STOCK' | 'FII';
+  currentPrice: string;
+  dailyChangePercent: number | null;
+  portfolioWeight: number;
+  portfolioQuantity: string;
+  marketValue: string;
+  score: number;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'INSUFFICIENT_DATA';
+  components: OpportunityScoreComponentsDto;
+  positives: string[];
+  risks: string[];
+  news: OpportunityNewsItemDto[];
+  dataFreshness: 'FRESH' | 'STALE' | 'UNKNOWN';
+  updatedAt: string;
+}
+
+export interface OpportunityRadarResponseDto {
+  portfolioId: string;
+  analysisDate: string;
+  updatedAt: string;
+  modelVersion: string;
+  totalEligible: number;
+  totalRanked: number;
+  items: OpportunityRadarItemDto[];
+  disclaimer: string;
+}

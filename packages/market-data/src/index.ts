@@ -3224,3 +3224,8 @@ export class BrapiMacroBenchmarkProvider implements IMacroDataProvider {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Opportunity Radar (APP-16F)
+// ---------------------------------------------------------------------------
+export * from './opportunity-radar';

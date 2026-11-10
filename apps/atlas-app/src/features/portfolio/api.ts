@@ -63,4 +63,17 @@ export const portfolioApi = {
     );
     return res.data;
   },
+
+  async getOpportunityRadar(portfolioId: string): Promise<{ data: import('./types').OpportunityRadarResponseDto }> {
+    return apiClient.get<{ data: import('./types').OpportunityRadarResponseDto }>(
+      `/api/v1/portfolios/${portfolioId}/opportunity-radar`
+    );
+  },
+
+  async refreshOpportunityRadar(portfolioId: string): Promise<{ data: import('./types').OpportunityRadarResponseDto }> {
+    return apiClient.post<{ data: import('./types').OpportunityRadarResponseDto }>(
+      `/api/v1/portfolios/${portfolioId}/opportunity-radar/refresh`,
+      {}
+    );
+  },
 };

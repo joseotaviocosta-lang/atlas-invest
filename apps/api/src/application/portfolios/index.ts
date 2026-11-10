@@ -25,5 +25,6 @@ export * from './portfolio-audit-history.types';
 export * from './portfolio-audit-history.compose';
 export * from './get-portfolio-audit-history.use-case';
 export * from './portfolio-contribution-goals.use-case';
+export * from './opportunity-radar';
 export * from './read-models';
 export * from './mappers/portfolio-read-model.mapper';

@@ -49,6 +49,7 @@ import {
   ContributionGoalRepository,
   WatchlistRepository,
   PrivacyRepository,
+  MarketIntelligenceRepository,
 } from '@atlas/database';
 import {
   PRISMA_CLIENT,
@@ -100,6 +101,7 @@ import {
   MACRO_REPOSITORY,
   WATCHLIST_REPOSITORY,
   PRIVACY_REPOSITORY,
+  MARKET_INTELLIGENCE_REPOSITORY,
 } from './tokens';
 
 type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
@@ -351,6 +353,11 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
       useFactory: (prisma: AtlasPrismaClient) => new PrivacyRepository(prisma),
       inject: [PRISMA_CLIENT],
     },
+    {
+      provide: MARKET_INTELLIGENCE_REPOSITORY,
+      useFactory: (prisma: AtlasPrismaClient) => new MarketIntelligenceRepository(prisma),
+      inject: [PRISMA_CLIENT],
+    },
   ],
   exports: [
     PRISMA_CLIENT,
@@ -402,6 +409,7 @@ type AtlasPrismaClient = ReturnType<typeof getPrismaClient>;
     MACRO_REPOSITORY,
     WATCHLIST_REPOSITORY,
     PRIVACY_REPOSITORY,
+    MARKET_INTELLIGENCE_REPOSITORY,
   ],
 })
 export class DatabaseModule {}
