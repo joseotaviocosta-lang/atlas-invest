@@ -145,6 +145,7 @@ export class OpportunityRadarEngine {
       totalRanked: topItems.length,
       items: Object.freeze(topItems),
       lowConfidenceItems: Object.freeze(lowConfidenceItems),
+      allEvaluatedItems: Object.freeze(evaluatedItems),
       overallCoveragePercent,
       disclaimer: OPPORTUNITY_RADAR_DISCLAIMER,
     });

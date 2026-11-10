@@ -6,20 +6,31 @@ export interface ConfidenceAssessment {
 }
 
 /**
- * Calculates deterministic confidence score and provenance for an asset analysis (APP-16F / APP-16G).
+ * Calculates deterministic confidence score and honest provenance for an asset analysis (APP-16G-R1).
  *
  * Tracks 5 essential data dimensions:
- * 1. Quote: valid price & daily change
- * 2. History: multi-day historical movements (5d, 21d, or 63d)
- * 3. Fundamentals: P/L, 52w range, P/VP, or DY
- * 4. Portfolio: custody quantity & portfolio weight
- * 5. News / Events: verified news or corporate filings with source provenance
+ * 1. Quote: valid price & daily movement (Source: B3)
+ * 2. History: multi-day price series (>= 21d or >= 5d)
+ * 3. True Fundamentals:
+ *    - Equities: P/L, P/VP, DY, ROE, D/E (Source: BRAPI)
+ *    - FIIs: P/VP, DY
+ *    * Invariant (APP-16G-R1): 52-week high/low is market price range, NEVER a fundamental metric.
+ * 4. Portfolio Context: custody quantity & portfolio weight (Source: Ledger)
+ * 5. News / Events: verified recent news articles with honest aggregator/publisher provenance.
  *
- * Confidence Floor Invariant (APP-16G):
- * - HIGH: Quote + History >= 21d + Fundamentals + (News or Corporate Events)
- * - MEDIUM: Quote + History >= 5d + (Fundamentals OR Price Opportunity from 52w range)
- * - LOW: Only 1 analytical dimension known (e.g. only portfolio fit)
- * - INSUFFICIENT_DATA: Missing quote or no valid pricing data
+ * Confidence Floor Rules (APP-16G-R1):
+ * - HIGH:
+ *     Quote + History >= 21d + Real Fundamental Metric + Portfolio Context
+ *     + (at least 1 news item OR multiple fundamental metrics).
+ *     * An asset WITHOUT real fundamentals can NEVER reach HIGH.
+ *     * An asset WITHOUT >= 21d history can NEVER reach HIGH.
+ * - MEDIUM:
+ *     Quote + Portfolio Context + at least 1 analytical dimension (History, Fundamentals, News, or 52w Range Opportunity).
+ *     Accepts partial useful data honestly.
+ * - LOW:
+ *     Only Quote + Portfolio Context without history, fundamentals, or news.
+ * - INSUFFICIENT_DATA:
+ *     Missing quote or zero price.
  */
 export function calculateOpportunityConfidence(input: OpportunityAssetInput): OpportunityConfidence {
   return assessOpportunityConfidence(input).confidence;
@@ -37,28 +48,34 @@ export function assessOpportunityConfidence(input: OpportunityAssetInput): Confi
     availableDimensions++;
   }
 
-  // 2. History
-  const hasHistory21d = (input.change21dPercent !== null && input.change21dPercent !== undefined) ||
-                        (input.change63dPercent !== null && input.change63dPercent !== undefined);
+  // 2. History (Market Data: 5d, 21d, 63d)
+  const hasHistory21d =
+    (input.change21dPercent !== null && input.change21dPercent !== undefined) ||
+    (input.change63dPercent !== null && input.change63dPercent !== undefined);
   const hasHistory5d = input.change5dPercent !== null && input.change5dPercent !== undefined;
-  if (hasHistory21d || hasHistory5d) {
+  const hasPriceHistory = hasHistory21d || hasHistory5d;
+  if (hasPriceHistory) {
     availableDimensions++;
   }
 
-  // 3. Fundamentals
-  const hasEquityFundamentals =
-    (input.priceEarnings !== null && input.priceEarnings !== undefined) ||
-    (input.priceToBook !== null && input.priceToBook !== undefined) ||
-    (input.dividendYield !== null && input.dividendYield !== undefined) ||
-    (input.fiftyTwoWeekHigh !== null && input.fiftyTwoWeekHigh !== undefined);
+  // 3. True Fundamentals (Strict: 52w range is NEVER a fundamental)
+  let equityFundamentalsCount = 0;
+  if (input.priceEarnings !== null && input.priceEarnings !== undefined) equityFundamentalsCount++;
+  if (input.priceToBook !== null && input.priceToBook !== undefined) equityFundamentalsCount++;
+  if (input.dividendYield !== null && input.dividendYield !== undefined) equityFundamentalsCount++;
+  if (input.returnOnEquity !== null && input.returnOnEquity !== undefined) equityFundamentalsCount++;
+  if (input.debtToEquity !== null && input.debtToEquity !== undefined) equityFundamentalsCount++;
 
-  const hasFiiFundamentals =
-    (input.fiiPriceToBook !== null && input.fiiPriceToBook !== undefined) ||
-    (input.fiiDividendYield !== null && input.fiiDividendYield !== undefined) ||
-    (input.fiftyTwoWeekHigh !== null && input.fiftyTwoWeekHigh !== undefined);
+  let fiiFundamentalsCount = 0;
+  if (input.fiiPriceToBook !== null && input.fiiPriceToBook !== undefined) fiiFundamentalsCount++;
+  if (input.fiiDividendYield !== null && input.fiiDividendYield !== undefined) fiiFundamentalsCount++;
 
-  const hasFundamentals = input.assetType === 'STOCK' ? hasEquityFundamentals : hasFiiFundamentals;
-  if (hasFundamentals) {
+  const hasEquityFundamentals = input.assetType === 'STOCK' && equityFundamentalsCount > 0;
+  const hasFiiFundamentals = input.assetType === 'FII' && fiiFundamentalsCount > 0;
+  const hasRealFundamentals = hasEquityFundamentals || hasFiiFundamentals;
+  const fundamentalsCount = input.assetType === 'STOCK' ? equityFundamentalsCount : fiiFundamentalsCount;
+
+  if (hasRealFundamentals) {
     availableDimensions++;
     sources.push('BRAPI');
   }
@@ -73,28 +90,52 @@ export function assessOpportunityConfidence(input: OpportunityAssetInput): Confi
     sources.push('Ledger');
   }
 
-  // 5. News / Corporate Events
-  const hasNewsOrEvents =
-    (input.recentNews && input.recentNews.length > 0) ||
+  // 5. News / Corporate Events (Honest Provenance)
+  const validNews = (input.recentNews ?? []).filter((n) => n.relevance > 0 && n.headline.trim().length > 0);
+  const hasVerifiedNews =
+    validNews.length > 0 ||
     (input.corporateEventsCount !== null &&
       input.corporateEventsCount !== undefined &&
       input.corporateEventsCount > 0);
-  if (hasNewsOrEvents) {
+
+  if (hasVerifiedNews) {
     availableDimensions++;
-    if (input.recentNews && input.recentNews.length > 0) {
-      sources.push('RSS Financeiro');
+    let hasGoogleNews = false;
+    for (const n of validNews) {
+      if (n.aggregator === 'GOOGLE_NEWS_RSS' || !n.aggregator) {
+        hasGoogleNews = true;
+      }
+      if (n.source && n.source !== 'Mercado' && !sources.includes(n.source)) {
+        sources.push(n.source);
+      }
+    }
+    if (hasGoogleNews) {
+      sources.push('Google News RSS (Agregador)');
     }
   }
 
-  // Determine Confidence
+  // Determine Confidence (APP-16G-R1 Rules)
   let confidence: OpportunityConfidence = 'INSUFFICIENT_DATA';
+
   if (!hasPrice) {
     confidence = 'INSUFFICIENT_DATA';
-  } else if (hasPrice && hasHistory21d && hasFundamentals && hasNewsOrEvents) {
+  } else if (
+    hasPrice &&
+    hasHistory21d &&
+    hasRealFundamentals &&
+    hasPortfolioContext &&
+    (hasVerifiedNews || fundamentalsCount >= 2)
+  ) {
+    // High confidence requires both strong price history AND verified true fundamentals
     confidence = 'HIGH';
-  } else if (hasPrice && (hasFundamentals || hasHistory5d || hasHistory21d) && (hasNewsOrEvents || hasFundamentals)) {
+  } else if (
+    hasPrice &&
+    hasPortfolioContext &&
+    (hasPriceHistory || hasRealFundamentals)
+  ) {
+    // Medium confidence requires analytical basis (price history or true fundamentals)
     confidence = 'MEDIUM';
-  } else if (availableDimensions >= 2) {
+  } else if (hasPrice && availableDimensions >= 2) {
     confidence = 'LOW';
   } else {
     confidence = 'INSUFFICIENT_DATA';
@@ -109,6 +150,9 @@ export function assessOpportunityConfidence(input: OpportunityAssetInput): Confi
       coveragePercent,
       knownDimensionsCount: availableDimensions,
       totalDimensionsCount: totalDimensions,
+      hasRealFundamentals,
+      hasPriceHistory,
+      hasVerifiedNews,
     },
   };
 }

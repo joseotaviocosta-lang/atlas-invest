@@ -133,22 +133,9 @@ export class FiiOpportunityScorer {
       return 30;
     }
 
-    // If P/VP is absent, evaluate 52-week range discount
-    const high = input.fiftyTwoWeekHigh ?? null;
-    const low = input.fiftyTwoWeekLow ?? null;
-    const currentPriceNum = parseFloat(input.currentPrice) || 0;
-    if (high && low && high > low && currentPriceNum > 0) {
-      const pos = (currentPriceNum - low) / (high - low);
-      if (pos <= 0.30) {
-        return 85; // Attractive range discount
-      }
-      if (pos <= 0.60) {
-        return 70;
-      }
-      return 50;
-    }
-
-    return null; // UNKNOWN
+    // Invariant (APP-16G-R1): If P/VP is absent, valuation is UNKNOWN (null).
+    // 52-week range is price/market data, not valuation/fundamental.
+    return null;
   }
 
   private static calculateFiiIncomeQuality(input: OpportunityAssetInput): number | null {

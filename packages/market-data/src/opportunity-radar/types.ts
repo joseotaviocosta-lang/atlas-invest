@@ -1,5 +1,5 @@
 /**
- * Project Atlas — Opportunity Radar Domain Types (APP-16F / APP-16G)
+ * Project Atlas — Opportunity Radar Domain Types (APP-16F / APP-16G / APP-16G-R1)
  *
  * Deterministic scoring, data quality normalization, and explainability models.
  * Model version: opportunity-v1
@@ -15,13 +15,18 @@ export type OpportunitySentiment = 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'MIXED'
 
 export type OpportunityFreshness = 'FRESH' | 'STALE' | 'UNKNOWN';
 
+export type OpportunityNewsSourceType = 'OFFICIAL_REGULATORY' | 'CORPORATE_IR' | 'FINANCIAL_MEDIA';
+
 export interface OpportunityNewsItem {
   id: string;
   headline: string;
-  source: string;
+  source: string; // Publisher: e.g. 'InfoMoney', 'Valor Econômico', 'B3', 'CVM'
+  aggregator?: string; // Aggregator: e.g. 'GOOGLE_NEWS_RSS', 'DIRECT'
   publishedAt: string; // ISO-8601
   canonicalUrl?: string;
   sentiment: OpportunitySentiment;
+  sentimentMethod?: 'HEADLINE_KEYWORD_HEURISTIC' | 'OFFICIAL_FILING' | 'MANUAL';
+  sourceType?: OpportunityNewsSourceType;
   relevance: number; // 0..1
 }
 
@@ -35,10 +40,13 @@ export interface OpportunityScoreComponents {
 }
 
 export interface OpportunityDataProvenance {
-  sources: readonly string[]; // e.g. ['BRAPI', 'B3', 'InfoMoney']
+  sources: readonly string[]; // e.g. ['BRAPI', 'B3', 'Google News RSS (Agregador)']
   coveragePercent: number; // 0..100
   knownDimensionsCount: number;
   totalDimensionsCount: number;
+  hasRealFundamentals: boolean;
+  hasPriceHistory: boolean;
+  hasVerifiedNews: boolean;
 }
 
 export interface OpportunityAssetInput {
@@ -61,7 +69,7 @@ export interface OpportunityAssetInput {
   quoteFreshness?: OpportunityFreshness;
   quoteAsOf?: string;
 
-  // Historical trend & range
+  // Historical trend & range (Market Data — NOT fundamentals)
   change5dPercent?: number | null;
   change21dPercent?: number | null;
   change63dPercent?: number | null;
@@ -69,14 +77,14 @@ export interface OpportunityAssetInput {
   fiftyTwoWeekHigh?: number | null;
   fiftyTwoWeekLow?: number | null;
 
-  // Fundamentals — Equities
+  // True Fundamentals — Equities
   priceEarnings?: number | null; // P/L
   priceToBook?: number | null; // P/VP
   dividendYield?: number | null; // DY (%)
   returnOnEquity?: number | null; // ROE (%)
   debtToEquity?: number | null;
 
-  // Fundamentals — FIIs
+  // True Fundamentals — FIIs
   fiiPriceToBook?: number | null; // P/VP
   fiiDividendYield?: number | null; // DY (%)
   fiiSegment?: string | null;
@@ -119,6 +127,7 @@ export interface OpportunityRadarResult {
   totalRanked: number;
   items: readonly OpportunityRadarItem[];
   lowConfidenceItems?: readonly OpportunityRadarItem[];
+  allEvaluatedItems?: readonly OpportunityRadarItem[];
   overallCoveragePercent?: number;
   disclaimer: string;
 }

@@ -21,7 +21,37 @@ export interface FetchedAssetIntelligence {
 }
 
 /**
- * Fetches fundamentals, price history, and news for a ticker (APP-16F / APP-16G).
+ * Normalizes title for deduplication without truncating distinct headlines (APP-16G-R1).
+ */
+function normalizeHeadlineForDedupe(title: string): string {
+  // Strip common publisher tails (e.g. " - InfoMoney", " - Money Times")
+  const withoutPublisher = title.split(/\s*[-–|]\s*(?:InfoMoney|Money Times|Bora Investir|Valor|Fiis|Investidor10|Seu Dinheiro|Reuters|Bloomberg)/i)[0] ?? title;
+  return withoutPublisher.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Checks whether an article headline is legitimately relevant to the ticker (APP-16G-R1 PARTE R).
+ */
+function isHeadlineRelevantToTicker(headline: string, ticker: string): boolean {
+  const textLower = headline.toLowerCase();
+  const tickerLower = ticker.toLowerCase();
+  if (textLower.includes(tickerLower)) {
+    return true;
+  }
+  // Base symbol without digit (e.g. PETR for PETR4, HGLG for HGLG11)
+  const baseSymbol = tickerLower.replace(/\d+$/, '');
+  if (baseSymbol.length >= 3 && textLower.includes(baseSymbol)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Fetches fundamentals, price history, and news for a ticker (APP-16F / APP-16G / APP-16G-R1).
+ *
+ * Security Invariant (APP-16G-R1 PARTE A & B):
+ * BRAPI API token is sent EXCLUSIVELY via HTTP Authorization: Bearer header.
+ * Token is NEVER appended as a URL query parameter (zero token in URL).
  *
  * Privacy Invariant:
  * Receives ONLY the ticker symbol. Never sends user quantities, cost, balances,
@@ -45,6 +75,7 @@ export async function fetchBrapiAssetIntelligence(params: {
   const timeoutMs = params.timeoutMs ?? 5000;
   const token = params.token ?? process.env.BRAPI_API_KEY ?? process.env.MARKET_DATA_API_TOKEN;
 
+  // Security: Token passed ONLY via Authorization header
   const headers: Record<string, string> = {
     'User-Agent': 'Atlas-Invest/0.1.0',
     Accept: 'application/json',
@@ -53,15 +84,12 @@ export async function fetchBrapiAssetIntelligence(params: {
     headers['Authorization'] = `Bearer ${token.trim()}`;
   }
 
-  // 1. Fetch Quote with SummaryProfile and 3-month history
+  // 1. Fetch Quote with SummaryProfile and 3-month history (ZERO token in URL)
   try {
     const quoteUrl = new URL(`${baseUrl}/quote/${encodeURIComponent(params.ticker)}`);
     quoteUrl.searchParams.set('modules', 'summaryProfile');
     quoteUrl.searchParams.set('range', '3mo');
     quoteUrl.searchParams.set('interval', '1d');
-    if (token && token.trim()) {
-      quoteUrl.searchParams.set('token', token.trim());
-    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -74,14 +102,12 @@ export async function fetchBrapiAssetIntelligence(params: {
 
     clearTimeout(timeout);
 
-    // If modules=summaryProfile failed (403/400), fallback to standard quote with range
+    // If modules=summaryProfile failed (403/400), fallback to standard quote with range (ZERO token in URL)
     if (!res || !res.ok) {
       const fallbackUrl = new URL(`${baseUrl}/quote/${encodeURIComponent(params.ticker)}`);
       fallbackUrl.searchParams.set('range', '3mo');
       fallbackUrl.searchParams.set('interval', '1d');
-      if (token && token.trim()) {
-        fallbackUrl.searchParams.set('token', token.trim());
-      }
+
       const c2 = new AbortController();
       const t2 = setTimeout(() => c2.abort(), timeoutMs);
       res = await fetch(fallbackUrl.toString(), {
@@ -137,7 +163,7 @@ export async function fetchBrapiAssetIntelligence(params: {
     // Fail closed to neutral
   }
 
-  // 2. Fetch Institutional Financial News via RSS feed (with deduplication & temporal decay)
+  // 2. Fetch Aggregated News via Google News RSS (Aggregator honesty: APP-16G-R1 PARTE D, E, F)
   try {
     const isFii = params.isFii ?? false;
     const query = encodeURIComponent(`${params.ticker} ${isFii ? 'FII OR dividendo OR rendimento' : 'B3 OR dividendo OR balanço'}`);
@@ -172,28 +198,41 @@ export async function fetchBrapiAssetIntelligence(params: {
           const title = titleMatch && titleMatch[1] ? titleMatch[1].replace('<![CDATA[', '').replace(']]>', '').trim() : '';
           if (!title) continue;
 
-          // Deduplication token
-          const normKey = title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 32);
+          // PARTE R: Filter out news that does NOT mention the ticker or company
+          if (!isHeadlineRelevantToTicker(title, params.ticker)) {
+            continue;
+          }
+
+          // PARTE S: Full normalized string deduplication without premature truncation
+          const normKey = normalizeHeadlineForDedupe(title);
           if (seenHeadlines.has(normKey)) continue;
           seenHeadlines.add(normKey);
 
-          const source = sourceMatch && sourceMatch[1] ? sourceMatch[1].replace('<![CDATA[', '').replace(']]>', '').trim() : 'Mercado';
+          const publisher = sourceMatch && sourceMatch[1] ? sourceMatch[1].replace('<![CDATA[', '').replace(']]>', '').trim() : 'Mercado';
           const pubDate = pubMatch && pubMatch[1] ? new Date(pubMatch[1]).toISOString() : new Date().toISOString();
 
           const textLower = title.toLowerCase();
           let sentiment: OpportunityNewsItem['sentiment'] = 'NEUTRAL';
-          let relevance = 0.8;
+          let relevance = 0.7; // Standard media relevance
+          let sourceType: OpportunityNewsItem['sourceType'] = 'FINANCIAL_MEDIA';
 
-          // Official corporate filings have highest relevance
-          if (
+          // PARTE F: Only assign OFFICIAL_REGULATORY if source publisher is verified official
+          const pubLower = publisher.toLowerCase();
+          const isOfficialSource = pubLower.includes('cvm') || pubLower.includes('b3') || pubLower.includes('ri ');
+          if (isOfficialSource) {
+            sourceType = 'OFFICIAL_REGULATORY';
+            relevance = 1.0;
+          } else if (
             textLower.includes('fato relevante') ||
             textLower.includes('aviso aos acionistas') ||
             textLower.includes('comunicado ao mercado') ||
             textLower.includes('relatório gerencial')
           ) {
-            relevance = 1.0;
+            // Media covering a corporate event: increased relevance but NOT false official
+            relevance = 0.85;
           }
 
+          // PARTE G: Explicitly document heuristic classification
           if (
             textLower.includes('lucro') ||
             textLower.includes('alta') ||
@@ -220,9 +259,12 @@ export async function fetchBrapiAssetIntelligence(params: {
           result.news.push({
             id: `rss-news-${params.ticker}-${i}`,
             headline: title,
-            source,
+            source: publisher,
+            aggregator: 'GOOGLE_NEWS_RSS',
             publishedAt: pubDate,
             sentiment,
+            sentimentMethod: 'HEADLINE_KEYWORD_HEURISTIC',
+            sourceType,
             relevance,
           });
         }
