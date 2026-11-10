@@ -1,15 +1,17 @@
 /**
- * Calculates Trend / Momentum and Price Opportunity scores (APP-16F PARTE E, F).
+ * Calculates Trend / Momentum and Price Opportunity scores (APP-16F / APP-16G).
  *
- * Rules:
+ * Rules (APP-16G):
+ * - If historical trend data is missing, returns momentumScore: null (UNKNOWN), not 50.
+ * - If 52-week range and drawdown are missing, returns priceOpportunityScore: null (UNKNOWN), not 50.
  * - Anti-trap: An isolated single-day crash does NOT get rewarded blindly.
  * - Medium-term trend (21d, 63d) stabilization provides true momentum confirmation.
  * - Price opportunity evaluates discount from 52-week highs and reasonable range position.
  */
 
 export interface TrendAnalysisResult {
-  momentumScore: number; // 0..100
-  priceOpportunityScore: number; // 0..100
+  momentumScore: number | null; // null if UNKNOWN
+  priceOpportunityScore: number | null; // null if UNKNOWN
   trendDirection: 'BULLISH' | 'NEUTRAL' | 'BEARISH' | 'RECOVERY' | 'UNKNOWN';
 }
 
@@ -24,18 +26,20 @@ export function calculateTrendAndPriceScores(input: {
   currentPrice: string;
 }): TrendAnalysisResult {
   const currentPriceNum = parseFloat(input.currentPrice) || 0;
-  const d1 = input.dailyChangePercent ?? 0;
+  const d1 = input.dailyChangePercent ?? null;
   const d5 = input.change5dPercent ?? null;
   const d21 = input.change21dPercent ?? null;
   const d63 = input.change63dPercent ?? null;
 
   // 1. Momentum / Trend evaluation
-  let momentumScore = 50; // Neutral baseline when data is missing
+  let momentumScore: number | null = null;
   let trendDirection: TrendAnalysisResult['trendDirection'] = 'UNKNOWN';
 
-  if (d21 !== null || d63 !== null || d5 !== null) {
-    const medTerm = d21 ?? (d63 !== null ? d63 / 3 : (d5 ?? 0) * 4);
-    const shortTerm = d5 ?? d1 * 5;
+  const hasTrendData = d21 !== null || d63 !== null || d5 !== null || d1 !== null;
+
+  if (hasTrendData) {
+    const medTerm = d21 ?? (d63 !== null ? d63 / 3 : (d5 ?? (d1 ?? 0) * 5) * 4);
+    const shortTerm = d5 ?? (d1 ?? 0) * 5;
 
     if (medTerm > 5 && shortTerm > 0) {
       trendDirection = 'BULLISH';
@@ -50,19 +54,17 @@ export function calculateTrendAndPriceScores(input: {
       trendDirection = 'NEUTRAL';
       momentumScore = 50 + shortTerm * 1.2;
     }
-  }
 
-  // Anti-trap penalty for isolated crash:
-  // If daily change is severely negative (e.g. < -4%) but 21d/63d trend is also negative,
-  // do not treat as an immediate "buy the dip" buy-signal without stabilization.
-  if (d1 < -3 && (d21 === null || d21 < -10)) {
-    momentumScore = Math.max(20, momentumScore - 15);
-  }
+    // Anti-trap penalty for isolated crash:
+    if (d1 !== null && d1 < -3 && (d21 === null || d21 < -10)) {
+      momentumScore = Math.max(20, momentumScore - 15);
+    }
 
-  momentumScore = Math.max(10, Math.min(100, Math.round(momentumScore)));
+    momentumScore = Math.max(10, Math.min(100, Math.round(momentumScore)));
+  }
 
   // 2. Price Opportunity evaluation (discount vs 52-week range and drawdown)
-  let priceOpportunityScore = 50; // Neutral baseline
+  let priceOpportunityScore: number | null = null;
 
   const high52 = input.fiftyTwoWeekHigh ?? null;
   const low52 = input.fiftyTwoWeekLow ?? null;
@@ -95,7 +97,9 @@ export function calculateTrendAndPriceScores(input: {
     }
   }
 
-  priceOpportunityScore = Math.max(10, Math.min(100, Math.round(priceOpportunityScore)));
+  if (priceOpportunityScore !== null) {
+    priceOpportunityScore = Math.max(10, Math.min(100, Math.round(priceOpportunityScore)));
+  }
 
   return {
     momentumScore,

@@ -7,7 +7,7 @@ import {
 } from './types';
 import { EquityOpportunityScorer } from './equity-scorer';
 import { FiiOpportunityScorer } from './fii-scorer';
-import { calculateOpportunityConfidence } from './confidence';
+import { assessOpportunityConfidence } from './confidence';
 import { generateExplainabilitySynthesis } from './explainability';
 
 export const OPPORTUNITY_RADAR_DISCLAIMER =
@@ -22,9 +22,14 @@ const CONFIDENCE_WEIGHT: Record<OpportunityConfidence, number> = {
 
 export class OpportunityRadarEngine {
   /**
-   * Evaluates a portfolio's assets and generates the Daily Opportunity Radar (APP-16F).
+   * Evaluates a portfolio's assets and generates the Daily Opportunity Radar (APP-16F / APP-16G).
    *
    * Pure deterministic replay engine: zero I/O, zero side effects.
+   *
+   * Quality Floor Invariant (APP-16G):
+   * Primary recommendation list (items) accepts ONLY assets with confidence >= MEDIUM.
+   * Never pads the Top 5 with low-confidence assets. If only 2 or 3 qualify, returns Top 2 or 3.
+   * Low-confidence assets are placed into lowConfidenceItems ("Ativos que merecem mais dados").
    */
   static evaluate(params: {
     portfolioId: string;
@@ -39,14 +44,18 @@ export class OpportunityRadarEngine {
     const maxResults = params.maxResults ?? 5;
 
     const evaluatedItems: OpportunityRadarItem[] = [];
+    let totalCoverageSum = 0;
+    let validAssetsCount = 0;
 
     for (const input of params.assets) {
       // Missing price or zero quantity is excluded from contribution radar
       if (!input.currentPrice || input.currentPrice === '0') {
         continue;
       }
+      validAssetsCount++;
 
-      const confidence = calculateOpportunityConfidence(input);
+      const { confidence, provenance } = assessOpportunityConfidence(input);
+      totalCoverageSum += provenance.coveragePercent;
 
       // Score using specialized scorer by asset type
       let score: number;
@@ -91,16 +100,17 @@ export class OpportunityRadarEngine {
           risks: Object.freeze(risks),
           news: Object.freeze(input.recentNews ?? []),
           dataFreshness: input.quoteFreshness ?? 'UNKNOWN',
+          dataProvenance: Object.freeze(provenance),
           updatedAt: referenceDate.toISOString(),
         }),
       );
     }
 
-    // Deterministic sorting (APP-16F PARTE R, AI.1):
+    // Sort comparator:
     // 1. score DESC
     // 2. confidence DESC
     // 3. ticker ASC
-    evaluatedItems.sort((a, b) => {
+    const itemComparator = (a: OpportunityRadarItem, b: OpportunityRadarItem) => {
       if (b.score !== a.score) {
         return b.score - a.score;
       }
@@ -109,9 +119,22 @@ export class OpportunityRadarEngine {
         return confDiff;
       }
       return a.ticker.localeCompare(b.ticker);
-    });
+    };
 
-    const topItems = evaluatedItems.slice(0, maxResults);
+    // Separate qualified (>= MEDIUM) from low-confidence (< MEDIUM)
+    const qualifiedItems = evaluatedItems
+      .filter((i) => i.confidence === 'HIGH' || i.confidence === 'MEDIUM')
+      .sort(itemComparator);
+
+    const lowConfidenceItems = evaluatedItems
+      .filter((i) => i.confidence === 'LOW' || i.confidence === 'INSUFFICIENT_DATA')
+      .sort(itemComparator);
+
+    // Primary ranking strictly from qualified items (no artificial padding)
+    const topItems = qualifiedItems.slice(0, maxResults);
+
+    const overallCoveragePercent =
+      validAssetsCount > 0 ? Math.round(totalCoverageSum / validAssetsCount) : 0;
 
     return Object.freeze({
       portfolioId: params.portfolioId,
@@ -121,6 +144,8 @@ export class OpportunityRadarEngine {
       totalEligible: params.assets.length,
       totalRanked: topItems.length,
       items: Object.freeze(topItems),
+      lowConfidenceItems: Object.freeze(lowConfidenceItems),
+      overallCoveragePercent,
       disclaimer: OPPORTUNITY_RADAR_DISCLAIMER,
     });
   }

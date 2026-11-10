@@ -227,15 +227,29 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
                   >
                     <div
                       style={{
-                        width: `${comp.value}%`,
+                        width: comp.value !== null ? `${comp.value}%` : '0%',
                         height: '100%',
                         backgroundColor:
-                          comp.value >= 70 ? colors.positive : comp.value >= 50 ? colors.accent : colors.warning,
+                          comp.value === null
+                            ? 'transparent'
+                            : comp.value >= 70
+                              ? colors.positive
+                              : comp.value >= 50
+                                ? colors.accent
+                                : colors.warning,
                       }}
                     />
                   </div>
-                  <span style={{ fontWeight: 600, color: colors.textPrimary, minWidth: '24px', textAlign: 'right' }}>
-                    {comp.value}
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      color: comp.value !== null ? colors.textPrimary : colors.textSecondary,
+                      minWidth: '28px',
+                      textAlign: 'right',
+                      fontSize: comp.value !== null ? '0.8125rem' : '0.6875rem',
+                    }}
+                  >
+                    {comp.value !== null ? comp.value : '—'}
                   </span>
                 </div>
               </div>
@@ -344,7 +358,7 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
           </div>
         )}
 
-        {/* Audit footer & Discrete Disclaimer */}
+        {/* Data Provenance & Audit footer */}
         <div
           style={{
             padding: `${spacing.sm}px`,
@@ -356,6 +370,17 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
             lineHeight: 1.4,
           }}
         >
+          {item.dataProvenance && (
+            <div style={{ marginBottom: '6px', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+              <span>
+                <strong>Fontes:</strong> {item.dataProvenance.sources.join(' • ')}
+              </span>
+              <span>•</span>
+              <span>
+                <strong>Cobertura de Dados:</strong> {item.dataProvenance.coveragePercent}% ({item.dataProvenance.knownDimensionsCount}/{item.dataProvenance.totalDimensionsCount} dimensões)
+              </span>
+            </div>
+          )}
           <div>
             <strong>Modelo:</strong> opportunity-v1 • <strong>Análise atualizada às:</strong> {formattedUpdatedAt}
           </div>

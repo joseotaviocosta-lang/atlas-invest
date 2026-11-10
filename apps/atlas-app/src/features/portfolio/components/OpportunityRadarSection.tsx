@@ -72,9 +72,14 @@ export const OpportunityRadarSection: React.FC<OpportunityRadarSectionProps> = (
               <span>🎯</span> Oportunidades de Hoje
             </h3>
             <Badge variant="primary">TOP 5</Badge>
+            {radar?.overallCoveragePercent !== undefined && (
+              <Badge variant="neutral" data-testid="radar-coverage-badge">
+                Cobertura: {radar.overallCoveragePercent}%
+              </Badge>
+            )}
           </div>
           <p style={{ margin: '4px 0 0 0', fontSize: '0.8125rem', color: colors.textSecondary }}>
-            Ativos da sua carteira que merecem atenção para possível novo aporte
+            Ativos da sua carteira que merecem atenção para possível novo aporte • Fontes: BRAPI • B3 • RSS Financeiro
           </p>
         </div>
 
@@ -447,6 +452,59 @@ export const OpportunityRadarSection: React.FC<OpportunityRadarSectionProps> = (
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {/* Section: Assets that deserve more data (APP-16G) */}
+      {radar?.lowConfidenceItems && radar.lowConfidenceItems.length > 0 && (
+        <div style={{ marginBottom: '16px' }} data-testid="radar-low-confidence-section">
+          <div
+            style={{
+              padding: `${spacing.sm}px ${spacing.md}px`,
+              backgroundColor: `${colors.surfaceElevated}`,
+              borderRadius: `${borderRadius.md}px`,
+              border: `1px solid ${colors.border}`,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '0.875rem' }}>🔍</span>
+                <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: colors.textSecondary }}>
+                  Ativos que merecem mais dados ({radar.lowConfidenceItems.length})
+                </span>
+              </div>
+              <span style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>
+                Omitidos do Top 5 por cobertura analítica insuficiente
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {radar.lowConfidenceItems.map((item) => (
+                <button
+                  key={item.ticker}
+                  type="button"
+                  onClick={() => setSelectedItem(item)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '4px 10px',
+                    backgroundColor: colors.surface,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: `${borderRadius.sm}px`,
+                    cursor: 'pointer',
+                    fontSize: '0.75rem',
+                    color: colors.textPrimary,
+                  }}
+                  data-testid={`low-conf-${item.ticker}`}
+                >
+                  <span style={{ fontWeight: 600 }}>{item.ticker}</span>
+                  <span style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>
+                    ({item.confidence === 'LOW' ? 'Baixa Convicção' : 'Dados Insuficientes'})
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

@@ -7,18 +7,26 @@ export interface EquityScoringResult {
   score: number; // 0..100
   components: OpportunityScoreComponents;
   concentrationPenalty: number;
+  knownWeightRatio: number;
 }
 
 /**
- * EquityOpportunityScorer (APP-16F PARTE C, G, O)
+ * EquityOpportunityScorer (APP-16F / APP-16G)
  *
- * Distinct scoring model for equities (Ações):
+ * Scoring model for equities (Ações) with dynamic normalization over known dimensions:
  * - Portfolio Fit:         20%
  * - Valuation/Fundamental: 20%
  * - Trend/Momentum:        20%
  * - Price Opportunity:     15%
  * - News/Sentiment:        15%
  * - Future Outlook:        10%
+ *
+ * Dynamic Normalization Invariant (APP-16G):
+ * Components with missing data are null (UNKNOWN), never artificial 50.
+ * Composite score is normalized strictly over the sum of known weights:
+ *   score = sum(w_i * s_i) / sum(w_i)
+ * If total known weight is below 0.35, the asset is capped to prevent
+ * low portfolio weight from single-handedly producing high opportunity scores.
  */
 export class EquityOpportunityScorer {
   static score(input: OpportunityAssetInput, referenceDate: Date = new Date()): EquityScoringResult {
@@ -51,16 +59,34 @@ export class EquityOpportunityScorer {
     // 5. Future Outlook (10%)
     const outlook = this.calculateEquityOutlook(input);
 
-    // Weighted composite
-    const rawScore =
-      portfolioFit * 0.2 +
-      valuation * 0.2 +
-      momentum * 0.2 +
-      priceOpportunity * 0.15 +
-      news * 0.15 +
-      outlook * 0.1;
+    // Dynamic Normalization
+    const componentsList: Array<{ score: number | null; weight: number }> = [
+      { score: portfolioFit, weight: 0.20 },
+      { score: valuation, weight: 0.20 },
+      { score: momentum, weight: 0.20 },
+      { score: priceOpportunity, weight: 0.15 },
+      { score: news, weight: 0.15 },
+      { score: outlook, weight: 0.10 },
+    ];
 
-    const finalScore = Math.max(0, Math.min(100, Math.round(rawScore)));
+    let weightedSum = 0;
+    let knownWeightSum = 0;
+
+    for (const comp of componentsList) {
+      if (comp.score !== null) {
+        weightedSum += comp.score * comp.weight;
+        knownWeightSum += comp.weight;
+      }
+    }
+
+    let finalScore = 40;
+    if (knownWeightSum >= 0.35) {
+      const normalizedScore = weightedSum / knownWeightSum;
+      finalScore = Math.max(0, Math.min(100, Math.round(normalizedScore)));
+    } else {
+      // If only portfolioFit is known (weight 0.20), asset cannot be recommended blindly
+      finalScore = Math.min(45, Math.round(portfolioFit * 0.45));
+    }
 
     return {
       score: finalScore,
@@ -73,11 +99,11 @@ export class EquityOpportunityScorer {
         outlook,
       },
       concentrationPenalty,
+      knownWeightRatio: knownWeightSum,
     };
   }
 
-  private static calculateEquityValuation(input: OpportunityAssetInput): number {
-    let score = 50; // Neutral default if missing (fail-closed)
+  private static calculateEquityValuation(input: OpportunityAssetInput): number | null {
     let indicatorsCount = 0;
     let sum = 0;
 
@@ -145,27 +171,36 @@ export class EquityOpportunityScorer {
       }
     }
 
-    if (indicatorsCount > 0) {
-      score = Math.round(sum / indicatorsCount);
+    if (indicatorsCount === 0) {
+      return null; // UNKNOWN
     }
 
-    return Math.max(10, Math.min(100, score));
+    const avg = Math.round(sum / indicatorsCount);
+    return Math.max(10, Math.min(100, avg));
   }
 
-  private static calculateEquityOutlook(input: OpportunityAssetInput): number {
-    let score = 65; // Base neutral outlook
+  private static calculateEquityOutlook(input: OpportunityAssetInput): number | null {
+    const hasConsensus = input.analystConsensus !== null && input.analystConsensus !== undefined && input.analystConsensus !== 'UNKNOWN';
+    const hasTargetRatio = input.targetPriceRatio !== null && input.targetPriceRatio !== undefined;
+    const hasCorporateEvents = input.corporateEventsCount !== null && input.corporateEventsCount !== undefined && input.corporateEventsCount > 0;
 
-    if (input.analystConsensus) {
+    if (!hasConsensus && !hasTargetRatio && !hasCorporateEvents) {
+      return null; // UNKNOWN
+    }
+
+    let score = 65;
+
+    if (hasConsensus && input.analystConsensus) {
       if (input.analystConsensus === 'BUY') score += 15;
       else if (input.analystConsensus === 'SELL') score -= 20;
     }
 
-    if (input.targetPriceRatio !== null && input.targetPriceRatio !== undefined) {
+    if (hasTargetRatio && input.targetPriceRatio !== null && input.targetPriceRatio !== undefined) {
       if (input.targetPriceRatio > 0.2) score += 15;
       else if (input.targetPriceRatio < -0.1) score -= 15;
     }
 
-    if (input.corporateEventsCount && input.corporateEventsCount > 0) {
+    if (hasCorporateEvents) {
       score += 5;
     }
 

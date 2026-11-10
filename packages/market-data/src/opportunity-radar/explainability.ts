@@ -6,7 +6,7 @@ export interface ExplainabilitySynthesis {
 }
 
 /**
- * Pure deterministic explainability generator (APP-16F PARTE AE, AN, U).
+ * Pure deterministic explainability generator (APP-16F / APP-16G).
  *
  * Generates transparent, factual justifications for why an asset ranks favorably,
  * accompanied by critical risk factors and data warnings. Never hallucinates or invents data.
@@ -37,7 +37,7 @@ export function generateExplainabilitySynthesis(
 
   // 2. Valuation / Fundamentals driver
   if (input.assetType === 'STOCK') {
-    if (components.valuation >= 75) {
+    if (components.valuation !== null && components.valuation >= 75) {
       if (input.priceEarnings && input.priceEarnings > 0 && input.priceEarnings <= 15) {
         positives.push(
           `Múltiplo P/L atrativo em ${input.priceEarnings.toFixed(1)}x com boa relação de valuation`,
@@ -52,16 +52,17 @@ export function generateExplainabilitySynthesis(
     }
   } else {
     // FII
-    if (components.valuation >= 75) {
+    if (components.valuation !== null && components.valuation >= 75) {
       const pvp = input.fiiPriceToBook ?? input.priceToBook;
       if (pvp && pvp <= 1.0) {
         positives.push(
           `Negociando com desconto sobre o valor patrimonial (P/VP ${pvp.toFixed(2)})`,
         );
+      } else if (input.fiftyTwoWeekHigh && input.fiftyTwoWeekLow) {
+        positives.push(`Preço atual próximo à faixa inferior das últimas 52 semanas`);
       }
     }
-    if (components.priceOpportunity >= 75) {
-      // priceOpportunity stores incomeQuality for FII
+    if (components.priceOpportunity !== null && components.priceOpportunity >= 75) {
       const dy = input.fiiDividendYield ?? input.dividendYield;
       if (dy && dy >= 8) {
         positives.push(
@@ -72,7 +73,7 @@ export function generateExplainabilitySynthesis(
   }
 
   // 3. Momentum / Trend driver
-  if (components.momentum >= 70 && positives.length < 3) {
+  if (components.momentum !== null && components.momentum >= 70 && positives.length < 3) {
     if (input.change21dPercent && input.change21dPercent > 0) {
       positives.push(
         `Tendência de curto/médio prazo em recuperação (+${input.change21dPercent.toFixed(1)}% em 21 pregões)`,
@@ -83,7 +84,7 @@ export function generateExplainabilitySynthesis(
   }
 
   // 4. News driver
-  if (components.news >= 70 && positives.length < 3) {
+  if (components.news !== null && components.news >= 70 && positives.length < 3) {
     const positiveNews = input.recentNews?.filter((n) => n.sentiment === 'POSITIVE');
     if (positiveNews && positiveNews.length > 0) {
       positives.push(`Noticiário recente com fatos favoráveis e fluxo informativo positivo`);
@@ -108,7 +109,7 @@ export function generateExplainabilitySynthesis(
   }
 
   // 2. Trend / Momentum risk
-  if (components.momentum < 50) {
+  if (components.momentum !== null && components.momentum < 50) {
     if (input.dailyChangePercent && input.dailyChangePercent < -3.0) {
       risks.push(`Oscilação negativa diária recente (${input.dailyChangePercent.toFixed(1)}%) sem confirmação de reversão`);
     } else {
@@ -117,7 +118,7 @@ export function generateExplainabilitySynthesis(
   }
 
   // 3. News risk
-  if (components.news <= 40) {
+  if (components.news !== null && components.news <= 40) {
     const negativeNews = input.recentNews?.filter((n) => n.sentiment === 'NEGATIVE');
     if (negativeNews && negativeNews.length > 0) {
       risks.push(`Presença de notícia recente com viés cauteloso ou negativo`);

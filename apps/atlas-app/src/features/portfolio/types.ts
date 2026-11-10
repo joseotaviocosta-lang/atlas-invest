@@ -223,11 +223,18 @@ export interface OpportunityNewsItemDto {
 
 export interface OpportunityScoreComponentsDto {
   portfolioFit: number;
-  valuation: number;
-  momentum: number;
-  priceOpportunity: number;
-  news: number;
-  outlook: number;
+  valuation: number | null;
+  momentum: number | null;
+  priceOpportunity: number | null;
+  news: number | null;
+  outlook: number | null;
+}
+
+export interface OpportunityDataProvenanceDto {
+  sources: string[];
+  coveragePercent: number;
+  knownDimensionsCount: number;
+  totalDimensionsCount: number;
 }
 
 export interface OpportunityRadarItemDto {
@@ -247,6 +254,7 @@ export interface OpportunityRadarItemDto {
   risks: string[];
   news: OpportunityNewsItemDto[];
   dataFreshness: 'FRESH' | 'STALE' | 'UNKNOWN';
+  dataProvenance?: OpportunityDataProvenanceDto;
   updatedAt: string;
 }
 
@@ -258,5 +266,7 @@ export interface OpportunityRadarResponseDto {
   totalEligible: number;
   totalRanked: number;
   items: OpportunityRadarItemDto[];
+  lowConfidenceItems?: OpportunityRadarItemDto[];
+  overallCoveragePercent?: number;
   disclaimer: string;
 }

@@ -11,22 +11,28 @@ export interface FetchedAssetIntelligence {
   fiiSegment?: string | null;
   fiiPriceToBook?: number | null;
   fiiDividendYield?: number | null;
+  historicalPrices?: Array<{
+    date: number;
+    close: number;
+    adjustedClose?: number;
+  }>;
   news: OpportunityNewsItem[];
   analystConsensus?: 'BUY' | 'HOLD' | 'SELL' | 'UNKNOWN' | null;
 }
 
 /**
- * Fetches fundamentals and news for a ticker from BRAPI (APP-16F PARTE G, H, I, AK).
+ * Fetches fundamentals, price history, and news for a ticker (APP-16F / APP-16G).
  *
  * Privacy Invariant:
  * Receives ONLY the ticker symbol. Never sends user quantities, cost, balances,
  * CPF, portfolioId or identity to third-party endpoints.
  *
  * Fail-closed:
- * Network errors, 401s, 429s, or missing modules fail gracefully to empty/neutral values.
+ * Network errors, rate limits, or missing endpoints fail gracefully to empty/neutral values.
  */
 export async function fetchBrapiAssetIntelligence(params: {
   ticker: string;
+  isFii?: boolean;
   token?: string;
   baseUrl?: string;
   timeoutMs?: number;
@@ -47,15 +53,20 @@ export async function fetchBrapiAssetIntelligence(params: {
     headers['Authorization'] = `Bearer ${token.trim()}`;
   }
 
-  // 1. Fetch Quote with Modules (fundamentals & range)
+  // 1. Fetch Quote with SummaryProfile and 3-month history
   try {
     const quoteUrl = new URL(`${baseUrl}/quote/${encodeURIComponent(params.ticker)}`);
-    quoteUrl.searchParams.set('modules', 'summaryProfile,financialData,defaultKeyStatistics');
+    quoteUrl.searchParams.set('modules', 'summaryProfile');
+    quoteUrl.searchParams.set('range', '3mo');
+    quoteUrl.searchParams.set('interval', '1d');
+    if (token && token.trim()) {
+      quoteUrl.searchParams.set('token', token.trim());
+    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-    const res = await fetch(quoteUrl.toString(), {
+    let res = await fetch(quoteUrl.toString(), {
       method: 'GET',
       headers,
       signal: controller.signal,
@@ -63,26 +74,41 @@ export async function fetchBrapiAssetIntelligence(params: {
 
     clearTimeout(timeout);
 
+    // If modules=summaryProfile failed (403/400), fallback to standard quote with range
+    if (!res || !res.ok) {
+      const fallbackUrl = new URL(`${baseUrl}/quote/${encodeURIComponent(params.ticker)}`);
+      fallbackUrl.searchParams.set('range', '3mo');
+      fallbackUrl.searchParams.set('interval', '1d');
+      if (token && token.trim()) {
+        fallbackUrl.searchParams.set('token', token.trim());
+      }
+      const c2 = new AbortController();
+      const t2 = setTimeout(() => c2.abort(), timeoutMs);
+      res = await fetch(fallbackUrl.toString(), {
+        method: 'GET',
+        headers,
+        signal: c2.signal,
+      }).catch(() => null);
+      clearTimeout(t2);
+    }
+
     if (res && res.ok) {
       const data = (await res.json().catch(() => null)) as {
         results?: Array<{
           fiftyTwoWeekHigh?: number;
           fiftyTwoWeekLow?: number;
           priceEarnings?: number;
-          defaultKeyStatistics?: {
-            priceToBook?: number;
-            dividendYield?: number;
-          };
-          financialData?: {
-            returnOnEquity?: number;
-            debtToEquity?: number;
-            recommendationKey?: string;
-          };
+          earningsPerShare?: number;
           summaryProfile?: {
             sector?: string;
             industry?: string;
             listingSegment?: string;
           };
+          historicalDataPrice?: Array<{
+            date: number;
+            close: number;
+            adjustedClose?: number;
+          }>;
         }>;
       };
 
@@ -93,39 +119,16 @@ export async function fetchBrapiAssetIntelligence(params: {
           result.fiftyTwoWeekLow = item.fiftyTwoWeekLow ?? null;
           result.priceEarnings = item.priceEarnings ?? null;
 
-          if (item.defaultKeyStatistics) {
-            result.priceToBook = item.defaultKeyStatistics.priceToBook ?? null;
-            result.fiiPriceToBook = item.defaultKeyStatistics.priceToBook ?? null;
-
-            if (item.defaultKeyStatistics.dividendYield !== undefined && item.defaultKeyStatistics.dividendYield !== null) {
-              // BRAPI dividendYield might be decimal (0.08) or percent (8.0)
-              const dy = item.defaultKeyStatistics.dividendYield;
-              const normalizedDy = dy <= 1.0 && dy > 0 ? dy * 100 : dy;
-              result.dividendYield = normalizedDy;
-              result.fiiDividendYield = normalizedDy;
-            }
-          }
-
-          if (item.financialData) {
-            if (item.financialData.returnOnEquity !== undefined && item.financialData.returnOnEquity !== null) {
-              const roe = item.financialData.returnOnEquity;
-              result.returnOnEquity = roe <= 1.0 && roe > 0 ? roe * 100 : roe;
-            }
-            result.debtToEquity = item.financialData.debtToEquity ?? null;
-
-            const rec = item.financialData.recommendationKey?.toLowerCase();
-            if (rec?.includes('buy') || rec?.includes('outperform')) {
-              result.analystConsensus = 'BUY';
-            } else if (rec?.includes('sell') || rec?.includes('underperform')) {
-              result.analystConsensus = 'SELL';
-            } else if (rec?.includes('hold') || rec?.includes('neutral')) {
-              result.analystConsensus = 'HOLD';
-            }
-          }
-
           if (item.summaryProfile) {
             result.fiiSegment =
-              item.summaryProfile.listingSegment || item.summaryProfile.sector || item.summaryProfile.industry || null;
+              item.summaryProfile.listingSegment ||
+              item.summaryProfile.sector ||
+              item.summaryProfile.industry ||
+              null;
+          }
+
+          if (item.historicalDataPrice && Array.isArray(item.historicalDataPrice)) {
+            result.historicalPrices = item.historicalDataPrice;
           }
         }
       }
@@ -134,79 +137,99 @@ export async function fetchBrapiAssetIntelligence(params: {
     // Fail closed to neutral
   }
 
-  // 2. Fetch News (if token is available)
-  if (token && token.trim()) {
-    try {
-      const newsUrl = new URL(`${baseUrl}/quote/news/${encodeURIComponent(params.ticker)}`);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  // 2. Fetch Institutional Financial News via RSS feed (with deduplication & temporal decay)
+  try {
+    const isFii = params.isFii ?? false;
+    const query = encodeURIComponent(`${params.ticker} ${isFii ? 'FII OR dividendo OR rendimento' : 'B3 OR dividendo OR balanço'}`);
+    const rssUrl = `https://news.google.com/rss/search?q=${query}&hl=pt-BR&gl=BR&ceid=BR:pt-419`;
 
-      const res = await fetch(newsUrl.toString(), {
-        method: 'GET',
-        headers,
-        signal: controller.signal,
-      }).catch(() => null);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
 
-      clearTimeout(timeout);
+    const rssRes = await fetch(rssUrl, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)',
+      },
+      signal: controller.signal,
+    }).catch(() => null);
 
-      if (res && res.ok) {
-        const data = (await res.json().catch(() => null)) as {
-          results?: Array<{
-            title?: string;
-            description?: string;
-            source?: string;
-            publishedAt?: string;
-            url?: string;
-            sentiment?: string;
-          }>;
-        };
+    clearTimeout(timeout);
 
-        if (data && data.results && Array.isArray(data.results)) {
-          for (let i = 0; i < Math.min(5, data.results.length); i++) {
-            const n = data.results[i];
-            if (!n || !n.title) continue;
+    if (rssRes && rssRes.ok) {
+      const xml = await rssRes.text().catch(() => '');
+      if (xml && xml.includes('<item>')) {
+        const items = xml.split('<item>').slice(1, 6);
+        const seenHeadlines = new Set<string>();
 
-            let sentiment: OpportunityNewsItem['sentiment'] = 'NEUTRAL';
-            const sentLower = (n.sentiment || '').toLowerCase();
-            const textLower = `${n.title} ${n.description || ''}`.toLowerCase();
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          if (!item) continue;
+          const titleMatch = item.match(/<title>(.*?)<\/title>/);
+          const pubMatch = item.match(/<pubDate>(.*?)<\/pubDate>/);
+          const sourceMatch = item.match(/<source[^>]*>(.*?)<\/source>/);
 
-            if (
-              sentLower.includes('pos') ||
-              textLower.includes('lucro') ||
-              textLower.includes('alta') ||
-              textLower.includes('dividendo') ||
-              textLower.includes('recorde') ||
-              textLower.includes('aquisi') ||
-              textLower.includes('eleva')
-            ) {
-              sentiment = 'POSITIVE';
-            } else if (
-              sentLower.includes('neg') ||
-              textLower.includes('queda') ||
-              textLower.includes('prejuízo') ||
-              textLower.includes('investig') ||
-              textLower.includes('multa') ||
-              textLower.includes('rombo') ||
-              textLower.includes('rebaixa')
-            ) {
-              sentiment = 'NEGATIVE';
-            }
+          const title = titleMatch && titleMatch[1] ? titleMatch[1].replace('<![CDATA[', '').replace(']]>', '').trim() : '';
+          if (!title) continue;
 
-            result.news.push({
-              id: `brapi-news-${params.ticker}-${i}`,
-              headline: n.title,
-              source: n.source || 'BRAPI / Mercado',
-              publishedAt: n.publishedAt || new Date().toISOString(),
-              canonicalUrl: n.url,
-              sentiment,
-              relevance: 1.0,
-            });
+          // Deduplication token
+          const normKey = title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 32);
+          if (seenHeadlines.has(normKey)) continue;
+          seenHeadlines.add(normKey);
+
+          const source = sourceMatch && sourceMatch[1] ? sourceMatch[1].replace('<![CDATA[', '').replace(']]>', '').trim() : 'Mercado';
+          const pubDate = pubMatch && pubMatch[1] ? new Date(pubMatch[1]).toISOString() : new Date().toISOString();
+
+          const textLower = title.toLowerCase();
+          let sentiment: OpportunityNewsItem['sentiment'] = 'NEUTRAL';
+          let relevance = 0.8;
+
+          // Official corporate filings have highest relevance
+          if (
+            textLower.includes('fato relevante') ||
+            textLower.includes('aviso aos acionistas') ||
+            textLower.includes('comunicado ao mercado') ||
+            textLower.includes('relatório gerencial')
+          ) {
+            relevance = 1.0;
           }
+
+          if (
+            textLower.includes('lucro') ||
+            textLower.includes('alta') ||
+            textLower.includes('dividendo') ||
+            textLower.includes('rendimento') ||
+            textLower.includes('recorde') ||
+            textLower.includes('aquisi') ||
+            textLower.includes('eleva') ||
+            textLower.includes('supera')
+          ) {
+            sentiment = 'POSITIVE';
+          } else if (
+            textLower.includes('queda') ||
+            textLower.includes('prejuízo') ||
+            textLower.includes('investig') ||
+            textLower.includes('multa') ||
+            textLower.includes('rebaixa') ||
+            textLower.includes('rombo') ||
+            textLower.includes('risco')
+          ) {
+            sentiment = 'NEGATIVE';
+          }
+
+          result.news.push({
+            id: `rss-news-${params.ticker}-${i}`,
+            headline: title,
+            source,
+            publishedAt: pubDate,
+            sentiment,
+            relevance,
+          });
         }
       }
-    } catch {
-      // Fail closed to empty news
     }
+  } catch {
+    // Fail closed to empty news
   }
 
   return result;

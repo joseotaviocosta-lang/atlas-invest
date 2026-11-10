@@ -87,6 +87,14 @@ export class MarketDataConfigService {
     };
   }
 
+  getToken(): string | undefined {
+    if (this.marketDataProvider instanceof BrapiProviderAdapter) {
+      const adapterToken = this.marketDataProvider.getToken();
+      if (adapterToken) return adapterToken;
+    }
+    return process.env.BRAPI_API_KEY || process.env.MARKET_DATA_API_TOKEN;
+  }
+
   configureToken(token: string): MarketDataProviderStatus {
     if (!token || typeof token !== 'string' || token.trim().length < 5) {
       throw new BadRequestException({

@@ -1,7 +1,7 @@
 /**
- * Project Atlas — Opportunity Radar Domain Types (APP-16F)
+ * Project Atlas — Opportunity Radar Domain Types (APP-16F / APP-16G)
  *
- * Deterministic scoring and explainability models for Daily Opportunity Radar.
+ * Deterministic scoring, data quality normalization, and explainability models.
  * Model version: opportunity-v1
  */
 
@@ -27,11 +27,18 @@ export interface OpportunityNewsItem {
 
 export interface OpportunityScoreComponents {
   portfolioFit: number; // 0..100
-  valuation: number; // 0..100
-  momentum: number; // 0..100 (or trend for FII)
-  priceOpportunity: number; // 0..100 (or incomeQuality for FII)
-  news: number; // 0..100
-  outlook: number; // 0..100
+  valuation: number | null; // 0..100 or null if UNKNOWN
+  momentum: number | null; // 0..100 or null if UNKNOWN
+  priceOpportunity: number | null; // 0..100 or null if UNKNOWN
+  news: number | null; // 0..100 or null if UNKNOWN
+  outlook: number | null; // 0..100 or null if UNKNOWN
+}
+
+export interface OpportunityDataProvenance {
+  sources: readonly string[]; // e.g. ['BRAPI', 'B3', 'InfoMoney']
+  coveragePercent: number; // 0..100
+  knownDimensionsCount: number;
+  totalDimensionsCount: number;
 }
 
 export interface OpportunityAssetInput {
@@ -99,6 +106,7 @@ export interface OpportunityRadarItem {
   risks: readonly string[];
   news: readonly OpportunityNewsItem[];
   dataFreshness: OpportunityFreshness;
+  dataProvenance?: OpportunityDataProvenance;
   updatedAt: string; // ISO-8601
 }
 
@@ -110,5 +118,7 @@ export interface OpportunityRadarResult {
   totalEligible: number;
   totalRanked: number;
   items: readonly OpportunityRadarItem[];
+  lowConfidenceItems?: readonly OpportunityRadarItem[];
+  overallCoveragePercent?: number;
   disclaimer: string;
 }

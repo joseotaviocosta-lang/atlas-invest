@@ -1857,6 +1857,10 @@ export class BrapiProviderAdapter implements MarketDataProvider {
     return Boolean(this.token && this.token.length > 0);
   }
 
+  getToken(): string | undefined {
+    return this.token;
+  }
+
   async getQuote(ref: MarketDataAssetRef): Promise<MarketQuote> {
     const batch = await this.getQuotes([ref]);
     const quote = batch.quotes[0];
@@ -2071,6 +2075,10 @@ export class BrapiHistoricalMarketDataProvider implements HistoricalMarketDataPr
 
   hasToken(): boolean {
     return Boolean(this.token && this.token.length > 0);
+  }
+
+  getToken(): string | undefined {
+    return this.token;
   }
 
   async getDailyPrice(

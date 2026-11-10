@@ -169,7 +169,7 @@ export class GetOpportunityRadarUseCase {
         // News DB query is fail-closed
       }
 
-      // External intelligence fetch (fundamentals and latest news)
+      // External intelligence fetch (fundamentals, price history, and latest news)
       let extIntel = {
         priceEarnings: null as number | null,
         priceToBook: null as number | null,
@@ -181,13 +181,22 @@ export class GetOpportunityRadarUseCase {
         fiiSegment: null as string | null,
         fiiPriceToBook: null as number | null,
         fiiDividendYield: null as number | null,
+        historicalPrices: undefined as Array<{ date: number; close: number }> | undefined,
         news: [] as OpportunityNewsItem[],
         analystConsensus: null as 'BUY' | 'HOLD' | 'SELL' | 'UNKNOWN' | null,
       };
 
-      if (hasBrapiAuth || ticker === 'PETR4') {
+      const brapiToken =
+        typeof this.configService.getToken === 'function'
+          ? this.configService.getToken()
+          : process.env.BRAPI_API_KEY || process.env.MARKET_DATA_API_TOKEN;
+      if (hasBrapiAuth || brapiToken || ticker === 'PETR4') {
         try {
-          const fetched = await fetchBrapiAssetIntelligence({ ticker });
+          const fetched = await fetchBrapiAssetIntelligence({
+            ticker,
+            isFii,
+            token: brapiToken,
+          });
           extIntel = {
             priceEarnings: fetched.priceEarnings ?? null,
             priceToBook: fetched.priceToBook ?? null,
@@ -199,6 +208,7 @@ export class GetOpportunityRadarUseCase {
             fiiSegment: fetched.fiiSegment ?? null,
             fiiPriceToBook: fetched.fiiPriceToBook ?? null,
             fiiDividendYield: fetched.fiiDividendYield ?? null,
+            historicalPrices: fetched.historicalPrices,
             news: fetched.news || [],
             analystConsensus: fetched.analystConsensus ?? null,
           };
@@ -216,6 +226,38 @@ export class GetOpportunityRadarUseCase {
         drawdownFromHighPercent = ((priceNum - extIntel.fiftyTwoWeekHigh) / extIntel.fiftyTwoWeekHigh) * 100;
       }
 
+      let change5dPercent: number | null = null;
+      let change21dPercent: number | null = null;
+      let change63dPercent: number | null = null;
+
+      if (extIntel.historicalPrices && extIntel.historicalPrices.length >= 5) {
+        const prices = extIntel.historicalPrices;
+        const lastItem = prices[prices.length - 1];
+        const latestClose = lastItem ? lastItem.close : 0;
+        if (latestClose > 0) {
+          const idx5 = Math.max(0, prices.length - 6);
+          const p5 = prices[idx5]?.close;
+          if (p5 && p5 > 0) {
+            change5dPercent = Math.round(((latestClose - p5) / p5) * 1000) / 10;
+          }
+
+          if (prices.length >= 21) {
+            const idx21 = Math.max(0, prices.length - 22);
+            const p21 = prices[idx21]?.close;
+            if (p21 && p21 > 0) {
+              change21dPercent = Math.round(((latestClose - p21) / p21) * 1000) / 10;
+            }
+          }
+
+          if (prices.length >= 50) {
+            const p63 = prices[0]?.close;
+            if (p63 && p63 > 0) {
+              change63dPercent = Math.round(((latestClose - p63) / p63) * 1000) / 10;
+            }
+          }
+        }
+      }
+
       const assetInput: OpportunityAssetInput = {
         assetId: pos.assetId,
         ticker,
@@ -231,6 +273,9 @@ export class GetOpportunityRadarUseCase {
         dailyChangePercent: pos.unrealizedGainLossPercent ? Math.min(5, parseFloat(pos.unrealizedGainLossPercent) / 10) : 0,
         quoteFreshness,
         quoteAsOf,
+        change5dPercent,
+        change21dPercent,
+        change63dPercent,
         fiftyTwoWeekHigh: extIntel.fiftyTwoWeekHigh,
         fiftyTwoWeekLow: extIntel.fiftyTwoWeekLow,
         drawdownFromHighPercent,

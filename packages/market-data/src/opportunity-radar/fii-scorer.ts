@@ -7,18 +7,24 @@ export interface FiiScoringResult {
   score: number; // 0..100
   components: OpportunityScoreComponents;
   concentrationPenalty: number;
+  knownWeightRatio: number;
 }
 
 /**
- * FiiOpportunityScorer (APP-16F PARTE C, H, O)
+ * FiiOpportunityScorer (APP-16F / APP-16G)
  *
- * Distinct scoring model for real estate funds (FIIs):
+ * Scoring model for real estate funds (FIIs) with dynamic normalization over known dimensions:
  * - Portfolio Fit:          20%
- * - Valuation (P/VP):       20%
+ * - Valuation (P/VP/Range): 20%
  * - Income Quality (DY):    20%
  * - Trend / Price:          15%
  * - News / Events:          15%
  * - Fund Quality / Outlook: 10%
+ *
+ * Dynamic Normalization Invariant (APP-16G):
+ * Components with missing data are null (UNKNOWN), never artificial 50.
+ * Composite score is normalized strictly over the sum of known weights:
+ *   score = sum(w_i * s_i) / sum(w_i)
  */
 export class FiiOpportunityScorer {
   static score(input: OpportunityAssetInput, referenceDate: Date = new Date()): FiiScoringResult {
@@ -29,7 +35,7 @@ export class FiiOpportunityScorer {
       targetWeight: input.targetWeight,
     });
 
-    // 2. Valuation (P/VP) (20%)
+    // 2. Valuation (P/VP or 52w Range position) (20%)
     const valuation = this.calculateFiiValuation(input);
 
     // 3. Income Quality (DY) (20%)
@@ -47,8 +53,15 @@ export class FiiOpportunityScorer {
         fiftyTwoWeekLow: input.fiftyTwoWeekLow,
         currentPrice: input.currentPrice,
       });
-    // For FII, trend/price is combined 15%
-    const trendPriceCombined = Math.round(momentum * 0.5 + priceOpportunity * 0.5);
+
+    let trendPriceCombined: number | null = null;
+    if (momentum !== null && priceOpportunity !== null) {
+      trendPriceCombined = Math.round(momentum * 0.5 + priceOpportunity * 0.5);
+    } else if (momentum !== null) {
+      trendPriceCombined = momentum;
+    } else if (priceOpportunity !== null) {
+      trendPriceCombined = priceOpportunity;
+    }
 
     // 5. News / Events (15%)
     const { score: news } = calculateNewsScore(input.recentNews, referenceDate);
@@ -56,16 +69,33 @@ export class FiiOpportunityScorer {
     // 6. Fund Quality / Outlook (10%)
     const outlook = this.calculateFiiOutlook(input);
 
-    // Weighted composite
-    const rawScore =
-      portfolioFit * 0.2 +
-      valuation * 0.2 +
-      incomeQuality * 0.2 +
-      trendPriceCombined * 0.15 +
-      news * 0.15 +
-      outlook * 0.1;
+    // Dynamic Normalization
+    const componentsList: Array<{ score: number | null; weight: number }> = [
+      { score: portfolioFit, weight: 0.20 },
+      { score: valuation, weight: 0.20 },
+      { score: incomeQuality, weight: 0.20 },
+      { score: trendPriceCombined, weight: 0.15 },
+      { score: news, weight: 0.15 },
+      { score: outlook, weight: 0.10 },
+    ];
 
-    const finalScore = Math.max(0, Math.min(100, Math.round(rawScore)));
+    let weightedSum = 0;
+    let knownWeightSum = 0;
+
+    for (const comp of componentsList) {
+      if (comp.score !== null) {
+        weightedSum += comp.score * comp.weight;
+        knownWeightSum += comp.weight;
+      }
+    }
+
+    let finalScore = 40;
+    if (knownWeightSum >= 0.35) {
+      const normalizedScore = weightedSum / knownWeightSum;
+      finalScore = Math.max(0, Math.min(100, Math.round(normalizedScore)));
+    } else {
+      finalScore = Math.min(45, Math.round(portfolioFit * 0.45));
+    }
 
     return {
       score: finalScore,
@@ -73,46 +103,60 @@ export class FiiOpportunityScorer {
         portfolioFit,
         valuation,
         momentum: trendPriceCombined,
-        priceOpportunity: incomeQuality, // mapped into the component contract
+        priceOpportunity: incomeQuality,
         news,
         outlook,
       },
       concentrationPenalty,
+      knownWeightRatio: knownWeightSum,
     };
   }
 
-  private static calculateFiiValuation(input: OpportunityAssetInput): number {
+  private static calculateFiiValuation(input: OpportunityAssetInput): number | null {
     const pvp = input.fiiPriceToBook ?? input.priceToBook ?? null;
-    if (pvp === null || pvp === undefined) {
-      return 50; // Neutral default if missing (fail-closed)
+    if (pvp !== null && pvp !== undefined) {
+      if (pvp >= 0.88 && pvp <= 1.0) {
+        return 95;
+      }
+      if (pvp > 1.0 && pvp <= 1.05) {
+        return 85;
+      }
+      if (pvp >= 0.8 && pvp < 0.88) {
+        return 80;
+      }
+      if (pvp < 0.8) {
+        return 70;
+      }
+      if (pvp > 1.05 && pvp <= 1.15) {
+        return 55;
+      }
+      return 30;
     }
 
-    // FII sweet spot around 0.88..1.02
-    if (pvp >= 0.88 && pvp <= 1.0) {
-      return 95;
+    // If P/VP is absent, evaluate 52-week range discount
+    const high = input.fiftyTwoWeekHigh ?? null;
+    const low = input.fiftyTwoWeekLow ?? null;
+    const currentPriceNum = parseFloat(input.currentPrice) || 0;
+    if (high && low && high > low && currentPriceNum > 0) {
+      const pos = (currentPriceNum - low) / (high - low);
+      if (pos <= 0.30) {
+        return 85; // Attractive range discount
+      }
+      if (pos <= 0.60) {
+        return 70;
+      }
+      return 50;
     }
-    if (pvp > 1.0 && pvp <= 1.05) {
-      return 85;
-    }
-    if (pvp >= 0.8 && pvp < 0.88) {
-      return 80; // Discount, but check credit/vacancy
-    }
-    if (pvp < 0.8) {
-      return 70; // Deep discount, higher structural risk
-    }
-    if (pvp > 1.05 && pvp <= 1.15) {
-      return 55; // Premium
-    }
-    return 30; // High premium > 1.15
+
+    return null; // UNKNOWN
   }
 
-  private static calculateFiiIncomeQuality(input: OpportunityAssetInput): number {
+  private static calculateFiiIncomeQuality(input: OpportunityAssetInput): number | null {
     const dy = input.fiiDividendYield ?? input.dividendYield ?? null;
     if (dy === null || dy === undefined) {
-      return 50; // Neutral default if missing (fail-closed)
+      return null; // UNKNOWN
     }
 
-    // Yield thresholds for Brazilian real estate funds
     if (dy >= 11.5) {
       return 95;
     }
@@ -128,18 +172,24 @@ export class FiiOpportunityScorer {
     return 30;
   }
 
-  private static calculateFiiOutlook(input: OpportunityAssetInput): number {
-    let score = 65; // Base neutral outlook
+  private static calculateFiiOutlook(input: OpportunityAssetInput): number | null {
+    const hasSegment = Boolean(input.fiiSegment);
+    const hasEvents = input.corporateEventsCount !== null && input.corporateEventsCount !== undefined && input.corporateEventsCount > 0;
+
+    if (!hasSegment && !hasEvents) {
+      return null; // UNKNOWN
+    }
+
+    let score = 65;
 
     if (input.fiiSegment) {
       const seg = input.fiiSegment.toLowerCase();
-      // Defensive logistics, prime offices, and infrastructure credit
-      if (seg.includes('log') || seg.includes('papel') || seg.includes('infra') || seg.includes('agro')) {
-        score += 10;
+      if (seg.includes('log') || seg.includes('papel') || seg.includes('infra') || seg.includes('agro') || seg.includes('multi')) {
+        score += 15;
       }
     }
 
-    if (input.corporateEventsCount && input.corporateEventsCount > 0) {
+    if (hasEvents) {
       score += 5;
     }
 

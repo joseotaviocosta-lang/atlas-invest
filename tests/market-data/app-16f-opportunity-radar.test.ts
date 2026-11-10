@@ -139,8 +139,8 @@ describe('APP-16F: Daily Opportunity Radar Engine & Scorers', () => {
     expect(stabilizingRecovery.momentumScore).toBeGreaterThanOrEqual(75);
   });
 
-  // 4. Missing data não vira zero (fail-closed neutral)
-  it('4. missing fundamental data fails closed to neutral 50 and downgrades confidence, never 0', () => {
+  // 4. Missing data fails to null (UNKNOWN) and downgrades confidence
+  it('4. missing fundamental data fails closed to null (UNKNOWN) and downgrades confidence, never 0 or fake 50', () => {
     const assetWithoutFundamentals: OpportunityAssetInput = {
       assetId: '33333333-3333-4333-8333-333333333333',
       ticker: 'TEST3',
@@ -157,7 +157,7 @@ describe('APP-16F: Daily Opportunity Radar Engine & Scorers', () => {
     };
 
     const res = EquityOpportunityScorer.score(assetWithoutFundamentals);
-    expect(res.components.valuation).toBe(50); // neutral baseline, not 0
+    expect(res.components.valuation).toBeNull(); // explicit null / UNKNOWN, never fake 50
     expect(res.score).toBeGreaterThan(0);
 
     const conf = calculateOpportunityConfidence(assetWithoutFundamentals);
@@ -380,5 +380,81 @@ describe('APP-16F: Daily Opportunity Radar Engine & Scorers', () => {
 
     expect(result.items[0].ticker).toBe('ABEV3');
     expect(result.items[1].ticker).toBe('BBDC4');
+  });
+
+  // 17. APP-16G: Quality floor gate excludes LOW confidence from items to lowConfidenceItems
+  it('17. APP-16G: quality floor gate excludes LOW confidence assets from top items', () => {
+    const lowConfAsset: OpportunityAssetInput = {
+      assetId: '55555555-5555-5555-8555-555555555555',
+      ticker: 'POOR3',
+      name: 'Poucos Dados',
+      assetType: 'STOCK',
+      currency: 'BRL',
+      quantity: '10',
+      marketValue: '100',
+      portfolioWeight: 0.2, // very low weight
+      classWeight: 1.0,
+      currentPrice: '10.00',
+      dailyChangePercent: null,
+      // no history, no fundamentals, no news
+    };
+
+    const result = OpportunityRadarEngine.evaluate({
+      portfolioId: 'test-port',
+      assets: [baseEquity, baseFii, lowConfAsset],
+    });
+
+    // POOR3 should NOT be in primary items because confidence is LOW/INSUFFICIENT
+    expect(result.items.some((it) => it.ticker === 'POOR3')).toBe(false);
+    expect(result.items.length).toBe(2); // Top 2, not padded to 3!
+    expect(result.lowConfidenceItems?.some((it) => it.ticker === 'POOR3')).toBe(true);
+  });
+
+  // 18. APP-16G: News deduplication and temporal decay
+  it('18. APP-16G: news deduplication merges identical headlines', () => {
+    const now = new Date('2026-11-10T12:00:00.000Z');
+    const duplicateNews = [
+      {
+        id: '1',
+        headline: 'Petrobras anuncia dividendos extraordinários de R$ 10 bi - InfoMoney',
+        source: 'InfoMoney',
+        publishedAt: now.toISOString(),
+        sentiment: 'POSITIVE' as const,
+        relevance: 1.0,
+      },
+      {
+        id: '2',
+        headline: 'Petrobras anuncia dividendos extraordinários de R$ 10 bi - Money Times',
+        source: 'Money Times',
+        publishedAt: now.toISOString(),
+        sentiment: 'POSITIVE' as const,
+        relevance: 1.0,
+      },
+    ];
+
+    const res = calculateNewsScore(duplicateNews, now);
+    // Deduplication should result in 1 effective item
+    expect(res.effectiveItemCount).toBe(1);
+    expect(res.score).toBeGreaterThanOrEqual(75);
+  });
+
+  // 19. APP-16G: Missing news returns score null (UNKNOWN), never 50
+  it('19. APP-16G: missing news returns score null (UNKNOWN), not fake 50', () => {
+    const res = calculateNewsScore([]);
+    expect(res.score).toBeNull();
+    expect(res.effectiveItemCount).toBe(0);
+  });
+
+  // 20. APP-16G: Data provenance and overall coverage
+  it('20. APP-16G: engine output includes data provenance and overall coverage percent', () => {
+    const result = OpportunityRadarEngine.evaluate({
+      portfolioId: 'test-port',
+      assets: [baseEquity, baseFii],
+    });
+
+    expect(result.overallCoveragePercent).toBeGreaterThan(70);
+    expect(result.items[0].dataProvenance).toBeDefined();
+    expect(result.items[0].dataProvenance?.sources).toContain('B3');
+    expect(result.items[0].dataProvenance?.sources).toContain('BRAPI');
   });
 });

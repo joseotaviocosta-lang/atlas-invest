@@ -42,7 +42,18 @@ describe('APP-16F: Opportunity Radar Controller & Use Case', () => {
     };
 
     mockIntelligenceRepo = {
-      list: vi.fn().mockResolvedValue({ items: [], hasMore: false }),
+      list: vi.fn().mockResolvedValue({
+        items: [
+          {
+            id: 'news-1',
+            headline: 'Fato relevante divulgado ao mercado',
+            sourceProvider: 'B3',
+            publishedAt: new Date(),
+            canonicalUrl: 'https://b3.com.br/news-1',
+          },
+        ],
+        hasMore: false,
+      }),
     };
 
     mockValuationUseCase = {
@@ -92,6 +103,7 @@ describe('APP-16F: Opportunity Radar Controller & Use Case', () => {
         source: 'ENVIRONMENT',
         status: 'CONFIGURED',
       }),
+      getToken: vi.fn().mockReturnValue(undefined),
     };
 
     useCase = new GetOpportunityRadarUseCase(
@@ -112,12 +124,12 @@ describe('APP-16F: Opportunity Radar Controller & Use Case', () => {
     const res = await controller.getOpportunityRadar(portfolioId, principal);
     expect(res).toHaveProperty('data');
     const { data } = res;
-
     expect(data.portfolioId).toBe(portfolioId);
     expect(data.modelVersion).toBe(OPPORTUNITY_MODEL_VERSION);
     expect(data.totalEligible).toBe(2);
-    expect(data.totalRanked).toBe(2);
-    expect(data.items.length).toBe(2);
+    expect(data.totalRanked).toBe(1);
+    expect(data.items.length).toBe(1);
+    expect(data.lowConfidenceItems?.length).toBe(1);
     expect(data.disclaimer).toContain('Radar informativo');
 
     const item = data.items[0];
@@ -148,7 +160,8 @@ describe('APP-16F: Opportunity Radar Controller & Use Case', () => {
 
     const refreshRes = await controller.refreshOpportunityRadar(portfolioId, principal);
     expect(mockValuationUseCase.execute).toHaveBeenCalledTimes(2); // Called again!
-    expect(refreshRes.data.items.length).toBe(2);
+    expect(refreshRes.data.items.length).toBe(1);
+    expect(refreshRes.data.lowConfidenceItems?.length).toBe(1);
   });
 
   // 4. Anti-enumeration: returns 404 for portfolio belonging to another user
