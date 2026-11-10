@@ -123,7 +123,7 @@ describe('PROJECT ATLAS — APP-16F: Daily Opportunity Radar (Frontend Component
 
     // Section title & badges
     expect(html).toContain('Oportunidades de Hoje');
-    expect(html).toContain('TOP 5');
+    expect(html).toContain('TOP 2');
     expect(html).toContain('Ativos da sua carteira que merecem atenção');
 
     // Cards content
@@ -260,5 +260,64 @@ describe('PROJECT ATLAS — APP-16F: Daily Opportunity Radar (Frontend Component
 
     // Displays clear honest message
     expect(html).toContain('Nenhuma notícia recente considerada nesta análise.');
+  });
+
+  // APP-16H: Top 5 FIIs Opportunity Radar UI
+  it('APP-16H: renders segment control tabs with proper accessibility attributes', () => {
+    queryClient.setQueryData(['opportunity-radar', portfolioId], {
+      data: {
+        ...mockRadarResponse,
+        fiiItems: [mockItem2],
+        fiiCoveragePercent: 75,
+      },
+    });
+
+    const html = renderToString(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <OpportunityRadarSection portfolioId={portfolioId} />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    // Tablist exists
+    expect(html).toContain('role="tablist"');
+    expect(html).toContain('aria-label="Visualizações do Radar de Oportunidades"');
+
+    // Both tabs exist
+    expect(html).toContain('data-testid="radar-tab-general"');
+    expect(html).toContain('data-testid="radar-tab-fii"');
+    expect(html).toContain('Top 5 Geral');
+    expect(html).toContain('Top 5 FIIs');
+
+    // Default tab is Top 5 Geral
+    expect(html).toContain('id="tab-radar-general" aria-selected="true"');
+    expect(html).toContain('id="tab-radar-fii" aria-selected="false"');
+
+    // Tabpanel exists with matching aria
+    expect(html).toContain('role="tabpanel"');
+    expect(html).toContain('id="panel-radar-content"');
+  });
+
+  it('APP-16H: displays cotas for FII items and un. for stock items', () => {
+    queryClient.setQueryData(['opportunity-radar', portfolioId], {
+      data: {
+        ...mockRadarResponse,
+        items: [mockItem1, mockItem2],
+      },
+    });
+
+    const html = renderToString(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <OpportunityRadarSection portfolioId={portfolioId} />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    // Stock displays un.
+    expect(html).toContain('120 un.');
+    // FII displays cotas
+    expect(html).toContain('50 cotas');
   });
 });

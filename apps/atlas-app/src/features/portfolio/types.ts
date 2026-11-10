@@ -266,6 +266,10 @@ export interface OpportunityRadarResponseDto {
   totalEligible: number;
   totalRanked: number;
   items: OpportunityRadarItemDto[];
+  fiiItems?: OpportunityRadarItemDto[];
+  fiiCoveragePercent?: number;
+  totalFiiEligible?: number;
+  totalFiiRanked?: number;
   lowConfidenceItems?: OpportunityRadarItemDto[];
   overallCoveragePercent?: number;
   disclaimer: string;

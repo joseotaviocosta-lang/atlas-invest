@@ -58,15 +58,17 @@ export function generateExplainabilitySynthesis(
         positives.push(
           `Negociando com desconto sobre o valor patrimonial (P/VP ${pvp.toFixed(2)})`,
         );
-      } else if (input.fiftyTwoWeekHigh && input.fiftyTwoWeekLow) {
-        positives.push(`Preço atual próximo à faixa inferior das últimas 52 semanas`);
+      } else if (pvp && pvp > 1.0) {
+        positives.push(
+          `Cotação alinhada ao valor patrimonial (P/VP ${pvp.toFixed(2)})`,
+        );
       }
     }
     if (components.priceOpportunity !== null && components.priceOpportunity >= 75) {
       const dy = input.fiiDividendYield ?? input.dividendYield;
       if (dy && dy >= 8) {
         positives.push(
-          `Rendimento anualizado sólido com Dividend Yield de ${dy.toFixed(1)}%`,
+          `Distribuição de renda atrativa com Dividend Yield de ${dy.toFixed(1)}%`,
         );
       }
     }
@@ -76,10 +78,16 @@ export function generateExplainabilitySynthesis(
   if (components.momentum !== null && components.momentum >= 70 && positives.length < 3) {
     if (input.change21dPercent && input.change21dPercent > 0) {
       positives.push(
-        `Tendência de curto/médio prazo em recuperação (+${input.change21dPercent.toFixed(1)}% em 21 pregões)`,
+        input.assetType === 'FII'
+          ? `Tendência de cotação estável e recuperação recente (+${input.change21dPercent.toFixed(1)}% em 21 pregões)`
+          : `Tendência de curto/médio prazo em recuperação (+${input.change21dPercent.toFixed(1)}% em 21 pregões)`,
       );
     } else {
-      positives.push(`Preço com suporte técnico favorável e consolidação de movimento`);
+      positives.push(
+        input.assetType === 'FII'
+          ? `Preço em região favorável com suporte técnico`
+          : `Preço com suporte técnico favorável e consolidação de movimento`,
+      );
     }
   }
 

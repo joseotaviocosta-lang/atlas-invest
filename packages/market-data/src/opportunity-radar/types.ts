@@ -125,7 +125,11 @@ export interface OpportunityRadarResult {
   modelVersion: string;
   totalEligible: number;
   totalRanked: number;
-  items: readonly OpportunityRadarItem[];
+  items: readonly OpportunityRadarItem[]; // Top Geral (max 5)
+  fiiItems: readonly OpportunityRadarItem[]; // Top FIIs (max 5)
+  fiiCoveragePercent: number; // Specific coverage for analyzed FIIs
+  totalFiiEligible: number;
+  totalFiiRanked: number;
   lowConfidenceItems?: readonly OpportunityRadarItem[];
   allEvaluatedItems?: readonly OpportunityRadarItem[];
   overallCoveragePercent?: number;

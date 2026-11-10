@@ -51,6 +51,8 @@ export class OpportunityRadarEngine {
     const evaluatedItems: OpportunityRadarItem[] = [];
     let totalCoverageSum = 0;
     let validAssetsCount = 0;
+    let fiiCoverageSum = 0;
+    let validFiiAssetsCount = 0;
 
     for (const input of params.assets) {
       // Missing price or zero quantity is excluded from contribution radar
@@ -68,6 +70,11 @@ export class OpportunityRadarEngine {
 
       const { confidence, provenance } = assessOpportunityConfidence(effectiveInput, referenceDate);
       totalCoverageSum += provenance.coveragePercent;
+
+      if (effectiveInput.assetType === 'FII') {
+        validFiiAssetsCount++;
+        fiiCoverageSum += provenance.coveragePercent;
+      }
 
       // Score using specialized scorer by asset type
       let score: number;
@@ -142,11 +149,20 @@ export class OpportunityRadarEngine {
       .filter((i) => i.confidence === 'LOW' || i.confidence === 'INSUFFICIENT_DATA')
       .sort(itemComparator);
 
-    // Primary ranking strictly from qualified items (no artificial padding)
+    // Primary ranking strictly from qualified items (no artificial padding) — Top Geral
     const topItems = qualifiedItems.slice(0, maxResults);
+
+    // Dedicated FII ranking strictly from qualified FII items (no artificial padding) — Top FIIs (APP-16H)
+    const qualifiedFiiItems = qualifiedItems.filter((i) => i.assetType === 'FII');
+    const topFiiItems = qualifiedFiiItems.slice(0, maxResults);
 
     const overallCoveragePercent =
       validAssetsCount > 0 ? Math.round(totalCoverageSum / validAssetsCount) : 0;
+
+    const fiiCoveragePercent =
+      validFiiAssetsCount > 0 ? Math.round(fiiCoverageSum / validFiiAssetsCount) : 0;
+
+    const totalFiiEligible = params.assets.filter((a) => a.assetType === 'FII').length;
 
     return Object.freeze({
       portfolioId: params.portfolioId,
@@ -156,6 +172,10 @@ export class OpportunityRadarEngine {
       totalEligible: params.assets.length,
       totalRanked: topItems.length,
       items: Object.freeze(topItems),
+      fiiItems: Object.freeze(topFiiItems),
+      fiiCoveragePercent,
+      totalFiiEligible,
+      totalFiiRanked: topFiiItems.length,
       lowConfidenceItems: Object.freeze(lowConfidenceItems),
       allEvaluatedItems: Object.freeze(evaluatedItems),
       overallCoveragePercent,
