@@ -1,17 +1,19 @@
 import { colors, borderRadius, spacing } from '@atlas/ui';
-import { Card } from '../../../components/ui';
+import { Card, Button } from '../../../components/ui';
 import type { TaxInputReadinessViewModel } from '../types';
 
 export interface CostEvidenceBannerProps {
   inputReadiness?: TaxInputReadinessViewModel | null;
   isBlocked?: boolean;
   missingCount?: number;
+  onGoToEvidence?: () => void;
 }
 
 export const CostEvidenceBanner: React.FC<CostEvidenceBannerProps> = ({
   inputReadiness,
   isBlocked = false,
   missingCount,
+  onGoToEvidence,
 }) => {
   const isReadinessIncomplete =
     inputReadiness &&
@@ -73,9 +75,27 @@ export const CostEvidenceBanner: React.FC<CostEvidenceBannerProps> = ({
               display: 'flex',
               gap: `${spacing.md}px`,
               alignItems: 'center',
+              flexWrap: 'wrap',
+              justifyContent: 'space-between',
             }}
           >
             <span>💡 <strong>Ação recomendada:</strong> Forneça cópia da DIRPF 2020 (ano-calendário 2019) ou notas de corretagem da aquisição original na aba <em>Base de Custo &amp; Evidências</em>.</span>
+            {onGoToEvidence && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onGoToEvidence}
+                data-testid="goto-cost-evidence-btn"
+                style={{
+                  borderColor: colors.negative,
+                  color: colors.negative,
+                  fontSize: '0.75rem',
+                  padding: '4px 10px',
+                }}
+              >
+                Ir para Base de Custo & Evidências →
+              </Button>
+            )}
           </div>
         </div>
       </div>

@@ -15,7 +15,11 @@ export const OperationalHealthSummary: React.FC<OperationalHealthSummaryProps> =
   const { data: backupStatus } = useBackupStatus();
   const { data: macroContext } = useMacroContext();
 
-  const quotesTotal = valuation?.quoteSummary?.totalQuotesRequested ?? valuation?.positions?.length ?? 0;
+  const quotesTotal =
+    valuation?.quoteSummary?.totalQuotesRequested ??
+    (valuation?.quoteSummary as unknown as { totalPositions?: number })?.totalPositions ??
+    valuation?.positions?.length ??
+    0;
   const quotesPriced = valuation?.quoteSummary?.quotesAvailable ?? 0;
 
   const lastBackup = backupStatus?.lastBackup;

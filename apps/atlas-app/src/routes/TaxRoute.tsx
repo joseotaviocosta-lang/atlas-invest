@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { colors, spacing, borderRadius } from '@atlas/ui';
 import { usePortfolio } from '../providers/PortfolioProvider';
 import { usePortfolioValuation } from '../features/portfolio/hooks';
@@ -20,17 +21,37 @@ import {
   AnnualPositionsSection,
   AnnualIncomeSection,
   AnnualReportingExportCard,
+  CostEvidenceSection,
 } from '../features/fiscal/components';
-import { Card, EmptyState, Badge, Skeleton, PullToRefresh, OfflineBanner } from '../components/ui';
+import { Card, EmptyState, Badge, PullToRefresh, OfflineBanner } from '../components/ui';
 import { useAppLifecycle } from '../hooks/useAppLifecycle';
 
 type TaxTab = 'monthly' | 'annual' | 'evidence' | 'compliance';
 
 export const TaxRoute: React.FC = () => {
   const { selectedPortfolio, selectedPortfolioId, portfolios, isLoadingPortfolios } = usePortfolio();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
-  // Tab State
-  const [activeTab, setActiveTab] = useState<TaxTab>('monthly');
+  // Tab State with URL query synchronization
+  const initialTab = (searchParams.get('tab') as TaxTab) || 'monthly';
+  const [activeTab, setActiveTab] = useState<TaxTab>(initialTab);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab') as TaxTab | null;
+    if (tab && ['monthly', 'annual', 'evidence', 'compliance'].includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (nextTab: TaxTab) => {
+    setActiveTab(nextTab);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', nextTab);
+      return next;
+    });
+  };
 
   // Competence State (YYYY-MM)
   const [competence, setCompetence] = useState<string>('2026-10');
@@ -75,7 +96,7 @@ export const TaxRoute: React.FC = () => {
 
   const { data: annualReportingData } = useAnnualReporting(calendarYear);
 
-  const { data: costEvidenceData, isLoading: isLoadingEvidence } = useCostEvidence(
+  const { refetch: refetchEvidence } = useCostEvidence(
     selectedPortfolioId ?? undefined
   );
 
@@ -94,6 +115,7 @@ export const TaxRoute: React.FC = () => {
         refetchMonthly(),
         refetchPositions(),
         refetchIncome(),
+        refetchEvidence(),
         triggerManualSync(),
       ]);
     }
@@ -302,7 +324,7 @@ export const TaxRoute: React.FC = () => {
                 key={tab.id}
                 type="button"
                 data-testid={`tax-tab-${tab.id}`}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -333,6 +355,7 @@ export const TaxRoute: React.FC = () => {
         inputReadiness={readinessData}
         isBlocked={isCostBlocked}
         missingCount={missingEvidenceCount}
+        onGoToEvidence={() => handleTabChange('evidence')}
       />
 
       {/* TAB: MONTHLY */}
@@ -411,106 +434,19 @@ export const TaxRoute: React.FC = () => {
       {/* TAB: EVIDENCE */}
       {activeTab === 'evidence' && (
         <div data-testid="tab-evidence-content" style={{ marginTop: `${spacing.md}px` }}>
-          <Card>
-            <h3
-              style={{
-                fontSize: '1.125rem',
-                fontWeight: 700,
-                color: colors.textPrimary,
-                margin: '0 0 8px 0',
-              }}
-            >
-              Auditoria de Base de Custo & Comprovação de Aquisição
-            </h3>
-            <p
-              style={{
-                fontSize: '0.875rem',
-                color: colors.textSecondary,
-                lineHeight: 1.5,
-                margin: `0 0 ${spacing.md}px 0`,
-              }}
-            >
-              <strong>Princípio Fail-Closed:</strong> O Atlas proíbe a presunção de custo zero. Se um ativo transferido ou importado não possuir comprovação do custo histórico original, a apuração tributária de vendas subsequentes é bloqueada para resguardar o investidor contra pagamentos incorretos de tributos ou autuações fiscais.
-            </p>
-
-            {isLoadingEvidence ? (
-              <Skeleton height={150} />
-            ) : costEvidenceData && costEvidenceData.length > 0 ? (
-              <div style={{ overflowX: 'auto' }}>
-                <table
-                  style={{
-                    width: '100%',
-                    borderCollapse: 'collapse',
-                    fontSize: '0.875rem',
-                    textAlign: 'left',
-                  }}
-                  data-testid="cost-evidence-table"
-                >
-                  <thead>
-                    <tr
-                      style={{
-                        borderBottom: `1px solid ${colors.border}`,
-                        color: colors.textSecondary,
-                        fontSize: '0.75rem',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      <th style={{ padding: `${spacing.sm}px` }}>Ticker / Ativo</th>
-                      <th style={{ padding: `${spacing.sm}px`, textAlign: 'right' }}>Qtd Declarada</th>
-                      <th style={{ padding: `${spacing.sm}px`, textAlign: 'right' }}>Custo Declarado</th>
-                      <th style={{ padding: `${spacing.sm}px` }}>Documento</th>
-                      <th style={{ padding: `${spacing.sm}px` }}>Origem</th>
-                      <th style={{ padding: `${spacing.sm}px` }}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {costEvidenceData.map((ev) => (
-                      <tr key={ev.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                        <td style={{ padding: `${spacing.sm}px`, fontWeight: 600, color: colors.textPrimary }}>
-                          {ev.ticker || ev.assetId}
-                        </td>
-                        <td style={{ padding: `${spacing.sm}px`, textAlign: 'right' }}>{ev.declaredQuantity}</td>
-                        <td style={{ padding: `${spacing.sm}px`, textAlign: 'right', fontWeight: 600 }}>
-                          R$ {ev.declaredCost}
-                        </td>
-                        <td style={{ padding: `${spacing.sm}px`, color: colors.textSecondary }}>{ev.documentType}</td>
-                        <td style={{ padding: `${spacing.sm}px`, color: colors.textSecondary }}>{ev.source}</td>
-                        <td style={{ padding: `${spacing.sm}px` }}>
-                          <span
-                            style={{
-                              padding: `2px ${spacing.xs}px`,
-                              borderRadius: `${borderRadius.sm}px`,
-                              fontSize: '0.6875rem',
-                              fontWeight: 600,
-                              color:
-                                ev.status === 'VERIFIED'
-                                  ? colors.positive
-                                  : ev.status === 'PENDING'
-                                    ? colors.warning
-                                    : colors.negative,
-                              backgroundColor:
-                                ev.status === 'VERIFIED'
-                                  ? 'rgba(34, 197, 94, 0.1)'
-                                  : ev.status === 'PENDING'
-                                    ? 'rgba(234, 179, 8, 0.1)'
-                                    : 'rgba(239, 68, 68, 0.1)',
-                            }}
-                          >
-                            {ev.status === 'VERIFIED' ? 'Auditado' : ev.status === 'PENDING' ? 'Pendente' : 'Rejeitado'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <EmptyState
-                title="Nenhuma evidência pendente"
-                description="Todas as posições em carteira possuem base de custo devidamente mapeada e auditada pelo ledger."
-              />
-            )}
-          </Card>
+          <CostEvidenceSection
+            portfolioId={selectedPortfolioId || '00000000-0000-4000-8000-000000000002'}
+            positions={valuation?.positions ?? []}
+            selectedAssetId={searchParams.get('assetId')}
+            autoOpenRegularize={searchParams.get('action') === 'regularize'}
+            onNavigateBack={() => {
+              if (window.history.length > 1) {
+                navigate(-1);
+              } else {
+                handleTabChange('monthly');
+              }
+            }}
+          />
         </div>
       )}
 

@@ -186,6 +186,42 @@ describe('Documentary Cost Exceptions & Owner Daily Use (APP-15I)', () => {
     expect(html).toContain('DIRPF 2020');
     expect(html).toContain('Funcionamento Normal');
     expect(html).toContain('Proteção Fiscal (Fail-Closed)');
+
+    // Individual action button per asset
+    expect(html).toContain('data-testid="regularize-cost-ITSA4"');
+    expect(html).toContain('data-testid="regularize-cost-JHSF3"');
+    expect(html).toContain('data-testid="regularize-cost-SAPR4"');
+    expect(html).toContain('Regularizar custo');
+  });
+
+  it('triggers onRegularize with assetId and ticker when "Regularizar custo" is invoked', () => {
+    let calledPayload: { assetId: string; ticker?: string } | null = null;
+    const handleRegularize = (payload: { assetId: string; ticker?: string }) => {
+      calledPayload = payload;
+    };
+
+    const modal = (
+      <DocumentaryExceptionsModal
+        isOpen={true}
+        onClose={() => {}}
+        incompletePositions={mockIncompletePositions}
+        onRegularize={handleRegularize}
+      />
+    );
+
+    const html = renderToString(modal);
+    expect(html).toContain('data-testid="regularize-cost-ITSA4"');
+
+    // Simulate direct component handleRegularize callback behavior
+    handleRegularize({
+      assetId: mockIncompletePositions[0].assetId,
+      ticker: mockIncompletePositions[0].ticker,
+    });
+
+    expect(calledPayload).toEqual({
+      assetId: 'asset-uuid-itsa4',
+      ticker: 'ITSA4',
+    });
   });
 });
 

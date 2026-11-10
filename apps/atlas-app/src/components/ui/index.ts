@@ -12,3 +12,4 @@ export * from './ErrorState';
 export * from './PullToRefresh';
 export * from './OfflineBanner';
 export * from './ErrorBoundary';
+export * from './Select';

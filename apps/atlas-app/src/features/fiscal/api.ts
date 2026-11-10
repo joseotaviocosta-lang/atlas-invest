@@ -7,7 +7,12 @@ import type {
   RawAnnualCapitalMarketFiscalSummary,
   RawAnnualInvestmentIncomeSummary,
   RawAnnualTaxReportingPackage,
-  CostEvidenceDto,
+  CostEvidenceRowDto,
+  CostAssessmentDto,
+  CostEvidencePreviewDto,
+  CostEvidenceCreatePayload,
+  CostEvidenceRevisePayload,
+  PortfolioAccountDto,
   IncomeIntelligenceDto,
 } from './types';
 
@@ -87,9 +92,103 @@ export const fiscalApi = {
     return res.data;
   },
 
-  async getCostEvidence(portfolioId: string): Promise<CostEvidenceDto[]> {
-    const res = await apiClient.get<{ data: CostEvidenceDto[] }>(
-      `/api/v1/portfolios/${portfolioId}/cost-evidence`
+  async getCostEvidence(
+    portfolioId: string,
+    query?: { accountId?: string; assetId?: string; statuses?: string }
+  ): Promise<CostEvidenceRowDto[]> {
+    const params = new URLSearchParams();
+    if (query?.accountId) params.set('accountId', query.accountId);
+    if (query?.assetId) params.set('assetId', query.assetId);
+    if (query?.statuses) params.set('statuses', query.statuses);
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    const res = await apiClient.get<{ data: CostEvidenceRowDto[] }>(
+      `/api/v1/portfolios/${portfolioId}/cost-evidence${queryString}`
+    );
+    return res.data ?? [];
+  },
+
+  async getCostAssessment(
+    portfolioId: string,
+    accountId: string,
+    assetId: string
+  ): Promise<CostAssessmentDto> {
+    const res = await apiClient.get<{ data: CostAssessmentDto }>(
+      `/api/v1/portfolios/${portfolioId}/cost-evidence/assessment?accountId=${accountId}&assetId=${assetId}`
+    );
+    return res.data;
+  },
+
+  async previewCostEvidence(
+    portfolioId: string,
+    payload: CostEvidenceCreatePayload
+  ): Promise<CostEvidencePreviewDto> {
+    const res = await apiClient.post<{ data: CostEvidencePreviewDto }>(
+      `/api/v1/portfolios/${portfolioId}/cost-evidence/preview`,
+      payload
+    );
+    return res.data;
+  },
+
+  async createCostEvidence(
+    portfolioId: string,
+    payload: CostEvidenceCreatePayload
+  ): Promise<CostEvidenceRowDto> {
+    const res = await apiClient.post<{ data: CostEvidenceRowDto }>(
+      `/api/v1/portfolios/${portfolioId}/cost-evidence`,
+      payload
+    );
+    return res.data;
+  },
+
+  async submitCostEvidence(
+    portfolioId: string,
+    evidenceId: string
+  ): Promise<CostEvidenceRowDto> {
+    const res = await apiClient.post<{ data: CostEvidenceRowDto }>(
+      `/api/v1/portfolios/${portfolioId}/cost-evidence/${evidenceId}/submit`,
+      {}
+    );
+    return res.data;
+  },
+
+  async verifyCostEvidence(
+    portfolioId: string,
+    evidenceId: string
+  ): Promise<CostEvidenceRowDto> {
+    const res = await apiClient.post<{ data: CostEvidenceRowDto }>(
+      `/api/v1/portfolios/${portfolioId}/cost-evidence/${evidenceId}/verify`,
+      {}
+    );
+    return res.data;
+  },
+
+  async rejectCostEvidence(
+    portfolioId: string,
+    evidenceId: string,
+    reason: string
+  ): Promise<CostEvidenceRowDto> {
+    const res = await apiClient.post<{ data: CostEvidenceRowDto }>(
+      `/api/v1/portfolios/${portfolioId}/cost-evidence/${evidenceId}/reject`,
+      { reason }
+    );
+    return res.data;
+  },
+
+  async reviseCostEvidence(
+    portfolioId: string,
+    evidenceId: string,
+    payload: CostEvidenceRevisePayload
+  ): Promise<CostEvidenceRowDto> {
+    const res = await apiClient.post<{ data: CostEvidenceRowDto }>(
+      `/api/v1/portfolios/${portfolioId}/cost-evidence/${evidenceId}/revise`,
+      payload
+    );
+    return res.data;
+  },
+
+  async listAccounts(portfolioId: string): Promise<PortfolioAccountDto[]> {
+    const res = await apiClient.get<{ data: PortfolioAccountDto[] }>(
+      `/api/v1/portfolios/${portfolioId}/accounts`
     );
     return res.data ?? [];
   },

@@ -1,6 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fiscalApi } from './api';
 import { fiscalKeys } from '../../lib/query-keys';
+import type {
+  CostEvidenceCreatePayload,
+  CostEvidenceRevisePayload,
+  CostAssessmentDto,
+} from './types';
 import {
   mapToFiscalMonthlyViewModel,
   mapToMonthlyTaxLiabilityViewModel,
@@ -118,15 +123,132 @@ export function useTaxComplianceTimeline() {
   });
 }
 
-export function useCostEvidence(portfolioId?: string | null) {
+export function useCostEvidence(
+  portfolioId?: string | null,
+  query?: { accountId?: string; assetId?: string; statuses?: string }
+) {
   return useQuery({
-    queryKey: portfolioId ? fiscalKeys.costEvidence(portfolioId) : ['fiscal', 'cost-evidence', 'empty'],
+    queryKey: portfolioId
+      ? [...fiscalKeys.costEvidence(portfolioId), query?.accountId, query?.assetId, query?.statuses]
+      : ['fiscal', 'cost-evidence', 'empty'],
     queryFn: () => {
       if (!portfolioId) return [];
-      return fiscalApi.getCostEvidence(portfolioId);
+      return fiscalApi.getCostEvidence(portfolioId, query);
+    },
+    enabled: Boolean(portfolioId),
+    staleTime: 30_000,
+  });
+}
+
+export function useCostEvidenceAssessment(
+  portfolioId?: string | null,
+  accountId?: string | null,
+  assetId?: string | null
+) {
+  return useQuery<CostAssessmentDto>({
+    queryKey: ['fiscal', 'cost-assessment', portfolioId, accountId, assetId],
+    queryFn: async () => {
+      if (!portfolioId || !accountId || !assetId) {
+        throw new Error('Parâmetros insuficientes para apuração de custo');
+      }
+      return fiscalApi.getCostAssessment(portfolioId, accountId, assetId);
+    },
+    enabled: Boolean(portfolioId && accountId && assetId),
+    staleTime: 30_000,
+  });
+}
+
+export function usePortfolioAccounts(portfolioId?: string | null) {
+  return useQuery({
+    queryKey: ['portfolio', portfolioId, 'accounts'],
+    queryFn: () => {
+      if (!portfolioId) return [];
+      return fiscalApi.listAccounts(portfolioId);
     },
     enabled: Boolean(portfolioId),
     staleTime: 60_000,
+  });
+}
+
+export function useCreateCostEvidence(portfolioId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CostEvidenceCreatePayload) =>
+      fiscalApi.createCostEvidence(portfolioId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: fiscalKeys.all });
+      queryClient.invalidateQueries({ queryKey: ['fiscal'] });
+      queryClient.invalidateQueries({ queryKey: ['cost-evidence', portfolioId] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      queryClient.invalidateQueries({ queryKey: ['tax-intelligence'] });
+    },
+  });
+}
+
+export function usePreviewCostEvidence(portfolioId: string) {
+  return useMutation({
+    mutationFn: (payload: CostEvidenceCreatePayload) =>
+      fiscalApi.previewCostEvidence(portfolioId, payload),
+  });
+}
+
+export function useSubmitCostEvidence(portfolioId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (evidenceId: string) => fiscalApi.submitCostEvidence(portfolioId, evidenceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: fiscalKeys.all });
+      queryClient.invalidateQueries({ queryKey: ['fiscal'] });
+      queryClient.invalidateQueries({ queryKey: ['cost-evidence', portfolioId] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      queryClient.invalidateQueries({ queryKey: ['tax-intelligence'] });
+    },
+  });
+}
+
+export function useVerifyCostEvidence(portfolioId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (evidenceId: string) => fiscalApi.verifyCostEvidence(portfolioId, evidenceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: fiscalKeys.all });
+      queryClient.invalidateQueries({ queryKey: ['fiscal'] });
+      queryClient.invalidateQueries({ queryKey: ['cost-evidence', portfolioId] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      queryClient.invalidateQueries({ queryKey: ['tax-intelligence'] });
+    },
+  });
+}
+
+export function useRejectCostEvidence(portfolioId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ evidenceId, reason }: { evidenceId: string; reason: string }) =>
+      fiscalApi.rejectCostEvidence(portfolioId, evidenceId, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: fiscalKeys.all });
+      queryClient.invalidateQueries({ queryKey: ['fiscal'] });
+      queryClient.invalidateQueries({ queryKey: ['cost-evidence', portfolioId] });
+    },
+  });
+}
+
+export function useReviseCostEvidence(portfolioId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      evidenceId,
+      payload,
+    }: {
+      evidenceId: string;
+      payload: CostEvidenceRevisePayload;
+    }) => fiscalApi.reviseCostEvidence(portfolioId, evidenceId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: fiscalKeys.all });
+      queryClient.invalidateQueries({ queryKey: ['fiscal'] });
+      queryClient.invalidateQueries({ queryKey: ['cost-evidence', portfolioId] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+    },
   });
 }
 

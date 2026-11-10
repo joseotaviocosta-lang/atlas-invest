@@ -7,11 +7,13 @@ import type { PositionValuationDto } from '../types';
 export interface DocumentaryExceptionsBannerProps {
   positions?: PositionValuationDto[];
   style?: React.CSSProperties;
+  onRegularize?: (position: PositionValuationDto) => void;
 }
 
 export const DocumentaryExceptionsBanner: React.FC<DocumentaryExceptionsBannerProps> = ({
   positions = [],
   style,
+  onRegularize,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -74,6 +76,7 @@ export const DocumentaryExceptionsBanner: React.FC<DocumentaryExceptionsBannerPr
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         incompletePositions={incompletePositions}
+        onRegularize={onRegularize}
       />
     </>
   );
