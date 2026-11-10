@@ -9,6 +9,19 @@ export interface OpportunityAnalysisModalProps {
   item: OpportunityRadarItemDto | null;
 }
 
+const formatNewsDate = (isoString: string): string => {
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return '—';
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const year = d.getUTCFullYear();
+    return `${day}/${month}/${year}`;
+  } catch {
+    return '—';
+  }
+};
+
 export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> = ({
   isOpen,
   onClose,
@@ -309,8 +322,8 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
           </ul>
         </div>
 
-        {/* Section: News considered */}
-        {item.news && item.news.length > 0 && (
+        {/* Section: News considered (Strict Effective News) */}
+        {item.components.news !== null && item.news && item.news.length > 0 ? (
           <div>
             <h4
               style={{
@@ -348,12 +361,38 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.6875rem', color: colors.textSecondary }}>
                     <span>{n.source}</span>
                     <span>•</span>
-                    <span>{new Date(n.publishedAt).toLocaleDateString('pt-BR')}</span>
+                    <span>{formatNewsDate(n.publishedAt)}</span>
                     <span>•</span>
                     <span style={{ textTransform: 'uppercase' }}>{n.sentiment}</span>
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        ) : (
+          <div>
+            <h4
+              style={{
+                fontSize: '0.875rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: colors.textSecondary,
+                marginBottom: `${spacing.xs}px`,
+              }}
+            >
+              Notícias & Fatos Relevantes
+            </h4>
+            <div
+              style={{
+                padding: `${spacing.xs}px ${spacing.sm}px`,
+                backgroundColor: colors.surfaceElevated,
+                borderRadius: `${borderRadius.sm}px`,
+                fontSize: '0.8125rem',
+                color: colors.textSecondary,
+              }}
+            >
+              Nenhuma notícia recente considerada nesta análise.
             </div>
           </div>
         )}

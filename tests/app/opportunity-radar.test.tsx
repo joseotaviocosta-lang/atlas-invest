@@ -229,4 +229,36 @@ describe('PROJECT ATLAS — APP-16F: Daily Opportunity Radar (Frontend Component
     expect(html).not.toMatch(/<button[^>]*>.*Comprar.*<\/button>/i);
     expect(html).not.toMatch(/<button[^>]*>.*Confirmar Compra.*<\/button>/i);
   });
+
+  // APP-16G-R3: UI consistency when news score is null (—)
+  it('renders OpportunityAnalysisModal with honest fallback when news score is null and news list is empty', () => {
+    const itemWithoutNews = {
+      ...mockItem1,
+      ticker: 'FESA4',
+      name: 'Ferbasa PN',
+      components: {
+        ...mockItem1.components,
+        news: null,
+      },
+      news: [],
+    };
+
+    const html = renderToString(
+      <OpportunityAnalysisModal
+        isOpen={true}
+        onClose={() => {}}
+        item={itemWithoutNews}
+      />
+    );
+
+    // Score component displays dash —
+    expect(html).toContain('Notícias &amp; Fatos Relevantes');
+    expect(html).toContain('—');
+
+    // Section does NOT say "Notícias Consideradas"
+    expect(html).not.toContain('Notícias Consideradas');
+
+    // Displays clear honest message
+    expect(html).toContain('Nenhuma notícia recente considerada nesta análise.');
+  });
 });

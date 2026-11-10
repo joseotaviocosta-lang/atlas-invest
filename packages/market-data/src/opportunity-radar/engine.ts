@@ -9,6 +9,7 @@ import { EquityOpportunityScorer } from './equity-scorer';
 import { FiiOpportunityScorer } from './fii-scorer';
 import { assessOpportunityConfidence } from './confidence';
 import { generateExplainabilitySynthesis } from './explainability';
+import { filterEffectiveNews } from './news-scorer';
 
 export const OPPORTUNITY_RADAR_DISCLAIMER =
   'Radar informativo baseado nos dados disponíveis. Não executa ordens e não garante desempenho futuro.';
@@ -22,9 +23,13 @@ const CONFIDENCE_WEIGHT: Record<OpportunityConfidence, number> = {
 
 export class OpportunityRadarEngine {
   /**
-   * Evaluates a portfolio's assets and generates the Daily Opportunity Radar (APP-16F / APP-16G).
+   * Evaluates a portfolio's assets and generates the Daily Opportunity Radar (APP-16F / APP-16G / APP-16G-R3).
    *
    * Pure deterministic replay engine: zero I/O, zero side effects.
+   *
+   * Invariant (APP-16G-R3):
+   * Scoring, confidence assessment, explainability and output news all consume
+   * the exact same Effective News set (filtered for freshness <= 90 days and relevance).
    *
    * Quality Floor Invariant (APP-16G):
    * Primary recommendation list (items) accepts ONLY assets with confidence >= MEDIUM.
@@ -54,7 +59,14 @@ export class OpportunityRadarEngine {
       }
       validAssetsCount++;
 
-      const { confidence, provenance } = assessOpportunityConfidence(input);
+      // Canonical Effective News Set (strictly <= 90 days, deduplicated, relevant)
+      const effectiveNews = filterEffectiveNews(input.recentNews, referenceDate);
+      const effectiveInput: OpportunityAssetInput = {
+        ...input,
+        recentNews: effectiveNews,
+      };
+
+      const { confidence, provenance } = assessOpportunityConfidence(effectiveInput, referenceDate);
       totalCoverageSum += provenance.coveragePercent;
 
       // Score using specialized scorer by asset type
@@ -62,13 +74,13 @@ export class OpportunityRadarEngine {
       let components: OpportunityRadarItem['components'];
       let concentrationPenalty: number;
 
-      if (input.assetType === 'FII') {
-        const result = FiiOpportunityScorer.score(input, referenceDate);
+      if (effectiveInput.assetType === 'FII') {
+        const result = FiiOpportunityScorer.score(effectiveInput, referenceDate);
         score = result.score;
         components = result.components;
         concentrationPenalty = result.concentrationPenalty;
       } else {
-        const result = EquityOpportunityScorer.score(input, referenceDate);
+        const result = EquityOpportunityScorer.score(effectiveInput, referenceDate);
         score = result.score;
         components = result.components;
         concentrationPenalty = result.concentrationPenalty;
@@ -76,7 +88,7 @@ export class OpportunityRadarEngine {
 
       // Generate explainability justifications
       const { positives, risks } = generateExplainabilitySynthesis(
-        input,
+        effectiveInput,
         components,
         confidence,
         concentrationPenalty,
@@ -98,7 +110,7 @@ export class OpportunityRadarEngine {
           components: Object.freeze(components),
           positives: Object.freeze(positives),
           risks: Object.freeze(risks),
-          news: Object.freeze(input.recentNews ?? []),
+          news: Object.freeze(effectiveNews),
           dataFreshness: input.quoteFreshness ?? 'UNKNOWN',
           dataProvenance: Object.freeze(provenance),
           updatedAt: referenceDate.toISOString(),

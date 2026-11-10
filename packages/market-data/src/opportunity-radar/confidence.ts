@@ -1,4 +1,5 @@
 import { OpportunityAssetInput, OpportunityConfidence, OpportunityDataProvenance } from './types';
+import { filterEffectiveNews } from './news-scorer';
 
 export interface ConfidenceAssessment {
   confidence: OpportunityConfidence;
@@ -6,7 +7,7 @@ export interface ConfidenceAssessment {
 }
 
 /**
- * Calculates deterministic confidence score and honest provenance for an asset analysis (APP-16G-R1).
+ * Calculates deterministic confidence score and honest provenance for an asset analysis (APP-16G-R1 / APP-16G-R3).
  *
  * Tracks 5 essential data dimensions:
  * 1. Quote: valid price & daily movement (Source: B3)
@@ -14,14 +15,15 @@ export interface ConfidenceAssessment {
  * 3. True Fundamentals:
  *    - Equities: P/L, P/VP, DY, ROE, D/E (Source: BRAPI)
  *    - FIIs: P/VP, DY
- *    * Invariant (APP-16G-R1): 52-week high/low is market price range, NEVER a fundamental metric.
+ *    * Invariant: 52-week high/low is market price range, NEVER a fundamental metric.
  * 4. Portfolio Context: custody quantity & portfolio weight (Source: Ledger)
- * 5. News / Events: verified recent news articles with honest aggregator/publisher provenance.
+ * 5. News / Events: verified recent news articles with honest aggregator/publisher provenance,
+ *    strictly filtered through freshness cutoff (<= 90 days).
  *
- * Confidence Floor Rules (APP-16G-R1):
+ * Confidence Floor Rules:
  * - HIGH:
  *     Quote + History >= 21d + Real Fundamental Metric + Portfolio Context
- *     + (at least 1 news item OR multiple fundamental metrics).
+ *     + (at least 1 effective news item OR multiple fundamental metrics).
  *     * An asset WITHOUT real fundamentals can NEVER reach HIGH.
  *     * An asset WITHOUT >= 21d history can NEVER reach HIGH.
  * - MEDIUM:
@@ -32,11 +34,17 @@ export interface ConfidenceAssessment {
  * - INSUFFICIENT_DATA:
  *     Missing quote or zero price.
  */
-export function calculateOpportunityConfidence(input: OpportunityAssetInput): OpportunityConfidence {
-  return assessOpportunityConfidence(input).confidence;
+export function calculateOpportunityConfidence(
+  input: OpportunityAssetInput,
+  referenceDate: Date = new Date(),
+): OpportunityConfidence {
+  return assessOpportunityConfidence(input, referenceDate).confidence;
 }
 
-export function assessOpportunityConfidence(input: OpportunityAssetInput): ConfidenceAssessment {
+export function assessOpportunityConfidence(
+  input: OpportunityAssetInput,
+  referenceDate: Date = new Date(),
+): ConfidenceAssessment {
   let availableDimensions = 0;
   const totalDimensions = 5;
   const sources: string[] = ['B3'];
@@ -90,10 +98,10 @@ export function assessOpportunityConfidence(input: OpportunityAssetInput): Confi
     sources.push('Ledger');
   }
 
-  // 5. News / Corporate Events (Honest Provenance)
-  const validNews = (input.recentNews ?? []).filter((n) => n.relevance > 0 && n.headline.trim().length > 0);
+  // 5. News / Corporate Events (Strict Effective News: <= 90 days)
+  const effectiveNews = filterEffectiveNews(input.recentNews, referenceDate);
   const hasVerifiedNews =
-    validNews.length > 0 ||
+    effectiveNews.length > 0 ||
     (input.corporateEventsCount !== null &&
       input.corporateEventsCount !== undefined &&
       input.corporateEventsCount > 0);
@@ -101,7 +109,7 @@ export function assessOpportunityConfidence(input: OpportunityAssetInput): Confi
   if (hasVerifiedNews) {
     availableDimensions++;
     let hasGoogleNews = false;
-    for (const n of validNews) {
+    for (const n of effectiveNews) {
       if (n.aggregator === 'GOOGLE_NEWS_RSS' || !n.aggregator) {
         hasGoogleNews = true;
       }
