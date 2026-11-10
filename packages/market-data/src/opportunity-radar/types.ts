@@ -5,7 +5,7 @@
  * Model version: opportunity-v2
  */
 
-export const OPPORTUNITY_MODEL_VERSION = 'opportunity-v2';
+export const OPPORTUNITY_MODEL_VERSION = 'opportunity-v2.1';
 
 export type OpportunityAssetType = 'STOCK' | 'FII';
 
@@ -21,6 +21,8 @@ export type FiiDividendEventStatus = 'ANNOUNCED' | 'HISTORICAL_PATTERN' | 'UNKNO
 
 export type FiiDividendEligibilityStatus = 'ELIGIBLE' | 'RECORD_DATE_TODAY' | 'EX_DIVIDEND' | 'UNKNOWN';
 
+export type FiiReinvestmentChainType = 'AVAILABLE_CASH_CHAIN' | 'PLANNED_FUTURE_CHAIN';
+
 export interface FiiDividendCalendarEvent {
   ticker: string;
   recordDate: string | null; // YYYY-MM-DD (data-base / data-com)
@@ -34,7 +36,12 @@ export interface FiiDividendCalendarEvent {
   daysUntilRecordDate: number | null; // Difference in days: recordDate - today. Negative if in past.
   daysUntilPayment: number | null;    // Difference in days: paymentDate - today.
   sameMonthReinvestmentCandidate?: boolean;
+  reinvestmentSourceTicker?: string | null;
+  reinvestmentChainType?: FiiReinvestmentChainType | null;
+  cashAvailableNow?: boolean;
+  futureCashExpected?: boolean;
   reinvestmentChainTargetTicker?: string | null;
+  isPaymentPending?: boolean;
 }
 
 export interface FiiReinvestmentChain {
@@ -44,6 +51,9 @@ export interface FiiReinvestmentChain {
   targetRecordDate: string;  // YYYY-MM-DD
   daysGap: number;           // targetRecordDate - sourcePaymentDate >= 0
   sameMonth: boolean;
+  chainType: FiiReinvestmentChainType;
+  cashAvailableNow: boolean;
+  futureCashExpected: boolean;
 }
 
 export interface OpportunityNewsItem {

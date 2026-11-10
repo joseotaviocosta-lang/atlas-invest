@@ -90,7 +90,7 @@ describe('PROJECT ATLAS — APP-16F: Daily Opportunity Radar (Frontend Component
     portfolioId,
     analysisDate: '2026-11-10',
     updatedAt: '2026-11-10T09:00:00.000Z',
-    modelVersion: 'opportunity-v2',
+    modelVersion: 'opportunity-v2.1',
     totalEligible: 36,
     totalRanked: 2,
     items: [mockItem1, mockItem2],
@@ -397,6 +397,74 @@ describe('PROJECT ATLAS — APP-16F: Daily Opportunity Radar (Frontend Component
     expect(html).toContain('Calendário de Proventos &amp; Reinvestimento');
     expect(html).toContain('Dentro do período com direito');
     expect(html).toContain('Potencial de Rotação');
-    expect(html).toContain('opportunity-v2');
+    expect(html).toContain('opportunity-v2.1');
+  });
+
+  it('14. renders available cash reinvestment badge and data-ex in modal (APP-16I-R1)', () => {
+    const fiiWithAvailableCash: OpportunityRadarItemDto = {
+      ...mockItem2,
+      dividendCalendar: {
+        ticker: 'KNRI11',
+        recordDate: '2026-11-18',
+        exDate: '2026-11-19',
+        paymentDate: '2026-11-28',
+        amountPerShare: 1.0,
+        eventStatus: 'ANNOUNCED',
+        source: 'BRAPI',
+        eligibilityStatus: 'ELIGIBLE',
+        daysUntilRecordDate: 8,
+        daysUntilPayment: 18,
+        sameMonthReinvestmentCandidate: true,
+        reinvestmentSourceTicker: 'HGLG11',
+        reinvestmentChainType: 'AVAILABLE_CASH_CHAIN',
+        cashAvailableNow: true,
+        futureCashExpected: false,
+      },
+    };
+
+    const html = renderToString(
+      <OpportunityAnalysisModal
+        isOpen={true}
+        onClose={vi.fn()}
+        item={fiiWithAvailableCash}
+      />
+    );
+
+    expect(html).toContain('Caixa já disponível: provento recebido de HGLG11');
+    expect(html).toContain('19/11/2026'); // Ex-date formatted DD/MM/YYYY
+  });
+
+  it('15. renders planned future reinvestment badge and non-informed data-ex in modal (APP-16I-R1)', () => {
+    const fiiWithFutureCash: OpportunityRadarItemDto = {
+      ...mockItem2,
+      dividendCalendar: {
+        ticker: 'XPLG11',
+        recordDate: '2026-11-20',
+        exDate: null,
+        paymentDate: '2026-11-30',
+        amountPerShare: 0.78,
+        eventStatus: 'ANNOUNCED',
+        source: 'BRAPI',
+        eligibilityStatus: 'ELIGIBLE',
+        daysUntilRecordDate: 10,
+        daysUntilPayment: 20,
+        sameMonthReinvestmentCandidate: true,
+        reinvestmentSourceTicker: 'BTLG11',
+        reinvestmentChainType: 'PLANNED_FUTURE_CHAIN',
+        cashAvailableNow: false,
+        futureCashExpected: true,
+      },
+    };
+
+    const html = renderToString(
+      <OpportunityAnalysisModal
+        isOpen={true}
+        onClose={vi.fn()}
+        item={fiiWithFutureCash}
+      />
+    );
+
+    expect(html).toContain('Cadeia futura planejada: provento previsto de BTLG11');
+    expect(html).toContain('Não informada'); // Ex-date non informed
   });
 });

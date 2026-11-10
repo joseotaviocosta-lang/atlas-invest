@@ -556,18 +556,35 @@ export const OpportunityRadarSection: React.FC<OpportunityRadarSectionProps> = (
                               fontSize: '0.6875rem',
                             }}
                           >
-                            <span>Pagamento: {formatShortDate(item.dividendCalendar.paymentDate)}</span>
+                            <span>
+                              Pagamento: {formatShortDate(item.dividendCalendar.paymentDate)}
+                              {item.dividendCalendar.exDate && (
+                                <span style={{ marginLeft: '4px', opacity: 0.8 }}>
+                                  (ex: {formatShortDate(item.dividendCalendar.exDate)})
+                                </span>
+                              )}
+                            </span>
                             {item.dividendCalendar.eligibilityStatus === 'RECORD_DATE_TODAY' && (
                               <Badge variant="warning">Hoje data-com</Badge>
                             )}
                             {item.dividendCalendar.eligibilityStatus === 'EX_DIVIDEND' && (
-                              <Badge variant="neutral">Ex-provento</Badge>
+                              <Badge variant="neutral">
+                                {item.dividendCalendar.isPaymentPending ? 'Pagamento pendente' : 'Ex-provento'}
+                              </Badge>
                             )}
-                            {item.dividendCalendar.sameMonthReinvestmentCandidate && (
+                            {item.dividendCalendar.cashAvailableNow ? (
+                              <span style={{ color: colors.positive, fontWeight: 600 }} title="Caixa já disponível para reinvestimento">
+                                ♻ Caixa disponível
+                              </span>
+                            ) : item.dividendCalendar.futureCashExpected ? (
+                              <span style={{ color: colors.accent, fontWeight: 600 }} title="Cadeia de reinvestimento futura planejada">
+                                🗓 Cadeia planejada
+                              </span>
+                            ) : item.dividendCalendar.sameMonthReinvestmentCandidate ? (
                               <span style={{ color: colors.accent, fontWeight: 600 }}>
                                 ♻ Reinvestimento
                               </span>
-                            )}
+                            ) : null}
                           </div>
                         </div>
                       )}

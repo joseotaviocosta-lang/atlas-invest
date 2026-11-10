@@ -1,4 +1,10 @@
-import { OpportunityNewsItem } from '@atlas/market-data';
+import {
+  OpportunityNewsItem,
+  formatIsoDateString,
+  normalizeDividendEvent,
+  selectRelevantDividendEvent,
+  NormalizedDividendEvent,
+} from '@atlas/market-data';
 
 export interface FetchedDividendEvent {
   paymentDate?: string | null;
@@ -6,6 +12,7 @@ export interface FetchedDividendEvent {
   relatedTo?: string | null;
   approvedOn?: string | null;
   lastDatePrior?: string | null;
+  exDate?: string | null;
 }
 
 export interface FetchedAssetIntelligence {
@@ -175,22 +182,29 @@ export async function fetchBrapiAssetIntelligence(params: {
             result.historicalPrices = item.historicalDataPrice;
           }
 
-          // Process dividend calendar if available (APP-16I)
+          // Process dividend calendar if available (APP-16I / APP-16I-R1)
           if (item.dividendsData?.cashDividends && Array.isArray(item.dividendsData.cashDividends)) {
-            const divs = item.dividendsData.cashDividends;
-            const todayStr = new Date().toISOString().slice(0, 10);
-            const upcoming = divs.find(
-              (d) => d.lastDatePrior && d.lastDatePrior.slice(0, 10) >= todayStr,
-            );
-            const chosen = upcoming ?? divs[0];
+            const todayStr = formatIsoDateString(new Date(), 'America/Sao_Paulo');
+            const normalizedList: NormalizedDividendEvent[] = [];
+            for (const d of item.dividendsData.cashDividends) {
+              const norm = normalizeDividendEvent(d);
+              if (norm) {
+                normalizedList.push(norm);
+              }
+            }
+
+            const chosen = selectRelevantDividendEvent(normalizedList, todayStr);
             if (chosen) {
               result.dividendEvent = {
-                paymentDate: chosen.paymentDate ?? null,
-                rate: chosen.rate !== undefined && chosen.rate !== null ? Number(chosen.rate) : null,
-                relatedTo: chosen.relatedTo ?? null,
-                approvedOn: chosen.approvedOn ?? null,
-                lastDatePrior: chosen.lastDatePrior ?? null,
+                paymentDate: chosen.paymentDate,
+                rate: chosen.rate,
+                relatedTo: chosen.relatedTo,
+                approvedOn: chosen.approvedOn,
+                lastDatePrior: chosen.recordDate,
+                exDate: chosen.exDate,
               };
+            } else {
+              result.dividendEvent = null;
             }
           }
         }

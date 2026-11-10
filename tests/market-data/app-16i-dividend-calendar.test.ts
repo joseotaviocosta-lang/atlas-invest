@@ -8,6 +8,11 @@ import {
   calculateDividendCalendarFit,
   detectReinvestmentChains,
   FiiOpportunityScorer,
+  formatIsoDateString,
+  isValidIsoDateString,
+  normalizeDividendEvent,
+  sortDividendEvents,
+  selectRelevantDividendEvent,
 } from '@atlas/market-data';
 
 describe('PROJECT ATLAS — APP-16I: FII Dividend Calendar & Reinvestment Strategy', () => {
@@ -361,7 +366,7 @@ describe('PROJECT ATLAS — APP-16I: FII Dividend Calendar & Reinvestment Strate
     expect(radar.reinvestmentChains?.length).toBeGreaterThan(0);
     const recvItem = radar.allEvaluatedItems?.find((i) => i.ticker === 'RECV11');
     expect(recvItem?.dividendCalendar?.sameMonthReinvestmentCandidate).toBe(true);
-    expect(radar.modelVersion).toBe('opportunity-v2');
+    expect(radar.modelVersion).toBe('opportunity-v2.1');
   });
 
   // 14. Explainability generation for dividend calendar
@@ -407,5 +412,262 @@ describe('PROJECT ATLAS — APP-16I: FII Dividend Calendar & Reinvestment Strate
 
     const item = radar.allEvaluatedItems?.find((i) => i.ticker === 'EXDV11');
     expect(item?.risks.some((r) => r.includes('data-ex'))).toBe(true);
+  });
+
+  // ---------------------------------------------------------------------------
+  // APP-16I-R1: Integrity Hotfix Verification Tests (PARTE AF to AM)
+  // ---------------------------------------------------------------------------
+
+  it('16. Canonical Timezone: formatIsoDateString at 23:30 São Paulo time preserves São Paulo date (not next UTC day)', () => {
+    // 2026-11-10 at 23:30:00 São Paulo (UTC-3) is 2026-11-11 02:30:00 UTC
+    const spLateNight = new Date('2026-11-11T02:30:00.000Z');
+    const formatted = formatIsoDateString(spLateNight, 'America/Sao_Paulo');
+    expect(formatted).toBe('2026-11-10');
+  });
+
+  it('17. Normalization: normalizeDividendEvent cleans and validates raw events from providers', () => {
+    // Valid event with dates, rate and exDate
+    const valid = normalizeDividendEvent({
+      lastDatePrior: '2026-11-15T00:00:00.000Z',
+      paymentDate: '2026-11-25',
+      exDate: '2026-11-16',
+      approvedOn: '2026-10-31',
+      rate: '1.2550',
+      relatedTo: 'Rendimento Mensal',
+    });
+    expect(valid).toEqual({
+      recordDate: '2026-11-15',
+      paymentDate: '2026-11-25',
+      exDate: '2026-11-16',
+      approvedOn: '2026-10-31',
+      rate: 1.255,
+      relatedTo: 'Rendimento Mensal',
+    });
+
+    // Malformed event without any valid date returns null
+    const malformed = normalizeDividendEvent({
+      lastDatePrior: 'invalid-date',
+      paymentDate: null,
+      rate: '1.0',
+    });
+    expect(malformed).toBeNull();
+  });
+
+  it('18. Event Sorting: sortDividendEvents sorts out-of-order events chronologically', () => {
+    const rawEvents = [
+      { recordDate: '2026-12-15', paymentDate: '2026-12-25', exDate: null, approvedOn: null, rate: 1.0, relatedTo: null },
+      { recordDate: '2026-10-15', paymentDate: '2026-10-25', exDate: null, approvedOn: null, rate: 0.9, relatedTo: null },
+      { recordDate: '2026-11-15', paymentDate: '2026-11-25', exDate: null, approvedOn: null, rate: 1.1, relatedTo: null },
+    ];
+    const sorted = sortDividendEvents(rawEvents);
+    expect(sorted[0]?.recordDate).toBe('2026-10-15');
+    expect(sorted[1]?.recordDate).toBe('2026-11-15');
+    expect(sorted[2]?.recordDate).toBe('2026-12-15');
+  });
+
+  it('19. Selection: selectRelevantDividendEvent returns null when all events are fully historical', () => {
+    const historicalOnly = [
+      { recordDate: '2026-09-15', paymentDate: '2026-09-25', exDate: null, approvedOn: null, rate: 1.0, relatedTo: null },
+      { recordDate: '2026-10-15', paymentDate: '2026-10-25', exDate: null, approvedOn: null, rate: 1.0, relatedTo: null },
+    ];
+    // Reference date is 2026-11-10 (both events are in the past)
+    const selected = selectRelevantDividendEvent(historicalOnly, '2026-11-10');
+    expect(selected).toBeNull();
+  });
+
+  it('20. Pending Payment Flow: selectRelevantDividendEvent selects event when recordDate passed but paymentDate is in future', () => {
+    const events = [
+      { recordDate: '2026-10-15', paymentDate: '2026-10-25', exDate: null, approvedOn: null, rate: 0.8, relatedTo: null },
+      { recordDate: '2026-11-05', paymentDate: '2026-11-14', exDate: null, approvedOn: null, rate: 1.0, relatedTo: null }, // record passed, payment pending on 14th
+    ];
+    const selected = selectRelevantDividendEvent(events, '2026-11-10');
+    expect(selected).toBeDefined();
+    expect(selected?.recordDate).toBe('2026-11-05');
+    expect(selected?.paymentDate).toBe('2026-11-14');
+
+    const eligibility = calculateDividendEligibility(selected!.recordDate, '2026-11-10', selected!.paymentDate);
+    expect(eligibility.eligibilityStatus).toBe('EX_DIVIDEND');
+    expect(eligibility.isPaymentPending).toBe(true);
+  });
+
+  it('21. Available Cash Chain: classifies chain as AVAILABLE_CASH_CHAIN when source paymentDate <= referenceDate', () => {
+    const events: FiiDividendCalendarEvent[] = [
+      {
+        ticker: 'PAID11',
+        recordDate: '2026-10-31',
+        exDate: '2026-11-03',
+        paymentDate: '2026-11-08', // Paid on 8th (in past relative to 10th -> cash available now)
+        amountPerShare: 1.0,
+        eventStatus: 'ANNOUNCED',
+        source: 'BRAPI',
+        eligibilityStatus: 'EX_DIVIDEND',
+        daysUntilRecordDate: -10,
+        daysUntilPayment: -2,
+      },
+      {
+        ticker: 'TARGET11',
+        recordDate: '2026-11-16', // data-com 16th (future relative to 10th)
+        exDate: '2026-11-17',
+        paymentDate: '2026-11-25',
+        amountPerShare: 1.2,
+        eventStatus: 'ANNOUNCED',
+        source: 'BRAPI',
+        eligibilityStatus: 'ELIGIBLE',
+        daysUntilRecordDate: 6,
+        daysUntilPayment: 15,
+      },
+    ];
+
+    const result = detectReinvestmentChains(events, '2026-11-10');
+    expect(result.chains.length).toBe(1);
+    const chain = result.chains[0];
+    expect(chain?.chainType).toBe('AVAILABLE_CASH_CHAIN');
+    expect(chain?.cashAvailableNow).toBe(true);
+    expect(chain?.futureCashExpected).toBe(false);
+    expect(result.candidateTickers.has('TARGET11')).toBe(true);
+    expect(result.bestChainByTarget.get('TARGET11')?.sourceTicker).toBe('PAID11');
+  });
+
+  it('22. Planned Future Chain: classifies chain as PLANNED_FUTURE_CHAIN when source paymentDate > referenceDate', () => {
+    const events: FiiDividendCalendarEvent[] = [
+      {
+        ticker: 'FUTURE11',
+        recordDate: '2026-10-31',
+        exDate: '2026-11-03',
+        paymentDate: '2026-11-13', // Pays on 13th (future relative to 10th)
+        amountPerShare: 1.0,
+        eventStatus: 'ANNOUNCED',
+        source: 'BRAPI',
+        eligibilityStatus: 'EX_DIVIDEND',
+        daysUntilRecordDate: -10,
+        daysUntilPayment: 3,
+      },
+      {
+        ticker: 'TARGET11',
+        recordDate: '2026-11-18', // data-com 18th (after 13th)
+        exDate: '2026-11-19',
+        paymentDate: '2026-11-28',
+        amountPerShare: 1.2,
+        eventStatus: 'ANNOUNCED',
+        source: 'BRAPI',
+        eligibilityStatus: 'ELIGIBLE',
+        daysUntilRecordDate: 8,
+        daysUntilPayment: 18,
+      },
+    ];
+
+    const result = detectReinvestmentChains(events, '2026-11-10');
+    expect(result.chains.length).toBe(1);
+    const chain = result.chains[0];
+    expect(chain?.chainType).toBe('PLANNED_FUTURE_CHAIN');
+    expect(chain?.cashAvailableNow).toBe(false);
+    expect(chain?.futureCashExpected).toBe(true);
+  });
+
+  it('23. Target Already Ex: target FII with recordDate < referenceDate is NOT a reinvestment candidate', () => {
+    const events: FiiDividendCalendarEvent[] = [
+      {
+        ticker: 'SOURCE11',
+        recordDate: '2026-10-25',
+        paymentDate: '2026-11-02',
+        amountPerShare: 1.0,
+        eventStatus: 'ANNOUNCED',
+        source: 'BRAPI',
+        eligibilityStatus: 'EX_DIVIDEND',
+        daysUntilRecordDate: -16,
+        daysUntilPayment: -8,
+      },
+      {
+        ticker: 'ALREADY_EX11',
+        recordDate: '2026-11-05', // data-com passed relative to 10th!
+        paymentDate: '2026-11-15',
+        amountPerShare: 1.0,
+        eventStatus: 'ANNOUNCED',
+        source: 'BRAPI',
+        eligibilityStatus: 'EX_DIVIDEND',
+        daysUntilRecordDate: -5,
+        daysUntilPayment: 5,
+      },
+    ];
+
+    const result = detectReinvestmentChains(events, '2026-11-10');
+    expect(result.candidateTickers.has('ALREADY_EX11')).toBe(false);
+    expect(result.chains.length).toBe(0);
+  });
+
+  it('24. Deduplication and Best Chain: picks AVAILABLE_CASH over PLANNED_FUTURE and deduplicates', () => {
+    const events: FiiDividendCalendarEvent[] = [
+      {
+        ticker: 'CASH_SRC11',
+        recordDate: '2026-10-31',
+        paymentDate: '2026-11-08', // already paid! (AVAILABLE_CASH)
+        amountPerShare: 1.0,
+        eventStatus: 'ANNOUNCED',
+        source: 'BRAPI',
+        eligibilityStatus: 'EX_DIVIDEND',
+        daysUntilRecordDate: -10,
+        daysUntilPayment: -2,
+      },
+      {
+        ticker: 'FUTR_SRC11',
+        recordDate: '2026-10-31',
+        paymentDate: '2026-11-12', // future payment (PLANNED_FUTURE)
+        amountPerShare: 1.0,
+        eventStatus: 'ANNOUNCED',
+        source: 'BRAPI',
+        eligibilityStatus: 'EX_DIVIDEND',
+        daysUntilRecordDate: -10,
+        daysUntilPayment: 2,
+      },
+      {
+        ticker: 'TARGET11',
+        recordDate: '2026-11-16',
+        paymentDate: '2026-11-25',
+        amountPerShare: 1.2,
+        eventStatus: 'ANNOUNCED',
+        source: 'BRAPI',
+        eligibilityStatus: 'ELIGIBLE',
+        daysUntilRecordDate: 6,
+        daysUntilPayment: 15,
+      },
+    ];
+
+    const result = detectReinvestmentChains(events, '2026-11-10');
+    const bestChain = result.bestChainByTarget.get('TARGET11');
+    expect(bestChain).toBeDefined();
+    expect(bestChain?.sourceTicker).toBe('CASH_SRC11'); // Cash in hand beats future cash!
+    expect(bestChain?.chainType).toBe('AVAILABLE_CASH_CHAIN');
+  });
+
+  it('25. Engine Integration: tags target FII with bestChain details (sourceTicker, chainType, cashAvailableNow)', () => {
+    const payerFii = mockFii('PAYR11', {
+      calendar: {
+        recordDate: '2026-10-31',
+        paymentDate: '2026-11-08', // already paid (available cash)
+        eventStatus: 'ANNOUNCED',
+      },
+    });
+
+    const receiverFii = mockFii('RECV11', {
+      calendar: {
+        recordDate: '2026-11-16',
+        paymentDate: '2026-11-25',
+        eventStatus: 'ANNOUNCED',
+      },
+    });
+
+    const radar = OpportunityRadarEngine.evaluate({
+      portfolioId: 'test-port',
+      assets: [payerFii, receiverFii],
+      analysisDate: refDateStr,
+      referenceDate: refDate,
+    });
+
+    const recvItem = radar.allEvaluatedItems?.find((i) => i.ticker === 'RECV11');
+    expect(recvItem?.dividendCalendar?.sameMonthReinvestmentCandidate).toBe(true);
+    expect(recvItem?.dividendCalendar?.reinvestmentSourceTicker).toBe('PAYR11');
+    expect(recvItem?.dividendCalendar?.reinvestmentChainType).toBe('AVAILABLE_CASH_CHAIN');
+    expect(recvItem?.dividendCalendar?.cashAvailableNow).toBe(true);
+    expect(recvItem?.dividendCalendar?.futureCashExpected).toBe(false);
   });
 });

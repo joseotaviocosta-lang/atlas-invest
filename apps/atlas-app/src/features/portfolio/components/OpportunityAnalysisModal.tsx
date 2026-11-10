@@ -22,11 +22,11 @@ const formatNewsDate = (isoString: string): string => {
   }
 };
 
-function formatShortDate(dateStr: string | null | undefined): string {
+function formatFullDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
   const parts = dateStr.slice(0, 10).split('-');
   if (parts.length === 3) {
-    return `${parts[2]}/${parts[1]}`;
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
   }
   return dateStr;
 }
@@ -386,13 +386,19 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
                 <div>
                   <div style={{ color: colors.textSecondary, fontSize: '0.75rem' }}>Data-base (Data-com)</div>
                   <div style={{ fontWeight: 600, color: colors.textPrimary }}>
-                    {item.dividendCalendar?.recordDate ? formatShortDate(item.dividendCalendar.recordDate) : '—'}
+                    {item.dividendCalendar?.recordDate ? formatFullDate(item.dividendCalendar.recordDate) : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: colors.textSecondary, fontSize: '0.75rem' }}>Data-ex</div>
+                  <div style={{ fontWeight: 600, color: colors.textPrimary }}>
+                    {item.dividendCalendar?.exDate ? formatFullDate(item.dividendCalendar.exDate) : 'Não informada'}
                   </div>
                 </div>
                 <div>
                   <div style={{ color: colors.textSecondary, fontSize: '0.75rem' }}>Data de Pagamento</div>
                   <div style={{ fontWeight: 600, color: colors.textPrimary }}>
-                    {item.dividendCalendar?.paymentDate ? formatShortDate(item.dividendCalendar.paymentDate) : '—'}
+                    {item.dividendCalendar?.paymentDate ? formatFullDate(item.dividendCalendar.paymentDate) : '—'}
                   </div>
                 </div>
                 <div>
@@ -408,13 +414,17 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
                   <div style={{ color: colors.textSecondary, fontSize: '0.75rem' }}>Situação de Elegibilidade</div>
                   <div style={{ fontWeight: 600 }}>
                     {item.dividendCalendar?.eligibilityStatus === 'ELIGIBLE' && (
-                      <span style={{ color: colors.positive }}>Dentro do período com direito</span>
+                      <span style={{ color: colors.positive }}>✅ Ainda elegível (Dentro do período com direito)</span>
                     )}
                     {item.dividendCalendar?.eligibilityStatus === 'RECORD_DATE_TODAY' && (
-                      <span style={{ color: colors.warning }}>Hoje é o último dia (Data-com)</span>
+                      <span style={{ color: colors.warning }}>⚡ Data-com hoje (último dia com direito)</span>
                     )}
                     {item.dividendCalendar?.eligibilityStatus === 'EX_DIVIDEND' && (
-                      <span style={{ color: colors.textSecondary }}>Ativo já em data-ex para este ciclo</span>
+                      <span style={{ color: colors.textSecondary }}>
+                        {item.dividendCalendar.isPaymentPending
+                          ? '⛔ Data-com já passou (pagamento pendente)'
+                          : '⛔ Data-com já passou'}
+                      </span>
                     )}
                     {(!item.dividendCalendar || item.dividendCalendar.eligibilityStatus === 'UNKNOWN') && (
                       <span style={{ color: colors.textSecondary }}>Aguardando anúncio oficial</span>
@@ -429,13 +439,25 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
                     marginTop: `${spacing.xs}px`,
                     padding: '6px 10px',
                     borderRadius: `${borderRadius.sm}px`,
-                    backgroundColor: `${colors.accent}12`,
-                    color: colors.accent,
+                    backgroundColor: item.dividendCalendar.cashAvailableNow ? `${colors.positive}12` : `${colors.accent}12`,
+                    color: item.dividendCalendar.cashAvailableNow ? colors.positive : colors.accent,
                     fontWeight: 600,
                     fontSize: '0.75rem',
                   }}
                 >
-                  ♻ Potencial de Rotação: Caixa recebido de outros proventos da carteira pode ser reutilizado para novo aporte antes da data-com deste fundo.
+                  {item.dividendCalendar.cashAvailableNow ? (
+                    <span>
+                      {`♻ Caixa já disponível: provento recebido${item.dividendCalendar.reinvestmentSourceTicker ? ` de ${item.dividendCalendar.reinvestmentSourceTicker}` : ''} já se encontra disponível para novo aporte antes da data-com deste fundo.`}
+                    </span>
+                  ) : item.dividendCalendar.futureCashExpected ? (
+                    <span>
+                      {`🗓 Cadeia futura planejada: provento previsto${item.dividendCalendar.reinvestmentSourceTicker ? ` de ${item.dividendCalendar.reinvestmentSourceTicker}` : ''} poderá ser reinvestido antes da data-com deste fundo.`}
+                    </span>
+                  ) : (
+                    <span>
+                      ♻ Potencial de Rotação: Caixa recebido de outros proventos da carteira pode ser reutilizado para novo aporte antes da data-com deste fundo.
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -541,7 +563,7 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
             </div>
           )}
           <div>
-            <strong>Modelo:</strong> opportunity-v2 • <strong>Análise atualizada às:</strong> {formattedUpdatedAt}
+            <strong>Modelo:</strong> opportunity-v2.1 • <strong>Análise atualizada às:</strong> {formattedUpdatedAt}
           </div>
           <div style={{ marginTop: '4px', fontStyle: 'italic', color: colors.disabledText }}>
             Radar puramente informativo baseado nos dados disponíveis. Não executa ordens de compra ou venda e não garante desempenho futuro.

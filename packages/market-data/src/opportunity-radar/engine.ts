@@ -87,16 +87,27 @@ export class OpportunityRadarEngine {
         const eligibility = calculateDividendEligibility(
           input.dividendCalendar.recordDate,
           analysisDate,
+          input.dividendCalendar.paymentDate,
         );
         const isReinvestmentCandidate = reinvestmentResult.candidateTickers.has(input.ticker);
+        const bestChain = reinvestmentResult.bestChainByTarget.get(input.ticker);
         const targetTicker = reinvestmentResult.targetTickerBySource.get(input.ticker) ?? null;
 
         enrichedCalendar = {
           ...input.dividendCalendar,
           eligibilityStatus: eligibility.eligibilityStatus,
           daysUntilRecordDate: eligibility.daysUntilRecordDate,
+          isPaymentPending: eligibility.isPaymentPending,
           sameMonthReinvestmentCandidate:
-            input.dividendCalendar.sameMonthReinvestmentCandidate || isReinvestmentCandidate,
+            Boolean(input.dividendCalendar.sameMonthReinvestmentCandidate || isReinvestmentCandidate),
+          reinvestmentSourceTicker:
+            bestChain?.sourceTicker ?? input.dividendCalendar.reinvestmentSourceTicker ?? null,
+          reinvestmentChainType:
+            bestChain?.chainType ?? input.dividendCalendar.reinvestmentChainType ?? null,
+          cashAvailableNow:
+            bestChain?.cashAvailableNow ?? input.dividendCalendar.cashAvailableNow ?? false,
+          futureCashExpected:
+            bestChain?.futureCashExpected ?? input.dividendCalendar.futureCashExpected ?? false,
           reinvestmentChainTargetTicker:
             input.dividendCalendar.reinvestmentChainTargetTicker || targetTicker,
         };

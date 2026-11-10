@@ -208,11 +208,12 @@ export interface IngestionReceiptDto {
 }
 
 // ---------------------------------------------------------------------------
-// Opportunity Radar (APP-16F / APP-16H / APP-16I)
+// Opportunity Radar (APP-16F / APP-16H / APP-16I / APP-16I-R1)
 // ---------------------------------------------------------------------------
 
 export type FiiDividendEventStatusDto = 'ANNOUNCED' | 'HISTORICAL_PATTERN' | 'UNKNOWN';
 export type FiiDividendEligibilityStatusDto = 'ELIGIBLE' | 'RECORD_DATE_TODAY' | 'EX_DIVIDEND' | 'UNKNOWN';
+export type FiiReinvestmentChainTypeDto = 'AVAILABLE_CASH_CHAIN' | 'PLANNED_FUTURE_CHAIN';
 
 export interface FiiDividendCalendarEventDto {
   ticker: string;
@@ -227,7 +228,12 @@ export interface FiiDividendCalendarEventDto {
   daysUntilRecordDate: number | null;
   daysUntilPayment: number | null;
   sameMonthReinvestmentCandidate?: boolean;
+  reinvestmentSourceTicker?: string | null;
+  reinvestmentChainType?: FiiReinvestmentChainTypeDto | null;
+  cashAvailableNow?: boolean;
+  futureCashExpected?: boolean;
   reinvestmentChainTargetTicker?: string | null;
+  isPaymentPending?: boolean;
 }
 
 export interface FiiReinvestmentChainDto {
@@ -237,6 +243,9 @@ export interface FiiReinvestmentChainDto {
   targetRecordDate: string;
   daysGap: number;
   sameMonth: boolean;
+  chainType: FiiReinvestmentChainTypeDto;
+  cashAvailableNow: boolean;
+  futureCashExpected: boolean;
 }
 
 export interface OpportunityNewsItemDto {

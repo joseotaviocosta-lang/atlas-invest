@@ -5,6 +5,7 @@ import {
   OpportunityAssetInput,
   OpportunityNewsItem,
   FiiDividendCalendarEvent,
+  formatIsoDateString,
 } from '@atlas/market-data';
 import {
   IPortfolioRepository,
@@ -49,7 +50,7 @@ export class GetOpportunityRadarUseCase {
     enableDividendCalendarStrategy?: boolean;
   }): Promise<OpportunityRadarResult> {
     const now = params.now ?? new Date();
-    const analysisDate = now.toISOString().slice(0, 10);
+    const analysisDate = formatIsoDateString(now, 'America/Sao_Paulo');
 
     // 1. Verify portfolio ownership (anti-enumeration 404)
     const portfolio = await this.portfolioRepo.findById(params.portfolioId);
@@ -194,6 +195,7 @@ export class GetOpportunityRadarUseCase {
           relatedTo?: string | null;
           approvedOn?: string | null;
           lastDatePrior?: string | null;
+          exDate?: string | null;
         } | null,
       };
 
@@ -283,6 +285,9 @@ export class GetOpportunityRadarUseCase {
           const paymentDate = extIntel.dividendEvent.paymentDate
             ? extIntel.dividendEvent.paymentDate.slice(0, 10)
             : null;
+          const exDate = extIntel.dividendEvent.exDate
+            ? extIntel.dividendEvent.exDate.slice(0, 10)
+            : null;
           const amountPerShare = extIntel.dividendEvent.rate ?? null;
           const announcedAt = extIntel.dividendEvent.approvedOn
             ? extIntel.dividendEvent.approvedOn.slice(0, 10)
@@ -291,7 +296,7 @@ export class GetOpportunityRadarUseCase {
           dividendCalendar = {
             ticker,
             recordDate,
-            exDate: null,
+            exDate,
             paymentDate,
             amountPerShare,
             eventStatus: 'ANNOUNCED',

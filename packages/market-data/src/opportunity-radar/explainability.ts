@@ -81,7 +81,15 @@ export function generateExplainabilitySynthesis(
       }
 
       if (input.dividendCalendar.sameMonthReinvestmentCandidate && positives.length < 3) {
-        positives.push(`Janela estratégica favorável para reinvestimento dos proventos recebidos no mês`);
+        if (input.dividendCalendar.cashAvailableNow) {
+          const src = input.dividendCalendar.reinvestmentSourceTicker ? ` (${input.dividendCalendar.reinvestmentSourceTicker})` : '';
+          positives.push(`Caixa já disponível de provento recebido${src} para reinvestimento antes da data-com`);
+        } else if (input.dividendCalendar.futureCashExpected) {
+          const src = input.dividendCalendar.reinvestmentSourceTicker ? ` (${input.dividendCalendar.reinvestmentSourceTicker})` : '';
+          positives.push(`Fluxo planejado de provento futuro${src} para reinvestimento antes da data-com`);
+        } else {
+          positives.push(`Janela estratégica favorável para reinvestimento dos proventos recebidos no mês`);
+        }
       }
     }
 
