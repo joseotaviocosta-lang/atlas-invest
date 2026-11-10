@@ -90,7 +90,7 @@ describe('PROJECT ATLAS — APP-16F: Daily Opportunity Radar (Frontend Component
     portfolioId,
     analysisDate: '2026-11-10',
     updatedAt: '2026-11-10T09:00:00.000Z',
-    modelVersion: 'opportunity-v1',
+    modelVersion: 'opportunity-v2',
     totalEligible: 36,
     totalRanked: 2,
     items: [mockItem1, mockItem2],
@@ -319,5 +319,84 @@ describe('PROJECT ATLAS — APP-16F: Daily Opportunity Radar (Frontend Component
     expect(html).toContain('120 un.');
     // FII displays cotas
     expect(html).toContain('50 cotas');
+  });
+
+  it('APP-16I: renders FII dividend calendar info on card when available', () => {
+    const fiiWithDividend: OpportunityRadarItemDto = {
+      ...mockItem2,
+      dividendCalendar: {
+        ticker: 'HGLG11',
+        recordDate: '2026-11-14',
+        exDate: '2026-11-17',
+        paymentDate: '2026-11-25',
+        amountPerShare: 1.1,
+        eventStatus: 'ANNOUNCED',
+        source: 'BRAPI',
+        eligibilityStatus: 'ELIGIBLE',
+        daysUntilRecordDate: 4,
+        daysUntilPayment: 15,
+        sameMonthReinvestmentCandidate: true,
+      },
+    };
+
+    queryClient.setQueryData(['opportunity-radar', portfolioId], {
+      data: {
+        ...mockRadarResponse,
+        items: [fiiWithDividend],
+      },
+    });
+
+    const html = renderToString(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <OpportunityRadarSection portfolioId={portfolioId} />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(html).toContain('data-testid="fii-dividend-calendar-HGLG11"');
+    expect(html).toContain('Data-com:');
+    expect(html).toContain('14/11');
+    expect(html).toContain('Pagamento:');
+    expect(html).toContain('25/11');
+    expect(html).toContain('1.10');
+    expect(html).toContain('Reinvestimento');
+  });
+
+  it('APP-16I: OpportunityAnalysisModal renders dedicated FII dividend calendar section with entitlement and reinvestment', () => {
+    const fiiWithDividend: OpportunityRadarItemDto = {
+      ...mockItem2,
+      components: {
+        ...mockItem2.components,
+        dividendCalendarFit: 95,
+      },
+      dividendCalendar: {
+        ticker: 'HGLG11',
+        recordDate: '2026-11-14',
+        exDate: '2026-11-17',
+        paymentDate: '2026-11-25',
+        amountPerShare: 1.1,
+        eventStatus: 'ANNOUNCED',
+        source: 'BRAPI',
+        eligibilityStatus: 'ELIGIBLE',
+        daysUntilRecordDate: 4,
+        daysUntilPayment: 15,
+        sameMonthReinvestmentCandidate: true,
+      },
+    };
+
+    const html = renderToString(
+      <OpportunityAnalysisModal
+        isOpen={true}
+        onClose={vi.fn()}
+        item={fiiWithDividend}
+      />
+    );
+
+    expect(html).toContain('data-testid="modal-fii-dividend-calendar-section"');
+    expect(html).toContain('Calendário de Proventos &amp; Reinvestimento');
+    expect(html).toContain('Dentro do período com direito');
+    expect(html).toContain('Potencial de Rotação');
+    expect(html).toContain('opportunity-v2');
   });
 });

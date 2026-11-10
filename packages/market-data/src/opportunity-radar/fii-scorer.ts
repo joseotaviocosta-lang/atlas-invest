@@ -2,6 +2,7 @@ import { OpportunityAssetInput, OpportunityScoreComponents } from './types';
 import { calculatePortfolioFitScore } from './portfolio-fit';
 import { calculateTrendAndPriceScores } from './trend-scorer';
 import { calculateNewsScore } from './news-scorer';
+import { calculateDividendCalendarFit } from './calendar-scorer';
 
 export interface FiiScoringResult {
   score: number; // 0..100
@@ -10,10 +11,15 @@ export interface FiiScoringResult {
   knownWeightRatio: number;
 }
 
+export interface FiiScoringOptions {
+  enableDividendCalendarStrategy?: boolean;
+}
+
 /**
- * FiiOpportunityScorer (APP-16F / APP-16G)
+ * FiiOpportunityScorer (APP-16F / APP-16G / APP-16I)
  *
  * Scoring model for real estate funds (FIIs) with dynamic normalization over known dimensions:
+ * Standard (without calendar):
  * - Portfolio Fit:          20%
  * - Valuation (P/VP/Range): 20%
  * - Income Quality (DY):    20%
@@ -21,27 +27,40 @@ export interface FiiScoringResult {
  * - News / Events:          15%
  * - Fund Quality / Outlook: 10%
  *
- * Dynamic Normalization Invariant (APP-16G):
+ * With Dividend Calendar Strategy (APP-16I):
+ * - Portfolio Fit:          15%
+ * - Valuation (P/VP):       15%
+ * - Income Quality (DY):    15%
+ * - Trend / Price:          15%
+ * - News / Events:          10%
+ * - Fund Quality / Outlook: 10%
+ * - Dividend Calendar Fit:  20%
+ *
+ * Dynamic Normalization Invariant (APP-16G / APP-16I):
  * Components with missing data are null (UNKNOWN), never artificial 50.
  * Composite score is normalized strictly over the sum of known weights:
  *   score = sum(w_i * s_i) / sum(w_i)
  */
 export class FiiOpportunityScorer {
-  static score(input: OpportunityAssetInput, referenceDate: Date = new Date()): FiiScoringResult {
-    // 1. Portfolio Fit (20%)
+  static score(
+    input: OpportunityAssetInput,
+    referenceDate: Date = new Date(),
+    options?: FiiScoringOptions,
+  ): FiiScoringResult {
+    // 1. Portfolio Fit
     const { score: portfolioFit, concentrationPenalty } = calculatePortfolioFitScore({
       portfolioWeight: input.portfolioWeight,
       classWeight: input.classWeight,
       targetWeight: input.targetWeight,
     });
 
-    // 2. Valuation (P/VP or 52w Range position) (20%)
+    // 2. Valuation (P/VP)
     const valuation = this.calculateFiiValuation(input);
 
-    // 3. Income Quality (DY) (20%)
+    // 3. Income Quality (DY)
     const incomeQuality = this.calculateFiiIncomeQuality(input);
 
-    // 4. Trend / Price (15%)
+    // 4. Trend / Price
     const { momentumScore: momentum, priceOpportunityScore: priceOpportunity } =
       calculateTrendAndPriceScores({
         dailyChangePercent: input.dailyChangePercent,
@@ -63,21 +82,37 @@ export class FiiOpportunityScorer {
       trendPriceCombined = priceOpportunity;
     }
 
-    // 5. News / Events (15%)
+    // 5. News / Events
     const { score: news } = calculateNewsScore(input.recentNews, referenceDate);
 
-    // 6. Fund Quality / Outlook (10%)
+    // 6. Fund Quality / Outlook
     const outlook = this.calculateFiiOutlook(input);
 
-    // Dynamic Normalization
-    const componentsList: Array<{ score: number | null; weight: number }> = [
-      { score: portfolioFit, weight: 0.20 },
-      { score: valuation, weight: 0.20 },
-      { score: incomeQuality, weight: 0.20 },
-      { score: trendPriceCombined, weight: 0.15 },
-      { score: news, weight: 0.15 },
-      { score: outlook, weight: 0.10 },
-    ];
+    // 7. Dividend Calendar Fit (APP-16I)
+    const enableStrategy = options?.enableDividendCalendarStrategy ?? true;
+    const dividendCalendarFit = calculateDividendCalendarFit(input.dividendCalendar, enableStrategy);
+
+    // Dynamic Normalization with rebalanced weights if calendar fit is present
+    const hasCalendar = dividendCalendarFit !== null;
+
+    const componentsList: Array<{ score: number | null; weight: number }> = hasCalendar
+      ? [
+          { score: portfolioFit, weight: 0.15 },
+          { score: valuation, weight: 0.15 },
+          { score: incomeQuality, weight: 0.15 },
+          { score: trendPriceCombined, weight: 0.15 },
+          { score: news, weight: 0.10 },
+          { score: outlook, weight: 0.10 },
+          { score: dividendCalendarFit, weight: 0.20 },
+        ]
+      : [
+          { score: portfolioFit, weight: 0.20 },
+          { score: valuation, weight: 0.20 },
+          { score: incomeQuality, weight: 0.20 },
+          { score: trendPriceCombined, weight: 0.15 },
+          { score: news, weight: 0.15 },
+          { score: outlook, weight: 0.10 },
+        ];
 
     let weightedSum = 0;
     let knownWeightSum = 0;
@@ -106,6 +141,7 @@ export class FiiOpportunityScorer {
         priceOpportunity: incomeQuality,
         news,
         outlook,
+        dividendCalendarFit,
       },
       concentrationPenalty,
       knownWeightRatio: knownWeightSum,

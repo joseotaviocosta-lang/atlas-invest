@@ -4,6 +4,7 @@ import {
   OpportunityRadarResult,
   OpportunityAssetInput,
   OpportunityNewsItem,
+  FiiDividendCalendarEvent,
 } from '@atlas/market-data';
 import {
   IPortfolioRepository,
@@ -45,6 +46,7 @@ export class GetOpportunityRadarUseCase {
     userId: string;
     forceRefresh?: boolean;
     now?: Date;
+    enableDividendCalendarStrategy?: boolean;
   }): Promise<OpportunityRadarResult> {
     const now = params.now ?? new Date();
     const analysisDate = now.toISOString().slice(0, 10);
@@ -59,7 +61,9 @@ export class GetOpportunityRadarUseCase {
     }
 
     // 2. Check cache on regular read (APP-16F PARTE X, Y)
-    if (!params.forceRefresh) {
+    // If strategy toggle differs from default (true), bypass cache
+    const enableDividendCalendarStrategy = params.enableDividendCalendarStrategy ?? true;
+    if (!params.forceRefresh && enableDividendCalendarStrategy) {
       const cached = this.cache.get(params.portfolioId, analysisDate);
       if (cached) {
         return cached;
@@ -184,6 +188,13 @@ export class GetOpportunityRadarUseCase {
         historicalPrices: undefined as Array<{ date: number; close: number }> | undefined,
         news: [] as OpportunityNewsItem[],
         analystConsensus: null as 'BUY' | 'HOLD' | 'SELL' | 'UNKNOWN' | null,
+        dividendEvent: null as {
+          paymentDate?: string | null;
+          rate?: number | null;
+          relatedTo?: string | null;
+          approvedOn?: string | null;
+          lastDatePrior?: string | null;
+        } | null,
       };
 
       const brapiToken =
@@ -211,6 +222,7 @@ export class GetOpportunityRadarUseCase {
             historicalPrices: fetched.historicalPrices,
             news: fetched.news || [],
             analystConsensus: fetched.analystConsensus ?? null,
+            dividendEvent: fetched.dividendEvent ?? null,
           };
         } catch {
           // Fail-closed to neutral
@@ -258,6 +270,53 @@ export class GetOpportunityRadarUseCase {
         }
       }
 
+      // Build FII Dividend Calendar if asset is FII (APP-16I)
+      let dividendCalendar: FiiDividendCalendarEvent | undefined = undefined;
+      if (isFii) {
+        if (
+          extIntel.dividendEvent &&
+          (extIntel.dividendEvent.lastDatePrior || extIntel.dividendEvent.paymentDate)
+        ) {
+          const recordDate = extIntel.dividendEvent.lastDatePrior
+            ? extIntel.dividendEvent.lastDatePrior.slice(0, 10)
+            : null;
+          const paymentDate = extIntel.dividendEvent.paymentDate
+            ? extIntel.dividendEvent.paymentDate.slice(0, 10)
+            : null;
+          const amountPerShare = extIntel.dividendEvent.rate ?? null;
+          const announcedAt = extIntel.dividendEvent.approvedOn
+            ? extIntel.dividendEvent.approvedOn.slice(0, 10)
+            : null;
+
+          dividendCalendar = {
+            ticker,
+            recordDate,
+            exDate: null,
+            paymentDate,
+            amountPerShare,
+            eventStatus: 'ANNOUNCED',
+            source: 'BRAPI_DIVIDENDS',
+            announcedAt,
+            eligibilityStatus: 'UNKNOWN',
+            daysUntilRecordDate: null,
+            daysUntilPayment: null,
+          };
+        } else {
+          dividendCalendar = {
+            ticker,
+            recordDate: null,
+            exDate: null,
+            paymentDate: null,
+            amountPerShare: null,
+            eventStatus: 'UNKNOWN',
+            source: 'BRAPI_DIVIDENDS',
+            eligibilityStatus: 'UNKNOWN',
+            daysUntilRecordDate: null,
+            daysUntilPayment: null,
+          };
+        }
+      }
+
       const assetInput: OpportunityAssetInput = {
         assetId: pos.assetId,
         ticker,
@@ -287,6 +346,7 @@ export class GetOpportunityRadarUseCase {
         fiiPriceToBook: extIntel.fiiPriceToBook,
         fiiDividendYield: extIntel.fiiDividendYield,
         fiiSegment: extIntel.fiiSegment,
+        dividendCalendar,
         recentNews: combinedNews,
         analystConsensus: extIntel.analystConsensus,
       };
@@ -294,17 +354,20 @@ export class GetOpportunityRadarUseCase {
       evaluatedAssets.push(assetInput);
     }
 
-    // 6. Run pure deterministic OpportunityRadarEngine
+    // 6. Run pure deterministic OpportunityRadarEngine (APP-16I)
     const result = OpportunityRadarEngine.evaluate({
       portfolioId: params.portfolioId,
       assets: evaluatedAssets,
       analysisDate,
       referenceDate: now,
       maxResults: 5,
+      enableDividendCalendarStrategy,
     });
 
-    // 7. Store in ephemeral cache
-    this.cache.set(params.portfolioId, result, analysisDate);
+    // 7. Store in ephemeral cache (only if default strategy enabled)
+    if (enableDividendCalendarStrategy) {
+      this.cache.set(params.portfolioId, result, analysisDate);
+    }
 
     return result;
   }

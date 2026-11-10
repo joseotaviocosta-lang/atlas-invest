@@ -312,14 +312,14 @@ describe('APP-16F: Daily Opportunity Radar Engine & Scorers', () => {
     expect(synthesis.risks.length).toBeLessThanOrEqual(3);
   });
 
-  // 13. Model version is frozen to opportunity-v1
-  it('13. engine output specifies modelVersion as opportunity-v1', () => {
+  // 13. Model version is frozen to opportunity-v2
+  it('13. engine output specifies modelVersion as opportunity-v2', () => {
     const result = OpportunityRadarEngine.evaluate({
       portfolioId: 'test-port',
       assets: [baseEquity],
     });
     expect(result.modelVersion).toBe(OPPORTUNITY_MODEL_VERSION);
-    expect(result.modelVersion).toBe('opportunity-v1');
+    expect(result.modelVersion).toBe('opportunity-v2');
     expect(result.disclaimer).toContain('Radar informativo');
   });
 

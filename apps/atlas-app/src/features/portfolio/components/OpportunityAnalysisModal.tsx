@@ -22,6 +22,15 @@ const formatNewsDate = (isoString: string): string => {
   }
 };
 
+function formatShortDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—';
+  const parts = dateStr.slice(0, 10).split('-');
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}`;
+  }
+  return dateStr;
+}
+
 export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> = ({
   isOpen,
   onClose,
@@ -192,26 +201,44 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
           </h4>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.xs}px` }}>
-            {[
-              { label: 'Capacidade na Carteira (Portfolio Fit)', value: item.components.portfolioFit, weight: '20%' },
-              {
-                label: item.assetType === 'FII' ? 'Valuation (P/VP)' : 'Valuation & Fundamentos',
-                value: item.components.valuation,
-                weight: '20%',
-              },
-              {
-                label: item.assetType === 'FII' ? 'Rendimento & Yield' : 'Oportunidade de Preço',
-                value: item.components.priceOpportunity,
-                weight: item.assetType === 'FII' ? '20%' : '15%',
-              },
-              {
-                label: item.assetType === 'FII' ? 'Tendência & Preço' : 'Tendência & Momentum',
-                value: item.components.momentum,
-                weight: item.assetType === 'FII' ? '15%' : '20%',
-              },
-              { label: 'Notícias & Fatos Relevantes', value: item.components.news, weight: '15%' },
-              { label: 'Perspectiva & Consenso', value: item.components.outlook, weight: '10%' },
-            ].map((comp, idx) => (
+            {(() => {
+              const hasCalendarFit =
+                item.assetType === 'FII' &&
+                item.components.dividendCalendarFit !== undefined &&
+                item.components.dividendCalendarFit !== null;
+
+              const componentsList = hasCalendarFit
+                ? [
+                    { label: 'Capacidade na Carteira (Portfolio Fit)', value: item.components.portfolioFit, weight: '15%' },
+                    { label: 'Valuation (P/VP)', value: item.components.valuation, weight: '15%' },
+                    { label: 'Rendimento & Yield', value: item.components.priceOpportunity, weight: '15%' },
+                    { label: 'Tendência & Preço', value: item.components.momentum, weight: '15%' },
+                    { label: 'Notícias & Fatos Relevantes', value: item.components.news, weight: '10%' },
+                    { label: 'Perspectiva & Consenso', value: item.components.outlook, weight: '10%' },
+                    { label: 'Calendário de Proventos', value: item.components.dividendCalendarFit ?? null, weight: '20%' },
+                  ]
+                : [
+                    { label: 'Capacidade na Carteira (Portfolio Fit)', value: item.components.portfolioFit, weight: '20%' },
+                    {
+                      label: item.assetType === 'FII' ? 'Valuation (P/VP)' : 'Valuation & Fundamentos',
+                      value: item.components.valuation,
+                      weight: '20%',
+                    },
+                    {
+                      label: item.assetType === 'FII' ? 'Rendimento & Yield' : 'Oportunidade de Preço',
+                      value: item.components.priceOpportunity,
+                      weight: item.assetType === 'FII' ? '20%' : '15%',
+                    },
+                    {
+                      label: item.assetType === 'FII' ? 'Tendência & Preço' : 'Tendência & Momentum',
+                      value: item.components.momentum,
+                      weight: item.assetType === 'FII' ? '15%' : '20%',
+                    },
+                    { label: 'Notícias & Fatos Relevantes', value: item.components.news, weight: '15%' },
+                    { label: 'Perspectiva & Consenso', value: item.components.outlook, weight: '10%' },
+                  ];
+
+              return componentsList.map((comp, idx) => (
               <div
                 key={idx}
                 style={{
@@ -240,10 +267,10 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
                   >
                     <div
                       style={{
-                        width: comp.value !== null ? `${comp.value}%` : '0%',
+                        width: comp.value !== null && comp.value !== undefined ? `${comp.value}%` : '0%',
                         height: '100%',
                         backgroundColor:
-                          comp.value === null
+                          comp.value === null || comp.value === undefined
                             ? 'transparent'
                             : comp.value >= 70
                               ? colors.positive
@@ -256,22 +283,23 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
                   <span
                     style={{
                       fontWeight: 600,
-                      color: comp.value !== null ? colors.textPrimary : colors.textSecondary,
+                      color: comp.value !== null && comp.value !== undefined ? colors.textPrimary : colors.textSecondary,
                       minWidth: '28px',
                       textAlign: 'right',
-                      fontSize: comp.value !== null ? '0.8125rem' : '0.6875rem',
+                      fontSize: comp.value !== null && comp.value !== undefined ? '0.8125rem' : '0.6875rem',
                     }}
                   >
-                    {comp.value !== null ? comp.value : '—'}
+                    {comp.value !== null && comp.value !== undefined ? comp.value : '—'}
                   </span>
                 </div>
               </div>
-            ))}
-          </div>
+            ));
+          })()}
         </div>
+      </div>
 
-        {/* Section: Favorable Reasons */}
-        <div>
+      {/* Section: Favorable Reasons */}
+      <div>
           <h4
             style={{
               fontSize: '0.875rem',
@@ -321,6 +349,98 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
             ))}
           </ul>
         </div>
+
+        {/* Section: FII Dividend Calendar & Reinvestment Strategy (APP-16I) */}
+        {item.assetType === 'FII' && (
+          <div data-testid="modal-fii-dividend-calendar-section">
+            <h4
+              style={{
+                fontSize: '0.875rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: colors.textSecondary,
+                marginBottom: `${spacing.xs}px`,
+              }}
+            >
+              Calendário de Proventos & Reinvestimento
+            </h4>
+
+            <div
+              style={{
+                padding: `${spacing.sm}px`,
+                backgroundColor: colors.surfaceElevated,
+                borderRadius: `${borderRadius.sm}px`,
+                border: `1px solid ${colors.border}`,
+                fontSize: '0.8125rem',
+              }}
+            >
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                  gap: `${spacing.sm}px`,
+                  marginBottom: item.dividendCalendar?.sameMonthReinvestmentCandidate ? `${spacing.xs}px` : 0,
+                }}
+              >
+                <div>
+                  <div style={{ color: colors.textSecondary, fontSize: '0.75rem' }}>Data-base (Data-com)</div>
+                  <div style={{ fontWeight: 600, color: colors.textPrimary }}>
+                    {item.dividendCalendar?.recordDate ? formatShortDate(item.dividendCalendar.recordDate) : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: colors.textSecondary, fontSize: '0.75rem' }}>Data de Pagamento</div>
+                  <div style={{ fontWeight: 600, color: colors.textPrimary }}>
+                    {item.dividendCalendar?.paymentDate ? formatShortDate(item.dividendCalendar.paymentDate) : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: colors.textSecondary, fontSize: '0.75rem' }}>Rendimento Anunciado</div>
+                  <div style={{ fontWeight: 600, color: colors.positive }}>
+                    {item.dividendCalendar?.amountPerShare !== null &&
+                    item.dividendCalendar?.amountPerShare !== undefined
+                      ? `R$ ${item.dividendCalendar.amountPerShare.toFixed(2)}/cota`
+                      : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: colors.textSecondary, fontSize: '0.75rem' }}>Situação de Elegibilidade</div>
+                  <div style={{ fontWeight: 600 }}>
+                    {item.dividendCalendar?.eligibilityStatus === 'ELIGIBLE' && (
+                      <span style={{ color: colors.positive }}>Dentro do período com direito</span>
+                    )}
+                    {item.dividendCalendar?.eligibilityStatus === 'RECORD_DATE_TODAY' && (
+                      <span style={{ color: colors.warning }}>Hoje é o último dia (Data-com)</span>
+                    )}
+                    {item.dividendCalendar?.eligibilityStatus === 'EX_DIVIDEND' && (
+                      <span style={{ color: colors.textSecondary }}>Ativo já em data-ex para este ciclo</span>
+                    )}
+                    {(!item.dividendCalendar || item.dividendCalendar.eligibilityStatus === 'UNKNOWN') && (
+                      <span style={{ color: colors.textSecondary }}>Aguardando anúncio oficial</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {item.dividendCalendar?.sameMonthReinvestmentCandidate && (
+                <div
+                  style={{
+                    marginTop: `${spacing.xs}px`,
+                    padding: '6px 10px',
+                    borderRadius: `${borderRadius.sm}px`,
+                    backgroundColor: `${colors.accent}12`,
+                    color: colors.accent,
+                    fontWeight: 600,
+                    fontSize: '0.75rem',
+                  }}
+                >
+                  ♻ Potencial de Rotação: Caixa recebido de outros proventos da carteira pode ser reutilizado para novo aporte antes da data-com deste fundo.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Section: News considered (Strict Effective News) */}
         {item.components.news !== null && item.news && item.news.length > 0 ? (
@@ -421,7 +541,7 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
             </div>
           )}
           <div>
-            <strong>Modelo:</strong> opportunity-v1 • <strong>Análise atualizada às:</strong> {formattedUpdatedAt}
+            <strong>Modelo:</strong> opportunity-v2 • <strong>Análise atualizada às:</strong> {formattedUpdatedAt}
           </div>
           <div style={{ marginTop: '4px', fontStyle: 'italic', color: colors.disabledText }}>
             Radar puramente informativo baseado nos dados disponíveis. Não executa ordens de compra ou venda e não garante desempenho futuro.

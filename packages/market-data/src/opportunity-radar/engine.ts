@@ -4,12 +4,17 @@ import {
   OpportunityRadarResult,
   OpportunityConfidence,
   OPPORTUNITY_MODEL_VERSION,
+  FiiDividendCalendarEvent,
 } from './types';
 import { EquityOpportunityScorer } from './equity-scorer';
 import { FiiOpportunityScorer } from './fii-scorer';
 import { assessOpportunityConfidence } from './confidence';
 import { generateExplainabilitySynthesis } from './explainability';
 import { filterEffectiveNews } from './news-scorer';
+import {
+  detectReinvestmentChains,
+  calculateDividendEligibility,
+} from './calendar-scorer';
 
 export const OPPORTUNITY_RADAR_DISCLAIMER =
   'Radar informativo baseado nos dados disponíveis. Não executa ordens e não garante desempenho futuro.';
@@ -23,7 +28,7 @@ const CONFIDENCE_WEIGHT: Record<OpportunityConfidence, number> = {
 
 export class OpportunityRadarEngine {
   /**
-   * Evaluates a portfolio's assets and generates the Daily Opportunity Radar (APP-16F / APP-16G / APP-16G-R3).
+   * Evaluates a portfolio's assets and generates the Daily Opportunity Radar (APP-16F / APP-16G / APP-16H / APP-16I).
    *
    * Pure deterministic replay engine: zero I/O, zero side effects.
    *
@@ -35,6 +40,10 @@ export class OpportunityRadarEngine {
    * Primary recommendation list (items) accepts ONLY assets with confidence >= MEDIUM.
    * Never pads the Top 5 with low-confidence assets. If only 2 or 3 qualify, returns Top 2 or 3.
    * Low-confidence assets are placed into lowConfidenceItems ("Ativos que merecem mais dados").
+   *
+   * Dividend Calendar Strategy (APP-16I):
+   * Analyzes FII dividend entitlement dates (recordDate, paymentDate) and cross-FII reinvestment chains.
+   * Quality floor gate: Assets with confidence < MEDIUM are NEVER promoted to Top 5 solely based on dividend calendar.
    */
   static evaluate(params: {
     portfolioId: string;
@@ -42,11 +51,22 @@ export class OpportunityRadarEngine {
     analysisDate?: string; // YYYY-MM-DD
     referenceDate?: Date;
     maxResults?: number;
+    enableDividendCalendarStrategy?: boolean;
   }): OpportunityRadarResult {
     const referenceDate = params.referenceDate ?? new Date();
     const analysisDate =
       params.analysisDate ?? referenceDate.toISOString().slice(0, 10);
     const maxResults = params.maxResults ?? 5;
+    const enableDividendCalendarStrategy = params.enableDividendCalendarStrategy ?? true;
+
+    // 1. Detect Reinvestment Chains across all FII dividend events (APP-16I)
+    const rawFiiEvents: FiiDividendCalendarEvent[] = [];
+    for (const a of params.assets) {
+      if (a.assetType === 'FII' && a.dividendCalendar) {
+        rawFiiEvents.push(a.dividendCalendar);
+      }
+    }
+    const reinvestmentResult = detectReinvestmentChains(rawFiiEvents, analysisDate);
 
     const evaluatedItems: OpportunityRadarItem[] = [];
     let totalCoverageSum = 0;
@@ -61,11 +81,33 @@ export class OpportunityRadarEngine {
       }
       validAssetsCount++;
 
+      // Enrich FII dividend calendar with eligibility and reinvestment tags
+      let enrichedCalendar: FiiDividendCalendarEvent | undefined = input.dividendCalendar;
+      if (input.assetType === 'FII' && input.dividendCalendar) {
+        const eligibility = calculateDividendEligibility(
+          input.dividendCalendar.recordDate,
+          analysisDate,
+        );
+        const isReinvestmentCandidate = reinvestmentResult.candidateTickers.has(input.ticker);
+        const targetTicker = reinvestmentResult.targetTickerBySource.get(input.ticker) ?? null;
+
+        enrichedCalendar = {
+          ...input.dividendCalendar,
+          eligibilityStatus: eligibility.eligibilityStatus,
+          daysUntilRecordDate: eligibility.daysUntilRecordDate,
+          sameMonthReinvestmentCandidate:
+            input.dividendCalendar.sameMonthReinvestmentCandidate || isReinvestmentCandidate,
+          reinvestmentChainTargetTicker:
+            input.dividendCalendar.reinvestmentChainTargetTicker || targetTicker,
+        };
+      }
+
       // Canonical Effective News Set (strictly <= 90 days, deduplicated, relevant)
       const effectiveNews = filterEffectiveNews(input.recentNews, referenceDate);
       const effectiveInput: OpportunityAssetInput = {
         ...input,
         recentNews: effectiveNews,
+        dividendCalendar: enrichedCalendar,
       };
 
       const { confidence, provenance } = assessOpportunityConfidence(effectiveInput, referenceDate);
@@ -82,7 +124,9 @@ export class OpportunityRadarEngine {
       let concentrationPenalty: number;
 
       if (effectiveInput.assetType === 'FII') {
-        const result = FiiOpportunityScorer.score(effectiveInput, referenceDate);
+        const result = FiiOpportunityScorer.score(effectiveInput, referenceDate, {
+          enableDividendCalendarStrategy,
+        });
         score = result.score;
         components = result.components;
         concentrationPenalty = result.concentrationPenalty;
@@ -118,6 +162,7 @@ export class OpportunityRadarEngine {
           positives: Object.freeze(positives),
           risks: Object.freeze(risks),
           news: Object.freeze(effectiveNews),
+          dividendCalendar: enrichedCalendar ? Object.freeze(enrichedCalendar) : undefined,
           dataFreshness: input.quoteFreshness ?? 'UNKNOWN',
           dataProvenance: Object.freeze(provenance),
           updatedAt: referenceDate.toISOString(),
@@ -176,6 +221,8 @@ export class OpportunityRadarEngine {
       fiiCoveragePercent,
       totalFiiEligible,
       totalFiiRanked: topFiiItems.length,
+      reinvestmentChains: Object.freeze(reinvestmentResult.chains),
+      dividendCalendarStrategyEnabled: enableDividendCalendarStrategy,
       lowConfidenceItems: Object.freeze(lowConfidenceItems),
       allEvaluatedItems: Object.freeze(evaluatedItems),
       overallCoveragePercent,

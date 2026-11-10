@@ -64,7 +64,28 @@ export function generateExplainabilitySynthesis(
         );
       }
     }
-    if (components.priceOpportunity !== null && components.priceOpportunity >= 75) {
+    // FII Dividend Calendar Driver (APP-16I) - high priority actionable catalyst
+    if (input.dividendCalendar && input.dividendCalendar.eventStatus === 'ANNOUNCED') {
+      if (input.dividendCalendar.eligibilityStatus === 'ELIGIBLE' && positives.length < 3) {
+        const amtStr =
+          input.dividendCalendar.amountPerShare !== null
+            ? ` de R$ ${input.dividendCalendar.amountPerShare.toFixed(2)}/cota`
+            : '';
+        positives.push(`Data-com anunciada (${input.dividendCalendar.recordDate}) com rendimento${amtStr}`);
+      } else if (input.dividendCalendar.eligibilityStatus === 'RECORD_DATE_TODAY' && positives.length < 3) {
+        const amtStr =
+          input.dividendCalendar.amountPerShare !== null
+            ? ` (R$ ${input.dividendCalendar.amountPerShare.toFixed(2)}/cota)`
+            : '';
+        positives.push(`Último dia para garantir o rendimento anunciado${amtStr} (data-com hoje)`);
+      }
+
+      if (input.dividendCalendar.sameMonthReinvestmentCandidate && positives.length < 3) {
+        positives.push(`Janela estratégica favorável para reinvestimento dos proventos recebidos no mês`);
+      }
+    }
+
+    if (components.priceOpportunity !== null && components.priceOpportunity >= 75 && positives.length < 3) {
       const dy = input.fiiDividendYield ?? input.dividendYield;
       if (dy && dy >= 8) {
         positives.push(
@@ -136,6 +157,12 @@ export function generateExplainabilitySynthesis(
   // 4. Confidence / Data Quality risk
   if (confidence === 'LOW' || confidence === 'INSUFFICIENT_DATA') {
     risks.push(`Cobertura limitada de dados fundamentalistas ou de mercado reduz a convicção`);
+  }
+
+  // 5. FII Ex-Dividend & Adjustment Risk (APP-16I)
+  if (input.assetType === 'FII' && input.dividendCalendar?.eligibilityStatus === 'EX_DIVIDEND') {
+    risks.push(`Ativo já em data-ex para este ciclo; aquisições hoje participam apenas do próximo anúncio`);
+    risks.push(`Risco de ajuste de cotação em virtude do desconto da data-ex`);
   }
 
   // Fallback default risk

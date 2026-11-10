@@ -1,5 +1,13 @@
 import { OpportunityNewsItem } from '@atlas/market-data';
 
+export interface FetchedDividendEvent {
+  paymentDate?: string | null;
+  rate?: number | null;
+  relatedTo?: string | null;
+  approvedOn?: string | null;
+  lastDatePrior?: string | null;
+}
+
 export interface FetchedAssetIntelligence {
   priceEarnings?: number | null;
   priceToBook?: number | null;
@@ -18,6 +26,7 @@ export interface FetchedAssetIntelligence {
   }>;
   news: OpportunityNewsItem[];
   analystConsensus?: 'BUY' | 'HOLD' | 'SELL' | 'UNKNOWN' | null;
+  dividendEvent?: FetchedDividendEvent | null;
 }
 
 /**
@@ -84,10 +93,10 @@ export async function fetchBrapiAssetIntelligence(params: {
     headers['Authorization'] = `Bearer ${token.trim()}`;
   }
 
-  // 1. Fetch Quote with SummaryProfile and 3-month history (ZERO token in URL)
+  // 1. Fetch Quote with SummaryProfile, DividendsData, and 3-month history (ZERO token in URL)
   try {
     const quoteUrl = new URL(`${baseUrl}/quote/${encodeURIComponent(params.ticker)}`);
-    quoteUrl.searchParams.set('modules', 'summaryProfile');
+    quoteUrl.searchParams.set('modules', 'summaryProfile,dividendsData');
     quoteUrl.searchParams.set('range', '3mo');
     quoteUrl.searchParams.set('interval', '1d');
 
@@ -102,7 +111,7 @@ export async function fetchBrapiAssetIntelligence(params: {
 
     clearTimeout(timeout);
 
-    // If modules=summaryProfile failed (403/400), fallback to standard quote with range (ZERO token in URL)
+    // If modules=summaryProfile,dividendsData failed (403/400), fallback to standard quote with range (ZERO token in URL)
     if (!res || !res.ok) {
       const fallbackUrl = new URL(`${baseUrl}/quote/${encodeURIComponent(params.ticker)}`);
       fallbackUrl.searchParams.set('range', '3mo');
@@ -135,6 +144,15 @@ export async function fetchBrapiAssetIntelligence(params: {
             close: number;
             adjustedClose?: number;
           }>;
+          dividendsData?: {
+            cashDividends?: Array<{
+              paymentDate?: string;
+              rate?: number | string;
+              relatedTo?: string;
+              approvedOn?: string;
+              lastDatePrior?: string;
+            }>;
+          };
         }>;
       };
 
@@ -155,6 +173,25 @@ export async function fetchBrapiAssetIntelligence(params: {
 
           if (item.historicalDataPrice && Array.isArray(item.historicalDataPrice)) {
             result.historicalPrices = item.historicalDataPrice;
+          }
+
+          // Process dividend calendar if available (APP-16I)
+          if (item.dividendsData?.cashDividends && Array.isArray(item.dividendsData.cashDividends)) {
+            const divs = item.dividendsData.cashDividends;
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const upcoming = divs.find(
+              (d) => d.lastDatePrior && d.lastDatePrior.slice(0, 10) >= todayStr,
+            );
+            const chosen = upcoming ?? divs[0];
+            if (chosen) {
+              result.dividendEvent = {
+                paymentDate: chosen.paymentDate ?? null,
+                rate: chosen.rate !== undefined && chosen.rate !== null ? Number(chosen.rate) : null,
+                relatedTo: chosen.relatedTo ?? null,
+                approvedOn: chosen.approvedOn ?? null,
+                lastDatePrior: chosen.lastDatePrior ?? null,
+              };
+            }
           }
         }
       }

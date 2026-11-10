@@ -9,8 +9,21 @@ export interface OpportunityRadarSectionProps {
   portfolioId: string | null;
 }
 
+function formatShortDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—';
+  const parts = dateStr.slice(0, 10).split('-');
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}`;
+  }
+  return dateStr;
+}
+
 export const OpportunityRadarSection: React.FC<OpportunityRadarSectionProps> = ({ portfolioId }) => {
-  const { radar, isLoading, refresh, isRefreshing } = useOpportunityRadar(portfolioId);
+  const [enableDividendStrategy, setEnableDividendStrategy] = useState(true);
+  const { radar, isLoading, refresh, isRefreshing } = useOpportunityRadar(
+    portfolioId,
+    enableDividendStrategy ? undefined : 'NO_CALENDAR',
+  );
   const [selectedItem, setSelectedItem] = useState<OpportunityRadarItemDto | null>(null);
   const [activeTab, setActiveTab] = useState<'general' | 'fii'>('general');
 
@@ -142,68 +155,102 @@ export const OpportunityRadarSection: React.FC<OpportunityRadarSectionProps> = (
         </div>
       </div>
 
-      {/* Tabs / Segment Control (APP-16H) */}
+      {/* Tabs / Segment Control & Strategy Toggle (APP-16H / APP-16I) */}
       <div
-        role="tablist"
-        aria-label="Visualizações do Radar de Oportunidades"
         style={{
-          display: 'inline-flex',
-          backgroundColor: colors.surfaceElevated,
-          borderRadius: `${borderRadius.md}px`,
-          padding: '4px',
-          border: `1px solid ${colors.border}`,
-          gap: '4px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: `${spacing.sm}px`,
           marginBottom: `${spacing.md}px`,
         }}
       >
-        <button
-          type="button"
-          role="tab"
-          id="tab-radar-general"
-          aria-selected={activeTab === 'general'}
-          aria-controls="panel-radar-content"
-          tabIndex={activeTab === 'general' ? 0 : -1}
-          onClick={() => setActiveTab('general')}
-          data-testid="radar-tab-general"
+        <div
+          role="tablist"
+          aria-label="Visualizações do Radar de Oportunidades"
           style={{
-            padding: '6px 14px',
-            borderRadius: `${borderRadius.sm}px`,
-            border: 'none',
-            backgroundColor: activeTab === 'general' ? colors.surface : 'transparent',
-            color: activeTab === 'general' ? colors.textPrimary : colors.textSecondary,
-            fontWeight: activeTab === 'general' ? 700 : 500,
-            fontSize: '0.8125rem',
-            cursor: 'pointer',
-            boxShadow: activeTab === 'general' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-            transition: 'all 0.15s ease',
+            display: 'inline-flex',
+            backgroundColor: colors.surfaceElevated,
+            borderRadius: `${borderRadius.md}px`,
+            padding: '4px',
+            border: `1px solid ${colors.border}`,
+            gap: '4px',
           }}
         >
-          Top 5 Geral
-        </button>
-        <button
-          type="button"
-          role="tab"
-          id="tab-radar-fii"
-          aria-selected={activeTab === 'fii'}
-          aria-controls="panel-radar-content"
-          tabIndex={activeTab === 'fii' ? 0 : -1}
-          onClick={() => setActiveTab('fii')}
-          data-testid="radar-tab-fii"
-          style={{
-            padding: '6px 14px',
-            borderRadius: `${borderRadius.sm}px`,
-            border: 'none',
-            backgroundColor: activeTab === 'fii' ? colors.surface : 'transparent',
-            color: activeTab === 'fii' ? colors.textPrimary : colors.textSecondary,
-            fontWeight: activeTab === 'fii' ? 700 : 500,
-            fontSize: '0.8125rem',
-            cursor: 'pointer',
-            boxShadow: activeTab === 'fii' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-            transition: 'all 0.15s ease',
-          }}
-        >
-          Top 5 FIIs
-        </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-radar-general"
+            aria-selected={activeTab === 'general'}
+            aria-controls="panel-radar-content"
+            tabIndex={activeTab === 'general' ? 0 : -1}
+            onClick={() => setActiveTab('general')}
+            data-testid="radar-tab-general"
+            style={{
+              padding: '6px 14px',
+              borderRadius: `${borderRadius.sm}px`,
+              border: 'none',
+              backgroundColor: activeTab === 'general' ? colors.surface : 'transparent',
+              color: activeTab === 'general' ? colors.textPrimary : colors.textSecondary,
+              fontWeight: activeTab === 'general' ? 700 : 500,
+              fontSize: '0.8125rem',
+              cursor: 'pointer',
+              boxShadow: activeTab === 'general' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            Top 5 Geral
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-radar-fii"
+            aria-selected={activeTab === 'fii'}
+            aria-controls="panel-radar-content"
+            tabIndex={activeTab === 'fii' ? 0 : -1}
+            onClick={() => setActiveTab('fii')}
+            data-testid="radar-tab-fii"
+            style={{
+              padding: '6px 14px',
+              borderRadius: `${borderRadius.sm}px`,
+              border: 'none',
+              backgroundColor: activeTab === 'fii' ? colors.surface : 'transparent',
+              color: activeTab === 'fii' ? colors.textPrimary : colors.textSecondary,
+              fontWeight: activeTab === 'fii' ? 700 : 500,
+              fontSize: '0.8125rem',
+              cursor: 'pointer',
+              boxShadow: activeTab === 'fii' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            Top 5 FIIs
+          </button>
+        </div>
+
+        {activeTab === 'fii' && (
+          <button
+            type="button"
+            onClick={() => setEnableDividendStrategy((v) => !v)}
+            data-testid="toggle-dividend-strategy-btn"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              borderRadius: `${borderRadius.sm}px`,
+              border: `1px solid ${enableDividendStrategy ? colors.accent : colors.border}`,
+              backgroundColor: enableDividendStrategy ? `${colors.accent}15` : 'transparent',
+              color: enableDividendStrategy ? colors.accent : colors.textSecondary,
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <span>♻</span> Estratégia de Proventos: {enableDividendStrategy ? 'Ativa' : 'Padrão'}
+          </button>
+        )}
       </div>
 
       {/* Loading State */}
@@ -469,6 +516,61 @@ export const OpportunityRadarSection: React.FC<OpportunityRadarSectionProps> = (
                           </div>
                         </div>
                       </div>
+
+                      {/* Dividend Calendar Snapshot for FII (APP-16I) */}
+                      {item.assetType === 'FII' && item.dividendCalendar && item.dividendCalendar.eventStatus !== 'UNKNOWN' && (
+                        <div
+                          data-testid={`fii-dividend-calendar-${item.ticker}`}
+                          style={{
+                            padding: '6px 8px',
+                            borderRadius: `${borderRadius.sm}px`,
+                            backgroundColor: colors.surfaceElevated,
+                            border: `1px solid ${colors.border}`,
+                            marginBottom: `${spacing.sm}px`,
+                            fontSize: '0.75rem',
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              marginBottom: '2px',
+                            }}
+                          >
+                            <span style={{ fontWeight: 600, color: colors.textPrimary }}>
+                              📅 Data-com: {formatShortDate(item.dividendCalendar.recordDate)}
+                            </span>
+                            {item.dividendCalendar.amountPerShare !== null && (
+                              <span style={{ color: colors.positive, fontWeight: 700 }}>
+                                R$ {item.dividendCalendar.amountPerShare.toFixed(2)}/cota
+                              </span>
+                            )}
+                          </div>
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              color: colors.textSecondary,
+                              fontSize: '0.6875rem',
+                            }}
+                          >
+                            <span>Pagamento: {formatShortDate(item.dividendCalendar.paymentDate)}</span>
+                            {item.dividendCalendar.eligibilityStatus === 'RECORD_DATE_TODAY' && (
+                              <Badge variant="warning">Hoje data-com</Badge>
+                            )}
+                            {item.dividendCalendar.eligibilityStatus === 'EX_DIVIDEND' && (
+                              <Badge variant="neutral">Ex-provento</Badge>
+                            )}
+                            {item.dividendCalendar.sameMonthReinvestmentCandidate && (
+                              <span style={{ color: colors.accent, fontWeight: 600 }}>
+                                ♻ Reinvestimento
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Favorable Reasons */}
                       <div style={{ marginBottom: `${spacing.xs}px` }}>

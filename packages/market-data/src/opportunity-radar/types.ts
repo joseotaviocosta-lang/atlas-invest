@@ -1,11 +1,11 @@
 /**
- * Project Atlas — Opportunity Radar Domain Types (APP-16F / APP-16G / APP-16G-R1)
+ * Project Atlas — Opportunity Radar Domain Types (APP-16F / APP-16G / APP-16H / APP-16I)
  *
- * Deterministic scoring, data quality normalization, and explainability models.
- * Model version: opportunity-v1
+ * Deterministic scoring, data quality normalization, dividend calendar strategy, and explainability models.
+ * Model version: opportunity-v2
  */
 
-export const OPPORTUNITY_MODEL_VERSION = 'opportunity-v1';
+export const OPPORTUNITY_MODEL_VERSION = 'opportunity-v2';
 
 export type OpportunityAssetType = 'STOCK' | 'FII';
 
@@ -16,6 +16,35 @@ export type OpportunitySentiment = 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'MIXED'
 export type OpportunityFreshness = 'FRESH' | 'STALE' | 'UNKNOWN';
 
 export type OpportunityNewsSourceType = 'OFFICIAL_REGULATORY' | 'CORPORATE_IR' | 'FINANCIAL_MEDIA';
+
+export type FiiDividendEventStatus = 'ANNOUNCED' | 'HISTORICAL_PATTERN' | 'UNKNOWN';
+
+export type FiiDividendEligibilityStatus = 'ELIGIBLE' | 'RECORD_DATE_TODAY' | 'EX_DIVIDEND' | 'UNKNOWN';
+
+export interface FiiDividendCalendarEvent {
+  ticker: string;
+  recordDate: string | null; // YYYY-MM-DD (data-base / data-com)
+  exDate: string | null;     // YYYY-MM-DD (data-ex)
+  paymentDate: string | null;// YYYY-MM-DD (data de pagamento)
+  amountPerShare: number | null; // Rendimento anunciado em R$
+  eventStatus: FiiDividendEventStatus;
+  source: string;            // e.g. 'BRAPI_DIVIDENDS' | 'HISTORICAL_PATTERN' | 'CVM' | 'B3'
+  announcedAt?: string | null;
+  eligibilityStatus: FiiDividendEligibilityStatus;
+  daysUntilRecordDate: number | null; // Difference in days: recordDate - today. Negative if in past.
+  daysUntilPayment: number | null;    // Difference in days: paymentDate - today.
+  sameMonthReinvestmentCandidate?: boolean;
+  reinvestmentChainTargetTicker?: string | null;
+}
+
+export interface FiiReinvestmentChain {
+  sourceTicker: string;
+  sourcePaymentDate: string; // YYYY-MM-DD
+  targetTicker: string;
+  targetRecordDate: string;  // YYYY-MM-DD
+  daysGap: number;           // targetRecordDate - sourcePaymentDate >= 0
+  sameMonth: boolean;
+}
 
 export interface OpportunityNewsItem {
   id: string;
@@ -37,6 +66,7 @@ export interface OpportunityScoreComponents {
   priceOpportunity: number | null; // 0..100 or null if UNKNOWN
   news: number | null; // 0..100 or null if UNKNOWN
   outlook: number | null; // 0..100 or null if UNKNOWN
+  dividendCalendarFit?: number | null; // 0..100 or null if UNKNOWN (FII dividend calendar)
 }
 
 export interface OpportunityDataProvenance {
@@ -47,6 +77,7 @@ export interface OpportunityDataProvenance {
   hasRealFundamentals: boolean;
   hasPriceHistory: boolean;
   hasVerifiedNews: boolean;
+  hasDividendCalendar?: boolean;
 }
 
 export interface OpportunityAssetInput {
@@ -90,6 +121,9 @@ export interface OpportunityAssetInput {
   fiiSegment?: string | null;
   fiiLiquidity?: number | null;
 
+  // FII Dividend Calendar (APP-16I)
+  dividendCalendar?: FiiDividendCalendarEvent;
+
   // News & Events
   recentNews?: OpportunityNewsItem[];
   corporateEventsCount?: number | null;
@@ -113,6 +147,7 @@ export interface OpportunityRadarItem {
   positives: readonly string[];
   risks: readonly string[];
   news: readonly OpportunityNewsItem[];
+  dividendCalendar?: FiiDividendCalendarEvent;
   dataFreshness: OpportunityFreshness;
   dataProvenance?: OpportunityDataProvenance;
   updatedAt: string; // ISO-8601
@@ -130,6 +165,8 @@ export interface OpportunityRadarResult {
   fiiCoveragePercent: number; // Specific coverage for analyzed FIIs
   totalFiiEligible: number;
   totalFiiRanked: number;
+  reinvestmentChains?: readonly FiiReinvestmentChain[];
+  dividendCalendarStrategyEnabled?: boolean;
   lowConfidenceItems?: readonly OpportunityRadarItem[];
   allEvaluatedItems?: readonly OpportunityRadarItem[];
   overallCoveragePercent?: number;

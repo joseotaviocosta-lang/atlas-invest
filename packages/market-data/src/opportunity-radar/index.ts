@@ -3,6 +3,7 @@ export * from './confidence';
 export * from './portfolio-fit';
 export * from './trend-scorer';
 export * from './news-scorer';
+export * from './calendar-scorer';
 export * from './equity-scorer';
 export * from './fii-scorer';
 export * from './explainability';

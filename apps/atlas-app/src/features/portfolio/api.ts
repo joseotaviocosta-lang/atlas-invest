@@ -64,15 +64,23 @@ export const portfolioApi = {
     return res.data;
   },
 
-  async getOpportunityRadar(portfolioId: string): Promise<{ data: import('./types').OpportunityRadarResponseDto }> {
+  async getOpportunityRadar(
+    portfolioId: string,
+    strategy?: string,
+  ): Promise<{ data: import('./types').OpportunityRadarResponseDto }> {
+    const query = strategy ? `?strategy=${encodeURIComponent(strategy)}` : '';
     return apiClient.get<{ data: import('./types').OpportunityRadarResponseDto }>(
-      `/api/v1/portfolios/${portfolioId}/opportunity-radar`
+      `/api/v1/portfolios/${portfolioId}/opportunity-radar${query}`
     );
   },
 
-  async refreshOpportunityRadar(portfolioId: string): Promise<{ data: import('./types').OpportunityRadarResponseDto }> {
+  async refreshOpportunityRadar(
+    portfolioId: string,
+    strategy?: string,
+  ): Promise<{ data: import('./types').OpportunityRadarResponseDto }> {
+    const query = strategy ? `?strategy=${encodeURIComponent(strategy)}` : '';
     return apiClient.post<{ data: import('./types').OpportunityRadarResponseDto }>(
-      `/api/v1/portfolios/${portfolioId}/opportunity-radar/refresh`,
+      `/api/v1/portfolios/${portfolioId}/opportunity-radar/refresh${query}`,
       {}
     );
   },

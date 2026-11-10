@@ -208,8 +208,36 @@ export interface IngestionReceiptDto {
 }
 
 // ---------------------------------------------------------------------------
-// Opportunity Radar (APP-16F)
+// Opportunity Radar (APP-16F / APP-16H / APP-16I)
 // ---------------------------------------------------------------------------
+
+export type FiiDividendEventStatusDto = 'ANNOUNCED' | 'HISTORICAL_PATTERN' | 'UNKNOWN';
+export type FiiDividendEligibilityStatusDto = 'ELIGIBLE' | 'RECORD_DATE_TODAY' | 'EX_DIVIDEND' | 'UNKNOWN';
+
+export interface FiiDividendCalendarEventDto {
+  ticker: string;
+  recordDate: string | null;
+  exDate: string | null;
+  paymentDate: string | null;
+  amountPerShare: number | null;
+  eventStatus: FiiDividendEventStatusDto;
+  source: string;
+  announcedAt?: string | null;
+  eligibilityStatus: FiiDividendEligibilityStatusDto;
+  daysUntilRecordDate: number | null;
+  daysUntilPayment: number | null;
+  sameMonthReinvestmentCandidate?: boolean;
+  reinvestmentChainTargetTicker?: string | null;
+}
+
+export interface FiiReinvestmentChainDto {
+  sourceTicker: string;
+  sourcePaymentDate: string;
+  targetTicker: string;
+  targetRecordDate: string;
+  daysGap: number;
+  sameMonth: boolean;
+}
 
 export interface OpportunityNewsItemDto {
   id: string;
@@ -228,6 +256,7 @@ export interface OpportunityScoreComponentsDto {
   priceOpportunity: number | null;
   news: number | null;
   outlook: number | null;
+  dividendCalendarFit?: number | null;
 }
 
 export interface OpportunityDataProvenanceDto {
@@ -235,6 +264,7 @@ export interface OpportunityDataProvenanceDto {
   coveragePercent: number;
   knownDimensionsCount: number;
   totalDimensionsCount: number;
+  hasDividendCalendar?: boolean;
 }
 
 export interface OpportunityRadarItemDto {
@@ -253,6 +283,7 @@ export interface OpportunityRadarItemDto {
   positives: string[];
   risks: string[];
   news: OpportunityNewsItemDto[];
+  dividendCalendar?: FiiDividendCalendarEventDto;
   dataFreshness: 'FRESH' | 'STALE' | 'UNKNOWN';
   dataProvenance?: OpportunityDataProvenanceDto;
   updatedAt: string;
@@ -270,6 +301,8 @@ export interface OpportunityRadarResponseDto {
   fiiCoveragePercent?: number;
   totalFiiEligible?: number;
   totalFiiRanked?: number;
+  reinvestmentChains?: FiiReinvestmentChainDto[];
+  dividendCalendarStrategyEnabled?: boolean;
   lowConfidenceItems?: OpportunityRadarItemDto[];
   overallCoveragePercent?: number;
   disclaimer: string;

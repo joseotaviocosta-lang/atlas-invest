@@ -122,6 +122,13 @@ export function assessOpportunityConfidence(
     }
   }
 
+  const hasDividendCalendar = Boolean(
+    input.dividendCalendar && input.dividendCalendar.eventStatus !== 'UNKNOWN',
+  );
+  if (hasDividendCalendar && input.dividendCalendar?.source) {
+    sources.push(input.dividendCalendar.source);
+  }
+
   // Determine Confidence (APP-16G-R1 Rules)
   let confidence: OpportunityConfidence = 'INSUFFICIENT_DATA';
 
@@ -161,6 +168,7 @@ export function assessOpportunityConfidence(
       hasRealFundamentals,
       hasPriceHistory,
       hasVerifiedNews,
+      hasDividendCalendar,
     },
   };
 }
