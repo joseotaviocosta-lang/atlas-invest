@@ -17,6 +17,7 @@ export function useOpportunityRadar(portfolioId: string | null, strategy?: strin
     enabled: Boolean(portfolioId),
     staleTime: 5 * 60 * 1000, // 5 minutes fresh
     refetchOnWindowFocus: false, // Does not refetch on window focus to preserve battery/latency
+    placeholderData: (previousData) => previousData, // Stale-while-refresh / smooth strategy toggle (APP-16I-R3)
   });
 
   const refreshMutation = useMutation({

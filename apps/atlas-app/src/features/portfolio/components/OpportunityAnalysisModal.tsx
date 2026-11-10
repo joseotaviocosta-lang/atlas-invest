@@ -207,36 +207,30 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
                 item.components.dividendCalendarFit !== undefined &&
                 item.components.dividendCalendarFit !== null;
 
-              const componentsList = hasCalendarFit
-                ? [
-                    { label: 'Capacidade na Carteira (Portfolio Fit)', value: item.components.portfolioFit, weight: '15%' },
-                    { label: 'Valuation (P/VP)', value: item.components.valuation, weight: '15%' },
-                    { label: 'Rendimento & Yield', value: item.components.priceOpportunity, weight: '15%' },
-                    { label: 'Tendência & Preço', value: item.components.momentum, weight: '15%' },
-                    { label: 'Notícias & Fatos Relevantes', value: item.components.news, weight: '10%' },
-                    { label: 'Perspectiva & Consenso', value: item.components.outlook, weight: '10%' },
-                    { label: 'Calendário de Proventos', value: item.components.dividendCalendarFit ?? null, weight: '20%' },
-                  ]
-                : [
-                    { label: 'Capacidade na Carteira (Portfolio Fit)', value: item.components.portfolioFit, weight: '20%' },
-                    {
-                      label: item.assetType === 'FII' ? 'Valuation (P/VP)' : 'Valuation & Fundamentos',
-                      value: item.components.valuation,
-                      weight: '20%',
-                    },
-                    {
-                      label: item.assetType === 'FII' ? 'Rendimento & Yield' : 'Oportunidade de Preço',
-                      value: item.components.priceOpportunity,
-                      weight: item.assetType === 'FII' ? '20%' : '15%',
-                    },
-                    {
-                      label: item.assetType === 'FII' ? 'Tendência & Preço' : 'Tendência & Momentum',
-                      value: item.components.momentum,
-                      weight: item.assetType === 'FII' ? '15%' : '20%',
-                    },
-                    { label: 'Notícias & Fatos Relevantes', value: item.components.news, weight: '15%' },
-                    { label: 'Perspectiva & Consenso', value: item.components.outlook, weight: '10%' },
-                  ];
+              const componentsList =
+                item.assetType === 'FII'
+                  ? [
+                      { label: 'Capacidade na Carteira (Portfolio Fit)', value: item.components.portfolioFit, weight: '15%' },
+                      { label: 'Valuation (P/VP)', value: item.components.valuation, weight: '15%' },
+                      { label: 'Rendimento & Yield', value: item.components.priceOpportunity, weight: '15%' },
+                      { label: 'Tendência & Preço', value: item.components.momentum, weight: '15%' },
+                      { label: 'Notícias & Fatos Relevantes', value: item.components.news, weight: '10%' },
+                      { label: 'Perspectiva & Consenso', value: item.components.outlook, weight: '10%' },
+                      {
+                        label: 'Calendário de Proventos',
+                        value: hasCalendarFit ? item.components.dividendCalendarFit : null,
+                        weight: '20%',
+                        subtitle: !hasCalendarFit ? 'Sem evento anunciado elegível no momento.' : undefined,
+                      },
+                    ]
+                  : [
+                      { label: 'Capacidade na Carteira (Portfolio Fit)', value: item.components.portfolioFit, weight: '20%' },
+                      { label: 'Valuation & Fundamentos', value: item.components.valuation, weight: '20%' },
+                      { label: 'Oportunidade de Preço', value: item.components.priceOpportunity, weight: '15%' },
+                      { label: 'Tendência & Momentum', value: item.components.momentum, weight: '20%' },
+                      { label: 'Notícias & Fatos Relevantes', value: item.components.news, weight: '15%' },
+                      { label: 'Perspectiva & Consenso', value: item.components.outlook, weight: '10%' },
+                    ];
 
               return componentsList.map((comp, idx) => (
               <div
@@ -251,9 +245,16 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
                   fontSize: '0.8125rem',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ color: colors.textPrimary, fontWeight: 500 }}>{comp.label}</span>
-                  <span style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>({comp.weight})</span>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ color: colors.textPrimary, fontWeight: 500 }}>{comp.label}</span>
+                    <span style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>({comp.weight})</span>
+                  </div>
+                  {comp.subtitle && (
+                    <span style={{ fontSize: '0.6875rem', color: colors.textSecondary, marginTop: '2px' }}>
+                      {comp.subtitle}
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <div
@@ -350,21 +351,33 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
           </ul>
         </div>
 
-        {/* Section: FII Dividend Calendar & Reinvestment Strategy (APP-16I) */}
+        {/* Section: FII Dividend Calendar & Reinvestment Strategy (APP-16I / APP-16I-R3) */}
         {item.assetType === 'FII' && (
           <div data-testid="modal-fii-dividend-calendar-section">
-            <h4
+            <div
               style={{
-                fontSize: '0.875rem',
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                color: colors.textSecondary,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
                 marginBottom: `${spacing.xs}px`,
               }}
             >
-              Calendário de Proventos & Reinvestimento
-            </h4>
+              <h4
+                style={{
+                  fontSize: '0.875rem',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  color: colors.textSecondary,
+                  margin: 0,
+                }}
+              >
+                Calendário de Proventos & Reinvestimento
+              </h4>
+              <span style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>
+                {`Fonte: ${item.dividendCalendar?.source ?? 'BRAPI_DIVIDENDS'}`}
+              </span>
+            </div>
 
             <div
               style={{

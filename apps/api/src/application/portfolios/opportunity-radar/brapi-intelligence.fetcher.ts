@@ -226,6 +226,13 @@ export async function fetchBrapiAssetIntelligence(params: {
               lastDatePrior: null,
               exDate: null,
             }));
+
+            if (process.env.NODE_ENV !== 'production') {
+              // Development diagnostic strictly without token or sensitive headers (APP-16I-R3 PARTE W & X)
+              console.log(
+                `[BRAPI Dividends Diagnostic] ticker=${params.ticker} raw=${item.dividendsData.cashDividends.length} normalized=${normalizedList.length} selected=${chosen ? `${chosen.recordDate}->${chosen.paymentDate}` : 'none'} recentPaid=${recentPaid.length}`,
+              );
+            }
           }
         }
       }

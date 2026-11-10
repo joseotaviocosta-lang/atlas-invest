@@ -467,4 +467,244 @@ describe('PROJECT ATLAS — APP-16F: Daily Opportunity Radar (Frontend Component
     expect(html).toContain('Cadeia futura planejada: provento previsto de BTLG11');
     expect(html).toContain('Não informada'); // Ex-date non informed
   });
+
+  // APP-16I-R3: Strategy Visibility & Calendar Diagnostics
+  it('PARTE Y & AG: renders strategy toggle when tab is fii, hides it on general tab', () => {
+    queryClient.setQueryData(['opportunity-radar', portfolioId], {
+      data: {
+        ...mockRadarResponse,
+        fiiItems: [mockItem2],
+      },
+    });
+
+    // General Tab: Toggle is NOT rendered
+    const generalHtml = renderToString(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <OpportunityRadarSection portfolioId={portfolioId} initialTab="general" />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    expect(generalHtml).not.toContain('data-testid="toggle-dividend-strategy-btn"');
+
+    // FII Tab: Toggle IS rendered
+    const fiiHtml = renderToString(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <OpportunityRadarSection portfolioId={portfolioId} initialTab="fii" />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    expect(fiiHtml).toContain('data-testid="toggle-dividend-strategy-btn"');
+    expect(fiiHtml).toContain('Estratégia de Proventos: Ativa');
+  });
+
+  it('PARTE Z: renders explicit compact state on card when eventStatus is UNKNOWN', () => {
+    const fiiUnknown: OpportunityRadarItemDto = {
+      ...mockItem2,
+      ticker: 'MXRF11',
+      dividendCalendar: {
+        ticker: 'MXRF11',
+        recordDate: null,
+        exDate: null,
+        paymentDate: null,
+        amountPerShare: null,
+        eventStatus: 'UNKNOWN',
+        source: 'BRAPI_DIVIDENDS',
+        eligibilityStatus: 'UNKNOWN',
+        daysUntilRecordDate: null,
+        daysUntilPayment: null,
+      },
+    };
+
+    queryClient.setQueryData(['opportunity-radar', portfolioId], {
+      data: {
+        ...mockRadarResponse,
+        fiiItems: [fiiUnknown],
+      },
+    });
+
+    const html = renderToString(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <OpportunityRadarSection portfolioId={portfolioId} initialTab="fii" />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(html).toContain('data-testid="fii-dividend-calendar-MXRF11"');
+    expect(html).toContain('Calendário: sem evento anunciado');
+    expect(html).toContain('Nenhum próximo evento anunciado disponível');
+  });
+
+  it('PARTE AA & M: renders valid calendar with data-com, payment, and calendar fit badge', () => {
+    const fiiValid: OpportunityRadarItemDto = {
+      ...mockItem2,
+      ticker: 'BRCR11',
+      components: {
+        ...mockItem2.components,
+        dividendCalendarFit: 85,
+      },
+      dividendCalendar: {
+        ticker: 'BRCR11',
+        recordDate: '2026-11-15',
+        exDate: '2026-11-16',
+        paymentDate: '2026-11-25',
+        amountPerShare: 0.55,
+        eventStatus: 'ANNOUNCED',
+        source: 'BRAPI_DIVIDENDS',
+        eligibilityStatus: 'ELIGIBLE',
+        daysUntilRecordDate: 5,
+        daysUntilPayment: 15,
+      },
+    };
+
+    queryClient.setQueryData(['opportunity-radar', portfolioId], {
+      data: {
+        ...mockRadarResponse,
+        fiiItems: [fiiValid],
+      },
+    });
+
+    const html = renderToString(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <OpportunityRadarSection portfolioId={portfolioId} initialTab="fii" />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(html).toContain('data-testid="fii-dividend-calendar-BRCR11"');
+    expect(html).toContain('Data-com: 15/11');
+    expect(html).toContain('Pagamento: 25/11');
+    expect(html).toContain('R$ 0.55/cota');
+    expect(html).toContain('data-testid="calendar-fit-badge-BRCR11"');
+    expect(html).toContain('Calendário: 85/100');
+  });
+
+  it('PARTE AB & AC: renders available cash and planned future badges on cards', () => {
+    const fiiAvailable: OpportunityRadarItemDto = {
+      ...mockItem2,
+      ticker: 'KNRI11',
+      dividendCalendar: {
+        ticker: 'KNRI11',
+        recordDate: '2026-11-18',
+        paymentDate: '2026-11-28',
+        amountPerShare: 1.0,
+        eventStatus: 'ANNOUNCED',
+        source: 'BRAPI_DIVIDENDS',
+        eligibilityStatus: 'ELIGIBLE',
+        daysUntilRecordDate: 8,
+        daysUntilPayment: 18,
+        cashAvailableNow: true,
+        futureCashExpected: false,
+      },
+    };
+
+    const fiiFuture: OpportunityRadarItemDto = {
+      ...mockItem2,
+      ticker: 'KCRE11',
+      dividendCalendar: {
+        ticker: 'KCRE11',
+        recordDate: '2026-11-20',
+        paymentDate: '2026-11-30',
+        amountPerShare: 0.95,
+        eventStatus: 'ANNOUNCED',
+        source: 'BRAPI_DIVIDENDS',
+        eligibilityStatus: 'ELIGIBLE',
+        daysUntilRecordDate: 10,
+        daysUntilPayment: 20,
+        cashAvailableNow: false,
+        futureCashExpected: true,
+      },
+    };
+
+    queryClient.setQueryData(['opportunity-radar', portfolioId], {
+      data: {
+        ...mockRadarResponse,
+        fiiItems: [fiiAvailable, fiiFuture],
+      },
+    });
+
+    const html = renderToString(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <OpportunityRadarSection portfolioId={portfolioId} initialTab="fii" />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(html).toContain('♻ Caixa de provento recente');
+    expect(html).toContain('🗓 Próxima rotação planejada');
+  });
+
+  it('PARTE N: renders discrete notice when strategy is active but no FII has valid events', () => {
+    const fiiWithoutEvents: OpportunityRadarItemDto = {
+      ...mockItem2,
+      ticker: 'MALL11',
+      dividendCalendar: {
+        ticker: 'MALL11',
+        recordDate: null,
+        paymentDate: null,
+        amountPerShare: null,
+        eventStatus: 'UNKNOWN',
+        source: 'BRAPI_DIVIDENDS',
+        eligibilityStatus: 'UNKNOWN',
+        daysUntilRecordDate: null,
+        daysUntilPayment: null,
+      },
+    };
+
+    queryClient.setQueryData(['opportunity-radar', portfolioId], {
+      data: {
+        ...mockRadarResponse,
+        fiiItems: [fiiWithoutEvents],
+      },
+    });
+
+    const html = renderToString(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <OpportunityRadarSection portfolioId={portfolioId} initialTab="fii" />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(html).toContain('data-testid="strategy-no-events-notice"');
+    expect(html).toContain('Estratégia ativa, mas nenhum calendário anunciado foi encontrado para os FIIs analisados.');
+  });
+
+  it('PARTE L & S: modal shows Calendário de Proventos component with dash and subtitle when data missing, plus Fonte', () => {
+    const fiiMissingCalendar: OpportunityRadarItemDto = {
+      ...mockItem2,
+      ticker: 'HGLG11',
+      components: {
+        ...mockItem2.components,
+        dividendCalendarFit: null,
+      },
+      dividendCalendar: {
+        ticker: 'HGLG11',
+        recordDate: null,
+        paymentDate: null,
+        amountPerShare: null,
+        eventStatus: 'UNKNOWN',
+        source: 'BRAPI_DIVIDENDS',
+        eligibilityStatus: 'UNKNOWN',
+        daysUntilRecordDate: null,
+        daysUntilPayment: null,
+      },
+    };
+
+    const html = renderToString(
+      <OpportunityAnalysisModal
+        isOpen={true}
+        onClose={vi.fn()}
+        item={fiiMissingCalendar}
+      />
+    );
+
+    expect(html).toContain('Calendário de Proventos');
+    expect(html).toContain('Sem evento anunciado elegível no momento.');
+    expect(html).toContain('Fonte: BRAPI_DIVIDENDS');
+  });
 });
