@@ -2873,6 +2873,95 @@ export interface NewsAlertVersionRef {
   eventVersionFingerprint: string;
 }
 
+export type NewsAlertHistoryStatusValue =
+  | 'DELIVERED'
+  | 'DELIVERY_FAILED'
+  | 'PERMISSION_DENIED'
+  | 'UNSUPPORTED'
+  | 'UNAVAILABLE';
+
+export interface NewsAlertDeliveryAuditItem extends NewsAlertVersionRef {
+  ticker?: string;
+  eventState?: 'NEW' | 'UPDATED';
+  materiality?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'ROUTINE';
+  alertType?:
+    | 'CRITICAL_NEW'
+    | 'CRITICAL_UPDATE'
+    | 'MATERIAL_NEW'
+    | 'MATERIAL_UPDATE'
+    | 'MATERIAL_BATCH_SUMMARY';
+  headlineSnapshot?: string;
+  materialityReasonSnapshot?: string | null;
+  sourceLabelSnapshot?: string | null;
+  claimedAt?: string | null;
+  attemptedAt?: string;
+  deliveredAt?: string | null;
+  notificationId?: string | null;
+  batchEventCount?: number;
+  batchTickers?: string[];
+  alertAttemptId?: string;
+  deliveryStatus?: NewsAlertHistoryStatusValue;
+  failureReason?: string | null;
+}
+
+export interface NewsAlertHistoryRecordRow {
+  id: string;
+  alertAttemptId: string;
+  ticker: string;
+  canonicalEventId: string;
+  eventVersionFingerprint: string;
+  eventState: 'NEW' | 'UPDATED';
+  materiality: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'ROUTINE';
+  alertType:
+    | 'CRITICAL_NEW'
+    | 'CRITICAL_UPDATE'
+    | 'MATERIAL_NEW'
+    | 'MATERIAL_UPDATE'
+    | 'MATERIAL_BATCH_SUMMARY';
+  deliveryStatus: NewsAlertHistoryStatusValue;
+  headline: string;
+  materialityReason: string | null;
+  sourceLabel: string | null;
+  notificationId: string | null;
+  batchEventCount: number;
+  batchTickers: string[];
+  claimedAt: string | null;
+  attemptedAt: string;
+  deliveredAt: string | null;
+  failureReason: string | null;
+}
+
+export interface ListNewsAlertHistoryInput {
+  portfolioId: string;
+  limit?: number;
+  cursor?: string;
+  status?: NewsAlertHistoryStatusValue;
+  ticker?: string;
+  materiality?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'ROUTINE';
+  alertType?:
+    | 'CRITICAL_NEW'
+    | 'CRITICAL_UPDATE'
+    | 'MATERIAL_NEW'
+    | 'MATERIAL_UPDATE'
+    | 'MATERIAL_BATCH_SUMMARY';
+  from?: string;
+  to?: string;
+}
+
+export interface ListNewsAlertHistoryOutput {
+  items: NewsAlertHistoryRecordRow[];
+  nextCursor: string | null;
+  hasMore: boolean;
+  metrics: {
+    totalCount: number;
+    deliveredCount: number;
+    failedCount: number;
+    criticalCount: number;
+    highCount: number;
+  };
+  historyAvailableSince: string | null;
+}
+
 export interface IPortfolioNewsStateRepository {
   loadSnapshot(portfolioId: string): Promise<{
     syncState: PersistedPortfolioNewsSyncStateRow | null;
@@ -2901,18 +2990,31 @@ export interface IPortfolioNewsStateRepository {
 
   confirmNewsAlertsDelivered(input: {
     portfolioId: string;
-    delivered: NewsAlertVersionRef[];
+    delivered: NewsAlertDeliveryAuditItem[];
     deliveredAt: string;
-  }): Promise<{ confirmedCount: number }>;
+    alertAttemptId?: string;
+    notificationId?: string | null;
+  }): Promise<{
+    confirmedCount: number;
+    historyInsertedCount: number;
+    duplicateSkippedCount: number;
+  }>;
 
   releaseNewsAlertsClaim(input: {
     portfolioId: string;
-    items: NewsAlertVersionRef[];
-  }): Promise<{ releasedCount: number }>;
+    items: NewsAlertDeliveryAuditItem[];
+    deliveryStatus?: Exclude<NewsAlertHistoryStatusValue, 'DELIVERED'>;
+    failureReason?: string | null;
+    attemptedAt?: string;
+    alertAttemptId?: string;
+    recordHistory?: boolean;
+  }): Promise<{ releasedCount: number; historyInsertedCount: number }>;
 
   suppressNewsAlertsBaseline(input: {
     portfolioId: string;
     items: NewsAlertVersionRef[];
     recordedAt: string;
   }): Promise<{ suppressedCount: number }>;
+
+  listAlertHistory(input: ListNewsAlertHistoryInput): Promise<ListNewsAlertHistoryOutput>;
 }

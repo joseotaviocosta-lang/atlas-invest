@@ -18,10 +18,59 @@ import type {
   NewsAlertThreshold,
   NewsAlertType,
   NewsMateriality,
+  PortfolioNewsAlertAuditItem,
   PortfolioNewsAlertCandidateDto,
+  PortfolioNewsAlertHistoryStatus,
   PortfolioNewsEvent,
 } from './portfolio-news.types.js';
 import type { PersistedPortfolioNewsEventMeta } from './news-state.js';
+
+const UUID_LIKE_FALLBACK = (): string => {
+  const randomUuid =
+    typeof globalThis !== 'undefined' &&
+    typeof globalThis.crypto !== 'undefined' &&
+    typeof globalThis.crypto.randomUUID === 'function'
+      ? globalThis.crypto.randomUUID()
+      : null;
+  if (randomUuid) return randomUuid;
+  const hex = Date.now().toString(16).padStart(12, '0').slice(-12);
+  return `00000000-0000-4000-8000-${hex}`;
+};
+
+export function sanitizeAlertFailureReason(reason?: string | null): string | null {
+  if (!reason || typeof reason !== 'string') {
+    return null;
+  }
+  const firstLine = reason.split(/\r?\n/)[0] ?? '';
+  const redacted = firstLine
+    .replace(/\b(bearer|token|secret|password|apikey|api_key)\s*[:=]\s*\S+/gi, '$1=[REDACTED]')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!redacted) {
+    return null;
+  }
+  return redacted.slice(0, 280);
+}
+
+export function mapDeliveryStatusToHistoryStatus(
+  status: NewsAlertDeliveryStatus,
+): PortfolioNewsAlertHistoryStatus {
+  switch (status) {
+    case 'DELIVERED':
+      return 'DELIVERED';
+    case 'NOTIFICATIONS_PERMISSION_DENIED':
+      return 'PERMISSION_DENIED';
+    case 'NOTIFICATIONS_UNSUPPORTED':
+      return 'UNSUPPORTED';
+    case 'NOTIFICATIONS_UNAVAILABLE':
+      return 'UNAVAILABLE';
+    case 'DELIVERY_FAILED':
+    case 'DISABLED':
+    case 'NO_ELIGIBLE_EVENTS':
+    default:
+      return 'DELIVERY_FAILED';
+  }
+}
 
 export interface AlertPersistedStateRef {
   canonicalEventId: string;
@@ -420,18 +469,62 @@ export interface AlertDeliveryCoordinatorPorts {
   }): Promise<Array<{ canonicalEventId: string; eventVersionFingerprint: string }>>;
   confirmAlertsDelivered(input: {
     portfolioId: string;
-    delivered: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>;
+    delivered: PortfolioNewsAlertAuditItem[];
   }): Promise<void>;
   releaseAlertsClaim(input: {
     portfolioId: string;
-    items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>;
+    items: PortfolioNewsAlertAuditItem[];
   }): Promise<void>;
+}
+
+function buildAuditItemsForPayload(params: {
+  payload: NewsAlertDispatchItem;
+  attemptId: string;
+  attemptedAtIso: string;
+  deliveryStatus: PortfolioNewsAlertHistoryStatus;
+  notificationId?: string | null;
+  failureReason?: string | null;
+  claimedAtIso?: string | null;
+}): PortfolioNewsAlertAuditItem[] {
+  const {
+    payload,
+    attemptId,
+    attemptedAtIso,
+    deliveryStatus,
+    notificationId = null,
+    failureReason = null,
+    claimedAtIso = null,
+  } = params;
+  const batchTickers =
+    payload.kind === 'BATCH'
+      ? Array.from(new Set(payload.candidates.map((c) => c.ticker)))
+      : [payload.candidates[0]?.ticker ?? ''];
+  return payload.candidates.map((cand) => ({
+    canonicalEventId: cand.canonicalEventId,
+    eventVersionFingerprint: cand.eventVersionFingerprint,
+    ticker: cand.ticker,
+    eventState: cand.state,
+    materiality: cand.materiality,
+    alertType: payload.type,
+    headlineSnapshot: cand.headline.slice(0, 500),
+    materialityReasonSnapshot: cand.materialityReason ? cand.materialityReason.slice(0, 500) : null,
+    sourceLabelSnapshot: cand.officialSourceLabel ? cand.officialSourceLabel.slice(0, 120) : null,
+    claimedAt: claimedAtIso,
+    attemptedAt: attemptedAtIso,
+    deliveredAt: deliveryStatus === 'DELIVERED' ? attemptedAtIso : null,
+    notificationId,
+    batchEventCount: payload.kind === 'BATCH' ? payload.candidates.length : 1,
+    batchTickers: batchTickers.filter(Boolean),
+    alertAttemptId: attemptId,
+    deliveryStatus,
+    failureReason,
+  }));
 }
 
 /**
  * Coordinates atomic claim -> OS delivery -> confirm/release for a portfolio batch.
  * Guarantees fail-closed duplicate prevention while never marking failed/denied
- * notifications as delivered.
+ * notifications as delivered and recording append-only audit attempts.
  */
 export async function deliverMaterialNewsAlerts(params: {
   portfolioId: string;
@@ -455,6 +548,7 @@ export async function deliverMaterialNewsAlerts(params: {
   }
 
   let activeCandidates = [...candidates];
+  const claimedAtIso = new Date().toISOString();
 
   if (ports) {
     const claimed = await ports.claimPendingAlerts({
@@ -483,13 +577,15 @@ export async function deliverMaterialNewsAlerts(params: {
   }
 
   const payloads = buildMaterialNewsAlertPayloads(activeCandidates);
-  const deliveredEventKeys: Array<{ canonicalEventId: string; eventVersionFingerprint: string }> = [];
-  const failedEventKeys: Array<{ canonicalEventId: string; eventVersionFingerprint: string }> = [];
+  const deliveredEventKeys: PortfolioNewsAlertAuditItem[] = [];
+  const failedEventKeys: PortfolioNewsAlertAuditItem[] = [];
   const results: NewsAlertDeliveryResult[] = [];
   let lastNonDeliveredStatus: NewsAlertDeliveryStatus | null = null;
 
   for (let i = 0; i < payloads.length; i++) {
     const payload = payloads[i]!;
+    const attemptId = UUID_LIKE_FALLBACK();
+    const attemptedAtIso = new Date().toISOString();
     let result: NewsAlertDeliveryResult;
 
     try {
@@ -504,19 +600,49 @@ export async function deliverMaterialNewsAlerts(params: {
     results.push(result);
 
     if (result.status === 'DELIVERED') {
-      deliveredEventKeys.push(...payload.coveredEventKeys);
+      deliveredEventKeys.push(
+        ...buildAuditItemsForPayload({
+          payload,
+          attemptId,
+          attemptedAtIso,
+          deliveryStatus: 'DELIVERED',
+          notificationId: result.notificationId ?? null,
+          claimedAtIso,
+        }),
+      );
     } else {
-      failedEventKeys.push(...payload.coveredEventKeys);
+      const historyStatus = mapDeliveryStatusToHistoryStatus(result.status);
+      const failureReason = sanitizeAlertFailureReason(result.reason);
+      failedEventKeys.push(
+        ...buildAuditItemsForPayload({
+          payload,
+          attemptId,
+          attemptedAtIso,
+          deliveryStatus: historyStatus,
+          failureReason,
+          claimedAtIso,
+        }),
+      );
       lastNonDeliveredStatus = result.status;
 
-      // Permission denied or platform unsupported affects remaining payloads in this batch too -> release & stop
+      // Permission denied or platform unsupported affects remaining payloads in this batch too -> release & record
       if (
         result.status === 'NOTIFICATIONS_PERMISSION_DENIED' ||
         result.status === 'NOTIFICATIONS_UNSUPPORTED' ||
         result.status === 'NOTIFICATIONS_UNAVAILABLE'
       ) {
         for (let j = i + 1; j < payloads.length; j++) {
-          failedEventKeys.push(...payloads[j]!.coveredEventKeys);
+          const remainingPayload = payloads[j]!;
+          failedEventKeys.push(
+            ...buildAuditItemsForPayload({
+              payload: remainingPayload,
+              attemptId: UUID_LIKE_FALLBACK(),
+              attemptedAtIso,
+              deliveryStatus: historyStatus,
+              failureReason,
+              claimedAtIso,
+            }),
+          );
         }
         break;
       }
@@ -545,7 +671,10 @@ export async function deliverMaterialNewsAlerts(params: {
 
   return {
     deliveredCount: deliveredEventKeys.length,
-    deliveredEventKeys,
+    deliveredEventKeys: deliveredEventKeys.map((k) => ({
+      canonicalEventId: k.canonicalEventId,
+      eventVersionFingerprint: k.eventVersionFingerprint,
+    })),
     status: overallStatus,
     results,
   };

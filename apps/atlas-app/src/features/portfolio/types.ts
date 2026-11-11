@@ -434,6 +434,79 @@ export interface PortfolioNewsAlertsMetaDto {
   eligibleEvents: PortfolioNewsAlertCandidateDto[];
 }
 
+export type PortfolioNewsAlertHistoryStatusDto =
+  | 'DELIVERED'
+  | 'DELIVERY_FAILED'
+  | 'PERMISSION_DENIED'
+  | 'UNSUPPORTED'
+  | 'UNAVAILABLE';
+
+export type PortfolioNewsAlertTypeDto =
+  | 'CRITICAL_NEW'
+  | 'CRITICAL_UPDATE'
+  | 'MATERIAL_NEW'
+  | 'MATERIAL_UPDATE'
+  | 'MATERIAL_BATCH_SUMMARY';
+
+export interface PortfolioNewsAlertAuditItemDto {
+  canonicalEventId: string;
+  eventVersionFingerprint: string;
+  ticker?: string;
+  eventState?: 'NEW' | 'UPDATED';
+  materiality?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'ROUTINE';
+  alertType?: PortfolioNewsAlertTypeDto;
+  headlineSnapshot?: string;
+  materialityReasonSnapshot?: string | null;
+  sourceLabelSnapshot?: string | null;
+  claimedAt?: string | null;
+  attemptedAt?: string;
+  deliveredAt?: string | null;
+  notificationId?: string | null;
+  batchEventCount?: number;
+  batchTickers?: string[];
+  alertAttemptId?: string;
+  deliveryStatus?: PortfolioNewsAlertHistoryStatusDto;
+  failureReason?: string | null;
+}
+
+export interface PortfolioNewsAlertHistoryItemDto {
+  id: string;
+  alertAttemptId: string;
+  ticker: string;
+  canonicalEventId: string;
+  eventVersionFingerprint: string;
+  eventState: 'NEW' | 'UPDATED';
+  materiality: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'ROUTINE';
+  alertType: PortfolioNewsAlertTypeDto;
+  deliveryStatus: PortfolioNewsAlertHistoryStatusDto;
+  headline: string;
+  materialityReason: string | null;
+  sourceLabel: string | null;
+  notificationId: string | null;
+  batchEventCount: number;
+  batchTickers: string[];
+  claimedAt: string | null;
+  attemptedAt: string;
+  deliveredAt: string | null;
+  failureReason: string | null;
+}
+
+export interface PortfolioNewsAlertHistoryMetricsDto {
+  totalCount: number;
+  deliveredCount: number;
+  failedCount: number;
+  criticalCount: number;
+  highCount: number;
+}
+
+export interface PortfolioNewsAlertHistoryResponseDto {
+  items: PortfolioNewsAlertHistoryItemDto[];
+  nextCursor: string | null;
+  hasMore: boolean;
+  metrics: PortfolioNewsAlertHistoryMetricsDto;
+  historyAvailableSince: string | null;
+}
+
 export interface PortfolioNewsStateSummaryDto {
   initialized: boolean;
   initializedAt: string | null;

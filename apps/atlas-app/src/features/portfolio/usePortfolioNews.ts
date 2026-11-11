@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { portfolioApi } from './api';
 import { applyOptimisticSeenToCache } from './newsStateUtils';
-import type { PortfolioNewsInboxResponseDto } from './types';
+import type {
+  PortfolioNewsAlertHistoryResponseDto,
+  PortfolioNewsAlertHistoryStatusDto,
+  PortfolioNewsAlertTypeDto,
+  PortfolioNewsInboxResponseDto,
+} from './types';
 
 export function usePortfolioNews(portfolioId: string | null | undefined) {
   return useQuery<{ data: PortfolioNewsInboxResponseDto }>({
@@ -57,5 +62,44 @@ export function useMarkPortfolioNewsSeen(portfolioId: string | null | undefined)
         queryClient.invalidateQueries({ queryKey: ['portfolio-news', portfolioId] });
       }
     },
+  });
+}
+
+export function usePortfolioNewsAlertHistory(
+  portfolioId: string | null | undefined,
+  filters?: {
+    limit?: number;
+    cursor?: string;
+    status?: PortfolioNewsAlertHistoryStatusDto;
+    ticker?: string;
+    materiality?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'ROUTINE';
+    alertType?: PortfolioNewsAlertTypeDto;
+    from?: string;
+    to?: string;
+    enabled?: boolean;
+  },
+) {
+  return useQuery<{ data: PortfolioNewsAlertHistoryResponseDto }>({
+    queryKey: [
+      'portfolio-news-alert-history',
+      portfolioId,
+      filters?.limit ?? 20,
+      filters?.cursor ?? null,
+      filters?.status ?? null,
+      filters?.ticker ?? null,
+      filters?.materiality ?? null,
+      filters?.alertType ?? null,
+      filters?.from ?? null,
+      filters?.to ?? null,
+    ],
+    queryFn: async () => {
+      if (!portfolioId) {
+        throw new Error('No portfolio ID provided');
+      }
+      return portfolioApi.getPortfolioNewsAlertHistory(portfolioId, filters);
+    },
+    enabled: Boolean(portfolioId) && (filters?.enabled ?? true),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 }

@@ -31,6 +31,105 @@ const NewsAlertVersionsSchema = z
   })
   .strict();
 
+const NewsAlertAuditItemSchema = z
+  .object({
+    canonicalEventId: z.string().trim().min(1).max(120),
+    eventVersionFingerprint: z.string().trim().min(1).max(64),
+    ticker: z.string().trim().min(1).max(32).optional(),
+    eventState: z.enum(['NEW', 'UPDATED']).optional(),
+    materiality: z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'ROUTINE']).optional(),
+    alertType: z
+      .enum([
+        'CRITICAL_NEW',
+        'CRITICAL_UPDATE',
+        'MATERIAL_NEW',
+        'MATERIAL_UPDATE',
+        'MATERIAL_BATCH_SUMMARY',
+      ])
+      .optional(),
+    headlineSnapshot: z.string().trim().min(1).max(500).optional(),
+    materialityReasonSnapshot: z.string().trim().max(500).nullable().optional(),
+    sourceLabelSnapshot: z.string().trim().max(120).nullable().optional(),
+    claimedAt: z.string().datetime({ offset: true }).nullable().optional(),
+    attemptedAt: z.string().datetime({ offset: true }).optional(),
+    deliveredAt: z.string().datetime({ offset: true }).nullable().optional(),
+    notificationId: z.string().trim().max(120).nullable().optional(),
+    batchEventCount: z.number().int().min(1).max(200).optional(),
+    batchTickers: z.array(z.string().trim().min(1).max(32)).max(50).optional(),
+    alertAttemptId: z.string().uuid().optional(),
+    deliveryStatus: z
+      .enum(['DELIVERED', 'DELIVERY_FAILED', 'PERMISSION_DENIED', 'UNSUPPORTED', 'UNAVAILABLE'])
+      .optional(),
+    failureReason: z.string().max(500).nullable().optional(),
+  })
+  .strict();
+
+const NewsAlertConfirmSchema = z
+  .object({
+    items: z.array(NewsAlertAuditItemSchema).min(1).max(200),
+    alertAttemptId: z.string().uuid().optional(),
+    notificationId: z.string().trim().max(120).nullable().optional(),
+  })
+  .strict();
+
+const NewsAlertReleaseSchema = z
+  .object({
+    items: z.array(NewsAlertAuditItemSchema).min(1).max(200),
+    deliveryStatus: z
+      .enum(['DELIVERY_FAILED', 'PERMISSION_DENIED', 'UNSUPPORTED', 'UNAVAILABLE'])
+      .optional(),
+    failureReason: z.string().max(500).nullable().optional(),
+    attemptedAt: z.string().datetime({ offset: true }).optional(),
+    alertAttemptId: z.string().uuid().optional(),
+    recordHistory: z.boolean().optional(),
+  })
+  .strict();
+
+function isValidCivilDateOrIso(raw: string): boolean {
+  const trimmed = raw.trim();
+  const ymdMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (ymdMatch) {
+    const y = Number(ymdMatch[1]);
+    const m = Number(ymdMatch[2]);
+    const d = Number(ymdMatch[3]);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return (
+      dt.getUTCFullYear() === y &&
+      dt.getUTCMonth() + 1 === m &&
+      dt.getUTCDate() === d
+    );
+  }
+  const isoParsed = Date.parse(trimmed);
+  return Number.isFinite(isoParsed) && trimmed.includes('T');
+}
+
+const NewsAlertHistoryQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    cursor: z.string().trim().min(1).max(500).optional(),
+    status: z
+      .enum(['DELIVERED', 'DELIVERY_FAILED', 'PERMISSION_DENIED', 'UNSUPPORTED', 'UNAVAILABLE'])
+      .optional(),
+    ticker: z.string().trim().min(1).max(32).optional(),
+    materiality: z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'ROUTINE']).optional(),
+    alertType: z
+      .enum([
+        'CRITICAL_NEW',
+        'CRITICAL_UPDATE',
+        'MATERIAL_NEW',
+        'MATERIAL_UPDATE',
+        'MATERIAL_BATCH_SUMMARY',
+      ])
+      .optional(),
+    from: z.string().trim().refine(isValidCivilDateOrIso, {
+      message: 'Invalid from date (expected YYYY-MM-DD or ISO-8601 datetime).',
+    }).optional(),
+    to: z.string().trim().refine(isValidCivilDateOrIso, {
+      message: 'Invalid to date (expected YYYY-MM-DD or ISO-8601 datetime).',
+    }).optional(),
+  })
+  .strict();
+
 /**
  * Phase APP-16F / APP-16H / APP-16I — Daily Opportunity Radar (Read-only analysis).
  *
@@ -182,11 +281,13 @@ export class PortfolioOpportunityRadarController {
     @CurrentPrincipal() principal: AuthenticatedPrincipal,
     @Body() body: unknown,
   ) {
-    const parsed = NewsAlertVersionsSchema.parse(body ?? {});
+    const parsed = NewsAlertConfirmSchema.parse(body ?? {});
     const data = await this.radarUseCase.confirmNewsAlertsDelivered({
       portfolioId,
       userId: principal.userId,
       items: parsed.items,
+      alertAttemptId: parsed.alertAttemptId,
+      notificationId: parsed.notificationId,
     });
     return { data };
   }
@@ -205,11 +306,46 @@ export class PortfolioOpportunityRadarController {
     @CurrentPrincipal() principal: AuthenticatedPrincipal,
     @Body() body: unknown,
   ) {
-    const parsed = NewsAlertVersionsSchema.parse(body ?? {});
+    const parsed = NewsAlertReleaseSchema.parse(body ?? {});
     const data = await this.radarUseCase.releaseNewsAlertsClaim({
       portfolioId,
       userId: principal.userId,
       items: parsed.items,
+      deliveryStatus: parsed.deliveryStatus,
+      failureReason: parsed.failureReason,
+      attemptedAt: parsed.attemptedAt,
+      alertAttemptId: parsed.alertAttemptId,
+      recordHistory: parsed.recordHistory,
+    });
+    return { data };
+  }
+
+  @Get('news/alerts/history')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'List append-only material news alert history and audit attempts for a portfolio (read-only)',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({ status: 200, description: 'Paginated material news alert history' })
+  @ApiResponse({ status: 400, description: 'Invalid query filters' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async getPortfolioNewsAlertHistory(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Query() query: Record<string, unknown>,
+  ) {
+    const parsed = NewsAlertHistoryQuerySchema.parse(query ?? {});
+    const data = await this.radarUseCase.getPortfolioNewsAlertHistory({
+      portfolioId,
+      userId: principal.userId,
+      limit: parsed.limit,
+      cursor: parsed.cursor,
+      status: parsed.status,
+      ticker: parsed.ticker,
+      materiality: parsed.materiality,
+      alertType: parsed.alertType,
+      from: parsed.from,
+      to: parsed.to,
     });
     return { data };
   }

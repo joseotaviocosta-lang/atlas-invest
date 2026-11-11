@@ -310,6 +310,72 @@ export interface PortfolioNewsAlertsMeta {
   eligibleEvents: PortfolioNewsAlertCandidateDto[];
 }
 
+export type PortfolioNewsAlertHistoryStatus =
+  | 'DELIVERED'
+  | 'DELIVERY_FAILED'
+  | 'PERMISSION_DENIED'
+  | 'UNSUPPORTED'
+  | 'UNAVAILABLE';
+
+export interface PortfolioNewsAlertAuditItem {
+  canonicalEventId: string;
+  eventVersionFingerprint: string;
+  ticker?: string;
+  eventState?: 'NEW' | 'UPDATED';
+  materiality?: NewsMateriality;
+  alertType?: NewsAlertType;
+  headlineSnapshot?: string;
+  materialityReasonSnapshot?: string | null;
+  sourceLabelSnapshot?: string | null;
+  claimedAt?: string | null;
+  attemptedAt?: string;
+  deliveredAt?: string | null;
+  notificationId?: string | null;
+  batchEventCount?: number;
+  batchTickers?: string[];
+  alertAttemptId?: string;
+  deliveryStatus?: PortfolioNewsAlertHistoryStatus;
+  failureReason?: string | null;
+}
+
+export interface PortfolioNewsAlertHistoryItem {
+  id: string;
+  alertAttemptId: string;
+  ticker: string;
+  canonicalEventId: string;
+  eventVersionFingerprint: string;
+  eventState: 'NEW' | 'UPDATED';
+  materiality: NewsMateriality;
+  alertType: NewsAlertType;
+  deliveryStatus: PortfolioNewsAlertHistoryStatus;
+  headline: string;
+  materialityReason: string | null;
+  sourceLabel: string | null;
+  notificationId: string | null;
+  batchEventCount: number;
+  batchTickers: string[];
+  claimedAt: string | null;
+  attemptedAt: string;
+  deliveredAt: string | null;
+  failureReason: string | null;
+}
+
+export interface PortfolioNewsAlertHistoryMetrics {
+  totalCount: number;
+  deliveredCount: number;
+  failedCount: number;
+  criticalCount: number;
+  highCount: number;
+}
+
+export interface PortfolioNewsAlertHistoryResult {
+  items: PortfolioNewsAlertHistoryItem[];
+  nextCursor: string | null;
+  hasMore: boolean;
+  metrics: PortfolioNewsAlertHistoryMetrics;
+  historyAvailableSince: string | null;
+}
+
 export interface PortfolioNewsStateSummary {
   initialized: boolean;
   initializedAt: string | null;

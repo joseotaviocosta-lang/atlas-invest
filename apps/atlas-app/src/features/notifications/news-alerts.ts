@@ -1,5 +1,7 @@
 import type {
+  PortfolioNewsAlertAuditItemDto,
   PortfolioNewsAlertCandidateDto,
+  PortfolioNewsAlertHistoryStatusDto,
   PortfolioNewsInboxResponseDto,
 } from '../portfolio/types';
 import type {
@@ -58,16 +60,105 @@ export interface NewsAlertCoordinatorPorts {
   ): Promise<Array<{ canonicalEventId: string; eventVersionFingerprint: string }>>;
   confirmAlertsDelivered(
     portfolioId: string,
-    items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
+    items: PortfolioNewsAlertAuditItemDto[],
+    meta?: { alertAttemptId?: string; notificationId?: string | null },
   ): Promise<void>;
   releaseAlertsClaim(
     portfolioId: string,
-    items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
+    items: PortfolioNewsAlertAuditItemDto[],
+    meta?: {
+      deliveryStatus?: Exclude<PortfolioNewsAlertHistoryStatusDto, 'DELIVERED'>;
+      failureReason?: string | null;
+      attemptedAt?: string;
+      alertAttemptId?: string;
+      recordHistory?: boolean;
+    },
   ): Promise<void>;
   suppressBaseline(
     portfolioId: string,
     items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
   ): Promise<void>;
+}
+
+function createAttemptUuid(): string {
+  if (
+    typeof globalThis !== 'undefined' &&
+    typeof globalThis.crypto !== 'undefined' &&
+    typeof globalThis.crypto.randomUUID === 'function'
+  ) {
+    return globalThis.crypto.randomUUID();
+  }
+  const hex = Date.now().toString(16).padStart(12, '0').slice(-12);
+  return `00000000-0000-4000-8000-${hex}`;
+}
+
+function sanitizeClientFailureReason(raw?: string | null): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const firstLine = raw.split(/\r?\n/)[0] ?? '';
+  const cleaned = firstLine
+    .replace(/\b(bearer|token|secret|password|apikey|api_key)\s*[:=]\s*\S+/gi, '$1=[REDACTED]')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned ? cleaned.slice(0, 280) : null;
+}
+
+function mapClientStatusToHistoryStatus(
+  status: ClientNewsAlertDeliveryStatus,
+): Exclude<PortfolioNewsAlertHistoryStatusDto, 'DELIVERED'> {
+  switch (status) {
+    case 'NOTIFICATIONS_PERMISSION_DENIED':
+      return 'PERMISSION_DENIED';
+    case 'NOTIFICATIONS_UNSUPPORTED':
+      return 'UNSUPPORTED';
+    case 'NOTIFICATIONS_UNAVAILABLE':
+      return 'UNAVAILABLE';
+    default:
+      return 'DELIVERY_FAILED';
+  }
+}
+
+function buildClientAuditItems(params: {
+  payload: ClientNewsAlertPayload;
+  alertAttemptId: string;
+  attemptedAt: string;
+  claimedAt: string;
+  deliveryStatus: PortfolioNewsAlertHistoryStatusDto;
+  notificationId?: string | null;
+  failureReason?: string | null;
+}): PortfolioNewsAlertAuditItemDto[] {
+  const {
+    payload,
+    alertAttemptId,
+    attemptedAt,
+    claimedAt,
+    deliveryStatus,
+    notificationId = null,
+    failureReason = null,
+  } = params;
+  const batchTickers =
+    payload.kind === 'BATCH'
+      ? Array.from(new Set(payload.candidates.map((c) => c.ticker)))
+      : [payload.candidates[0]?.ticker ?? ''];
+  return payload.candidates.map((c) => ({
+    canonicalEventId: c.canonicalEventId,
+    eventVersionFingerprint: c.eventVersionFingerprint,
+    ticker: c.ticker,
+    eventState: c.state,
+    materiality: c.materiality,
+    alertType: payload.type,
+    headlineSnapshot: c.headline.slice(0, 500),
+    materialityReasonSnapshot: c.materialityReason ? c.materialityReason.slice(0, 500) : null,
+    sourceLabelSnapshot: c.officialSourceLabel ? c.officialSourceLabel.slice(0, 120) : null,
+    claimedAt,
+    attemptedAt,
+    deliveredAt: deliveryStatus === 'DELIVERED' ? attemptedAt : null,
+    notificationId,
+    batchEventCount: payload.kind === 'BATCH' ? payload.candidates.length : 1,
+    batchTickers: batchTickers.filter(Boolean),
+    alertAttemptId,
+    deliveryStatus,
+    failureReason,
+  }));
 }
 
 export interface NewsAlertProcessingDiagnostics {
@@ -408,13 +499,26 @@ export async function processPortfolioNewsAlerts(params: {
       }
     }
 
+    const claimedAt = new Date().toISOString();
     const payloads = buildClientMaterialNewsAlertPayloads(claimedCandidates);
-    const deliveredKeys: Array<{ canonicalEventId: string; eventVersionFingerprint: string }> = [];
-    const failedKeys: Array<{ canonicalEventId: string; eventVersionFingerprint: string }> = [];
+    const deliveredAuditItems: PortfolioNewsAlertAuditItemDto[] = [];
+    const failedAuditItems: PortfolioNewsAlertAuditItemDto[] = [];
+    let lastAttemptId: string | undefined;
+    let lastDeliveredNotifId: string | null = null;
+    let lastFailureStatus: Exclude<PortfolioNewsAlertHistoryStatusDto, 'DELIVERED'> | undefined;
+    let lastFailureReason: string | null = null;
     let finalStatus: ClientNewsAlertDeliveryStatus = 'DELIVERY_FAILED';
 
     for (let i = 0; i < payloads.length; i++) {
       const payload = payloads[i]!;
+      const alertAttemptId = createAttemptUuid();
+      lastAttemptId = alertAttemptId;
+      const attemptedAt = new Date().toISOString();
+      const histId =
+        payload.kind === 'BATCH'
+          ? `news_batch_${payload.coveredEventKeys.map((k) => k.eventVersionFingerprint.slice(0, 8)).join('_')}`
+          : `news_${payload.coveredEventKeys[0]!.canonicalEventId}_${payload.coveredEventKeys[0]!.eventVersionFingerprint.slice(0, 12)}`;
+
       let res: ClientNewsAlertDeliveryResult;
       try {
         res = await notifier.notifyMaterialNews(payload);
@@ -426,14 +530,20 @@ export async function processPortfolioNewsAlerts(params: {
       }
 
       if (res.status === 'DELIVERED') {
-        deliveredKeys.push(...payload.coveredEventKeys);
+        lastDeliveredNotifId = histId;
+        deliveredAuditItems.push(
+          ...buildClientAuditItems({
+            payload,
+            alertAttemptId,
+            attemptedAt,
+            claimedAt,
+            deliveryStatus: 'DELIVERED',
+            notificationId: histId,
+          }),
+        );
         finalStatus = 'DELIVERED';
 
         if (recordInNotificationCenter && userId) {
-          const histId =
-            payload.kind === 'BATCH'
-              ? `news_batch_${payload.coveredEventKeys.map((k) => k.eventVersionFingerprint.slice(0, 8)).join('_')}`
-              : `news_${payload.coveredEventKeys[0]!.canonicalEventId}_${payload.coveredEventKeys[0]!.eventVersionFingerprint.slice(0, 12)}`;
           notificationCenter.addNotification(userId, {
             id: histId,
             title: payload.title,
@@ -445,8 +555,21 @@ export async function processPortfolioNewsAlerts(params: {
           });
         }
       } else {
-        failedKeys.push(...payload.coveredEventKeys);
-        if (deliveredKeys.length === 0) {
+        const mappedStatus = mapClientStatusToHistoryStatus(res.status);
+        const cleanReason = sanitizeClientFailureReason(res.reason);
+        lastFailureStatus = mappedStatus;
+        lastFailureReason = cleanReason;
+        failedAuditItems.push(
+          ...buildClientAuditItems({
+            payload,
+            alertAttemptId,
+            attemptedAt,
+            claimedAt,
+            deliveryStatus: mappedStatus,
+            failureReason: cleanReason,
+          }),
+        );
+        if (deliveredAuditItems.length === 0) {
           finalStatus = res.status;
         }
         if (
@@ -455,7 +578,16 @@ export async function processPortfolioNewsAlerts(params: {
           res.status === 'NOTIFICATIONS_UNAVAILABLE'
         ) {
           for (let j = i + 1; j < payloads.length; j++) {
-            failedKeys.push(...payloads[j]!.coveredEventKeys);
+            failedAuditItems.push(
+              ...buildClientAuditItems({
+                payload: payloads[j]!,
+                alertAttemptId: createAttemptUuid(),
+                attemptedAt,
+                claimedAt,
+                deliveryStatus: mappedStatus,
+                failureReason: cleanReason,
+              }),
+            );
           }
           break;
         }
@@ -463,20 +595,29 @@ export async function processPortfolioNewsAlerts(params: {
     }
 
     if (ports) {
-      if (deliveredKeys.length > 0) {
-        await ports.confirmAlertsDelivered(portfolioId, deliveredKeys);
+      if (deliveredAuditItems.length > 0) {
+        await ports.confirmAlertsDelivered(portfolioId, deliveredAuditItems, {
+          alertAttemptId: lastAttemptId,
+          notificationId: lastDeliveredNotifId,
+        });
       }
-      if (failedKeys.length > 0) {
-        await ports.releaseAlertsClaim(portfolioId, failedKeys);
+      if (failedAuditItems.length > 0) {
+        await ports.releaseAlertsClaim(portfolioId, failedAuditItems, {
+          deliveryStatus: lastFailureStatus,
+          failureReason: lastFailureReason,
+          attemptedAt: new Date().toISOString(),
+          alertAttemptId: lastAttemptId,
+          recordHistory: true,
+        });
       }
     }
 
     const diagnostics: NewsAlertProcessingDiagnostics = {
       eligibleAlerts: claimedCandidates.length,
-      deliveredAlerts: deliveredKeys.length,
+      deliveredAlerts: deliveredAuditItems.length,
       suppressedAlreadyDelivered,
       suppressedByMateriality: totalSuppressedByMateriality,
-      notificationStatus: deliveredKeys.length > 0 ? 'DELIVERED' : finalStatus,
+      notificationStatus: deliveredAuditItems.length > 0 ? 'DELIVERED' : finalStatus,
     };
 
     if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {

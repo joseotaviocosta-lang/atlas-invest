@@ -131,6 +131,7 @@ model Portfolio {
   costBasisEvidence      CostBasisEvidenceRecord[]
   newsSyncState          PortfolioNewsSyncState?
   newsEventStates        PortfolioNewsEventStateRecord[]
+  newsAlertHistories     PortfolioNewsAlertHistoryRecord[]
 
   @@index([userId])
   @@map("portfolios")
@@ -1742,4 +1743,39 @@ model PortfolioNewsEventStateRecord {
   @@index([portfolioId, lastObservedAt(sort: Desc)], map: "portfolio_news_event_states_portfolio_observed_idx")
   @@index([portfolioId, eventPublishedAt(sort: Desc)], map: "portfolio_news_event_states_portfolio_published_idx")
   @@map("portfolio_news_event_states")
+}
+
+/// APP-16O — Append-only audit trail of local material news alert attempts and deliveries.
+/// Keeps delivery history separated from operational event state (`portfolio_news_event_states`).
+/// Enforces at most one `DELIVERED` row per `(portfolioId, canonicalEventId, eventVersionFingerprint)`
+/// via partial unique index in SQL migration while allowing multiple failed/retry attempts.
+model PortfolioNewsAlertHistoryRecord {
+  id                        String    @id @default(uuid()) @db.Uuid
+  alertAttemptId            String    @map("alert_attempt_id") @db.Uuid
+  portfolioId               String    @map("portfolio_id") @db.Uuid
+  canonicalEventId          String    @map("canonical_event_id") @db.VarChar(120)
+  eventVersionFingerprint   String    @map("event_version_fingerprint") @db.VarChar(64)
+  eventState                String    @map("event_state") @db.VarChar(20)
+  materiality               String    @db.VarChar(20)
+  ticker                    String    @db.VarChar(32)
+  alertType                 String    @map("alert_type") @db.VarChar(32)
+  deliveryStatus            String    @map("delivery_status") @db.VarChar(40)
+  claimedAt                 DateTime? @map("claimed_at") @db.Timestamptz(6)
+  attemptedAt               DateTime  @map("attempted_at") @db.Timestamptz(6)
+  deliveredAt               DateTime? @map("delivered_at") @db.Timestamptz(6)
+  failureReason             String?   @map("failure_reason") @db.VarChar(500)
+  notificationId            String?   @map("notification_id") @db.VarChar(120)
+  headlineSnapshot          String    @map("headline_snapshot") @db.VarChar(500)
+  materialityReasonSnapshot String?   @map("materiality_reason_snapshot") @db.VarChar(500)
+  sourceLabelSnapshot       String?   @map("source_label_snapshot") @db.VarChar(120)
+  batchEventCount           Int       @default(1) @map("batch_event_count")
+  batchTickers              Json      @default("[]") @map("batch_tickers")
+  createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@index([portfolioId, attemptedAt(sort: Desc), id(sort: Desc)], map: "portfolio_news_alert_histories_portfolio_attempted_idx")
+  @@index([portfolioId, deliveryStatus], map: "portfolio_news_alert_histories_portfolio_status_idx")
+  @@index([portfolioId, ticker], map: "portfolio_news_alert_histories_portfolio_ticker_idx")
+  @@map("portfolio_news_alert_histories")
 }

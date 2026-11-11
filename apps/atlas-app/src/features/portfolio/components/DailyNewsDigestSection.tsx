@@ -9,6 +9,7 @@ import {
 import { formatUpdateReasonsSummary } from '../newsStateUtils';
 import type { DailyNewsDigestItemDto } from '../types';
 import { PortfolioNewsInbox } from './PortfolioNewsInbox';
+import { AlertHistoryModal } from './AlertHistoryModal';
 import { useNotifications } from '../../notifications/NotificationProvider';
 
 interface DailyNewsDigestSectionProps {
@@ -48,6 +49,7 @@ export const DailyNewsDigestSection: React.FC<DailyNewsDigestSectionProps> = ({ 
   const markSeen = useMarkPortfolioNewsSeen(portfolioId);
   const { preferences: notificationPrefs, permissionState: notificationPermission } = useNotifications();
   const [showFullInbox, setShowFullInbox] = useState(false);
+  const [showAlertHistory, setShowAlertHistory] = useState(false);
 
   const inbox = newsRes?.data;
   const digest = inbox?.digest;
@@ -178,6 +180,22 @@ export const DailyNewsDigestSection: React.FC<DailyNewsDigestSectionProps> = ({ 
                     🔔 Alertas relevantes ativos
                   </span>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setShowAlertHistory(true)}
+                  style={{
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    padding: 0,
+                    color: colors.accent,
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Histórico de alertas
+                </button>
               </div>
             )}
           </div>
@@ -605,6 +623,14 @@ export const DailyNewsDigestSection: React.FC<DailyNewsDigestSectionProps> = ({ 
         <div style={{ marginTop: '16px' }}>
           <PortfolioNewsInbox portfolioId={portfolioId} />
         </div>
+      )}
+
+      {portfolioId && (
+        <AlertHistoryModal
+          portfolioId={portfolioId}
+          isOpen={showAlertHistory}
+          onClose={() => setShowAlertHistory(false)}
+        />
       )}
     </div>
   );

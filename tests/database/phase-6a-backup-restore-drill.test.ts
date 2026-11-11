@@ -63,8 +63,8 @@ describe('Phase 6A: Database Backup & Isolated Restore Drill Invariants', () => 
     expect(drill.cleanupSuccess).toBe(true); // Isolated temporary DB dropped cleanly
 
     // Assert Domain & Ledger Invariants
-    expect(drill.invariants.migrationCount).toBe(49);
-    expect(drill.invariants.tableCount).toBe(67);
+    expect(drill.invariants.migrationCount).toBe(50);
+    expect(drill.invariants.tableCount).toBe(68);
     expect(drill.invariants.ledgerIntegrity).toBe(true);
     expect(drill.invariants.userCount).toBeGreaterThanOrEqual(1);
     expect(drill.invariants.notificationsIntact).toBe(true);

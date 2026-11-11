@@ -126,21 +126,73 @@ export const portfolioApi = {
 
   async confirmPortfolioNewsAlertsDelivered(
     portfolioId: string,
-    items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
-  ): Promise<{ data: { confirmedCount: number; deliveredAt: string } }> {
+    payload:
+      | Array<import('./types').PortfolioNewsAlertAuditItemDto>
+      | {
+          items: Array<import('./types').PortfolioNewsAlertAuditItemDto>;
+          alertAttemptId?: string;
+          notificationId?: string | null;
+        },
+  ): Promise<{
+    data: {
+      confirmedCount: number;
+      historyInsertedCount?: number;
+      duplicateSkippedCount?: number;
+      deliveredAt: string;
+    };
+  }> {
+    const body = Array.isArray(payload) ? { items: payload } : payload;
     return apiClient.post(
       `/api/v1/portfolios/${portfolioId}/opportunity-radar/news/alerts/confirm`,
-      { items }
+      body
     );
   },
 
   async releasePortfolioNewsAlertsClaim(
     portfolioId: string,
-    items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
-  ): Promise<{ data: { releasedCount: number } }> {
+    payload:
+      | Array<import('./types').PortfolioNewsAlertAuditItemDto>
+      | {
+          items: Array<import('./types').PortfolioNewsAlertAuditItemDto>;
+          deliveryStatus?: Exclude<import('./types').PortfolioNewsAlertHistoryStatusDto, 'DELIVERED'>;
+          failureReason?: string | null;
+          attemptedAt?: string;
+          alertAttemptId?: string;
+          recordHistory?: boolean;
+        },
+  ): Promise<{ data: { releasedCount: number; historyInsertedCount?: number } }> {
+    const body = Array.isArray(payload) ? { items: payload } : payload;
     return apiClient.post(
       `/api/v1/portfolios/${portfolioId}/opportunity-radar/news/alerts/release`,
-      { items }
+      body
+    );
+  },
+
+  async getPortfolioNewsAlertHistory(
+    portfolioId: string,
+    params?: {
+      limit?: number;
+      cursor?: string;
+      status?: import('./types').PortfolioNewsAlertHistoryStatusDto;
+      ticker?: string;
+      materiality?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'ROUTINE';
+      alertType?: import('./types').PortfolioNewsAlertTypeDto;
+      from?: string;
+      to?: string;
+    },
+  ): Promise<{ data: import('./types').PortfolioNewsAlertHistoryResponseDto }> {
+    const search = new URLSearchParams();
+    if (params?.limit) search.set('limit', String(params.limit));
+    if (params?.cursor) search.set('cursor', params.cursor);
+    if (params?.status) search.set('status', params.status);
+    if (params?.ticker) search.set('ticker', params.ticker.trim().toUpperCase());
+    if (params?.materiality) search.set('materiality', params.materiality);
+    if (params?.alertType) search.set('alertType', params.alertType);
+    if (params?.from) search.set('from', params.from);
+    if (params?.to) search.set('to', params.to);
+    const qs = search.toString();
+    return apiClient.get(
+      `/api/v1/portfolios/${portfolioId}/opportunity-radar/news/alerts/history${qs ? `?${qs}` : ''}`
     );
   },
 

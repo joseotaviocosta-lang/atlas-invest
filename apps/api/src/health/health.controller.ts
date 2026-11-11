@@ -71,7 +71,7 @@ export class HealthController {
       database: 'unknown',
       migrations: {
         applied: 0,
-        expected: 49,
+        expected: 50,
         status: 'mismatch',
       },
     };
@@ -83,14 +83,14 @@ export class HealthController {
         telemetry.recordDbLatency(Date.now() - start, true);
         checks.database = 'connected';
 
-        // Migration count check (canonical 49 migrations release baseline)
+        // Migration count check (canonical 50 migrations release baseline)
         const migrationRows = await this.prisma.$queryRawUnsafe<
           { count: string | number | bigint }[]
         >('SELECT COUNT(*) as count FROM _prisma_migrations WHERE finished_at IS NOT NULL');
         const appliedCount = migrationRows[0] ? Number(migrationRows[0].count) : 0;
         checks.migrations.applied = appliedCount;
 
-        if (appliedCount >= 49) {
+        if (appliedCount >= 50) {
           checks.migrations.status = 'up_to_date';
         } else {
           checks.migrations.status = 'mismatch';
@@ -98,7 +98,7 @@ export class HealthController {
           return {
             status: 'error',
             database: 'connected',
-            error: `Database migrations mismatch: ${appliedCount}/49 applied`,
+            error: `Database migrations mismatch: ${appliedCount}/50 applied`,
             checks,
             timestamp: new Date().toISOString(),
           };

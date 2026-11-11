@@ -19,6 +19,9 @@ import {
   IAssetRepository,
   IMarketIntelligenceRepository,
   IPortfolioNewsStateRepository,
+  type ListNewsAlertHistoryOutput,
+  type NewsAlertDeliveryAuditItem,
+  type NewsAlertHistoryStatusValue,
   type NewsAlertVersionRef,
 } from '@atlas/database';
 import {
@@ -663,34 +666,109 @@ export class GetOpportunityRadarUseCase {
   async confirmNewsAlertsDelivered(params: {
     portfolioId: string;
     userId: string;
-    items: NewsAlertVersionRef[];
+    items: NewsAlertDeliveryAuditItem[];
+    alertAttemptId?: string;
+    notificationId?: string | null;
     now?: Date;
-  }): Promise<{ confirmedCount: number; deliveredAt: string }> {
+  }): Promise<{
+    confirmedCount: number;
+    historyInsertedCount: number;
+    duplicateSkippedCount: number;
+    deliveredAt: string;
+  }> {
     await this.assertPortfolioOwner(params.portfolioId, params.userId);
     const deliveredAt = (params.now ?? new Date()).toISOString();
     if (!this.newsStateRepo) {
-      return { confirmedCount: 0, deliveredAt };
+      return {
+        confirmedCount: 0,
+        historyInsertedCount: 0,
+        duplicateSkippedCount: 0,
+        deliveredAt,
+      };
     }
     const res = await this.newsStateRepo.confirmNewsAlertsDelivered({
       portfolioId: params.portfolioId,
       delivered: params.items,
       deliveredAt,
+      alertAttemptId: params.alertAttemptId,
+      notificationId: params.notificationId,
     });
-    return { confirmedCount: res.confirmedCount, deliveredAt };
+    return {
+      confirmedCount: res.confirmedCount,
+      historyInsertedCount: res.historyInsertedCount,
+      duplicateSkippedCount: res.duplicateSkippedCount,
+      deliveredAt,
+    };
   }
 
   async releaseNewsAlertsClaim(params: {
     portfolioId: string;
     userId: string;
-    items: NewsAlertVersionRef[];
-  }): Promise<{ releasedCount: number }> {
+    items: NewsAlertDeliveryAuditItem[];
+    deliveryStatus?: Exclude<NewsAlertHistoryStatusValue, 'DELIVERED'>;
+    failureReason?: string | null;
+    attemptedAt?: string;
+    alertAttemptId?: string;
+    recordHistory?: boolean;
+  }): Promise<{ releasedCount: number; historyInsertedCount: number }> {
     await this.assertPortfolioOwner(params.portfolioId, params.userId);
     if (!this.newsStateRepo) {
-      return { releasedCount: 0 };
+      return { releasedCount: 0, historyInsertedCount: 0 };
     }
     return this.newsStateRepo.releaseNewsAlertsClaim({
       portfolioId: params.portfolioId,
       items: params.items,
+      deliveryStatus: params.deliveryStatus,
+      failureReason: params.failureReason,
+      attemptedAt: params.attemptedAt,
+      alertAttemptId: params.alertAttemptId,
+      recordHistory: params.recordHistory,
+    });
+  }
+
+  async getPortfolioNewsAlertHistory(params: {
+    portfolioId: string;
+    userId: string;
+    limit?: number;
+    cursor?: string;
+    status?: NewsAlertHistoryStatusValue;
+    ticker?: string;
+    materiality?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'ROUTINE';
+    alertType?:
+      | 'CRITICAL_NEW'
+      | 'CRITICAL_UPDATE'
+      | 'MATERIAL_NEW'
+      | 'MATERIAL_UPDATE'
+      | 'MATERIAL_BATCH_SUMMARY';
+    from?: string;
+    to?: string;
+  }): Promise<ListNewsAlertHistoryOutput> {
+    await this.assertPortfolioOwner(params.portfolioId, params.userId);
+    if (!this.newsStateRepo) {
+      return {
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+        metrics: {
+          totalCount: 0,
+          deliveredCount: 0,
+          failedCount: 0,
+          criticalCount: 0,
+          highCount: 0,
+        },
+        historyAvailableSince: null,
+      };
+    }
+    return this.newsStateRepo.listAlertHistory({
+      portfolioId: params.portfolioId,
+      limit: params.limit,
+      cursor: params.cursor,
+      status: params.status,
+      ticker: params.ticker,
+      materiality: params.materiality,
+      alertType: params.alertType,
+      from: params.from,
+      to: params.to,
     });
   }
 

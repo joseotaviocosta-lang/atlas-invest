@@ -39,6 +39,7 @@ import type { PortfolioNewsInboxResponseDto } from '../portfolio/types';
 import {
   DesktopServiceNewsAlertNotifier,
   processPortfolioNewsAlerts,
+  type NewsAlertCoordinatorPorts,
 } from './news-alerts';
 
 export interface NotificationContextValue {
@@ -241,7 +242,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
   useEffect(() => {
     if (!queryClient || !isAuthenticated || !userId) return;
 
-    const apiPorts = {
+    const apiPorts: NewsAlertCoordinatorPorts = {
       claimPendingAlerts: async (
         portfolioId: string,
         items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
@@ -249,17 +250,22 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         const res = await portfolioApi.claimPortfolioNewsAlerts(portfolioId, items);
         return res.data.claimed;
       },
-      confirmAlertsDelivered: async (
-        portfolioId: string,
-        items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
-      ) => {
-        await portfolioApi.confirmPortfolioNewsAlertsDelivered(portfolioId, items);
+      confirmAlertsDelivered: async (portfolioId, items, meta) => {
+        await portfolioApi.confirmPortfolioNewsAlertsDelivered(portfolioId, {
+          items,
+          alertAttemptId: meta?.alertAttemptId,
+          notificationId: meta?.notificationId,
+        });
       },
-      releaseAlertsClaim: async (
-        portfolioId: string,
-        items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
-      ) => {
-        await portfolioApi.releasePortfolioNewsAlertsClaim(portfolioId, items);
+      releaseAlertsClaim: async (portfolioId, items, meta) => {
+        await portfolioApi.releasePortfolioNewsAlertsClaim(portfolioId, {
+          items,
+          deliveryStatus: meta?.deliveryStatus,
+          failureReason: meta?.failureReason,
+          attemptedAt: meta?.attemptedAt,
+          alertAttemptId: meta?.alertAttemptId,
+          recordHistory: meta?.recordHistory ?? true,
+        });
       },
       suppressBaseline: async (
         portfolioId: string,
@@ -283,9 +289,17 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         preferences,
         ports: apiPorts,
         notifier: new DesktopServiceNewsAlertNotifier(),
-      }).catch(() => {
-        // Non-blocking: alert delivery issues must never disrupt news inbox or refresh UX
-      });
+      })
+        .then((diag) => {
+          if (diag.eligibleAlerts > 0) {
+            void queryClient.invalidateQueries({
+              queryKey: ['portfolio-news-alert-history', portfolioId],
+            });
+          }
+        })
+        .catch(() => {
+          // Non-blocking: alert delivery issues must never disrupt news inbox or refresh UX
+        });
     };
 
     // Process any already-cached portfolio-news query once on mount
