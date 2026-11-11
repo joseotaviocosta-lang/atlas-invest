@@ -108,6 +108,22 @@ export interface RawNewsInput {
   official?: boolean;
 }
 
+export interface RegulatoryIssuerIdentity {
+  ticker: string;
+  assetType: 'STOCK' | 'FII' | 'BDR';
+  legalName: string;
+  cnpj: string;
+  cvmCode?: string;
+  fundIdentifier?: string;
+  source: 'CVM_CAD' | 'CVM_IPE' | 'FNET_B3' | 'MANUAL_OFFICIAL_REGISTRY';
+}
+
+export type OfficialProviderStatus =
+  | 'OFFICIAL_PROVIDER_AVAILABLE'
+  | 'OFFICIAL_PROVIDER_UNAVAILABLE'
+  | 'UNRESOLVED_REGULATORY_IDENTITY'
+  | 'NO_OFFICIAL_EVENTS';
+
 export interface PortfolioNewsInboxMetrics {
   breakingCount: number; // <= 24h
   recentCount: number;   // <= 7d
@@ -116,9 +132,11 @@ export interface PortfolioNewsInboxMetrics {
   totalAuditedAssets: number; // 36
   assetsWithNews: number;
   assetsWithoutNews: number;
+  officialCoverageCount: number; // Number of assets with resolved regulatory identity
   providerStatus: {
     brapiNewsAvailable: boolean;
     brapiNewsStatus: 'BRAPI_NEWS_PRO_AVAILABLE' | 'BRAPI_NEWS_PRO_UNAVAILABLE';
+    officialStatus: OfficialProviderStatus;
     fallbackActive: boolean;
     providersUsed: string[];
   };

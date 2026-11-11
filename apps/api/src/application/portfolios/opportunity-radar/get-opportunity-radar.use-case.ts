@@ -475,9 +475,11 @@ export class GetOpportunityRadarUseCase {
           totalAuditedAssets: tickers.length,
           assetsWithNews: 0,
           assetsWithoutNews: tickers.length,
+          officialCoverageCount: 0,
           providerStatus: {
             brapiNewsAvailable: false,
             brapiNewsStatus: 'BRAPI_NEWS_PRO_UNAVAILABLE',
+            officialStatus: 'OFFICIAL_PROVIDER_UNAVAILABLE',
             fallbackActive: false,
             providersUsed: [],
           },

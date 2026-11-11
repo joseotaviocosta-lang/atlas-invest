@@ -65,6 +65,10 @@ export const PortfolioNewsInbox: React.FC<PortfolioNewsInboxProps> = ({ portfoli
 
   const providerLabel = useMemo(() => {
     if (!metrics) return 'Carregando provedor...';
+    const providers = metrics.providerStatus.providersUsed || [];
+    if (providers.includes('CVM / B3 Regulatório Oficial')) {
+      return '🏛 CVM / B3 Oficial + Imprensa';
+    }
     if (metrics.providerStatus.brapiNewsAvailable) {
       return 'BRAPI News (v2)';
     }

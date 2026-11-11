@@ -325,9 +325,11 @@ export interface PortfolioNewsInboxMetricsDto {
   totalAuditedAssets: number;
   assetsWithNews: number;
   assetsWithoutNews: number;
+  officialCoverageCount?: number;
   providerStatus: {
     brapiNewsAvailable: boolean;
     brapiNewsStatus: string;
+    officialStatus?: string;
     fallbackActive: boolean;
     providersUsed: string[];
   };

@@ -471,7 +471,15 @@ export function canonicalizeNewsEvents(
       : classifyNewsSentiment(cleanedHeadline, raw.summary || '', { eventType, official: isOfficial, sourceType: raw.sourceType });
 
     const relevance = determineAssetRelevance(cleanedHeadline, raw.ticker);
-    const sourceName = raw.sourceName || (raw.provider === 'BRAPI_NEWS' ? 'BRAPI News' : 'Imprensa');
+    const sourceName =
+      raw.sourceName ||
+      (raw.provider === 'CVM'
+        ? 'CVM'
+        : raw.provider === 'B3'
+        ? 'B3'
+        : raw.provider === 'BRAPI_NEWS'
+        ? 'BRAPI News'
+        : 'Imprensa');
     const sourceRef: NewsSourceRef = {
       name: sourceName,
       url: raw.url || '',

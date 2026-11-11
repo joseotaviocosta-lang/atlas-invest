@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  OfficialProviderStatus,
   PortfolioNewsInboxResult,
   RawNewsInput,
   canonicalizeNewsEvents,
+  CvmOfficialNewsProvider,
 } from '@atlas/market-data';
 
 interface CachedNewsResult {
@@ -13,6 +15,7 @@ interface CachedNewsResult {
 @Injectable()
 export class PortfolioNewsPipelineService {
   private readonly logger = new Logger(PortfolioNewsPipelineService.name);
+  private readonly cvmProvider = new CvmOfficialNewsProvider();
   private cache: CachedNewsResult | null = null;
   private readonly CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
 
@@ -158,10 +161,31 @@ export class PortfolioNewsPipelineService {
       }
     }
 
-    // 3. Deduplicate and Canonicalize
+    // 3. Official Regulatory Events Layer (CVM Dados Abertos & B3 Fundos.NET) — APP-16K
+    let officialStatus: OfficialProviderStatus = 'OFFICIAL_PROVIDER_AVAILABLE';
+    let officialCoverageCount = 0;
+    try {
+      const officialRes = await this.cvmProvider.fetchOfficialEvents(uniqueTickers, referenceDate);
+      officialCoverageCount = officialRes.resolvedCount;
+      if (officialRes.articles.length > 0) {
+        rawArticles.push(...officialRes.articles);
+        if (!providersUsed.includes('CVM / B3 Regulatório Oficial')) {
+          providersUsed.unshift('CVM / B3 Regulatório Oficial');
+        }
+      } else if (officialRes.resolvedCount === 0) {
+        officialStatus = 'UNRESOLVED_REGULATORY_IDENTITY';
+      } else {
+        officialStatus = 'NO_OFFICIAL_EVENTS';
+      }
+    } catch (err) {
+      this.logger.warn(`Official regulatory provider failure: ${String(err)}`);
+      officialStatus = 'OFFICIAL_PROVIDER_UNAVAILABLE';
+    }
+
+    // 4. Deduplicate and Canonicalize
     const canonicalEvents = canonicalizeNewsEvents(rawArticles, referenceDate);
 
-    // 4. Compute Metrics & Breakdown
+    // 5. Compute Metrics & Breakdown
     const byAssetCount: Record<string, number> = {};
     for (const t of uniqueTickers) {
       byAssetCount[t] = 0;
@@ -209,9 +233,11 @@ export class PortfolioNewsPipelineService {
         totalAuditedAssets: uniqueTickers.length,
         assetsWithNews,
         assetsWithoutNews,
+        officialCoverageCount,
         providerStatus: {
           brapiNewsAvailable,
           brapiNewsStatus,
+          officialStatus,
           fallbackActive,
           providersUsed,
         },
