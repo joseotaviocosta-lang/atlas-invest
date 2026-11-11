@@ -480,6 +480,8 @@ export class GetOpportunityRadarUseCase {
             brapiNewsAvailable: false,
             brapiNewsStatus: 'BRAPI_NEWS_PRO_UNAVAILABLE',
             officialStatus: 'OFFICIAL_PROVIDER_UNAVAILABLE',
+            cvmStatus: 'UNAVAILABLE',
+            fnetStatus: 'UNAVAILABLE',
             fallbackActive: false,
             providersUsed: [],
           },

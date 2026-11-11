@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  OfficialComponentStatus,
   OfficialProviderStatus,
   PortfolioNewsInboxResult,
   RawNewsInput,
@@ -161,25 +162,29 @@ export class PortfolioNewsPipelineService {
       }
     }
 
-    // 3. Official Regulatory Events Layer (CVM Dados Abertos & B3 Fundos.NET) — APP-16K
+    // 3. Official Regulatory Events Layer (CVM Dados Abertos & B3 Fundos.NET) — APP-16K-R1
     let officialStatus: OfficialProviderStatus = 'OFFICIAL_PROVIDER_AVAILABLE';
+    let cvmStatus: OfficialComponentStatus = 'NOT_APPLICABLE';
+    let fnetStatus: OfficialComponentStatus = 'NOT_APPLICABLE';
     let officialCoverageCount = 0;
     try {
       const officialRes = await this.cvmProvider.fetchOfficialEvents(uniqueTickers, referenceDate);
       officialCoverageCount = officialRes.resolvedCount;
+      officialStatus = officialRes.overallStatus;
+      cvmStatus = officialRes.cvm.status;
+      fnetStatus = officialRes.fnet.status;
+
       if (officialRes.articles.length > 0) {
         rawArticles.push(...officialRes.articles);
         if (!providersUsed.includes('CVM / B3 Regulatório Oficial')) {
           providersUsed.unshift('CVM / B3 Regulatório Oficial');
         }
-      } else if (officialRes.resolvedCount === 0) {
-        officialStatus = 'UNRESOLVED_REGULATORY_IDENTITY';
-      } else {
-        officialStatus = 'NO_OFFICIAL_EVENTS';
       }
     } catch (err) {
       this.logger.warn(`Official regulatory provider failure: ${String(err)}`);
       officialStatus = 'OFFICIAL_PROVIDER_UNAVAILABLE';
+      cvmStatus = 'UNAVAILABLE';
+      fnetStatus = 'UNAVAILABLE';
     }
 
     // 4. Deduplicate and Canonicalize
@@ -238,6 +243,8 @@ export class PortfolioNewsPipelineService {
           brapiNewsAvailable,
           brapiNewsStatus,
           officialStatus,
+          cvmStatus,
+          fnetStatus,
           fallbackActive,
           providersUsed,
         },

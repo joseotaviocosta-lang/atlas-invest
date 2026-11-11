@@ -118,11 +118,42 @@ export interface RegulatoryIssuerIdentity {
   source: 'CVM_CAD' | 'CVM_IPE' | 'FNET_B3' | 'MANUAL_OFFICIAL_REGISTRY';
 }
 
+export type OfficialComponentStatus =
+  | 'AVAILABLE'
+  | 'NO_EVENTS'
+  | 'UNAVAILABLE'
+  | 'STALE_CACHE'
+  | 'NOT_APPLICABLE';
+
 export type OfficialProviderStatus =
   | 'OFFICIAL_PROVIDER_AVAILABLE'
+  | 'OFFICIAL_PROVIDER_PARTIAL'
   | 'OFFICIAL_PROVIDER_UNAVAILABLE'
+  | 'OFFICIAL_PROVIDER_STALE_CACHE'
   | 'UNRESOLVED_REGULATORY_IDENTITY'
   | 'NO_OFFICIAL_EVENTS';
+
+export interface OfficialProviderFetchResult {
+  articles: RawNewsInput[];
+  resolvedCount: number;
+  unresolvedCount: number;
+  overallStatus: OfficialProviderStatus;
+  cvm: {
+    status: OfficialComponentStatus;
+    fetched: number;
+    fromCache: boolean;
+    error?: string;
+  };
+  fnet: {
+    status: OfficialComponentStatus;
+    fetched: number;
+    error?: string;
+  };
+  perAssetStatus?: Record<
+    string,
+    'OFFICIAL_SOURCE_OK' | 'NO_OFFICIAL_EVENTS' | 'IDENTITY_NOT_RESOLVED' | 'PROVIDER_UNAVAILABLE'
+  >;
+}
 
 export interface PortfolioNewsInboxMetrics {
   breakingCount: number; // <= 24h
@@ -137,6 +168,8 @@ export interface PortfolioNewsInboxMetrics {
     brapiNewsAvailable: boolean;
     brapiNewsStatus: 'BRAPI_NEWS_PRO_AVAILABLE' | 'BRAPI_NEWS_PRO_UNAVAILABLE';
     officialStatus: OfficialProviderStatus;
+    cvmStatus?: OfficialComponentStatus;
+    fnetStatus?: OfficialComponentStatus;
     fallbackActive: boolean;
     providersUsed: string[];
   };

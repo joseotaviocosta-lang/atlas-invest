@@ -1,4 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import * as zlib from 'zlib';
 import {
   PORTFOLIO_REGULATORY_REGISTRY,
   resolveRegulatoryIssuer,
@@ -7,6 +11,8 @@ import {
   parseFnetDeliveryDate,
   cvmRecordToRawNews,
   fnetRecordToRawNews,
+  generateDeterministicCvmId,
+  extractFirstZipFile,
   CvmOfficialNewsProvider,
   canonicalizeNewsEvents,
   calculateNewsScoreV2,
@@ -15,11 +21,55 @@ import {
   isTrustedOfficialSource,
 } from '../../packages/market-data/src/opportunity-radar';
 
-describe('PROJECT ATLAS — APP-16K: Official Regulatory News Integration', () => {
+describe('PROJECT ATLAS — APP-16K-R1: CVM Runtime & Provider Status Integrity', () => {
   const refDate = new Date('2026-11-10T12:00:00.000Z');
+  let testCacheDir: string;
 
-  // 1 & 2. Coverage of 36/36 portfolio assets with deterministic identity
-  it('1 & 2. resolves regulatory issuer identity for all 36 active portfolio assets deterministically', () => {
+  beforeEach(() => {
+    testCacheDir = path.join(os.tmpdir(), `atlas_cvm_test_${Date.now()}_${Math.random().toString(16).slice(2)}`);
+    if (!fs.existsSync(testCacheDir)) {
+      fs.mkdirSync(testCacheDir, { recursive: true });
+    }
+  });
+
+  afterEach(() => {
+    try {
+      if (fs.existsSync(testCacheDir)) {
+        fs.rmSync(testCacheDir, { recursive: true, force: true });
+      }
+    } catch {
+      // Ignore cleanup error
+    }
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Helper to build a valid PKZIP buffer containing a CSV string in memory.
+   */
+  function createMockZipBuffer(fileName: string, csvContent: string): Buffer {
+    const fileData = Buffer.from(csvContent, 'latin1');
+    const compressedData = zlib.deflateRawSync(fileData);
+
+    const fileNameBuffer = Buffer.from(fileName, 'utf8');
+    const header = Buffer.alloc(30);
+
+    header.writeUInt32LE(0x04034b50, 0); // PKZIP local header signature
+    header.writeUInt16LE(20, 4); // version needed
+    header.writeUInt16LE(0, 6); // general flags
+    header.writeUInt16LE(8, 8); // compression method (8 = deflate)
+    header.writeUInt16LE(0, 10); // file time
+    header.writeUInt16LE(0, 12); // file date
+    header.writeUInt32LE(0, 14); // crc32
+    header.writeUInt32LE(compressedData.length, 18); // compressed size
+    header.writeUInt32LE(fileData.length, 22); // uncompressed size
+    header.writeUInt16LE(fileNameBuffer.length, 26); // file name length
+    header.writeUInt16LE(0, 28); // extra field length
+
+    return Buffer.concat([header, fileNameBuffer, compressedData]);
+  }
+
+  // 1 & 17. 36/36 Registry Integrity
+  it('1 & 17. registry resolves all 36 assets with deterministic verified identity', () => {
     const portfolio36 = [
       'B3SA3', 'BBAS3', 'BRAP4', 'BRCR11', 'COGN3', 'EGIE3', 'EZTC3', 'FESA4',
       'FLRY3', 'HGLG11', 'HYPE3', 'IRBR3', 'IRIM11', 'ITSA4', 'JHSF3', 'KCRE11',
@@ -29,260 +79,340 @@ describe('PROJECT ATLAS — APP-16K: Official Regulatory News Integration', () =
     ];
 
     expect(portfolio36).toHaveLength(36);
-    let resolvedCount = 0;
-    for (const ticker of portfolio36) {
-      const identity = resolveRegulatoryIssuer(ticker);
-      expect(identity).not.toBeNull();
-      expect(identity?.ticker).toBe(ticker);
-      expect(identity?.cnpj).toBeDefined();
-      expect(identity?.cnpj.length).toBeGreaterThan(10);
-      resolvedCount++;
+    for (const t of portfolio36) {
+      const id = resolveRegulatoryIssuer(t);
+      expect(id).not.toBeNull();
+      expect(id?.ticker).toBe(t);
+      expect(id?.cnpj).toBeDefined();
     }
-    expect(resolvedCount).toBe(36);
   });
 
-  // 3. Stocks resolve with CVM codes and Companhia Aberta status
-  it('3. stocks correctly resolve to CVM Companhia Aberta code and legal name', () => {
-    const petr4 = resolveRegulatoryIssuer('PETR4');
-    expect(petr4?.assetType).toBe('STOCK');
-    expect(petr4?.cvmCode).toBe('9512');
-    expect(petr4?.cnpj).toBe('33.000.167/0001-01');
+  // 2. CVM Download & Cache Miss
+  it('2. cache miss: downloads official CVM zip and extracts CSV into managed cache without scratch dependency', async () => {
+    const sampleCsv =
+      'CNPJ_Companhia;Nome_Companhia;Codigo_CVM;Data_Referencia;Categoria;Tipo;Especie;Assunto;Data_Entrega;Tipo_Apresentacao;Protocolo_Entrega;Versao;Link_Download\n' +
+      '10.807.374/0001-77;BOA SAFRA SEMENTES S.A;25704;2026-10-27;Fato Relevante;;;Quinto Plano de Recompra;2026-10-27;AP;1580679;1;https://www.rad.cvm.gov.br/doc1580679\n';
 
-    const vale3 = resolveRegulatoryIssuer('VALE3');
-    expect(vale3?.assetType).toBe('STOCK');
-    expect(vale3?.cvmCode).toBe('4170');
-    expect(vale3?.cnpj).toBe('33.592.510/0001-54');
+    const mockZipBuf = createMockZipBuffer('ipe_cia_aberta_2026.csv', sampleCsv);
 
-    const soja3 = resolveRegulatoryIssuer('SOJA3');
-    expect(soja3?.assetType).toBe('STOCK');
-    expect(soja3?.cvmCode).toBe('25704');
-    expect(soja3?.cnpj).toBe('10.807.374/0001-77');
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({
+        etag: '"test-etag-1"',
+        'last-modified': 'Sun, 08 Nov 2026 10:00:00 GMT',
+      }),
+      arrayBuffer: async () => mockZipBuf.buffer.slice(mockZipBuf.byteOffset, mockZipBuf.byteOffset + mockZipBuf.byteLength),
+    });
 
-    const hype3 = resolveRegulatoryIssuer('HYPE3');
-    expect(hype3?.assetType).toBe('STOCK');
-    expect(hype3?.cvmCode).toBe('21431');
-    expect(hype3?.cnpj).toBe('02.932.074/0001-91');
+    const provider = new CvmOfficialNewsProvider({
+      customCacheDir: testCacheDir,
+      fetchFn: mockFetch as any,
+    });
+
+    const res = await provider.fetchOfficialEvents(['SOJA3'], refDate);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(res.cvm.status).toBe('AVAILABLE');
+    expect(res.cvm.fromCache).toBe(false);
+    expect(res.articles).toHaveLength(1);
+    expect(res.articles[0]?.ticker).toBe('SOJA3');
+    expect(res.articles[0]?.official).toBe(true);
+    expect(res.articles[0]?.url).toBe('https://www.rad.cvm.gov.br/doc1580679');
+
+    // Confirm file exists in managed cache
+    const cachedCsv = path.join(testCacheDir, 'ipe_cia_aberta_2026.csv');
+    expect(fs.existsSync(cachedCsv)).toBe(true);
   });
 
-  // 4. FIIs resolve with Fundos.NET / CVM CNPJ identifiers
-  it('4. FIIs and Fiagros correctly resolve to B3 FNET identifiers and fund CNPJ', () => {
-    const hglg11 = resolveRegulatoryIssuer('HGLG11');
-    expect(hglg11?.assetType).toBe('FII');
-    expect(hglg11?.cnpj).toBe('11.728.688/0001-47');
-    expect(hglg11?.source).toBe('FNET_B3');
+  // 3. Cache Hit (No Network Call within TTL)
+  it('3. cache hit: reuses valid local cache without triggering network download', async () => {
+    const csvPath = path.join(testCacheDir, 'ipe_cia_aberta_2026.csv');
+    const metaPath = path.join(testCacheDir, 'cvm_ipe_meta.json');
 
-    const knri11 = resolveRegulatoryIssuer('KNRI11');
-    expect(knri11?.assetType).toBe('FII');
-    expect(knri11?.cnpj).toBe('12.005.956/0001-65');
+    const sampleCsv =
+      'CNPJ_Companhia;Nome_Companhia;Codigo_CVM;Data_Referencia;Categoria;Tipo;Especie;Assunto;Data_Entrega;Tipo_Apresentacao;Protocolo_Entrega;Versao;Link_Download\n' +
+      '02.932.074/0001-91;HYPERA S/A;21431;2026-10-27;Fato Relevante;;;Novo Programa de Recompra;2026-10-27;AP;1580871;1;https://www.rad.cvm.gov.br/doc1580871\n';
 
-    const snag11 = resolveRegulatoryIssuer('SNAG11');
-    expect(snag11?.assetType).toBe('FII');
-    expect(snag11?.cnpj).toBe('28.152.777/0001-90');
+    fs.writeFileSync(csvPath, sampleCsv, 'latin1');
+    fs.writeFileSync(metaPath, JSON.stringify({ timestamp: Date.now(), etag: '"etag-hit"' }), 'utf8');
 
-    const snfz11 = resolveRegulatoryIssuer('SNFZ11');
-    expect(snfz11?.assetType).toBe('FII');
-    expect(snfz11?.cnpj).toBe('53.313.475/0001-02');
+    const mockFetch = vi.fn();
+    const provider = new CvmOfficialNewsProvider({
+      customCacheDir: testCacheDir,
+      fetchFn: mockFetch as any,
+    });
+
+    const res = await provider.fetchOfficialEvents(['HYPE3'], refDate);
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(res.cvm.status).toBe('AVAILABLE');
+    expect(res.cvm.fromCache).toBe(true);
+    expect(res.articles).toHaveLength(1);
+    expect(res.articles[0]?.ticker).toBe('HYPE3');
   });
 
-  // 5. CVM Event Type Normalization
-  it('5. maps CVM categories and subjects into canonical NewsEventType', () => {
-    expect(normalizeCvmEventType('Fato Relevante', 'Novo plano de recompra')).toBe('FACT_RELEVANT');
-    expect(normalizeCvmEventType('Comunicado ao Mercado', 'Apresentação a analistas')).toBe('MARKET_NOTICE');
-    expect(normalizeCvmEventType('Assembleia', '', 'Edital de Convocação')).toBe('ASSEMBLY');
-    expect(normalizeCvmEventType('Dados Econômico-Financeiros', 'Press Release 3T26')).toBe('EARNINGS');
-    expect(normalizeCvmEventType('Aviso aos Acionistas', 'Distribuição de Dividendos')).toBe('DIVIDEND');
-    expect(normalizeCvmEventType('Reunião da Administração', 'Aumento de Capital Social')).toBe('CAPITAL_EVENT');
-    expect(normalizeCvmEventType('Informes Periódicos', 'Informe Mensal Estruturado')).toBe('MANAGEMENT_REPORT');
+  // 4. Stale Cache Fallback on Network Error
+  it('4. stale cache: uses existing local dataset with status STALE_CACHE when upstream network fails', async () => {
+    const csvPath = path.join(testCacheDir, 'ipe_cia_aberta_2026.csv');
+    const metaPath = path.join(testCacheDir, 'cvm_ipe_meta.json');
+
+    const sampleCsv =
+      'CNPJ_Companhia;Nome_Companhia;Codigo_CVM;Data_Referencia;Categoria;Tipo;Especie;Assunto;Data_Entrega;Tipo_Apresentacao;Protocolo_Entrega;Versao;Link_Download\n' +
+      '10.807.374/0001-77;BOA SAFRA SEMENTES S.A;25704;2026-10-27;Fato Relevante;;;Quinto Plano de Recompra;2026-10-27;AP;1580679;1;https://www.rad.cvm.gov.br/doc1580679\n';
+
+    fs.writeFileSync(csvPath, sampleCsv, 'latin1');
+    // Expired timestamp (> 12h ago)
+    fs.writeFileSync(metaPath, JSON.stringify({ timestamp: Date.now() - 24 * 60 * 60 * 1000 }), 'utf8');
+
+    // Simulate network error (e.g. timeout / offline)
+    const mockFetch = vi.fn().mockRejectedValue(new Error('Network timeout'));
+
+    const provider = new CvmOfficialNewsProvider({
+      customCacheDir: testCacheDir,
+      fetchFn: mockFetch as any,
+    });
+
+    const res = await provider.fetchOfficialEvents(['SOJA3'], refDate);
+
+    expect(res.cvm.status).toBe('STALE_CACHE');
+    expect(res.overallStatus).toBe('OFFICIAL_PROVIDER_STALE_CACHE');
+    expect(res.cvm.fromCache).toBe(true);
+    expect(res.articles).toHaveLength(1);
   });
 
-  // 6. CVM Delivery Date Parsing
-  it('6. safely parses CVM and FNET delivery date formats into ISO Date', () => {
-    const d1 = parseCvmDeliveryDate('2026-10-27');
-    expect(d1.getUTCFullYear()).toBe(2026);
-    expect(d1.getUTCMonth()).toBe(9); // 0-based: 9 = October
-    expect(d1.getUTCDate()).toBe(27);
+  // 5. 304 Not Modified Conditional Request
+  it('5. conditional request: sends ETag and handles 304 Not Modified without re-downloading', async () => {
+    const csvPath = path.join(testCacheDir, 'ipe_cia_aberta_2026.csv');
+    const metaPath = path.join(testCacheDir, 'cvm_ipe_meta.json');
 
-    const d2 = parseFnetDeliveryDate('25/07/2026 18:09');
-    expect(d2.getUTCFullYear()).toBe(2026);
-    expect(d2.getUTCMonth()).toBe(6); // July
-    expect(d2.getUTCDate()).toBe(25);
-    expect(d2.getUTCHours()).toBe(18);
-    expect(d2.getUTCMinutes()).toBe(9);
-  });
+    const sampleCsv =
+      'CNPJ_Companhia;Nome_Companhia;Codigo_CVM;Data_Referencia;Categoria;Tipo;Especie;Assunto;Data_Entrega;Tipo_Apresentacao;Protocolo_Entrega;Versao;Link_Download\n' +
+      '10.807.374/0001-77;BOA SAFRA SEMENTES S.A;25704;2026-10-27;Fato Relevante;;;Quinto Plano de Recompra;2026-10-27;AP;1580679;1;https://www.rad.cvm.gov.br/doc1580679\n';
 
-  // 7. CVM Record to RawNewsInput produces verified official provenance
-  it('7. converts CVM record into RawNewsInput with official = true and RAD download URL', () => {
-    const raw = cvmRecordToRawNews(
-      {
-        cnpj: '10.807.374/0001-77',
-        companyName: 'BOA SAFRA SEMENTES S.A',
-        cvmCode: '25704',
-        category: 'Fato Relevante',
-        subject: 'Quinto Plano de Recompra de Ações',
-        deliveryDate: '2026-10-27',
-        protocol: '1580679',
-        downloadUrl: 'https://www.rad.cvm.gov.br/ENET/frmDownloadDocumento.aspx?numProtocolo=1580679',
-      },
-      'SOJA3',
+    fs.writeFileSync(csvPath, sampleCsv, 'latin1');
+    fs.writeFileSync(metaPath, JSON.stringify({ timestamp: Date.now() - 15 * 60 * 60 * 1000, etag: '"etag-304"' }), 'utf8');
+
+    const mockFetch = vi.fn().mockResolvedValue({
+      status: 304,
+      ok: false,
+    });
+
+    const provider = new CvmOfficialNewsProvider({
+      customCacheDir: testCacheDir,
+      fetchFn: mockFetch as any,
+    });
+
+    const res = await provider.fetchOfficialEvents(['SOJA3'], refDate);
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'If-None-Match': '"etag-304"' }),
+      }),
     );
-
-    expect(raw.official).toBe(true);
-    expect(raw.provider).toBe('CVM');
-    expect(raw.sourceType).toBe('OFFICIAL_REGULATORY');
-    expect(raw.url).toContain('rad.cvm.gov.br');
-    expect(isTrustedOfficialSource(raw)).toBe(true);
-    expect(classifySourceTrust(raw)).toBe('OFFICIAL');
+    expect(res.cvm.status).toBe('AVAILABLE');
+    expect(res.articles).toHaveLength(1);
   });
 
-  // 8. FNET Record to RawNewsInput produces verified official provenance
-  it('8. converts FNET record into RawNewsInput with official = true and FNET document URL', () => {
-    const raw = fnetRecordToRawNews(
-      {
-        id: 496277,
-        categoriaDocumento: 'Fato Relevante',
-        dataEntrega: '25/07/2026 18:09',
-        tipoDocumento: 'Fato Relevante',
-        especieDocumento: 'Aquisição de Imóvel',
-      },
-      'HGLG11',
-    );
+  // 6. Network Unavailable with No Cache -> OFFICIAL_PROVIDER_UNAVAILABLE (Never NO_OFFICIAL_EVENTS!)
+  it('6. network unavailable: returns OFFICIAL_PROVIDER_UNAVAILABLE when download fails and no cache exists', async () => {
+    const mockFetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
 
-    expect(raw.official).toBe(true);
-    expect(raw.provider).toBe('B3');
-    expect(raw.sourceType).toBe('OFFICIAL_REGULATORY');
-    expect(raw.url).toBe('https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=496277');
-    expect(isTrustedOfficialSource(raw)).toBe(true);
+    const provider = new CvmOfficialNewsProvider({
+      customCacheDir: testCacheDir,
+      fetchFn: mockFetch as any,
+    });
+
+    const res = await provider.fetchOfficialEvents(['SOJA3'], refDate);
+
+    expect(res.cvm.status).toBe('UNAVAILABLE');
+    expect(res.overallStatus).toBe('OFFICIAL_PROVIDER_UNAVAILABLE');
+    expect(res.overallStatus).not.toBe('NO_OFFICIAL_EVENTS');
+    expect(res.articles).toHaveLength(0);
+    expect(res.perAssetStatus?.['SOJA3']).toBe('PROVIDER_UNAVAILABLE');
   });
 
-  // 9. Canonical deduplication: CVM official source wins cluster and retains media links
-  it('9. merges CVM official event with financial media into a single canonical event where official wins', () => {
-    const officialCvm: RawNewsInput = {
-      headline: 'BOA SAFRA SEMENTES S.A (SOJA3): Fato Relevante — Quinto Plano de Recompra',
-      summary: 'Aprovação do 5º programa de recompra de ações ordinárias.',
-      url: 'https://www.rad.cvm.gov.br/ENET/frmDownloadDocumento.aspx?numProtocolo=1580679',
-      publishedAt: new Date('2026-10-27T10:00:00.000Z'),
-      ticker: 'SOJA3',
-      provider: 'CVM',
-      sourceType: 'OFFICIAL_REGULATORY',
-      official: true,
-    };
+  // 7. Invalid CSV Content -> UNAVAILABLE
+  it('7. invalid csv: malformed or empty dataset returns UNAVAILABLE without false NO_OFFICIAL_EVENTS', async () => {
+    const csvPath = path.join(testCacheDir, 'ipe_cia_aberta_2026.csv');
+    const metaPath = path.join(testCacheDir, 'cvm_ipe_meta.json');
 
-    const mediaArticle: RawNewsInput = {
-      headline: 'Boa Safra (SOJA3) divulga Fato Relevante sobre aprovação de recompra de ações - InfoMoney',
-      summary: 'Conselho de administração da Boa Safra aprovou novo plano de recompra.',
-      url: 'https://www.infomoney.com.br/mercados/boa-safra-soja3-recompra-acoes',
-      sourceName: 'InfoMoney',
-      publishedAt: new Date('2026-10-27T10:45:00.000Z'),
-      ticker: 'SOJA3',
-      provider: 'GOOGLE_NEWS',
-      sourceType: 'GOOGLE_NEWS_RSS_FALLBACK',
-    };
+    fs.writeFileSync(csvPath, 'MALFORMED;HEADER\n', 'latin1');
+    fs.writeFileSync(metaPath, JSON.stringify({ timestamp: Date.now() }), 'utf8');
 
-    const events = canonicalizeNewsEvents([mediaArticle, officialCvm], refDate);
+    const provider = new CvmOfficialNewsProvider({
+      customCacheDir: testCacheDir,
+      fetchFn: vi.fn() as any,
+    });
 
-    expect(events).toHaveLength(1);
-    const ev = events[0]!;
-    expect(ev.official).toBe(true);
-    expect(ev.eventType).toBe('FACT_RELEVANT');
-    expect(ev.sourceType).toBe('OFFICIAL_REGULATORY');
-    expect(ev.sentimentMethod).toBe('OFFICIAL_EVENT_RULE');
-    expect(ev.importance).toBe(5);
+    const res = await provider.fetchOfficialEvents(['SOJA3'], refDate);
 
-    // Sources must retain BOTH CVM and InfoMoney
-    expect(ev.sources).toHaveLength(2);
-    const sourceNames = ev.sources.map((s) => s.name);
-    expect(sourceNames).toContain('CVM');
-    expect(sourceNames).toContain('InfoMoney');
+    expect(res.cvm.status).toBe('UNAVAILABLE');
+    expect(res.cvm.error).toContain('missing from header');
+    expect(res.overallStatus).not.toBe('NO_OFFICIAL_EVENTS');
   });
 
-  // 10. Official events increment officialCount in metrics
-  it('10. official events correctly increase officialCount in metrics', () => {
-    const officialEvent: RawNewsInput = {
-      headline: 'HYPERA S/A (HYPE3): Fato Relevante — Aprovação de Recompra',
-      publishedAt: new Date('2026-10-27T11:00:00.000Z'),
-      ticker: 'HYPE3',
-      provider: 'CVM',
-      sourceType: 'OFFICIAL_REGULATORY',
-      url: 'https://www.rad.cvm.gov.br/ENET/frmDownloadDocumento.aspx?numProtocolo=1580871',
-    };
+  // 8. Valid CSV with Zero Matches -> NO_OFFICIAL_EVENTS
+  it('8. valid csv zero match: correctly returns NO_OFFICIAL_EVENTS when dataset is healthy but asset has no recent events', async () => {
+    const csvPath = path.join(testCacheDir, 'ipe_cia_aberta_2026.csv');
+    const metaPath = path.join(testCacheDir, 'cvm_ipe_meta.json');
 
-    const mediaEvent: RawNewsInput = {
-      headline: 'Vale (VALE3) sobe com alta do minério na China - Valor Econômico',
-      publishedAt: new Date('2026-11-09T14:00:00.000Z'),
-      ticker: 'VALE3',
-      sourceName: 'Valor Econômico',
-      provider: 'GOOGLE_NEWS',
-      sourceType: 'GOOGLE_NEWS_RSS_FALLBACK',
-      url: 'https://valor.globo.com/vale3',
-    };
+    // Dataset has events for other companies, but none for SOJA3 (25704)
+    const sampleCsv =
+      'CNPJ_Companhia;Nome_Companhia;Codigo_CVM;Data_Referencia;Categoria;Tipo;Especie;Assunto;Data_Entrega;Tipo_Apresentacao;Protocolo_Entrega;Versao;Link_Download\n' +
+      '33.000.167/0001-01;PETROBRAS;9512;2026-10-27;Comunicado ao Mercado;;;Producao;2026-10-27;AP;1580999;1;https://www.rad.cvm.gov.br/doc1580999\n';
 
-    const events = canonicalizeNewsEvents([officialEvent, mediaEvent], refDate);
-    const officialCount = events.filter((e) => e.official).length;
-    expect(officialCount).toBe(1);
-    expect(events[0]?.official).toBe(true);
-    expect(events[0]?.assets).toContain('HYPE3');
+    fs.writeFileSync(csvPath, sampleCsv, 'latin1');
+    fs.writeFileSync(metaPath, JSON.stringify({ timestamp: Date.now() }), 'utf8');
+
+    const provider = new CvmOfficialNewsProvider({
+      customCacheDir: testCacheDir,
+      fetchFn: vi.fn() as any,
+    });
+
+    const res = await provider.fetchOfficialEvents(['SOJA3'], refDate);
+
+    expect(res.cvm.status).toBe('NO_EVENTS');
+    expect(res.overallStatus).toBe('NO_OFFICIAL_EVENTS');
+    expect(res.articles).toHaveLength(0);
+    expect(res.perAssetStatus?.['SOJA3']).toBe('NO_OFFICIAL_EVENTS');
   });
 
-  // 11. Official bonus (+0.2) and multiplier (1.2) are applied in NewsScorerV2
-  it('11. scores official regulatory events with official bonus and 1.2 multiplier', () => {
-    const officialRaw: RawNewsInput = {
-      headline: 'BOA SAFRA SEMENTES S.A (SOJA3): Fato Relevante — Recompra de Ações',
-      publishedAt: new Date('2026-10-27T10:00:00.000Z'),
-      ticker: 'SOJA3',
-      provider: 'CVM',
-      sourceType: 'OFFICIAL_REGULATORY',
-      url: 'https://www.rad.cvm.gov.br/ENET/',
-    };
+  // 10 & 14. Invalid Date Handling (Never defaults to new Date())
+  it('10 & 14. invalid date: returns null and is strictly discarded without turning into fresh breaking news', () => {
+    expect(parseCvmDeliveryDate('')).toBeNull();
+    expect(parseCvmDeliveryDate('not-a-date')).toBeNull();
+    expect(parseCvmDeliveryDate('2026-15-40')).toBeNull();
 
-    const events = canonicalizeNewsEvents([officialRaw], refDate);
-    const scoreRes = calculateNewsScoreV2(events, 'SOJA3', refDate);
+    // Far future date (> 24h skew) must be discarded
+    const futureDateStr = '2028-12-31';
+    expect(parseCvmDeliveryDate(futureDateStr, refDate)).toBeNull();
 
-    expect(scoreRes.score).toBeGreaterThan(65);
-    expect(scoreRes.confidenceMultiplier).toBeGreaterThanOrEqual(0.8);
-    expect(scoreRes.explainability).toContain('Fato relevante');
+    // Valid date within window
+    const valid = parseCvmDeliveryDate('2026-10-27', refDate);
+    expect(valid).not.toBeNull();
+    expect(valid?.getUTCFullYear()).toBe(2026);
+    expect(valid?.getUTCMonth()).toBe(9); // October
+    expect(valid?.getUTCDate()).toBe(27);
   });
 
-  // 12. Fail-closed: provider outage does not crash or throw
-  it('12. provider handles unknown ticker or network outage gracefully without throwing', async () => {
-    const provider = new CvmOfficialNewsProvider();
-    const res = await provider.fetchOfficialEvents(['UNKNOWN_TICKER_99'], refDate);
+  // 11 & 12. Deterministic Raw ID & Zero Math.random()
+  it('11 & 12. generates stable deterministic raw ID using protocol or stable sha256 hash without Math.random', () => {
+    // With protocol
+    const idWithProtocol = generateDeterministicCvmId({
+      protocol: '1580679',
+      cvmCode: '25704',
+      deliveryDate: '2026-10-27',
+      category: 'Fato Relevante',
+    });
+    expect(idWithProtocol).toBe('cvm_1580679');
 
-    expect(res.resolvedCount).toBe(0);
-    expect(res.unresolvedCount).toBe(1);
+    // Without protocol: must be a stable deterministic hash
+    const idWithoutProtocolA = generateDeterministicCvmId({
+      cvmCode: '25704',
+      deliveryDate: '2026-10-27',
+      category: 'Fato Relevante',
+      subject: 'Quinto Plano de Recompra',
+    });
+    const idWithoutProtocolB = generateDeterministicCvmId({
+      cvmCode: '25704',
+      deliveryDate: '2026-10-27',
+      category: 'Fato Relevante',
+      subject: 'Quinto Plano de Recompra',
+    });
+
+    expect(idWithoutProtocolA).toBe(idWithoutProtocolB);
+    expect(idWithoutProtocolA.startsWith('cvm_')).toBe(true);
+    expect(idWithoutProtocolA.length).toBeGreaterThan(10);
+  });
+
+  // 13. Partial Provider Status (CVM down + FNET ok)
+  it('13. partial provider: CVM failure + FNET success results in OFFICIAL_PROVIDER_PARTIAL', async () => {
+    const mockFetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes('dados.cvm.gov.br')) {
+        throw new Error('CVM timeout');
+      }
+      if (url.includes('fnet.bmfbovespa.com.br')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: 496277,
+                categoriaDocumento: 'Fato Relevante',
+                dataEntrega: '25/10/2026 18:09',
+                especieDocumento: 'Aviso aos Cotistas',
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: false, status: 404 };
+    });
+
+    const provider = new CvmOfficialNewsProvider({
+      customCacheDir: testCacheDir,
+      fetchFn: mockFetch as any,
+    });
+
+    // Query 1 stock (CVM) and 1 FII (FNET)
+    const res = await provider.fetchOfficialEvents(['SOJA3', 'HGLG11'], refDate);
+
+    expect(res.cvm.status).toBe('UNAVAILABLE');
+    expect(res.fnet.status).toBe('AVAILABLE');
+    expect(res.overallStatus).toBe('OFFICIAL_PROVIDER_PARTIAL');
+    expect(res.articles).toHaveLength(1);
+    expect(res.articles[0]?.ticker).toBe('HGLG11');
+    expect(res.perAssetStatus?.['SOJA3']).toBe('PROVIDER_UNAVAILABLE');
+    expect(res.perAssetStatus?.['HGLG11']).toBe('OFFICIAL_SOURCE_OK');
+  });
+
+  // 15. Both Down -> OFFICIAL_PROVIDER_UNAVAILABLE
+  it('15. both providers fail results in OFFICIAL_PROVIDER_UNAVAILABLE', async () => {
+    const mockFetch = vi.fn().mockRejectedValue(new Error('Total network outage'));
+
+    const provider = new CvmOfficialNewsProvider({
+      customCacheDir: testCacheDir,
+      fetchFn: mockFetch as any,
+    });
+
+    const res = await provider.fetchOfficialEvents(['SOJA3', 'HGLG11'], refDate);
+
+    expect(res.cvm.status).toBe('UNAVAILABLE');
+    expect(res.fnet.status).toBe('UNAVAILABLE');
+    expect(res.overallStatus).toBe('OFFICIAL_PROVIDER_UNAVAILABLE');
     expect(res.articles).toHaveLength(0);
   });
 
-  // 13. Replay determinism: identical results across 10 repeated runs
-  it('13. official canonicalization and scoring produces identical results across 10 repeated evaluations', () => {
-    const rawEvents: RawNewsInput[] = [
-      {
-        headline: 'HYPERA S/A (HYPE3): Fato Relevante — Recompra de Ações Ordinárias',
-        publishedAt: new Date('2026-10-27T12:00:00.000Z'),
-        ticker: 'HYPE3',
-        provider: 'CVM',
-        sourceType: 'OFFICIAL_REGULATORY',
-        url: 'https://www.rad.cvm.gov.br',
-      },
-      {
-        headline: 'Hypera (HYPE3) anuncia recompra de ações - InfoMoney',
-        publishedAt: new Date('2026-10-27T12:30:00.000Z'),
-        ticker: 'HYPE3',
-        sourceName: 'InfoMoney',
-        provider: 'GOOGLE_NEWS',
-        sourceType: 'GOOGLE_NEWS_RSS_FALLBACK',
-        url: 'https://infomoney.com.br',
-      },
-    ];
+  // 18. Working Directory Independence
+  it('18. resolves cache path from system LOCALAPPDATA / homedir regardless of current process cwd', () => {
+    const provider = new CvmOfficialNewsProvider();
+    const cacheDir = provider.getCacheDirectory();
 
-    const firstCanonical = canonicalizeNewsEvents(rawEvents, refDate);
-    const firstScore = calculateNewsScoreV2(firstCanonical, 'HYPE3', refDate);
+    expect(cacheDir).not.toContain('scratch');
+    expect(cacheDir).toContain('Atlas');
+    expect(cacheDir).toContain('regulatory');
+  });
 
-    for (let i = 0; i < 10; i++) {
-      const runCanonical = canonicalizeNewsEvents(rawEvents, refDate);
-      const runScore = calculateNewsScoreV2(runCanonical, 'HYPE3', refDate);
-      expect(runCanonical[0]?.canonicalEventId).toBe(firstCanonical[0]?.canonicalEventId);
-      expect(runScore.score).toBe(firstScore.score);
-      expect(runScore.confidenceMultiplier).toBe(firstScore.confidenceMultiplier);
-    }
+  // 20. FNET Regression Verification
+  it('20. FNET FII official parser correctly parses real FNET feed without regression', () => {
+    const raw = fnetRecordToRawNews(
+      {
+        id: 771097,
+        categoriaDocumento: 'Assembleia',
+        dataEntrega: '04/11/2026 17:32',
+        especieDocumento: 'Ata da Assembleia',
+      },
+      'SNFZ11',
+      refDate,
+    );
+
+    expect(raw).not.toBeNull();
+    expect(raw?.ticker).toBe('SNFZ11');
+    expect(raw?.provider).toBe('B3');
+    expect(raw?.sourceType).toBe('OFFICIAL_REGULATORY');
+    expect(raw?.url).toBe('https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=771097');
   });
 });

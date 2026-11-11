@@ -330,6 +330,8 @@ export interface PortfolioNewsInboxMetricsDto {
     brapiNewsAvailable: boolean;
     brapiNewsStatus: string;
     officialStatus?: string;
+    cvmStatus?: string;
+    fnetStatus?: string;
     fallbackActive: boolean;
     providersUsed: string[];
   };
