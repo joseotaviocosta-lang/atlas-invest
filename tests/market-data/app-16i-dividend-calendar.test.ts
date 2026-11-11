@@ -369,7 +369,7 @@ describe('PROJECT ATLAS — APP-16I: FII Dividend Calendar & Reinvestment Strate
     expect(radar.reinvestmentChains?.length).toBeGreaterThan(0);
     const recvItem = radar.allEvaluatedItems?.find((i) => i.ticker === 'RECV11');
     expect(recvItem?.dividendCalendar?.sameMonthReinvestmentCandidate).toBe(true);
-    expect(radar.modelVersion).toBe('opportunity-v2.2');
+    expect(radar.modelVersion).toBe(OPPORTUNITY_MODEL_VERSION);
   });
 
   // 14. Explainability generation for dividend calendar

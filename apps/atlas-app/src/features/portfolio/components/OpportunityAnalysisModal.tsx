@@ -497,7 +497,7 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
         )}
 
         {/* Section: News considered (Strict Effective News) */}
-        {item.components.news !== null && item.news && item.news.length > 0 ? (
+        {item.components.news !== null && ((item.effectiveNewsEvents && item.effectiveNewsEvents.length > 0) || (item.news && item.news.length > 0)) ? (
           <div>
             <h4
               style={{
@@ -509,38 +509,89 @@ export const OpportunityAnalysisModal: React.FC<OpportunityAnalysisModalProps> =
                 marginBottom: `${spacing.xs}px`,
               }}
             >
-              Notícias Consideradas ({item.news.length})
+              Notícias Consideradas ({item.effectiveNewsEvents ? item.effectiveNewsEvents.length : item.news.length})
             </h4>
             <div style={{ display: 'flex', flexDirection: 'column', gap: `${spacing.xs}px` }}>
-              {item.news.map((n) => (
-                <div
-                  key={n.id}
-                  style={{
-                    padding: `${spacing.xs}px ${spacing.sm}px`,
-                    backgroundColor: colors.surfaceElevated,
-                    borderRadius: `${borderRadius.sm}px`,
-                    borderLeft: `3px solid ${
-                      n.sentiment === 'POSITIVE'
-                        ? colors.positive
-                        : n.sentiment === 'NEGATIVE'
-                        ? colors.negative
-                        : colors.accent
-                    }`,
-                    fontSize: '0.8125rem',
-                  }}
-                >
-                  <div style={{ fontWeight: 600, color: colors.textPrimary, marginBottom: '2px' }}>
-                    {n.headline}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.6875rem', color: colors.textSecondary }}>
-                    <span>{n.source}</span>
-                    <span>•</span>
-                    <span>{formatNewsDate(n.publishedAt)}</span>
-                    <span>•</span>
-                    <span style={{ textTransform: 'uppercase' }}>{n.sentiment}</span>
-                  </div>
-                </div>
-              ))}
+              {item.effectiveNewsEvents && item.effectiveNewsEvents.length > 0
+                ? item.effectiveNewsEvents.map((ev) => (
+                    <div
+                      key={ev.id}
+                      style={{
+                        padding: `${spacing.xs}px ${spacing.sm}px`,
+                        backgroundColor: colors.surfaceElevated,
+                        borderRadius: `${borderRadius.sm}px`,
+                        borderLeft: `3px solid ${
+                          ev.sentiment === 'POSITIVE'
+                            ? colors.positive
+                            : ev.sentiment === 'NEGATIVE'
+                            ? colors.negative
+                            : colors.accent
+                        }`,
+                        fontSize: '0.8125rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px', flexWrap: 'wrap' }}>
+                        {ev.official ? (
+                          <Badge variant="primary">🏛 Oficial</Badge>
+                        ) : (
+                          <Badge variant="neutral">📰 Imprensa</Badge>
+                        )}
+                        {ev.importance >= 4 && (
+                          <span style={{ fontSize: '0.6875rem', color: colors.warning }}>
+                            {'⭐'.repeat(ev.importance)}
+                          </span>
+                        )}
+                        <span style={{ fontWeight: 600, color: colors.textPrimary }}>
+                          {ev.headline}
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          fontSize: '0.6875rem',
+                          color: colors.textSecondary,
+                          marginTop: '2px',
+                        }}
+                      >
+                        <span>{ev.sources[0]?.name || ev.provider}</span>
+                        <span>•</span>
+                        <span>{formatNewsDate(ev.publishedAt)}</span>
+                        <span>•</span>
+                        <span style={{ textTransform: 'uppercase', fontWeight: 600 }}>{ev.sentiment}</span>
+                      </div>
+                    </div>
+                  ))
+                : item.news.map((n) => (
+                    <div
+                      key={n.id}
+                      style={{
+                        padding: `${spacing.xs}px ${spacing.sm}px`,
+                        backgroundColor: colors.surfaceElevated,
+                        borderRadius: `${borderRadius.sm}px`,
+                        borderLeft: `3px solid ${
+                          n.sentiment === 'POSITIVE'
+                            ? colors.positive
+                            : n.sentiment === 'NEGATIVE'
+                            ? colors.negative
+                            : colors.accent
+                        }`,
+                        fontSize: '0.8125rem',
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, color: colors.textPrimary, marginBottom: '2px' }}>
+                        {n.headline}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.6875rem', color: colors.textSecondary }}>
+                        <span>{n.source}</span>
+                        <span>•</span>
+                        <span>{formatNewsDate(n.publishedAt)}</span>
+                        <span>•</span>
+                        <span style={{ textTransform: 'uppercase' }}>{n.sentiment}</span>
+                      </div>
+                    </div>
+                  ))}
             </div>
           </div>
         ) : (

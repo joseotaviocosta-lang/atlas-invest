@@ -2,6 +2,7 @@ import { OpportunityAssetInput, OpportunityScoreComponents } from './types';
 import { calculatePortfolioFitScore } from './portfolio-fit';
 import { calculateTrendAndPriceScores } from './trend-scorer';
 import { calculateNewsScore } from './news-scorer';
+import { calculateNewsScoreV2 } from './news-score-v2';
 
 export interface EquityScoringResult {
   score: number; // 0..100
@@ -54,7 +55,14 @@ export class EquityOpportunityScorer {
       });
 
     // 4. News & Sentiment (15%)
-    const { score: news } = calculateNewsScore(input.recentNews, referenceDate);
+    let news: number | null = null;
+    if (input.portfolioNewsEvents && input.portfolioNewsEvents.length > 0) {
+      const v2 = calculateNewsScoreV2(input.portfolioNewsEvents, input.ticker, referenceDate);
+      news = v2.score;
+    } else {
+      const v1 = calculateNewsScore(input.recentNews, referenceDate);
+      news = v1.score;
+    }
 
     // 5. Future Outlook (10%)
     const outlook = this.calculateEquityOutlook(input);

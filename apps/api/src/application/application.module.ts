@@ -25,6 +25,7 @@ import {
   GetPortfolioAuditHistoryUseCase,
   GetOpportunityRadarUseCase,
   OpportunityRadarCacheService,
+  PortfolioNewsPipelineService,
 } from './portfolios';
 import {
   GetPortfolioValuationUseCase,
@@ -180,6 +181,7 @@ const USE_CASES = [
   GetPortfolioAuditHistoryUseCase,
   GetOpportunityRadarUseCase,
   OpportunityRadarCacheService,
+  PortfolioNewsPipelineService,
   GetPortfolioValuationUseCase,
   GetPortfolioAllocationUseCase,
   UpdatePortfolioMarketDataUseCase,

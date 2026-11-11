@@ -45,6 +45,26 @@ export class PortfolioOpportunityRadarController {
     return { data };
   }
 
+  @Get('news')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get portfolio news inbox (read-only)',
+    description: 'Returns canonical deduplicated news events, breakdown, and provider status for portfolio assets.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({ status: 200, description: 'Portfolio news inbox' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async getPortfolioNews(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const data = await this.radarUseCase.getPortfolioNews({
+      portfolioId,
+      userId: principal.userId,
+    });
+    return { data };
+  }
+
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

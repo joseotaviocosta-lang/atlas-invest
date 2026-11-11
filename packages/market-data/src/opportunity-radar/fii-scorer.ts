@@ -2,6 +2,7 @@ import { OpportunityAssetInput, OpportunityScoreComponents } from './types';
 import { calculatePortfolioFitScore } from './portfolio-fit';
 import { calculateTrendAndPriceScores } from './trend-scorer';
 import { calculateNewsScore } from './news-scorer';
+import { calculateNewsScoreV2 } from './news-score-v2';
 import { calculateDividendCalendarFit } from './calendar-scorer';
 
 export interface FiiScoringResult {
@@ -83,7 +84,14 @@ export class FiiOpportunityScorer {
     }
 
     // 5. News / Events
-    const { score: news } = calculateNewsScore(input.recentNews, referenceDate);
+    let news: number | null = null;
+    if (input.portfolioNewsEvents && input.portfolioNewsEvents.length > 0) {
+      const v2 = calculateNewsScoreV2(input.portfolioNewsEvents, input.ticker, referenceDate);
+      news = v2.score;
+    } else {
+      const v1 = calculateNewsScore(input.recentNews, referenceDate);
+      news = v1.score;
+    }
 
     // 6. Fund Quality / Outlook
     const outlook = this.calculateFiiOutlook(input);

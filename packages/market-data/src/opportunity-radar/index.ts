@@ -1,4 +1,7 @@
 export * from './types';
+export * from './portfolio-news.types';
+export * from './news-canonicalizer';
+export * from './news-score-v2';
 export * from './confidence';
 export * from './portfolio-fit';
 export * from './trend-scorer';

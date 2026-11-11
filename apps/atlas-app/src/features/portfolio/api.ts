@@ -84,4 +84,12 @@ export const portfolioApi = {
       {}
     );
   },
+
+  async getPortfolioNews(
+    portfolioId: string,
+  ): Promise<{ data: import('./types').PortfolioNewsInboxResponseDto }> {
+    return apiClient.get<{ data: import('./types').PortfolioNewsInboxResponseDto }>(
+      `/api/v1/portfolios/${portfolioId}/opportunity-radar/news`
+    );
+  },
 };

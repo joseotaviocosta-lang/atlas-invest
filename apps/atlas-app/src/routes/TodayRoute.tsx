@@ -7,6 +7,7 @@ import { PositionsTable } from '../features/portfolio/components/PositionsTable'
 import { DocumentaryExceptionsBanner } from '../features/portfolio/components/DocumentaryExceptionsBanner';
 import { OperationalHealthSummary } from '../features/portfolio/components/OperationalHealthSummary';
 import { OpportunityRadarSection } from '../features/portfolio/components/OpportunityRadarSection';
+import { PortfolioNewsInbox } from '../features/portfolio/components/PortfolioNewsInbox';
 import { ManualRefreshButton } from '../features/portfolio/components/ManualRefreshButton';
 import { MacroIndicatorsGrid } from '../features/market/components/MacroIndicatorsGrid';
 import { Card, EmptyState, Badge, Button, PullToRefresh, OfflineBanner } from '../components/ui';
@@ -249,6 +250,9 @@ export const TodayRoute: React.FC = () => {
 
         {/* APP-16F: Daily Opportunity Radar (Top 5 Ações & FIIs) */}
         <OpportunityRadarSection portfolioId={selectedPortfolioId} />
+
+        {/* APP-16J: Portfolio News Intelligence & Full Coverage */}
+        <PortfolioNewsInbox portfolioId={selectedPortfolioId} />
 
         {/* Main Asset Snapshot Section */}
         <div style={{ marginBottom: '28px' }}>

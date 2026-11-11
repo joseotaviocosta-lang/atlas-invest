@@ -106,6 +106,31 @@ describe('APP-16F: Opportunity Radar Controller & Use Case', () => {
       getToken: vi.fn().mockReturnValue(undefined),
     };
 
+    const mockNewsPipelineService = {
+      getPortfolioNews: vi.fn().mockResolvedValue({
+        events: [],
+        totalEvents: 0,
+        byAssetCount: {},
+        metrics: {
+          breakingCount: 0,
+          recentCount: 0,
+          officialCount: 0,
+          highImportanceCount: 0,
+          totalAuditedAssets: 2,
+          assetsWithNews: 0,
+          assetsWithoutNews: 2,
+          providerStatus: {
+            brapiNewsAvailable: false,
+            brapiNewsStatus: 'BRAPI_NEWS_PRO_UNAVAILABLE',
+            fallbackActive: true,
+            providersUsed: ['Google News RSS (Agregador)'],
+          },
+        },
+        asOf: '2026-11-10T12:00:00.000Z',
+      }),
+      clearCache: vi.fn(),
+    };
+
     useCase = new GetOpportunityRadarUseCase(
       mockPortfolioRepo,
       mockAssetRepo,
@@ -114,6 +139,7 @@ describe('APP-16F: Opportunity Radar Controller & Use Case', () => {
       mockStrategyUseCase,
       cache,
       mockConfigService,
+      mockNewsPipelineService as any,
     );
 
     controller = new PortfolioOpportunityRadarController(useCase);
@@ -177,5 +203,13 @@ describe('APP-16F: Opportunity Radar Controller & Use Case', () => {
     await expect(
       controller.getOpportunityRadar('00000000-0000-4000-8000-999999999999', principal),
     ).rejects.toThrow(NotFoundException);
+  });
+
+  // 6. GET news endpoint
+  it('6. GET /api/v1/portfolios/:portfolioId/opportunity-radar/news returns portfolio news inbox', async () => {
+    const res = await controller.getPortfolioNews(portfolioId, principal);
+    expect(res).toHaveProperty('data');
+    expect(res.data).toHaveProperty('metrics');
+    expect(res.data.metrics.providerStatus.brapiNewsStatus).toBe('BRAPI_NEWS_PRO_UNAVAILABLE');
   });
 });

@@ -288,6 +288,59 @@ export interface OpportunityDataProvenanceDto {
   hasDividendCalendar?: boolean;
 }
 
+export interface NewsSourceRefDto {
+  name: string;
+  url: string;
+  publishedAt?: string;
+}
+
+export interface PortfolioNewsEventDto {
+  id: string;
+  canonicalEventId: string;
+  headline: string;
+  summary: string;
+  publishedAt: string;
+  updatedAt?: string;
+  importance: 1 | 2 | 3 | 4 | 5;
+  sentiment: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | 'UNKNOWN';
+  sentimentScore: number;
+  sentimentMethod: string;
+  eventType: string;
+  assets: string[];
+  primaryTickers: string[];
+  secondaryTickers: string[];
+  sources: NewsSourceRefDto[];
+  provider: string;
+  sourceType: string;
+  official: boolean;
+  freshness: 'BREAKING' | 'VERY_RECENT' | 'RECENT' | 'CURRENT' | 'CONTEXT' | 'EXPIRED';
+  decayWeight: number;
+}
+
+export interface PortfolioNewsInboxMetricsDto {
+  breakingCount: number;
+  recentCount: number;
+  officialCount: number;
+  highImportanceCount: number;
+  totalAuditedAssets: number;
+  assetsWithNews: number;
+  assetsWithoutNews: number;
+  providerStatus: {
+    brapiNewsAvailable: boolean;
+    brapiNewsStatus: string;
+    fallbackActive: boolean;
+    providersUsed: string[];
+  };
+}
+
+export interface PortfolioNewsInboxResponseDto {
+  events: PortfolioNewsEventDto[];
+  totalEvents: number;
+  byAssetCount: Record<string, number>;
+  metrics: PortfolioNewsInboxMetricsDto;
+  asOf: string;
+}
+
 export interface OpportunityRadarItemDto {
   ticker: string;
   name: string;
@@ -304,6 +357,7 @@ export interface OpportunityRadarItemDto {
   positives: string[];
   risks: string[];
   news: OpportunityNewsItemDto[];
+  effectiveNewsEvents?: PortfolioNewsEventDto[];
   dividendCalendar?: FiiDividendCalendarEventDto;
   recentPaidDividends?: FiiCashSourceEventDto[];
   dataFreshness: 'FRESH' | 'STALE' | 'UNKNOWN';

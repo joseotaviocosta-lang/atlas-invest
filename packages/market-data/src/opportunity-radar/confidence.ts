@@ -100,8 +100,13 @@ export function assessOpportunityConfidence(
 
   // 5. News / Corporate Events (Strict Effective News: <= 90 days)
   const effectiveNews = filterEffectiveNews(input.recentNews, referenceDate);
+  const effectiveV2Events = input.portfolioNewsEvents
+    ? input.portfolioNewsEvents.filter((e) => e.assets.includes(input.ticker) && e.freshness !== 'EXPIRED')
+    : [];
+
   const hasVerifiedNews =
     effectiveNews.length > 0 ||
+    effectiveV2Events.length > 0 ||
     (input.corporateEventsCount !== null &&
       input.corporateEventsCount !== undefined &&
       input.corporateEventsCount > 0);
@@ -109,6 +114,7 @@ export function assessOpportunityConfidence(
   if (hasVerifiedNews) {
     availableDimensions++;
     let hasGoogleNews = false;
+    let hasBrapiNews = false;
     for (const n of effectiveNews) {
       if (n.aggregator === 'GOOGLE_NEWS_RSS' || !n.aggregator) {
         hasGoogleNews = true;
@@ -117,7 +123,22 @@ export function assessOpportunityConfidence(
         sources.push(n.source);
       }
     }
-    if (hasGoogleNews) {
+    for (const ev of effectiveV2Events) {
+      if (ev.provider === 'BRAPI_NEWS') {
+        hasBrapiNews = true;
+      } else if (ev.provider === 'GOOGLE_NEWS') {
+        hasGoogleNews = true;
+      }
+      for (const s of ev.sources) {
+        if (s.name && !sources.includes(s.name)) {
+          sources.push(s.name);
+        }
+      }
+    }
+    if (hasBrapiNews && !sources.includes('BRAPI News')) {
+      sources.push('BRAPI News');
+    }
+    if (hasGoogleNews && !sources.includes('Google News RSS (Agregador)')) {
       sources.push('Google News RSS (Agregador)');
     }
   }

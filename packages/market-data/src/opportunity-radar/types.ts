@@ -5,7 +5,9 @@
  * Model version: opportunity-v2.2
  */
 
-export const OPPORTUNITY_MODEL_VERSION = 'opportunity-v2.2';
+import { PortfolioNewsEvent } from './portfolio-news.types';
+
+export const OPPORTUNITY_MODEL_VERSION = 'opportunity-v2.3';
 
 export const RECENT_PAID_LOOKBACK_DAYS = 20;
 
@@ -151,6 +153,7 @@ export interface OpportunityAssetInput {
 
   // News & Events
   recentNews?: OpportunityNewsItem[];
+  portfolioNewsEvents?: PortfolioNewsEvent[];
   corporateEventsCount?: number | null;
   analystConsensus?: 'BUY' | 'HOLD' | 'SELL' | 'UNKNOWN' | null;
   targetPriceRatio?: number | null; // (targetPrice - currentPrice) / currentPrice
@@ -172,6 +175,7 @@ export interface OpportunityRadarItem {
   positives: readonly string[];
   risks: readonly string[];
   news: readonly OpportunityNewsItem[];
+  effectiveNewsEvents?: readonly PortfolioNewsEvent[];
   dividendCalendar?: FiiDividendCalendarEvent;
   recentPaidDividends?: readonly FiiCashSourceEvent[];
   dataFreshness: OpportunityFreshness;

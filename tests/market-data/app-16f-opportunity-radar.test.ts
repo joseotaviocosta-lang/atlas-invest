@@ -319,7 +319,7 @@ describe('APP-16F: Daily Opportunity Radar Engine & Scorers', () => {
       assets: [baseEquity],
     });
     expect(result.modelVersion).toBe(OPPORTUNITY_MODEL_VERSION);
-    expect(result.modelVersion).toBe('opportunity-v2.2');
+    expect(result.modelVersion).toBe('opportunity-v2.3');
     expect(result.disclaimer).toContain('Radar informativo');
   });
 

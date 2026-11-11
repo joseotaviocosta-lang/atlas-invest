@@ -189,6 +189,9 @@ export class OpportunityRadarEngine {
           positives: Object.freeze(positives),
           risks: Object.freeze(risks),
           news: Object.freeze(effectiveNews),
+          effectiveNewsEvents: input.portfolioNewsEvents
+            ? Object.freeze(input.portfolioNewsEvents.filter((e) => e.assets.includes(input.ticker)).slice(0, 5))
+            : undefined,
           dividendCalendar: enrichedCalendar ? Object.freeze(enrichedCalendar) : undefined,
           recentPaidDividends: input.recentPaidDividends ? Object.freeze(input.recentPaidDividends) : undefined,
           dataFreshness: input.quoteFreshness ?? 'UNKNOWN',

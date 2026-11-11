@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import {
   OpportunityRadarEngine,
   OpportunityRadarResult,
@@ -23,6 +23,8 @@ import { GetPortfolioAllocationStrategyUseCase } from '../get-portfolio-allocati
 import { OpportunityRadarCacheService } from './opportunity-radar-cache.service';
 import { fetchBrapiAssetIntelligence } from './brapi-intelligence.fetcher';
 import { MarketDataConfigService } from '../../../market-data/market-data-config.service';
+import { PortfolioNewsPipelineService } from './portfolio-news-pipeline.service';
+import { PortfolioNewsInboxResult } from '@atlas/market-data';
 
 @Injectable()
 export class GetOpportunityRadarUseCase {
@@ -41,6 +43,9 @@ export class GetOpportunityRadarUseCase {
     private readonly cache: OpportunityRadarCacheService,
     @Inject(MarketDataConfigService)
     private readonly configService: MarketDataConfigService,
+    @Optional()
+    @Inject(PortfolioNewsPipelineService)
+    private readonly newsPipelineService?: PortfolioNewsPipelineService,
   ) {}
 
   async execute(params: {
@@ -130,6 +135,27 @@ export class GetOpportunityRadarUseCase {
     // Check if BRAPI is authenticated in config service
     const status = this.configService.getStatus();
     const hasBrapiAuth = status.authenticated;
+    const brapiToken =
+      typeof this.configService.getToken === 'function'
+        ? this.configService.getToken()
+        : process.env.BRAPI_API_KEY || process.env.MARKET_DATA_API_TOKEN;
+
+    // Fetch and canonicalize news across portfolio assets (APP-16J)
+    let newsInbox: PortfolioNewsInboxResult | null = null;
+    if (this.newsPipelineService) {
+      if (params.forceRefresh) {
+        this.newsPipelineService.clearCache();
+      }
+      const allTickers = positions.map((p) => p.ticker).filter((t): t is string => Boolean(t));
+      newsInbox = await this.newsPipelineService
+        .getPortfolioNews({
+          tickers: allTickers,
+          token: brapiToken,
+          referenceDate: now,
+          forceRefresh: params.forceRefresh,
+        })
+        .catch(() => null);
+    }
 
     for (const pos of positions) {
       if (!pos.marketValue) continue;
@@ -382,6 +408,7 @@ export class GetOpportunityRadarUseCase {
         dividendCalendar,
         recentPaidDividends,
         recentNews: combinedNews,
+        portfolioNewsEvents: newsInbox ? newsInbox.events.filter((e) => e.assets.includes(ticker)) : undefined,
         analystConsensus: extIntel.analystConsensus,
       };
 
@@ -404,5 +431,66 @@ export class GetOpportunityRadarUseCase {
     }
 
     return result;
+  }
+
+  async getPortfolioNews(params: {
+    portfolioId: string;
+    userId: string;
+    forceRefresh?: boolean;
+    now?: Date;
+  }): Promise<PortfolioNewsInboxResult> {
+    const portfolio = await this.portfolioRepo.findById(params.portfolioId);
+    if (!portfolio || portfolio.userId !== params.userId) {
+      throw new NotFoundException({
+        message: `Portfolio with id '${params.portfolioId}' not found`,
+        code: 'PORTFOLIO.NOT_FOUND',
+      });
+    }
+
+    const valuation = await this.valuationUseCase.execute({
+      portfolioId: params.portfolioId,
+      userId: params.userId,
+    });
+
+    const positions = valuation.positions.filter(
+      (pos) => pos.status === 'VALUED' && pos.marketValue && parseFloat(pos.marketValue.amount) > 0,
+    );
+
+    const tickers = positions.map((p) => p.ticker).filter((t): t is string => Boolean(t));
+    const brapiToken =
+      typeof this.configService.getToken === 'function'
+        ? this.configService.getToken()
+        : process.env.BRAPI_API_KEY || process.env.MARKET_DATA_API_TOKEN;
+
+    if (!this.newsPipelineService) {
+      return {
+        events: [],
+        totalEvents: 0,
+        byAssetCount: {},
+        metrics: {
+          breakingCount: 0,
+          recentCount: 0,
+          officialCount: 0,
+          highImportanceCount: 0,
+          totalAuditedAssets: tickers.length,
+          assetsWithNews: 0,
+          assetsWithoutNews: tickers.length,
+          providerStatus: {
+            brapiNewsAvailable: false,
+            brapiNewsStatus: 'BRAPI_NEWS_PRO_UNAVAILABLE',
+            fallbackActive: false,
+            providersUsed: [],
+          },
+        },
+        asOf: (params.now ?? new Date()).toISOString(),
+      };
+    }
+
+    return this.newsPipelineService.getPortfolioNews({
+      tickers,
+      token: brapiToken,
+      referenceDate: params.now ?? new Date(),
+      forceRefresh: params.forceRefresh,
+    });
   }
 }
