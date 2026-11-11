@@ -113,4 +113,44 @@ export const portfolioApi = {
       payload
     );
   },
+
+  async claimPortfolioNewsAlerts(
+    portfolioId: string,
+    items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
+  ): Promise<{ data: { claimed: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>; skippedCount: number } }> {
+    return apiClient.post(
+      `/api/v1/portfolios/${portfolioId}/opportunity-radar/news/alerts/claim`,
+      { items }
+    );
+  },
+
+  async confirmPortfolioNewsAlertsDelivered(
+    portfolioId: string,
+    items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
+  ): Promise<{ data: { confirmedCount: number; deliveredAt: string } }> {
+    return apiClient.post(
+      `/api/v1/portfolios/${portfolioId}/opportunity-radar/news/alerts/confirm`,
+      { items }
+    );
+  },
+
+  async releasePortfolioNewsAlertsClaim(
+    portfolioId: string,
+    items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
+  ): Promise<{ data: { releasedCount: number } }> {
+    return apiClient.post(
+      `/api/v1/portfolios/${portfolioId}/opportunity-radar/news/alerts/release`,
+      { items }
+    );
+  },
+
+  async suppressPortfolioNewsAlertsBaseline(
+    portfolioId: string,
+    items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
+  ): Promise<{ data: { suppressedCount: number; recordedAt: string } }> {
+    return apiClient.post(
+      `/api/v1/portfolios/${portfolioId}/opportunity-radar/news/alerts/suppress`,
+      { items }
+    );
+  },
 };

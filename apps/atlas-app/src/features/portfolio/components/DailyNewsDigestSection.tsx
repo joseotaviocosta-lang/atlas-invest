@@ -9,6 +9,7 @@ import {
 import { formatUpdateReasonsSummary } from '../newsStateUtils';
 import type { DailyNewsDigestItemDto } from '../types';
 import { PortfolioNewsInbox } from './PortfolioNewsInbox';
+import { useNotifications } from '../../notifications/NotificationProvider';
 
 interface DailyNewsDigestSectionProps {
   portfolioId: string | null | undefined;
@@ -45,6 +46,7 @@ export const DailyNewsDigestSection: React.FC<DailyNewsDigestSectionProps> = ({ 
   const { data: newsRes, isLoading, isError } = usePortfolioNews(portfolioId);
   const refreshNews = useRefreshPortfolioNews(portfolioId);
   const markSeen = useMarkPortfolioNewsSeen(portfolioId);
+  const { preferences: notificationPrefs, permissionState: notificationPermission } = useNotifications();
   const [showFullInbox, setShowFullInbox] = useState(false);
 
   const inbox = newsRes?.data;
@@ -69,6 +71,20 @@ export const DailyNewsDigestSection: React.FC<DailyNewsDigestSectionProps> = ({ 
   const updatedEventsCount =
     newsState?.updatedEventsCount ?? digest?.updatedEventsCount ?? metrics?.updatedEventsCount ?? 0;
   const unseenTotal = newEventsCount + updatedEventsCount;
+  const unseenMaterialUpdatesCount = React.useMemo(
+    () =>
+      (inbox?.events ?? []).filter(
+        (ev) =>
+          (ev.state === 'NEW' || ev.state === 'UPDATED') &&
+          (ev.materiality === 'CRITICAL' || ev.materiality === 'HIGH'),
+      ).length,
+    [inbox?.events],
+  );
+  const effectiveUnseenMaterialCount = Math.max(unseenMaterialUpdatesCount, newMaterialCount);
+  const localNewsAlertsActive =
+    notificationPrefs.enabled &&
+    notificationPrefs.materialNewsAlerts &&
+    notificationPermission === 'granted';
 
   // Derive dynamic header summary: novelty-first when APP-16M state is active, backward-compatible otherwise
   const summaryHeader = React.useMemo(() => {
@@ -148,6 +164,22 @@ export const DailyNewsDigestSection: React.FC<DailyNewsDigestSectionProps> = ({ 
             <p style={{ margin: '4px 0 0 0', fontSize: '0.8125rem', color: colors.textSecondary }}>
               {summaryHeader}
             </p>
+            {(effectiveUnseenMaterialCount > 0 || localNewsAlertsActive) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px', flexWrap: 'wrap' }}>
+                {effectiveUnseenMaterialCount > 0 && (
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: colors.accent }}>
+                    {effectiveUnseenMaterialCount === 1
+                      ? '1 nova atualização relevante'
+                      : `${effectiveUnseenMaterialCount} novas atualizações relevantes`}
+                  </span>
+                )}
+                {localNewsAlertsActive && (
+                  <span style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+                    🔔 Alertas relevantes ativos
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>

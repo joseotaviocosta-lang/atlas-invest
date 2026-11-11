@@ -413,10 +413,32 @@ export interface PortfolioNewsInboxMetricsDto {
   };
 }
 
+export interface PortfolioNewsAlertCandidateDto {
+  portfolioId: string;
+  canonicalEventId: string;
+  eventVersionFingerprint: string;
+  alertIdentityKey: string;
+  state: 'NEW' | 'UPDATED';
+  materiality: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'ROUTINE';
+  ticker: string;
+  headline: string;
+  materialityReason?: string;
+  official: boolean;
+  officialSourceLabel?: string;
+  publishedAt: string;
+}
+
+export interface PortfolioNewsAlertsMetaDto {
+  baselineInitializedAt: string | null;
+  pendingEligibleCount: number;
+  eligibleEvents: PortfolioNewsAlertCandidateDto[];
+}
+
 export interface PortfolioNewsStateSummaryDto {
   initialized: boolean;
   initializedAt: string | null;
   lastRefreshedAt: string | null;
+  alertsInitializedAt?: string | null;
   newEventsCount: number;
   newMaterialEventsCount: number;
   updatedEventsCount: number;
@@ -431,6 +453,7 @@ export interface PortfolioNewsInboxResponseDto {
   digest?: PortfolioDailyNewsDigestDto;
   assetDailyStatus?: Record<string, string>;
   newsState?: PortfolioNewsStateSummaryDto;
+  alertsMeta?: PortfolioNewsAlertsMetaDto;
   asOf: string;
 }
 

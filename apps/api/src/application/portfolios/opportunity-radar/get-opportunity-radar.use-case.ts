@@ -8,6 +8,7 @@ import {
   FiiCashSourceEvent,
   formatIsoDateString,
   applyPortfolioNewsState,
+  selectAlertEligibleNewsEvents,
   buildDailyNewsDigest,
   type PersistedPortfolioNewsEventState,
   type PersistedPortfolioNewsSyncState,
@@ -18,6 +19,7 @@ import {
   IAssetRepository,
   IMarketIntelligenceRepository,
   IPortfolioNewsStateRepository,
+  type NewsAlertVersionRef,
 } from '@atlas/database';
 import {
   PORTFOLIO_REPOSITORY,
@@ -602,6 +604,13 @@ export class GetOpportunityRadarUseCase {
         maxItems: 10,
       });
 
+      const alertSelection = selectAlertEligibleNewsEvents({
+        portfolioId: params.portfolioId,
+        events: stateResult.events,
+        persistedStates: stateResult.statesToUpsert,
+        options: { referenceDate },
+      });
+
       return {
         ...rawInbox,
         events: stateResult.events,
@@ -614,8 +623,94 @@ export class GetOpportunityRadarUseCase {
           seenEventsCount: stateResult.summary.seenEventsCount,
         },
         newsState: stateResult.summary,
+        alertsMeta: {
+          baselineInitializedAt: stateResult.summary.alertsInitializedAt ?? null,
+          pendingEligibleCount: alertSelection.eligibleCandidates.length,
+          eligibleEvents: alertSelection.eligibleCandidates.map(({ event: _ignored, ...dto }) => dto),
+        },
       };
     });
+  }
+
+  private async assertPortfolioOwner(portfolioId: string, userId: string): Promise<void> {
+    const portfolio = await this.portfolioRepo.findById(portfolioId);
+    if (!portfolio || portfolio.userId !== userId) {
+      throw new NotFoundException({
+        message: `Portfolio with id '${portfolioId}' not found`,
+        code: 'PORTFOLIO.NOT_FOUND',
+      });
+    }
+  }
+
+  async claimPendingNewsAlerts(params: {
+    portfolioId: string;
+    userId: string;
+    items: NewsAlertVersionRef[];
+    now?: Date;
+  }): Promise<{ claimed: NewsAlertVersionRef[]; skippedCount: number }> {
+    await this.assertPortfolioOwner(params.portfolioId, params.userId);
+    if (!this.newsStateRepo) {
+      return { claimed: params.items, skippedCount: 0 };
+    }
+    const claimedAt = (params.now ?? new Date()).toISOString();
+    return this.newsStateRepo.claimPendingNewsAlerts({
+      portfolioId: params.portfolioId,
+      candidates: params.items,
+      claimedAt,
+    });
+  }
+
+  async confirmNewsAlertsDelivered(params: {
+    portfolioId: string;
+    userId: string;
+    items: NewsAlertVersionRef[];
+    now?: Date;
+  }): Promise<{ confirmedCount: number; deliveredAt: string }> {
+    await this.assertPortfolioOwner(params.portfolioId, params.userId);
+    const deliveredAt = (params.now ?? new Date()).toISOString();
+    if (!this.newsStateRepo) {
+      return { confirmedCount: 0, deliveredAt };
+    }
+    const res = await this.newsStateRepo.confirmNewsAlertsDelivered({
+      portfolioId: params.portfolioId,
+      delivered: params.items,
+      deliveredAt,
+    });
+    return { confirmedCount: res.confirmedCount, deliveredAt };
+  }
+
+  async releaseNewsAlertsClaim(params: {
+    portfolioId: string;
+    userId: string;
+    items: NewsAlertVersionRef[];
+  }): Promise<{ releasedCount: number }> {
+    await this.assertPortfolioOwner(params.portfolioId, params.userId);
+    if (!this.newsStateRepo) {
+      return { releasedCount: 0 };
+    }
+    return this.newsStateRepo.releaseNewsAlertsClaim({
+      portfolioId: params.portfolioId,
+      items: params.items,
+    });
+  }
+
+  async suppressNewsAlertsBaseline(params: {
+    portfolioId: string;
+    userId: string;
+    items: NewsAlertVersionRef[];
+    now?: Date;
+  }): Promise<{ suppressedCount: number; recordedAt: string }> {
+    await this.assertPortfolioOwner(params.portfolioId, params.userId);
+    const recordedAt = (params.now ?? new Date()).toISOString();
+    if (!this.newsStateRepo) {
+      return { suppressedCount: 0, recordedAt };
+    }
+    const res = await this.newsStateRepo.suppressNewsAlertsBaseline({
+      portfolioId: params.portfolioId,
+      items: params.items,
+      recordedAt,
+    });
+    return { suppressedCount: res.suppressedCount, recordedAt };
   }
 
   /**

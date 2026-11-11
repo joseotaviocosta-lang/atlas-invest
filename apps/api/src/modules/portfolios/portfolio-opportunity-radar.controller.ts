@@ -15,6 +15,22 @@ const MarkPortfolioNewsSeenSchema = z
     message: 'Provide either markAllNew: true or a non-empty canonicalEventIds array.',
   });
 
+const NewsAlertVersionsSchema = z
+  .object({
+    items: z
+      .array(
+        z
+          .object({
+            canonicalEventId: z.string().trim().min(1).max(120),
+            eventVersionFingerprint: z.string().trim().min(1).max(64),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(200),
+  })
+  .strict();
+
 /**
  * Phase APP-16F / APP-16H / APP-16I — Daily Opportunity Radar (Read-only analysis).
  *
@@ -125,6 +141,98 @@ export class PortfolioOpportunityRadarController {
       userId: principal.userId,
       canonicalEventIds: parsed.canonicalEventIds,
       markAllNew: parsed.markAllNew,
+    });
+    return { data };
+  }
+
+  @Post('news/alerts/claim')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Atomically claim un-alerted material news versions prior to local notification delivery',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({ status: 200, description: 'Claimed alert candidates' })
+  @ApiResponse({ status: 400, description: 'Invalid input' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async claimPortfolioNewsAlerts(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Body() body: unknown,
+  ) {
+    const parsed = NewsAlertVersionsSchema.parse(body ?? {});
+    const data = await this.radarUseCase.claimPendingNewsAlerts({
+      portfolioId,
+      userId: principal.userId,
+      items: parsed.items,
+    });
+    return { data };
+  }
+
+  @Post('news/alerts/confirm')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Confirm delivered material news alert versions so they will not alert again',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({ status: 200, description: 'Confirmation result' })
+  @ApiResponse({ status: 400, description: 'Invalid input' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async confirmPortfolioNewsAlertsDelivered(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Body() body: unknown,
+  ) {
+    const parsed = NewsAlertVersionsSchema.parse(body ?? {});
+    const data = await this.radarUseCase.confirmNewsAlertsDelivered({
+      portfolioId,
+      userId: principal.userId,
+      items: parsed.items,
+    });
+    return { data };
+  }
+
+  @Post('news/alerts/release')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Release in-flight alert claims when local OS notification delivery fails or permission is denied',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({ status: 200, description: 'Released claims count' })
+  @ApiResponse({ status: 400, description: 'Invalid input' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async releasePortfolioNewsAlertsClaim(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Body() body: unknown,
+  ) {
+    const parsed = NewsAlertVersionsSchema.parse(body ?? {});
+    const data = await this.radarUseCase.releaseNewsAlertsClaim({
+      portfolioId,
+      userId: principal.userId,
+      items: parsed.items,
+    });
+    return { data };
+  }
+
+  @Post('news/alerts/suppress')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Suppress baseline or pre-activation material news versions without marking events SEEN',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({ status: 200, description: 'Suppressed count' })
+  @ApiResponse({ status: 400, description: 'Invalid input' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async suppressPortfolioNewsAlertsBaseline(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Body() body: unknown,
+  ) {
+    const parsed = NewsAlertVersionsSchema.parse(body ?? {});
+    const data = await this.radarUseCase.suppressNewsAlertsBaseline({
+      portfolioId,
+      userId: principal.userId,
+      items: parsed.items,
     });
     return { data };
   }

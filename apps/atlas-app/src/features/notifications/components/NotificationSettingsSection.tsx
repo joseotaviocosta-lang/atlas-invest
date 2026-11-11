@@ -165,6 +165,25 @@ export const NotificationSettingsSection: React.FC = () => {
                 style={{ width: 18, height: 18, accentColor: colors.accent }}
               />
             </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+              <div>
+                <div style={{ fontWeight: 500, color: colors.textPrimary }}>
+                  Alertas de notícias relevantes
+                </div>
+                <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                  Notifica eventos críticos ou de alta relevância novos ou atualizados na carteira
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                disabled={!preferences.enabled}
+                checked={preferences.materialNewsAlerts}
+                onChange={(e) => updatePreferences({ materialNewsAlerts: e.target.checked })}
+                aria-label="Alertas de notícias relevantes"
+                style={{ width: 18, height: 18, accentColor: colors.accent }}
+              />
+            </label>
           </div>
 
           {/* Quiet Hours */}

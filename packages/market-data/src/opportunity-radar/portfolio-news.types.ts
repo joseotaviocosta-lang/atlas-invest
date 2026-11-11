@@ -271,10 +271,50 @@ export interface PortfolioNewsInboxMetrics {
   };
 }
 
+export type NewsAlertThreshold = 'CRITICAL_ONLY' | 'HIGH_AND_CRITICAL' | 'ALL_MATERIAL';
+
+export type NewsAlertDeliveryStatus =
+  | 'DELIVERED'
+  | 'NOTIFICATIONS_PERMISSION_DENIED'
+  | 'NOTIFICATIONS_UNSUPPORTED'
+  | 'NOTIFICATIONS_UNAVAILABLE'
+  | 'DELIVERY_FAILED'
+  | 'DISABLED'
+  | 'NO_ELIGIBLE_EVENTS';
+
+export type NewsAlertType =
+  | 'CRITICAL_NEW'
+  | 'CRITICAL_UPDATE'
+  | 'MATERIAL_NEW'
+  | 'MATERIAL_UPDATE'
+  | 'MATERIAL_BATCH_SUMMARY';
+
+export interface PortfolioNewsAlertCandidateDto {
+  portfolioId: string;
+  canonicalEventId: string;
+  eventVersionFingerprint: string;
+  alertIdentityKey: string;
+  state: 'NEW' | 'UPDATED';
+  materiality: NewsMateriality;
+  ticker: string;
+  headline: string;
+  materialityReason?: string;
+  official: boolean;
+  officialSourceLabel?: string;
+  publishedAt: string;
+}
+
+export interface PortfolioNewsAlertsMeta {
+  baselineInitializedAt: string | null;
+  pendingEligibleCount: number;
+  eligibleEvents: PortfolioNewsAlertCandidateDto[];
+}
+
 export interface PortfolioNewsStateSummary {
   initialized: boolean;
   initializedAt: string | null;
   lastRefreshedAt: string | null;
+  alertsInitializedAt?: string | null;
   newEventsCount: number;
   newMaterialEventsCount: number;
   updatedEventsCount: number;
@@ -289,5 +329,6 @@ export interface PortfolioNewsInboxResult {
   digest?: PortfolioDailyNewsDigest;
   assetDailyStatus?: Record<string, AssetNewsDailyStatus>;
   newsState?: PortfolioNewsStateSummary;
+  alertsMeta?: PortfolioNewsAlertsMeta;
   asOf: string;
 }

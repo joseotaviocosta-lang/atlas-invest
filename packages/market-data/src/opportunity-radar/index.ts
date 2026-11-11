@@ -3,6 +3,7 @@ export * from './portfolio-news.types';
 export * from './news-canonicalizer';
 export * from './news-materiality';
 export * from './news-state';
+export * from './news-alerts';
 export * from './news-score-v2';
 export * from './cvm-registry';
 export * from './cvm-news.provider';

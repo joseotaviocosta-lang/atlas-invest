@@ -7,6 +7,9 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   costEvidenceAlerts: true,
   reconciliationAlerts: true,
   portfolioSummaryAlerts: false, // Conservative: zero marketing spam
+  materialNewsAlerts: true, // APP-16N: Default ON for Desktop local owner (CRITICAL + HIGH only)
+  materialNewsThreshold: 'HIGH_AND_CRITICAL',
+  materialNewsAlertsActivatedAt: null,
   quietHoursEnabled: true,
   quietHoursStart: '22:00',
   quietHoursEnd: '08:00',

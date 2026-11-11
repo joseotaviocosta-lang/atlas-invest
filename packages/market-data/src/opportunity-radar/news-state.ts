@@ -39,6 +39,13 @@ export interface PersistedPortfolioNewsEventMeta {
   allSourceUrls?: string[];
   tickers?: string[];
   headlineCore?: string;
+  // Typed APP-16N local alert tracking (persisted in snapshot_meta JSONB; MIGRATION_REQUIRED = NO)
+  alertBaselineVersionSuppressed?: string | null;
+  alertBaselineRecordedAt?: string | null;
+  alertedVersionFingerprint?: string | null;
+  alertedAt?: string | null;
+  alertClaimedFingerprint?: string | null;
+  alertClaimExpiresAt?: string | null;
 }
 
 export interface PersistedPortfolioNewsEventState {
@@ -754,6 +761,14 @@ export function applyPortfolioNewsState(params: {
   const isBaselineRollout = !syncState || !syncState.newsStateInitializedAt;
   const initializedAt = syncState?.newsStateInitializedAt ?? nowIso;
 
+  const alertsInitializedAtFromStates =
+    persistedStates
+      .map((s) => s.meta?.alertBaselineRecordedAt ?? s.meta?.alertedAt ?? null)
+      .filter((v): v is string => Boolean(v))
+      .sort()[0] ?? null;
+  const isAlertBaselineRollout = !alertsInitializedAtFromStates;
+  const alertsInitializedAt = alertsInitializedAtFromStates ?? nowIso;
+
   const persistedById = new Map<string, PersistedPortfolioNewsEventState>();
   for (const s of persistedStates) {
     persistedById.set(s.canonicalEventId, s);
@@ -838,6 +853,27 @@ export function applyPortfolioNewsState(params: {
       }
     }
 
+    // Carry forward typed APP-16N alert tracking across refreshes without wiping delivered/baseline markers.
+    // On first APP-16N rollout for a portfolio that already has persisted pre-16N NEW/UPDATED rows,
+    // record `alertBaselineVersionSuppressed` so existing historical items do NOT trigger retroactive alerts.
+    const shouldSuppressPre16nNovel =
+      isAlertBaselineRollout &&
+      Boolean(prev) &&
+      prev!.latestFingerprint === latestFingerprintToPersist &&
+      (nextState === 'NEW' || nextState === 'UPDATED');
+
+    persistedMetaToSave = {
+      ...persistedMetaToSave,
+      alertBaselineRecordedAt: prev?.meta?.alertBaselineRecordedAt ?? alertsInitializedAt,
+      alertBaselineVersionSuppressed: shouldSuppressPre16nNovel
+        ? latestFingerprintToPersist
+        : (prev?.meta?.alertBaselineVersionSuppressed ?? null),
+      alertedVersionFingerprint: prev?.meta?.alertedVersionFingerprint ?? null,
+      alertedAt: prev?.meta?.alertedAt ?? null,
+      alertClaimedFingerprint: prev?.meta?.alertClaimedFingerprint ?? null,
+      alertClaimExpiresAt: prev?.meta?.alertClaimExpiresAt ?? null,
+    };
+
     const isNew = nextState === 'NEW';
     const isUpdated = nextState === 'UPDATED';
     const isSeen = nextState === 'SEEN';
@@ -895,6 +931,7 @@ export function applyPortfolioNewsState(params: {
       initialized: true,
       initializedAt,
       lastRefreshedAt: nowIso,
+      alertsInitializedAt,
       newEventsCount,
       newMaterialEventsCount,
       updatedEventsCount,

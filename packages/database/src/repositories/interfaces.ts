@@ -2868,6 +2868,11 @@ export interface UpsertPortfolioNewsEventStateInput {
   meta: Record<string, unknown>;
 }
 
+export interface NewsAlertVersionRef {
+  canonicalEventId: string;
+  eventVersionFingerprint: string;
+}
+
 export interface IPortfolioNewsStateRepository {
   loadSnapshot(portfolioId: string): Promise<{
     syncState: PersistedPortfolioNewsSyncStateRow | null;
@@ -2886,4 +2891,28 @@ export interface IPortfolioNewsStateRepository {
     markAllNovel?: boolean;
     seenAt: string;
   }): Promise<{ updatedCount: number; updatedIds: string[] }>;
+
+  claimPendingNewsAlerts(input: {
+    portfolioId: string;
+    candidates: NewsAlertVersionRef[];
+    claimedAt: string;
+    leaseMs?: number;
+  }): Promise<{ claimed: NewsAlertVersionRef[]; skippedCount: number }>;
+
+  confirmNewsAlertsDelivered(input: {
+    portfolioId: string;
+    delivered: NewsAlertVersionRef[];
+    deliveredAt: string;
+  }): Promise<{ confirmedCount: number }>;
+
+  releaseNewsAlertsClaim(input: {
+    portfolioId: string;
+    items: NewsAlertVersionRef[];
+  }): Promise<{ releasedCount: number }>;
+
+  suppressNewsAlertsBaseline(input: {
+    portfolioId: string;
+    items: NewsAlertVersionRef[];
+    recordedAt: string;
+  }): Promise<{ suppressedCount: number }>;
 }

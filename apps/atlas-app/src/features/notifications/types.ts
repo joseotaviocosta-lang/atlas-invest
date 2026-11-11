@@ -11,7 +11,10 @@ export type NotificationCategory =
   | 'FISCAL_EVIDENCE'
   | 'FISCAL_BLOCKED'
   | 'RECONCILIATION_REVIEW'
+  | 'MATERIAL_NEWS'
   | 'SYSTEM_TEST';
+
+export type MaterialNewsAlertThreshold = 'CRITICAL_ONLY' | 'HIGH_AND_CRITICAL' | 'ALL_MATERIAL';
 
 export type NotificationSeverity = 'HIGH' | 'NORMAL' | 'LOW';
 
@@ -35,6 +38,9 @@ export interface NotificationPreferences {
   costEvidenceAlerts: boolean;
   reconciliationAlerts: boolean;
   portfolioSummaryAlerts: boolean;
+  materialNewsAlerts: boolean;
+  materialNewsThreshold: MaterialNewsAlertThreshold;
+  materialNewsAlertsActivatedAt?: string | null;
   quietHoursEnabled: boolean;
   quietHoursStart: string; // HH:mm format, default '22:00'
   quietHoursEnd: string; // HH:mm format, default '08:00'

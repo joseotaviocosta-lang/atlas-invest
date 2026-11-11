@@ -5,8 +5,10 @@ import React, {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
   type ReactNode,
 } from 'react';
+import { QueryClientContext } from '@tanstack/react-query';
 import { useInRouterContext, useNavigate } from 'react-router-dom';
 import type {
   LocalNotification,
@@ -32,6 +34,12 @@ import { useTaxComplianceTimeline, useCostEvidence, useMonthlyTaxLiability, useT
 import { useIntegrationReviews } from '../imports/hooks';
 import type { ComplianceObligationItem } from '../fiscal/types';
 import { usePortfolio } from '../../providers/PortfolioProvider';
+import { portfolioApi } from '../portfolio/api';
+import type { PortfolioNewsInboxResponseDto } from '../portfolio/types';
+import {
+  DesktopServiceNewsAlertNotifier,
+  processPortfolioNewsAlerts,
+} from './news-alerts';
 
 export interface NotificationContextValue {
   permissionState: NotificationPermissionState;
@@ -77,6 +85,8 @@ function RouterNavigatorInner({
 export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { isAuthenticated, user } = useAuth();
   const { selectedPortfolio } = usePortfolio();
+  const queryClient = useContext(QueryClientContext);
+  const processedInboxObjectsRef = useRef<WeakSet<object>>(new WeakSet());
   const [navigateFn, setNavigateFn] = useState<((path: string) => void) | null>(null);
 
   const userId = user?.id || null;
@@ -173,11 +183,16 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     return result;
   }, []);
 
-  // Update and persist user preferences
+  // Update and persist user preferences (record activation timestamp on OFF -> ON transition)
   const updatePreferences = useCallback(
     (newPrefs: Partial<NotificationPreferences>) => {
-      const updated = saveNotificationPreferences(userId, newPrefs);
-      setPreferences(updated);
+      setPreferences((prev) => {
+        const nextMerged: Partial<NotificationPreferences> = { ...newPrefs };
+        if (newPrefs.materialNewsAlerts === true && !prev.materialNewsAlerts) {
+          nextMerged.materialNewsAlertsActivatedAt = new Date().toISOString();
+        }
+        return saveNotificationPreferences(userId, nextMerged);
+      });
     },
     [userId]
   );
@@ -221,6 +236,79 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
       evaluateNow();
     }
   }, [isAuthenticated, userId, complianceTimeline, reviewInbox, evaluateNow]);
+
+  // APP-16N: Evaluate material news alerts whenever portfolio-news query resolves or refreshes
+  useEffect(() => {
+    if (!queryClient || !isAuthenticated || !userId) return;
+
+    const apiPorts = {
+      claimPendingAlerts: async (
+        portfolioId: string,
+        items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
+      ) => {
+        const res = await portfolioApi.claimPortfolioNewsAlerts(portfolioId, items);
+        return res.data.claimed;
+      },
+      confirmAlertsDelivered: async (
+        portfolioId: string,
+        items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
+      ) => {
+        await portfolioApi.confirmPortfolioNewsAlertsDelivered(portfolioId, items);
+      },
+      releaseAlertsClaim: async (
+        portfolioId: string,
+        items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
+      ) => {
+        await portfolioApi.releasePortfolioNewsAlertsClaim(portfolioId, items);
+      },
+      suppressBaseline: async (
+        portfolioId: string,
+        items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
+      ) => {
+        await portfolioApi.suppressPortfolioNewsAlertsBaseline(portfolioId, items);
+      },
+    };
+
+    const handleInbox = (portfolioId: string, payload: unknown) => {
+      if (!payload || typeof payload !== 'object') return;
+      const inbox = (payload as { data?: PortfolioNewsInboxResponseDto }).data;
+      if (!inbox || !inbox.alertsMeta || inbox.alertsMeta.eligibleEvents.length === 0) return;
+      if (processedInboxObjectsRef.current.has(inbox)) return;
+      processedInboxObjectsRef.current.add(inbox);
+
+      void processPortfolioNewsAlerts({
+        portfolioId,
+        userId,
+        inbox,
+        preferences,
+        ports: apiPorts,
+        notifier: new DesktopServiceNewsAlertNotifier(),
+      }).catch(() => {
+        // Non-blocking: alert delivery issues must never disrupt news inbox or refresh UX
+      });
+    };
+
+    // Process any already-cached portfolio-news query once on mount
+    for (const q of queryClient.getQueryCache().findAll({ queryKey: ['portfolio-news'] })) {
+      const qKey = q.queryKey;
+      if (Array.isArray(qKey) && typeof qKey[1] === 'string' && q.state.status === 'success') {
+        handleInbox(qKey[1], q.state.data);
+      }
+    }
+
+    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+      if (event.type !== 'updated' || event.action.type !== 'success') return;
+      const qKey = event.query.queryKey;
+      if (!Array.isArray(qKey) || qKey[0] !== 'portfolio-news' || typeof qKey[1] !== 'string') {
+        return;
+      }
+      handleInbox(qKey[1], event.action.data);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [queryClient, isAuthenticated, userId, preferences]);
 
   // Logout clean-up (Session Isolation)
   useEffect(() => {
@@ -307,6 +395,9 @@ const defaultNotificationContext: NotificationContextValue = {
     costEvidenceAlerts: true,
     reconciliationAlerts: true,
     portfolioSummaryAlerts: false,
+    materialNewsAlerts: true,
+    materialNewsThreshold: 'HIGH_AND_CRITICAL',
+    materialNewsAlertsActivatedAt: null,
     quietHoursEnabled: true,
     quietHoursStart: '22:00',
     quietHoursEnd: '08:00',

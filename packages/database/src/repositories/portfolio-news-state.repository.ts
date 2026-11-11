@@ -3,6 +3,7 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import { getPrismaClient } from '../client';
 import type {
   IPortfolioNewsStateRepository,
+  NewsAlertVersionRef,
   PersistedNewsEventStateValue,
   PersistedPortfolioNewsEventStateRow,
   PersistedPortfolioNewsSyncStateRow,
@@ -190,7 +191,15 @@ export class PortfolioNewsStateRepository implements IPortfolioNewsStateReposito
             "state" = EXCLUDED."state",
             "latest_update_reasons" = EXCLUDED."latest_update_reasons",
             "event_published_at" = COALESCE(EXCLUDED."event_published_at", "portfolio_news_event_states"."event_published_at"),
-            "snapshot_meta" = EXCLUDED."snapshot_meta",
+            "snapshot_meta" = CASE
+              WHEN "portfolio_news_event_states"."snapshot_meta"->>'alertedVersionFingerprint' = EXCLUDED."latest_fingerprint"
+                AND COALESCE(EXCLUDED."snapshot_meta"->>'alertedVersionFingerprint', '') <> EXCLUDED."latest_fingerprint"
+              THEN EXCLUDED."snapshot_meta" || jsonb_build_object(
+                'alertedVersionFingerprint', "portfolio_news_event_states"."snapshot_meta"->'alertedVersionFingerprint',
+                'alertedAt', "portfolio_news_event_states"."snapshot_meta"->'alertedAt'
+              )
+              ELSE EXCLUDED."snapshot_meta"
+            END,
             "updated_at" = NOW()
         `,
       );
@@ -243,6 +252,247 @@ export class PortfolioNewsStateRepository implements IPortfolioNewsStateReposito
         updatedCount: updateRes.count,
         updatedIds: idsToUpdate,
       };
+    });
+  }
+
+  async claimPendingNewsAlerts(input: {
+    portfolioId: string;
+    candidates: NewsAlertVersionRef[];
+    claimedAt: string;
+    leaseMs?: number;
+  }): Promise<{ claimed: NewsAlertVersionRef[]; skippedCount: number }> {
+    const { portfolioId, candidates, claimedAt, leaseMs = 30_000 } = input;
+    if (candidates.length === 0) {
+      return { claimed: [], skippedCount: 0 };
+    }
+
+    const deduped = new Map<string, NewsAlertVersionRef>();
+    for (const c of candidates) {
+      if (c.canonicalEventId && c.eventVersionFingerprint) {
+        deduped.set(c.canonicalEventId, c);
+      }
+    }
+    const uniqueCandidates = Array.from(deduped.values());
+    if (uniqueCandidates.length === 0) {
+      return { claimed: [], skippedCount: candidates.length };
+    }
+
+    const claimedAtMs = Date.parse(claimedAt) || Date.now();
+    const expiresAtIso = new Date(claimedAtMs + Math.max(1_000, leaseMs)).toISOString();
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`news_state:${portfolioId}`}))`;
+
+      const rows = await tx.portfolioNewsEventStateRecord.findMany({
+        where: {
+          portfolioId,
+          canonicalEventId: { in: uniqueCandidates.map((c) => c.canonicalEventId) },
+        },
+        select: {
+          canonicalEventId: true,
+          latestFingerprint: true,
+          state: true,
+          snapshotMeta: true,
+        },
+      });
+
+      const rowById = new Map(rows.map((r) => [r.canonicalEventId, r]));
+      const claimed: NewsAlertVersionRef[] = [];
+      let skippedCount = 0;
+
+      for (const cand of uniqueCandidates) {
+        const row = rowById.get(cand.canonicalEventId);
+        if (!row) {
+          skippedCount++;
+          continue;
+        }
+        if (row.state !== 'NEW' && row.state !== 'UPDATED') {
+          skippedCount++;
+          continue;
+        }
+        if (row.latestFingerprint !== cand.eventVersionFingerprint) {
+          skippedCount++;
+          continue;
+        }
+
+        const meta = parseMetaObject(row.snapshotMeta);
+        if (meta.alertedVersionFingerprint === cand.eventVersionFingerprint) {
+          skippedCount++;
+          continue;
+        }
+        if (meta.alertBaselineVersionSuppressed === cand.eventVersionFingerprint) {
+          skippedCount++;
+          continue;
+        }
+        if (
+          meta.alertClaimedFingerprint === cand.eventVersionFingerprint &&
+          typeof meta.alertClaimExpiresAt === 'string'
+        ) {
+          const expiresMs = Date.parse(meta.alertClaimExpiresAt);
+          if (Number.isFinite(expiresMs) && expiresMs > claimedAtMs) {
+            skippedCount++;
+            continue;
+          }
+        }
+
+        claimed.push(cand);
+      }
+
+      if (claimed.length > 0) {
+        const payload = claimed.map((c) => ({
+          canonical_event_id: c.canonicalEventId,
+          fingerprint: c.eventVersionFingerprint,
+          expires_at: expiresAtIso,
+        }));
+
+        await tx.$executeRaw(
+          Prisma.sql`
+            UPDATE "portfolio_news_event_states" AS t
+            SET
+              "snapshot_meta" = COALESCE(t."snapshot_meta", '{}'::jsonb) || jsonb_build_object(
+                'alertClaimedFingerprint', r->>'fingerprint',
+                'alertClaimExpiresAt', r->>'expires_at'
+              ),
+              "updated_at" = NOW()
+            FROM jsonb_array_elements(${JSON.stringify(payload)}::jsonb) AS r
+            WHERE t."portfolio_id" = ${portfolioId}::uuid
+              AND t."canonical_event_id" = r->>'canonical_event_id'
+              AND t."latest_fingerprint" = r->>'fingerprint'
+          `,
+        );
+      }
+
+      return { claimed, skippedCount };
+    });
+  }
+
+  async confirmNewsAlertsDelivered(input: {
+    portfolioId: string;
+    delivered: NewsAlertVersionRef[];
+    deliveredAt: string;
+  }): Promise<{ confirmedCount: number }> {
+    const { portfolioId, delivered, deliveredAt } = input;
+    if (delivered.length === 0) {
+      return { confirmedCount: 0 };
+    }
+
+    const deduped = Array.from(
+      new Map(delivered.map((d) => [d.canonicalEventId, d])).values(),
+    );
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`news_state:${portfolioId}`}))`;
+
+      const payload = deduped.map((d) => ({
+        canonical_event_id: d.canonicalEventId,
+        fingerprint: d.eventVersionFingerprint,
+        delivered_at: deliveredAt,
+      }));
+
+      const updatedRows = await tx.$executeRaw(
+        Prisma.sql`
+          UPDATE "portfolio_news_event_states" AS t
+          SET
+            "snapshot_meta" = COALESCE(t."snapshot_meta", '{}'::jsonb) || jsonb_build_object(
+              'alertedVersionFingerprint', r->>'fingerprint',
+              'alertedAt', r->>'delivered_at',
+              'alertClaimedFingerprint', NULL,
+              'alertClaimExpiresAt', NULL
+            ),
+            "updated_at" = NOW()
+          FROM jsonb_array_elements(${JSON.stringify(payload)}::jsonb) AS r
+          WHERE t."portfolio_id" = ${portfolioId}::uuid
+            AND t."canonical_event_id" = r->>'canonical_event_id'
+            AND t."latest_fingerprint" = r->>'fingerprint'
+        `,
+      );
+
+      return { confirmedCount: Number(updatedRows) || 0 };
+    });
+  }
+
+  async releaseNewsAlertsClaim(input: {
+    portfolioId: string;
+    items: NewsAlertVersionRef[];
+  }): Promise<{ releasedCount: number }> {
+    const { portfolioId, items } = input;
+    if (items.length === 0) {
+      return { releasedCount: 0 };
+    }
+
+    const deduped = Array.from(
+      new Map(items.map((d) => [d.canonicalEventId, d])).values(),
+    );
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`news_state:${portfolioId}`}))`;
+
+      const payload = deduped.map((d) => ({
+        canonical_event_id: d.canonicalEventId,
+        fingerprint: d.eventVersionFingerprint,
+      }));
+
+      const updatedRows = await tx.$executeRaw(
+        Prisma.sql`
+          UPDATE "portfolio_news_event_states" AS t
+          SET
+            "snapshot_meta" = COALESCE(t."snapshot_meta", '{}'::jsonb) || jsonb_build_object(
+              'alertClaimedFingerprint', NULL,
+              'alertClaimExpiresAt', NULL
+            ),
+            "updated_at" = NOW()
+          FROM jsonb_array_elements(${JSON.stringify(payload)}::jsonb) AS r
+          WHERE t."portfolio_id" = ${portfolioId}::uuid
+            AND t."canonical_event_id" = r->>'canonical_event_id'
+            AND COALESCE(t."snapshot_meta"->>'alertClaimedFingerprint', '') = r->>'fingerprint'
+        `,
+      );
+
+      return { releasedCount: Number(updatedRows) || 0 };
+    });
+  }
+
+  async suppressNewsAlertsBaseline(input: {
+    portfolioId: string;
+    items: NewsAlertVersionRef[];
+    recordedAt: string;
+  }): Promise<{ suppressedCount: number }> {
+    const { portfolioId, items, recordedAt } = input;
+    if (items.length === 0) {
+      return { suppressedCount: 0 };
+    }
+
+    const deduped = Array.from(
+      new Map(items.map((d) => [d.canonicalEventId, d])).values(),
+    );
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`news_state:${portfolioId}`}))`;
+
+      const payload = deduped.map((d) => ({
+        canonical_event_id: d.canonicalEventId,
+        fingerprint: d.eventVersionFingerprint,
+        recorded_at: recordedAt,
+      }));
+
+      const updatedRows = await tx.$executeRaw(
+        Prisma.sql`
+          UPDATE "portfolio_news_event_states" AS t
+          SET
+            "snapshot_meta" = COALESCE(t."snapshot_meta", '{}'::jsonb) || jsonb_build_object(
+              'alertBaselineVersionSuppressed', r->>'fingerprint',
+              'alertBaselineRecordedAt', COALESCE(t."snapshot_meta"->>'alertBaselineRecordedAt', r->>'recorded_at')
+            ),
+            "updated_at" = NOW()
+          FROM jsonb_array_elements(${JSON.stringify(payload)}::jsonb) AS r
+          WHERE t."portfolio_id" = ${portfolioId}::uuid
+            AND t."canonical_event_id" = r->>'canonical_event_id'
+            AND t."latest_fingerprint" = r->>'fingerprint'
+            AND COALESCE(t."snapshot_meta"->>'alertedVersionFingerprint', '') <> r->>'fingerprint'
+        `,
+      );
+
+      return { suppressedCount: Number(updatedRows) || 0 };
     });
   }
 }
