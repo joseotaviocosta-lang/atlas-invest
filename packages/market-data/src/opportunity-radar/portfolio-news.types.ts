@@ -80,6 +80,7 @@ export interface PortfolioDailyNewsDigest {
   date: string; // YYYY-MM-DD
   totalEvents: number;
   materialEventsCount: number; // CRITICAL + HIGH + MEDIUM
+  attentionEventsCount?: number; // CRITICAL + HIGH (APP-16L-R1)
   criticalCount: number;
   highCount: number;
   mediumCount: number;

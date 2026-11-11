@@ -45,14 +45,14 @@ export const DailyNewsDigestSection: React.FC<DailyNewsDigestSectionProps> = ({ 
   const metrics = inbox?.metrics;
 
   const items = digest?.items ?? [];
-  const materialCount = digest?.materialEventsCount ?? 0;
+  const attentionCount = digest?.attentionEventsCount ?? ((digest?.criticalCount ?? 0) + (digest?.highCount ?? 0));
   const totalAudited = metrics?.totalAuditedAssets ?? 36;
 
-  // Derive dynamic header summary
+  // Derive dynamic header summary (APP-16L-R1: attention count prioritizes CRITICAL + HIGH)
   const summaryHeader =
-    materialCount > 0
-      ? `${materialCount} ${materialCount === 1 ? 'evento merece' : 'eventos merecem'} atenção hoje`
-      : 'Nenhum evento material identificado hoje';
+    attentionCount > 0
+      ? `${attentionCount} ${attentionCount === 1 ? 'evento relevante merece' : 'eventos relevantes merecem'} atenção hoje`
+      : 'Nenhum evento crítico ou de alta relevância identificado hoje';
 
   const providerLabel = React.useMemo(() => {
     if (!metrics) return 'Carregando...';

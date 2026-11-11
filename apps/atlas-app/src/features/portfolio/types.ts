@@ -346,6 +346,7 @@ export interface PortfolioDailyNewsDigestDto {
   date: string;
   totalEvents: number;
   materialEventsCount: number;
+  attentionEventsCount?: number;
   criticalCount: number;
   highCount: number;
   mediumCount: number;

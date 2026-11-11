@@ -149,7 +149,7 @@ describe('PROJECT ATLAS — APP-16L: Daily News Digest & Materiality (Frontend C
 
     expect(html).toContain('O que aconteceu com sua carteira');
     expect(html).toContain('36 ativos monitorados');
-    expect(html).toContain('1 evento merece atenção hoje');
+    expect(html).toContain('1 evento relevante merece atenção hoje');
     expect(html).toContain('PETR4');
     expect(html).toContain('Alta Relevância');
     expect(html).toContain('Fato Relevante');

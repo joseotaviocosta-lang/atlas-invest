@@ -1,14 +1,15 @@
 /**
- * Project Atlas — Daily News Intelligence & Material Event Prioritization (APP-16L)
+ * Project Atlas — Daily News Intelligence & Material Event Prioritization (APP-16L / APP-16L-R1)
  *
  * Deterministic materiality classification, daily news digest builder,
  * asset status derivation, and noise reduction.
  *
  * Core Principles:
  * 1. Materiality != Sentiment (e.g. Fraud is CRITICAL + NEGATIVE; Transformational M&A is HIGH + POSITIVE).
- * 2. Official != Material (Official means verified provenance, but routine filings/forms remain ROUTINE).
+ * 2. Official != Material (Official means verified provenance, but routine filings/forms remain ROUTINE or LOW).
  * 3. Zero External AI / LLM (100% deterministic rules and keyword heuristics).
  * 4. Silence (NO_RECENT_NEWS) is NEVER penalized.
+ * 5. Earnings Schedule vs Actual: Previews/calendars are LOW (25); Actual reports with metrics/numbers are HIGH (85).
  */
 
 import {
@@ -22,7 +23,7 @@ import {
   NewsSourceType,
   PortfolioDailyNewsDigest,
   PortfolioNewsEvent,
-} from './portfolio-news.types';
+} from './portfolio-news.types.js';
 
 export interface NewsMaterialityInput {
   headline: string;
@@ -37,13 +38,23 @@ export interface NewsMaterialityInput {
   species?: string;
 }
 
+function normalizeText(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
 /**
- * Deterministically classifies the materiality level of a news event.
+ * Deterministically classifies the materiality level of a news event (APP-16L-R1 Refinement).
  */
 export function classifyNewsMateriality(input: NewsMaterialityInput): MaterialityClassification {
   const headline = (input.headline || '').trim();
   const summary = (input.summary || '').trim();
+  const normHeadline = normalizeText(headline);
+  const normSummary = normalizeText(summary);
   const fullText = `${headline} ${summary}`.toLowerCase();
+  const normFullText = `${normHeadline} ${normSummary}`;
   const category = (input.category || '').toLowerCase();
   const subject = (input.subject || '').toLowerCase();
   const species = (input.species || '').toLowerCase();
@@ -52,7 +63,55 @@ export function classifyNewsMateriality(input: NewsMaterialityInput): Materialit
   const reasons: string[] = [];
 
   // =========================================================================
-  // 1. CRITICAL (Score 90-100) — Existential, insolvencies, corporate control, fraud
+  // 1. ROUTINE PRE-FILTER (Score 0-14) — Bureaucratic & Periodic Compliance Filings
+  // Art. 11/12 insider trading forms, English translated DFs, routine notices, committee resignations
+  // =========================================================================
+  const isPeriodicCompliance =
+    // CVM Art. 11 & Art. 12 insider trading/shareholder position notices
+    /art\.?\s*11|art\.?\s*12|valores mobiliarios negociados e detidos|negociacao de administradores/i.test(normFullText) ||
+    // Translated corporate documents (Demonstrações Financeiras em Inglês, Versão em Inglês, etc.)
+    /demonstracoes financeiras padronizadas em ingles|versao em ingles|english version|dfp em ingles|itr em ingles/i.test(normFullText) ||
+    // Internal audit reports, advisory presentations without actual financial metric disclosure
+    /assessoria de auditoria interna|relatorio executivo de gerenciamento de riscos|diagnostico de aderencia|revisao do regimento interno da auditoria/i.test(normFullText) ||
+    // Routine calendar / corporate event notifications
+    /calendario de eventos corporativos|comunicacao sobre informacoes trimestrais|entrega das informacoes trimestrais/i.test(normFullText) ||
+    // Pure administrative filings & committee secretariat
+    /termo de posse|renuncia de membro de comite|eleicao de membros de comite|comite de auditoria estatutario/i.test(normFullText) ||
+    // CVM form filings (FCA, IPE cadastral updates)
+    /formulario cadastral|formulario de referencia|atualizacao cadastral cvm/i.test(normFullText);
+
+  if (isPeriodicCompliance && !/fraude|falencia|recuperacao judicial|opa\b/i.test(normFullText)) {
+    const reason = 'Comunicação administrativa ou regulatória periódica rotineira (sem impacto econômico relevante)';
+    reasons.push(reason);
+    return { level: 'ROUTINE', score: 5, reasons, primaryReason: reason };
+  }
+
+  const isRoutineFiling =
+    /informe\s+peri[oó]dico|informe\s+mensal|informe\s+trimestral\s+estruturado|comprovante\s+de\s+entrega/i.test(fullText) ||
+    /calend[aá]rio\s+de\s+eventos|termo\s+de\s+fechamento|demonstrativo\s+de\s+governan[cç]a|c[oó]digo\s+de\s+conduta/i.test(fullText) ||
+    /reapresenta[cç][aã]o|retifica[cç][aã]o|documento\s+substitutivo|vers[aã]o\s+substitutiva/i.test(fullText) ||
+    category.includes('informe periódico') ||
+    category.includes('calendário') ||
+    subject.includes('comprovante') ||
+    species.includes('rotina') ||
+    /ata\s+da\s+reuni[aã]o\s+do\s+conselho\s+de\s+administra[cç][aã]o\s+extraordin[aá]ria\s+sem\s+pauta/i.test(fullText);
+
+  // If it's a routine filing AND doesn't mention major catalyst keywords
+  if (isRoutineFiling && !/(?:aquisi[cç][aã]o|fus[aã]o|recompra|dividendo|preju[ií]zo|lucro|balan[cç]o|emiss[aã]o|loca[cç][aã]o)/i.test(fullText)) {
+    const reason = 'Documento regulatório periódico ou informe administrativo de rotina';
+    reasons.push(reason);
+    return { level: 'ROUTINE', score: 5, reasons, primaryReason: reason };
+  }
+
+  // Generic administrative notices with no material novelty
+  if (eventType === 'REGULATORY' && /aviso\s+gen[eé]rico|informa[cç][oõ]es\s+cadastrais|atualiza[cç][aã]o\s+de\s+dados/i.test(fullText)) {
+    const reason = 'Atualização cadastral ou formalidade regulatória sem novidade material';
+    reasons.push(reason);
+    return { level: 'ROUTINE', score: 8, reasons, primaryReason: reason };
+  }
+
+  // =========================================================================
+  // 2. CRITICAL (Score 90-100) — Existential, insolvencies, corporate control, fraud
   // =========================================================================
   if (
     /recupera[cç][aã]o\s+judicial|fal[eê]ncia|concordata|autofal[eê]ncia/i.test(fullText) ||
@@ -99,44 +158,41 @@ export function classifyNewsMateriality(input: NewsMaterialityInput): Materialit
   }
 
   // =========================================================================
-  // 2. ROUTINE (Score 0-14) — Bureaucratic administrative filings & forms
+  // 3. EARNINGS CONTEXT: DISTINGUISH ACTUAL EARNINGS VS SCHEDULE / PREVIEWS
+  // Calendar / Expectation / Watchlist -> LOW (25)
+  // Actual Results / DFP / ITR with metrics -> HIGH (85)
   // =========================================================================
-  const isRoutineFiling =
-    /informe\s+peri[oó]dico|informe\s+mensal|informe\s+trimestral\s+estruturado|comprovante\s+de\s+entrega/i.test(fullText) ||
-    /calend[aá]rio\s+de\s+eventos|termo\s+de\s+fechamento|demonstrativo\s+de\s+governan[cç]a|c[oó]digo\s+de\s+conduta/i.test(fullText) ||
-    /reapresenta[cç][aã]o|retifica[cç][aã]o|documento\s+substitutivo|vers[aã]o\s+substitutiva/i.test(fullText) ||
-    category.includes('informe periódico') ||
-    category.includes('calendário') ||
-    subject.includes('comprovante') ||
-    species.includes('rotina') ||
-    /ata\s+da\s+reuni[aã]o\s+do\s+conselho\s+de\s+administra[cç][aã]o\s+extraordin[aá]ria\s+sem\s+pauta/i.test(fullText);
-
-  // If it's a routine filing AND doesn't mention major catalyst keywords
-  if (isRoutineFiling && !/(?:aquisi[cç][aã]o|fus[aã]o|recompra|dividendo|preju[ií]zo|lucro|balan[cç]o|emiss[aã]o|loca[cç][aã]o)/i.test(fullText)) {
-    const reason = 'Documento regulatório periódico ou informe administrativo de rotina';
-    reasons.push(reason);
-    return { level: 'ROUTINE', score: 5, reasons, primaryReason: reason };
-  }
-
-  // Generic administrative notices with no material novelty
-  if (eventType === 'REGULATORY' && /aviso\s+gen[eé]rico|informa[cç][oõ]es\s+cadastrais|atualiza[cç][aã]o\s+de\s+dados/i.test(fullText)) {
-    const reason = 'Atualização cadastral ou formalidade regulatória sem novidade material';
-    reasons.push(reason);
-    return { level: 'ROUTINE', score: 8, reasons, primaryReason: reason };
-  }
-
-  // =========================================================================
-  // 3. HIGH (Score 70-89) — Corporate transformations, earnings, major capital ops
-  // =========================================================================
-  if (
+  const isEarningsContext =
     eventType === 'EARNINGS' ||
-    /resultado\s+trimestral|divulga[cç][aã]o\s+de\s+resultados|balan[cç]o\s+do\s+\d+t\d+|lucro\s+l[ií]quido\s+de|ebitda|guidance/i.test(fullText)
-  ) {
-    const reason = 'Divulgação de resultados ou projeções corporativas (guidance)';
-    reasons.push(reason);
-    return { level: 'HIGH', score: 85, reasons, primaryReason: reason };
+    /balanco|resultado|lucro|prejuizo|ebitda|receita liquida|itr|dfp|demonstracoes financeiras/i.test(normFullText);
+
+  if (isEarningsContext) {
+    const isEarningsSchedule =
+      /veja quais empresas|calendario de resultados|agenda de resultados|divulgam nesta semana|divulga nesta semana|divulgam hoje|divulga hoje|temporada de balancos comeca|o que esperar do|previa do resultado|previa 3t|previa 4t|previa 1t|previa 2t|estimativas para/i.test(normFullText) &&
+      !/lucro liquido de r\$|prejuizo liquido de r\$|ebitda atinge r\$|receita cresce|lucro salta|lucro cai|tem alta de \d+% no lucro|registra lucro/i.test(normFullText);
+
+    if (isEarningsSchedule) {
+      const reason = 'Calendário, expectativa ou agenda de divulgação de resultados corporativos';
+      reasons.push(reason);
+      return { level: 'LOW', score: 25, reasons, primaryReason: reason };
+    }
+
+    const isEarningsActual =
+      eventType === 'EARNINGS' ||
+      /divulgacao de resultados|apresentacao para analistas|demonstracoes financeiras padronizadas|informacoes trimestrais/i.test(normFullText) ||
+      (/lucro liquido|prejuizo liquido|ebitda|receita liquida/i.test(normFullText) &&
+       (/divulga resultado|divulga balanco|reporta lucro|reporta prejuizo|lucro sobe|lucro cai|lucro cresce|alta de \d+%|queda de \d+%|atinge r\$|r\$\s*\d+/i.test(normFullText)));
+
+    if (isEarningsActual) {
+      const reason = 'Divulgação oficial de resultados trimestrais/anuais ou métricas financeiras consolidadas';
+      reasons.push(reason);
+      return { level: 'HIGH', score: 85, reasons, primaryReason: reason };
+    }
   }
 
+  // =========================================================================
+  // 4. HIGH (Score 70-89) — Corporate transformations, buybacks, major capital ops
+  // =========================================================================
   if (
     /recompra\s+de\s+a[cç][oõ]es|programa\s+de\s+recompra|novo\s+programa\s+de\s+recompra/i.test(fullText)
   ) {
@@ -192,15 +248,58 @@ export function classifyNewsMateriality(input: NewsMaterialityInput): Materialit
     return { level: 'HIGH', score: 78, reasons, primaryReason: reason };
   }
 
-  // Generic FACT_RELEVANT with corporate changes
-  if (eventType === 'FACT_RELEVANT') {
-    const reason = 'Fato relevante oficial corporativo sobre negócios ou estratégia';
+  // -------------------------------------------------------------------------
+  // FII Material Operations (Real Estate / Agribusiness)
+  // -------------------------------------------------------------------------
+  const isFiiRealEstateOp =
+    /aquisicao de imovel|venda de imovel|nova locacao|locacao de|vacancia relevante|aumento de vacancia|devolucao de|rescisao de contrato/i.test(normFullText) ||
+    /renegociacao de cri|mudanca de gestor|mudanca de administrador|emissao de cotas/i.test(normFullText);
+
+  if (isFiiRealEstateOp) {
+    const reason = 'Movimentação relevante em carteira imobiliária, locação ou gestão de FII';
     reasons.push(reason);
-    return { level: 'HIGH', score: 75, reasons, primaryReason: reason };
+    return { level: 'HIGH', score: 80, reasons, primaryReason: reason };
+  }
+
+  // Substantive FACT_RELEVANT with catalyst keywords or strategic business discoveries/announcements
+  if (eventType === 'FACT_RELEVANT') {
+    const isSubstantiveFact =
+      /descoberta|nova concessao|parceria estrategica|contrato relevante|acordo de leniencia|encerramento de disputa|acordo de acionistas/i.test(normFullText) ||
+      /investimento de r\$|aporte de r\$|emissao de debentures|oferta publica/i.test(normFullText);
+
+    if (isSubstantiveFact) {
+      const reason = 'Fato Relevante com impacto operacional, societário ou financeiro relevante';
+      reasons.push(reason);
+      return { level: 'HIGH', score: 75, reasons, primaryReason: reason };
+    }
+
+    const reason = 'Fato Relevante ou comunicação oficial comunicada ao mercado';
+    reasons.push(reason);
+    return { level: 'MEDIUM', score: 50, reasons, primaryReason: reason };
   }
 
   // =========================================================================
-  // 4. MEDIUM (Score 40-69) — Ordinary dividends, market notices, assemblies
+  // 5. ASSEMBLEIAS GERAIS: EXTRAORDINARY (AGE) VS ORDINARY (AGO)
+  // Reorganization / Transformation -> HIGH (70)
+  // Ordinary / Routine approval of financial statements -> LOW (25)
+  // =========================================================================
+  if (eventType === 'ASSEMBLY' || /assembleia geral|convocacao.*assembleia|ata da assembleia/i.test(normFullText)) {
+    const isTransformativeAssembly =
+      /assembleia geral extraordinaria|age|fusao|incorporacao|cisao|aumento de capital|reforma de estatuto/i.test(normFullText);
+
+    if (isTransformativeAssembly) {
+      const reason = 'Convocação ou deliberação de Assembleia Geral Extraordinária (mudança estatutária ou societária)';
+      reasons.push(reason);
+      return { level: 'HIGH', score: 70, reasons, primaryReason: reason };
+    }
+
+    const reason = 'Convocação ou ata de Assembleia Geral Ordinária (aprovação rotineira de contas / demonstrações)';
+    reasons.push(reason);
+    return { level: 'LOW', score: 25, reasons, primaryReason: reason };
+  }
+
+  // =========================================================================
+  // 6. MEDIUM (Score 40-69) — Ordinary dividends, market notices, management changes
   // =========================================================================
   if (
     eventType === 'DIVIDEND' ||
@@ -220,49 +319,61 @@ export function classifyNewsMateriality(input: NewsMaterialityInput): Materialit
     return { level: 'MEDIUM', score: 50, reasons, primaryReason: reason };
   }
 
-  if (
-    eventType === 'ASSEMBLY' ||
-    /assembleia\s+geral|convoca[cç][aã]o\s+de\s+ago|convoca[cç][aã]o\s+de\s+age/i.test(fullText)
-  ) {
-    const reason = 'Convocação ou deliberação de assembleia geral de acionistas/cotistas';
+  const isGovernanceOrManagement =
+    /eleicao de diretor presidente|mudanca de ceo|novo diretor financeiro|novo cfo|eleicao do conselho de administracao/i.test(normFullText);
+
+  if (isGovernanceOrManagement) {
+    const reason = 'Alteração em liderança executiva (CEO/CFO) ou composição do Conselho de Administração';
     reasons.push(reason);
-    return { level: 'MEDIUM', score: 48, reasons, primaryReason: reason };
+    return { level: 'MEDIUM', score: 60, reasons, primaryReason: reason };
   }
 
-  if (eventType === 'MANAGEMENT_REPORT' || /relat[oó]rio\s+gerencial/i.test(fullText)) {
-    const reason = 'Relatório gerencial com panorama de gestão e indicadores';
+  const isCreditRatingUpdate =
+    /elevacao de rating|rebaixamento de rating|nota de credito|classificacao de risco|fitch|moody'?s|s&p/i.test(normFullText);
+
+  if (isCreditRatingUpdate) {
+    const reason = 'Revisão ou atualização de classificação de crédito / rating corporativo';
+    reasons.push(reason);
+    return { level: 'MEDIUM', score: 55, reasons, primaryReason: reason };
+  }
+
+  const isOperationalMilestone =
+    /inauguracao de fabrica|novo contrato de fornecimento|autorizacao regulatoria|licenca ambiental|novo produto/i.test(normFullText);
+
+  if (isOperationalMilestone) {
+    const reason = 'Marco operacional ou regulatório de impacto moderado nos negócios';
     reasons.push(reason);
     return { level: 'MEDIUM', score: 45, reasons, primaryReason: reason };
   }
 
   // =========================================================================
-  // 5. LOW (Score 15-39) — Financial media commentary, price targets, chatter
+  // 7. LOW (Score 15-39) — Financial media commentary, price targets, chatter, FII reports
   // =========================================================================
   if (
-    /pre[cç]o-alvo|recomenda[cç][aã]o|rating|alta\s+do\s+dia|queda\s+do\s+dia|destaques\s+do\s+ibovespa|gr[aá]fico/i.test(fullText) ||
-    /an[aá]lise\s+gr[aá]fica|ibovespa\s+hoje|o\s+que\s+esperar/i.test(fullText)
+    /pre[cç]o-alvo|recomenda[cç][aã]o|alta\s+do\s+dia|queda\s+do\s+dia|destaques\s+do\s+ibovespa|gr[aá]fico/i.test(fullText) ||
+    /an[aá]lise\s+gr[aá]fica|ibovespa\s+hoje|o\s+que\s+esperar/i.test(fullText) ||
+    eventType === 'MANAGEMENT_REPORT' ||
+    /relat[oó]rio\s+gerencial/i.test(fullText)
   ) {
-    const reason = 'Notícia setorial, análise de mercado ou relatório de analistas';
+    const reason = 'Notícia setorial, análise de mercado, recomendação ou relatório gerencial rotineiro';
     reasons.push(reason);
     return { level: 'LOW', score: 25, reasons, primaryReason: reason };
   }
 
-  // Default fallback based on importance / officiality
-  if (input.importance && input.importance >= 4) {
-    const reason = 'Notícia corporativa de relevância intermediária';
-    reasons.push(reason);
-    return { level: 'HIGH', score: 70, reasons, primaryReason: reason };
-  }
-
+  // =========================================================================
+  // 8. DEFAULT FALLBACK
+  // Unclassified notices without material triggers default to LOW or ROUTINE.
+  // Never default official filings directly to MEDIUM or HIGH.
+  // =========================================================================
   if (input.official) {
-    const reason = 'Comunicação oficial arquivada na CVM / B3';
+    const reason = 'Comunicação oficial arquivada na CVM / B3 sem gatilho de materialidade identificado';
     reasons.push(reason);
-    return { level: 'MEDIUM', score: 40, reasons, primaryReason: reason };
+    return { level: 'LOW', score: 20, reasons, primaryReason: reason };
   }
 
-  const reason = 'Notícia de mercado ou menção na imprensa financeira';
+  const reason = 'Notícia de mercado ou menção na imprensa com impacto fundamental não material';
   reasons.push(reason);
-  return { level: 'LOW', score: 20, reasons, primaryReason: reason };
+  return { level: 'LOW', score: 18, reasons, primaryReason: reason };
 }
 
 /**
@@ -284,6 +395,7 @@ export function buildDailyNewsDigest(
       date: dateStr,
       totalEvents: 0,
       materialEventsCount: 0,
+      attentionEventsCount: 0,
       criticalCount: 0,
       highCount: 0,
       mediumCount: 0,
@@ -335,6 +447,7 @@ export function buildDailyNewsDigest(
   }
 
   const materialEventsCount = criticalCount + highCount + mediumCount;
+  const attentionEventsCount = criticalCount + highCount;
 
   // Sorting hierarchy for Daily Digest:
   // 1. Materiality Level: CRITICAL (5) > HIGH (4) > MEDIUM (3) > LOW (2) > ROUTINE (1)
@@ -451,6 +564,7 @@ export function buildDailyNewsDigest(
     date: dateStr,
     totalEvents: events.length,
     materialEventsCount,
+    attentionEventsCount,
     criticalCount,
     highCount,
     mediumCount,
