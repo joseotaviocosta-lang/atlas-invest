@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { execSync } from 'child_process';
 import { randomUUID } from 'crypto';
+import { listTrackedMigrations, seedPreLgpdHistoricalEntities } from './migration-test-helpers';
 
 describe('Database Migration Upgrade: Phase 5B Benchmark Observations (Sections 13 & 54)', () => {
   const adminUrl = 'postgresql://atlas:atlas@localhost:5433/postgres?schema=public';
@@ -14,6 +15,7 @@ describe('Database Migration Upgrade: Phase 5B Benchmark Observations (Sections 
 
   let adminPrisma: PrismaClient;
   let upgradePrisma: PrismaClient;
+  let totalMigrations = 0;
 
   const testUserId = randomUUID();
   const testPortfolioId = randomUUID();
@@ -34,13 +36,11 @@ describe('Database Migration Upgrade: Phase 5B Benchmark Observations (Sections 
 
     // 1. Gather all migrations from packages/database/prisma/migrations
     const migrationsDir = path.resolve(__dirname, '../../packages/database/prisma/migrations');
-    const allMigrationDirs = fs
-      .readdirSync(migrationsDir, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .sort();
+    const allMigrationDirs = listTrackedMigrations(migrationsDir);
+    totalMigrations = allMigrationDirs.length;
 
-    expect(allMigrationDirs.length).toBe(25);
+    expect(totalMigrations).toBeGreaterThanOrEqual(25);
+    expect(allMigrationDirs).toContain('20261016200000_add_benchmark_observations_and_revisions');
 
     // Create _prisma_migrations table in upgrade probe DB
     await upgradePrisma.$executeRawUnsafe(`
@@ -77,83 +77,24 @@ describe('Database Migration Upgrade: Phase 5B Benchmark Observations (Sections 
     }
 
     // 2. Seed representative financial data in pre-5B (Phase 5A) schema
-    await upgradePrisma.user.create({
-      data: {
-        id: testUserId,
-        email: 'pre5b-upgrade@atlas.dev',
-        name: 'Pre-5B Investor',
-        passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$dummy$abcdefghijklmnopqrstuvwxyz0123456789',
-      },
-    });
-
-    const institution = await upgradePrisma.institution.create({
-      data: {
-        id: randomUUID(),
-        name: 'XP Investimentos',
-        type: 'BROKER',
-        country: 'BR',
-      },
-    });
-
-    await upgradePrisma.portfolio.create({
-      data: {
-        id: testPortfolioId,
-        userId: testUserId,
-        name: 'Carteira Principal',
-        baseCurrency: 'BRL',
-        type: 'INDIVIDUAL',
-        status: 'ACTIVE',
-      },
-    });
-
-    await upgradePrisma.account.create({
-      data: {
-        id: testAccountId,
-        portfolioId: testPortfolioId,
-        institutionId: institution.id,
-        name: 'Conta XP',
-        currency: 'BRL',
-        status: 'ACTIVE',
-      },
-    });
-
-    await upgradePrisma.asset.create({
-      data: {
-        id: testAssetId,
-        ticker: 'PETR4',
-        name: 'Petrobras PN',
-        type: 'STOCK',
-        currency: 'BRL',
-        exchange: 'B3',
-      },
-    });
-
-    await upgradePrisma.transaction.create({
-      data: {
-        id: testTxId,
-        portfolioId: testPortfolioId,
-        accountId: testAccountId,
-        assetId: testAssetId,
-        type: 'BUY',
-        tradeDate: new Date('2026-01-10T00:00:00.000Z'),
-        settlementDate: new Date('2026-01-12T00:00:00.000Z'),
-        quantity: '100',
-        unitPrice: '35.00',
-        amount: '3500.00',
-        currency: 'BRL',
-      },
-    });
-
-    await upgradePrisma.marketQuoteRecord.create({
-      data: {
+    await seedPreLgpdHistoricalEntities(upgradePrisma, {
+      userId: testUserId,
+      email: 'pre5b-upgrade@atlas.dev',
+      userName: 'Pre-5B Investor',
+      portfolioId: testPortfolioId,
+      portfolioName: 'Carteira Principal',
+      accountId: testAccountId,
+      accountName: 'Conta XP',
+      assetId: testAssetId,
+      txId: testTxId,
+      tradeDate: '2026-01-10',
+      settlementDate: '2026-01-12',
+      unitPrice: '35.00',
+      amount: '3500.00',
+      marketQuote: {
         id: testQuoteId,
-        assetId: testAssetId,
-        tradingDate: new Date('2026-10-16T00:00:00.000Z'),
-        currency: 'BRL',
-        close: new Prisma.Decimal('59.25'),
-        provider: 'BRAPI',
-        providerSymbol: 'PETR4',
-        fetchCount: 1,
+        tradingDate: '2026-10-16',
+        close: '59.25',
       },
     });
   }, 180_000);
@@ -182,17 +123,17 @@ describe('Database Migration Upgrade: Phase 5B Benchmark Observations (Sections 
       encoding: 'utf-8',
     });
 
-    expect(deployOutput).toContain('25 migrations found in prisma/migrations');
+    expect(deployOutput).toContain(`${totalMigrations} migrations found in prisma/migrations`);
     expect(deployOutput).toContain(
       'Applying migration `20261016200000_add_benchmark_observations_and_revisions`',
     );
     expect(deployOutput).toContain('All migrations have been successfully applied');
 
-    // 3. Post-upgrade state check: exactly 25 migrations
+    // 3. Post-upgrade state check
     const appliedPost = await upgradePrisma.$queryRawUnsafe<Array<{ count: bigint }>>(
       `SELECT count(*) as count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL`,
     );
-    expect(Number(appliedPost[0]!.count)).toBe(25);
+    expect(Number(appliedPost[0]!.count)).toBe(totalMigrations);
 
     // 4. Parity check: 100% preservation of users, portfolios, accounts, assets, transactions, market quotes
     const user = await upgradePrisma.user.findUnique({ where: { id: testUserId } });
@@ -230,7 +171,7 @@ describe('Database Migration Upgrade: Phase 5B Benchmark Observations (Sections 
       encoding: 'utf-8',
     });
 
-    expect(zeroOutput).toContain('25 migrations found in prisma/migrations');
+    expect(zeroOutput).toContain(`${totalMigrations} migrations found in prisma/migrations`);
     expect(zeroOutput).toContain('All migrations have been successfully applied.');
 
     const zeroPrisma = new PrismaClient({ datasources: { db: { url: zeroDbUrl } } });
@@ -238,7 +179,7 @@ describe('Database Migration Upgrade: Phase 5B Benchmark Observations (Sections 
       const applied = await zeroPrisma.$queryRawUnsafe<Array<{ count: bigint }>>(
         `SELECT count(*) as count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL`,
       );
-      expect(Number(applied[0]!.count)).toBe(25);
+      expect(Number(applied[0]!.count)).toBe(totalMigrations);
 
       const [{ regclass }] = await zeroPrisma.$queryRawUnsafe<Array<{ regclass: string | null }>>(
         `SELECT to_regclass('public.benchmark_observations')::text AS "regclass"`,
@@ -258,7 +199,7 @@ describe('Database Migration Upgrade: Phase 5B Benchmark Observations (Sections 
       },
     );
 
-    expect(secondDeployOutput).toContain('25 migrations found in prisma/migrations');
+    expect(secondDeployOutput).toContain(`${totalMigrations} migrations found in prisma/migrations`);
     expect(secondDeployOutput).toContain('No pending migrations to apply.');
   });
 });

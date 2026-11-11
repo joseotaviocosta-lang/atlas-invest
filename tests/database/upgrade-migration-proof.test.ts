@@ -4,13 +4,14 @@ import * as path from 'path';
 import { PrismaClient } from '@prisma/client';
 import { execSync } from 'child_process';
 import { randomUUID } from 'crypto';
+import { listTrackedMigrations, seedPreLgpdHistoricalEntities } from './migration-test-helpers';
 
 /**
  * Phase 4J.2A — Mandatory Upgrade-Path & Migration Reproducibility Proof.
  *
  * Demonstrates:
  * 1. A database at pre-final migration state (1-16) with existing historical data
- * 2. Can be upgraded cleanly through `prisma migrate deploy` to current HEAD (1-18)
+ * 2. Can be upgraded cleanly through `prisma migrate deploy` to current HEAD
  * 3. With 0 data loss, 0 schema drift, 0 orphans, and 100% data preservation.
  */
 describe('Phase 4J.2A — Database Upgrade Path & Migration Reproducibility Proof', () => {
@@ -20,6 +21,7 @@ describe('Phase 4J.2A — Database Upgrade Path & Migration Reproducibility Proo
 
   let adminPrisma: PrismaClient;
   let upgradePrisma: PrismaClient;
+  let totalMigrations = 0;
 
   const testUserId = randomUUID();
   const testPortfolioId = randomUUID();
@@ -38,13 +40,10 @@ describe('Phase 4J.2A — Database Upgrade Path & Migration Reproducibility Proo
 
     // 2. Apply migrations 1 through 16 manually in order to simulate pre-final DB state
     const migrationsDir = path.join(process.cwd(), 'packages/database/prisma/migrations');
-    const allMigrationDirs = fs
-      .readdirSync(migrationsDir, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .sort();
-
-    expect(allMigrationDirs.length).toBe(25);
+    const allMigrationDirs = listTrackedMigrations(migrationsDir);
+    totalMigrations = allMigrationDirs.length;
+    expect(totalMigrations).toBeGreaterThanOrEqual(25);
+    expect(allMigrationDirs).toContain('20261006120000_repair_taxpayer_confirmations');
 
     // Create _prisma_migrations table
     await upgradePrisma.$executeRawUnsafe(`
@@ -81,71 +80,16 @@ describe('Phase 4J.2A — Database Upgrade Path & Migration Reproducibility Proo
     }
 
     // 3. Seed pre-upgrade representative data
-    await upgradePrisma.user.create({
-      data: {
-        id: testUserId,
-        email: 'upgrade-proof@atlas.dev',
-        name: 'Upgrade Investor',
-        passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$dummy$abcdefghijklmnopqrstuvwxyz0123456789',
-      },
-    });
-
-    const institution = await upgradePrisma.institution.create({
-      data: {
-        id: randomUUID(),
-        name: 'XP Investimentos',
-        type: 'BROKER',
-        country: 'BR',
-      },
-    });
-
-    await upgradePrisma.portfolio.create({
-      data: {
-        id: testPortfolioId,
-        userId: testUserId,
-        name: 'Main Portfolio',
-        baseCurrency: 'BRL',
-        type: 'INDIVIDUAL',
-        status: 'ACTIVE',
-      },
-    });
-
-    await upgradePrisma.account.create({
-      data: {
-        id: testAccountId,
-        portfolioId: testPortfolioId,
-        institutionId: institution.id,
-        name: 'Conta XP',
-        currency: 'BRL',
-        status: 'ACTIVE',
-      },
-    });
-
-    await upgradePrisma.asset.create({
-      data: {
-        id: testAssetId,
-        ticker: 'PETR4',
-        name: 'Petrobras PN',
-        type: 'STOCK',
-        currency: 'BRL',
-        exchange: 'B3',
-      },
-    });
-
-    await upgradePrisma.transaction.create({
-      data: {
-        id: testTxId,
-        portfolioId: testPortfolioId,
-        accountId: testAccountId,
-        assetId: testAssetId,
-        type: 'BUY',
-        tradeDate: new Date('2025-05-10T00:00:00.000Z'),
-        settlementDate: new Date('2025-05-12T00:00:00.000Z'),
-        quantity: '100',
-        unitPrice: '35.50',
-        amount: '3550.00',
-        currency: 'BRL',
-      },
+    await seedPreLgpdHistoricalEntities(upgradePrisma, {
+      userId: testUserId,
+      email: 'upgrade-proof@atlas.dev',
+      userName: 'Upgrade Investor',
+      portfolioId: testPortfolioId,
+      portfolioName: 'Main Portfolio',
+      accountId: testAccountId,
+      accountName: 'Conta XP',
+      assetId: testAssetId,
+      txId: testTxId,
     });
   }, 180_000);
 
@@ -195,7 +139,7 @@ describe('Phase 4J.2A — Database Upgrade Path & Migration Reproducibility Proo
     const applied = await upgradePrisma.$queryRawUnsafe<Array<{ count: bigint }>>(
       `SELECT count(*) as count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL`,
     );
-    expect(Number(applied[0]!.count)).toBe(25);
+    expect(Number(applied[0]!.count)).toBe(totalMigrations);
 
     // Verify data preservation
     const user = await upgradePrisma.user.findUnique({ where: { id: testUserId } });

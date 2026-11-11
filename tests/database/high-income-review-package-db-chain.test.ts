@@ -28,7 +28,8 @@ describe('Phase 4I.6 — High-income review package DB-chain (migrations-only, n
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
 
-    expect(trackedDirs.length).toBe(23);
+    expect(trackedDirs.length).toBeGreaterThanOrEqual(23);
+    expect(trackedDirs).toContain('20261013000000_add_tax_compliance_period_close');
 
     const appliedRows = await prisma.$queryRawUnsafe<Array<{ migration_name: string }>>(
       `SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY migration_name`,

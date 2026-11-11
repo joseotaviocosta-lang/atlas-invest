@@ -12,9 +12,12 @@ describe('Database Migration Upgrade: Phase 5C FX Observations (Migration 26)', 
       .map((entry) => entry.name)
       .sort();
 
-    expect(allMigrationDirs.length).toBe(26);
-    expect(allMigrationDirs[24]).toBe('20261016200000_add_benchmark_observations_and_revisions');
-    expect(allMigrationDirs[25]).toBe('20261017000000_add_fx_observations_and_revisions');
+    expect(allMigrationDirs.length).toBeGreaterThanOrEqual(26);
+    expect(allMigrationDirs).toContain('20261016200000_add_benchmark_observations_and_revisions');
+    expect(allMigrationDirs).toContain('20261017000000_add_fx_observations_and_revisions');
+    expect(allMigrationDirs.indexOf('20261016200000_add_benchmark_observations_and_revisions')).toBeLessThan(
+      allMigrationDirs.indexOf('20261017000000_add_fx_observations_and_revisions'),
+    );
   });
 
   it('migration 26 SQL is strictly non-destructive (only creates fx tables and indices)', () => {

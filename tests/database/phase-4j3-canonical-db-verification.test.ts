@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
+import { listTrackedMigrations, seedPreLgpdHistoricalEntities } from './migration-test-helpers';
 
 const PG_HOST = process.env.ATLAS_TEST_PG_HOST || 'localhost';
 const PG_PORT = process.env.ATLAS_TEST_PG_PORT || '5433';
@@ -51,13 +52,14 @@ describe('Phase 4J.3 — Canonical Database Version & Integrity Verification (Po
     expect(ver).toMatch(/PostgreSQL 16\./i);
   });
 
-  it('2. Fresh DB: prisma migrate deploy applies all 19 migrations from zero cleanly', async () => {
+  it('2. Fresh DB: prisma migrate deploy applies all tracked migrations from zero cleanly', async () => {
+    const totalMigrations = listTrackedMigrations().length;
     const deployOut = execSync('pnpm --filter @atlas/database exec prisma migrate deploy', {
       env: { ...process.env, DATABASE_URL: FRESH_DB_URL },
       encoding: 'utf-8',
     });
 
-    expect(deployOut).toContain('23 migrations found in prisma/migrations');
+    expect(deployOut).toContain(`${totalMigrations} migrations found in prisma/migrations`);
     expect(deployOut).toContain('Applying migration');
 
     // Confirm migrations recorded in _prisma_migrations
@@ -65,7 +67,7 @@ describe('Phase 4J.3 — Canonical Database Version & Integrity Verification (Po
       Array<{ migration_name: string; finished_at: Date | null }>
     >('SELECT migration_name, finished_at FROM "_prisma_migrations" ORDER BY migration_name ASC');
 
-    expect(applied.length).toBe(23);
+    expect(applied.length).toBe(totalMigrations);
     for (const m of applied) {
       expect(m.finished_at).not.toBeNull();
     }
@@ -154,13 +156,14 @@ describe('Phase 4J.3 — Canonical Database Version & Integrity Verification (Po
     expect(txCount).toBe(1);
   });
 
-  it('5. Upgrade DB: applies all 19 migrations sequentially with 100% data preservation and 0 orphans', async () => {
+  it('5. Upgrade DB: applies all migrations sequentially with 100% data preservation and 0 orphans', async () => {
+    const totalMigrations = listTrackedMigrations().length;
     const deployOut = execSync('pnpm --filter @atlas/database exec prisma migrate deploy', {
       env: { ...process.env, DATABASE_URL: UPGRADE_DB_URL },
       encoding: 'utf-8',
     });
 
-    expect(deployOut).toContain('23 migrations found in prisma/migrations');
+    expect(deployOut).toContain(`${totalMigrations} migrations found in prisma/migrations`);
 
     const upgradeUserId = '11111111-1111-4111-8111-111111111111';
     const institutionId = '11111111-1111-4111-8111-111111111112';
@@ -169,66 +172,25 @@ describe('Phase 4J.3 — Canonical Database Version & Integrity Verification (Po
     const assetId = '11111111-1111-4111-8111-111111111115';
     const txId = '11111111-1111-4111-8111-111111111116';
 
-    await upgradePrisma.user.create({
-      data: {
-        id: upgradeUserId,
-        email: 'upgrade-4j3-user@atlas.local',
-        passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$dummyhashtestfor4j3upgrade00',
-        name: 'Upgrade 4J.3 Taxpayer',
-      },
-    });
-
-    await upgradePrisma.institution.create({
-      data: { id: institutionId, name: 'Upgrade Bank', type: 'BROKER', country: 'BR' },
-    });
-
-    await upgradePrisma.portfolio.create({
-      data: {
-        id: portfolioId,
-        userId: upgradeUserId,
-        name: 'Upgrade Portfolio',
-        baseCurrency: 'BRL',
-        type: 'INDIVIDUAL',
-        status: 'ACTIVE',
-      },
-    });
-
-    await upgradePrisma.account.create({
-      data: {
-        id: accountId,
-        portfolioId: portfolioId,
-        institutionId: institutionId,
-        name: 'Conta Upgrade',
-        currency: 'BRL',
-        status: 'ACTIVE',
-      },
-    });
-
-    await upgradePrisma.asset.create({
-      data: {
-        id: assetId,
-        ticker: 'VALE3',
-        name: 'Vale ON',
-        type: 'STOCK',
-        currency: 'BRL',
-        exchange: 'B3',
-      },
-    });
-
-    await upgradePrisma.transaction.create({
-      data: {
-        id: txId,
-        portfolioId: portfolioId,
-        accountId: accountId,
-        assetId: assetId,
-        type: 'BUY',
-        tradeDate: new Date('2026-04-01T12:00:00Z'),
-        settlementDate: new Date('2026-04-03T12:00:00Z'),
-        quantity: '50',
-        unitPrice: '62.00',
-        amount: '3100.00',
-        currency: 'BRL',
-      },
+    await seedPreLgpdHistoricalEntities(upgradePrisma, {
+      userId: upgradeUserId,
+      email: 'upgrade-4j3-user@atlas.local',
+      userName: 'Upgrade 4J.3 Taxpayer',
+      portfolioId,
+      portfolioName: 'Upgrade Portfolio',
+      institutionId,
+      institutionName: 'Upgrade Bank',
+      accountId,
+      accountName: 'Conta Upgrade',
+      assetId,
+      ticker: 'VALE3',
+      assetName: 'Vale ON',
+      txId,
+      tradeDate: '2026-04-01',
+      settlementDate: '2026-04-03',
+      quantity: '50',
+      unitPrice: '62.00',
+      amount: '3100.00',
     });
 
     // Check orphan queries

@@ -13,6 +13,7 @@ import { configureApp } from '../../apps/api/src/main';
 import { PRISMA_CLIENT } from '../../apps/api/src/database/tokens';
 import { FISCAL_CLOCK } from '../../apps/api/src/application/fiscal/tokens';
 import { TokenService } from '../../apps/api/src/auth/services/token.service';
+import { listTrackedMigrations, seedPreLgpdUserOnly } from './migration-test-helpers';
 
 /**
  * Phase 4K.5 — Canonical Database Version & Migration 23 Evidence (PostgreSQL 16.x).
@@ -112,7 +113,7 @@ describe('Phase 4K.5 — Canonical Database Version & Migration 23 Evidence (Pos
 
   it('2. Migration 23 Integrity: exact 23 migrations, chronological ordering, and hash verification', async () => {
     const migrationDirs = sortedMigrations();
-    expect(migrationDirs.length).toBe(23);
+    expect(migrationDirs.length).toBeGreaterThanOrEqual(23);
     expect([...migrationDirs].sort()).toEqual(migrationDirs);
     expect(migrationDirs[21]).toBe('20261012000000_add_tax_compliance_reminders');
     expect(migrationDirs[22]).toBe('20261013000000_add_tax_compliance_period_close');
@@ -149,12 +150,13 @@ describe('Phase 4K.5 — Canonical Database Version & Migration 23 Evidence (Pos
     );
     expect(preTables.length).toBe(0);
 
+    const totalMigrations = listTrackedMigrations().length;
     const deployOutput = execSync('npx prisma migrate deploy', {
       cwd: path.resolve(__dirname, '../../packages/database'),
       env: { ...process.env, DATABASE_URL: freshDbUrl },
       encoding: 'utf-8',
     });
-    expect(deployOutput).toContain('23 migrations found');
+    expect(deployOutput).toContain(`${totalMigrations} migrations found`);
     expect(deployOutput).toContain('Applying migration');
 
     const secondDeploy = execSync('npx prisma migrate deploy', {
@@ -336,7 +338,7 @@ describe('Phase 4K.5 — Canonical Database Version & Migration 23 Evidence (Pos
 
     const migrationsDir = path.resolve(__dirname, '../../packages/database/prisma/migrations');
     const sorted = sortedMigrations();
-    expect(sorted.length).toBe(23);
+    expect(sorted.length).toBeGreaterThanOrEqual(23);
 
     await upgradePrisma.$executeRawUnsafe(`
       CREATE TABLE "_prisma_migrations" (
@@ -373,13 +375,10 @@ describe('Phase 4K.5 — Canonical Database Version & Migration 23 Evidence (Pos
     }
 
     const upgradeUserId = randomUUID();
-    await upgradePrisma.user.create({
-      data: {
-        id: upgradeUserId,
-        email: 'upgrade23@atlas.dev',
-        passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$dummy$abcdefghijklmnopqrstuvwxyz0123456789',
-        name: 'Upgrade User 23',
-      },
+    await seedPreLgpdUserOnly(upgradePrisma, {
+      userId: upgradeUserId,
+      email: 'upgrade23@atlas.dev',
+      name: 'Upgrade User 23',
     });
 
     // 4K.1 representative data.

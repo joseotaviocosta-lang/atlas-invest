@@ -866,4 +866,482 @@ describe('PROJECT ATLAS — APP-16M: New Event Detection & Portfolio News State'
       ).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('APP-16M-R1 Cross-Refresh Identity Continuity (Media-Only -> Official-Only Without URL Overlap)', () => {
+    it('20. Baseline/UNCHANGED media-only -> Refresh 2 official-only without media URL transitions to UPDATED (NEW=0, UPDATED=1)', () => {
+      const portfolioId = '11111111-1111-4111-8111-111111111111';
+      const t0 = new Date('2026-11-11T10:00:00.000Z');
+      const t1 = new Date('2026-11-11T14:00:00.000Z');
+
+      const [mediaOnlyEvent] = canonicalizeNewsEvents(
+        [
+          {
+            id: 'raw-infomoney-petr4-div',
+            ticker: 'PETR4',
+            headline: 'Petrobras aprova pagamento de dividendos de R$ 2 bilhões aos acionistas - InfoMoney',
+            summary: 'Conselho de administração aprovou distribuição de proventos de R$ 2 bilhões referentes ao exercício.',
+            url: 'https://www.infomoney.com.br/mercados/petrobras-aprova-dividendos-2-bilhoes/',
+            sourceName: 'InfoMoney',
+            publishedAt: '2026-11-11T09:30:00.000Z',
+            provider: 'GOOGLE_NEWS',
+            sourceType: 'TRUSTED_FINANCIAL_MEDIA',
+            official: false,
+          },
+        ],
+        t0,
+      );
+
+      expect(mediaOnlyEvent.official).toBe(false);
+
+      // Refresh 1: Initial baseline
+      const r1 = applyPortfolioNewsState({
+        portfolioId,
+        events: [mediaOnlyEvent],
+        persistedStates: [],
+        syncState: null,
+        referenceDate: t0,
+      });
+
+      expect(r1.summary).toMatchObject({ newEventsCount: 0, updatedEventsCount: 0, seenEventsCount: 0 });
+      expect(r1.events[0].state).toBe('UNCHANGED');
+
+      // Refresh 2: CVM official-only event with completely different canonical ID and NO media URL
+      const [officialOnlyEvent] = canonicalizeNewsEvents(
+        [
+          {
+            id: 'cvm-ipe-petr4-div-20261111',
+            ticker: 'PETR4',
+            headline: 'Fato Relevante - Aprovação de Distribuição de Dividendos de R$ 2 bilhões',
+            summary: 'A Petrobras comunica que seu Conselho de Administração aprovou a distribuição de dividendos de R$ 2 bilhões.',
+            url: 'https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx?ID=999111',
+            sourceName: 'CVM Fatos Relevantes',
+            publishedAt: '2026-11-11T13:30:00.000Z',
+            provider: 'CVM',
+            sourceType: 'OFFICIAL_REGULATORY',
+            official: true,
+          },
+        ],
+        t1,
+      );
+
+      expect(officialOnlyEvent.official).toBe(true);
+      expect(officialOnlyEvent.canonicalEventId).not.toBe(mediaOnlyEvent.canonicalEventId);
+
+      const persistedR1: PersistedPortfolioNewsEventState[] = r1.statesToUpsert.map((item) => ({
+        canonicalEventId: item.canonicalEventId,
+        firstSeenAt: item.firstSeenAt,
+        lastObservedAt: item.lastObservedAt,
+        lastSeenByUserAt: item.lastSeenByUserAt,
+        firstFingerprint: item.firstFingerprint,
+        latestFingerprint: item.latestFingerprint,
+        state: item.state,
+        latestUpdateReasons: item.latestUpdateReasons,
+        eventPublishedAt: item.eventPublishedAt,
+        meta: item.meta,
+      }));
+
+      const r2 = applyPortfolioNewsState({
+        portfolioId,
+        events: [officialOnlyEvent],
+        persistedStates: persistedR1,
+        syncState: r1.syncStateToPersist,
+        referenceDate: t1,
+      });
+
+      expect(r2.summary).toMatchObject({ newEventsCount: 0, updatedEventsCount: 1, seenEventsCount: 0 });
+      expect(r2.events).toHaveLength(1);
+      expect(r2.events[0].state).toBe('UPDATED');
+      expect(r2.events[0].isNew).toBe(false);
+      expect(r2.events[0].isUpdated).toBe(true);
+      expect(r2.events[0].updateReasons).toContain('OFFICIAL_SOURCE_ADDED');
+      expect(r2.statesToUpsert).toHaveLength(1);
+      expect(r2.statesToUpsert[0].previousCanonicalEventId).toBe(mediaOnlyEvent.canonicalEventId);
+
+      // Idempotency: Repeating Refresh 2 with identical official-only payload does NOT generate NEW or duplicate
+      const persistedR2: PersistedPortfolioNewsEventState[] = r2.statesToUpsert.map((item) => ({
+        canonicalEventId: item.canonicalEventId,
+        firstSeenAt: item.firstSeenAt,
+        lastObservedAt: item.lastObservedAt,
+        lastSeenByUserAt: item.lastSeenByUserAt,
+        firstFingerprint: item.firstFingerprint,
+        latestFingerprint: item.latestFingerprint,
+        state: item.state,
+        latestUpdateReasons: item.latestUpdateReasons,
+        eventPublishedAt: item.eventPublishedAt,
+        meta: item.meta,
+      }));
+
+      const r3 = applyPortfolioNewsState({
+        portfolioId,
+        events: [officialOnlyEvent],
+        persistedStates: persistedR2,
+        syncState: r2.syncStateToPersist,
+        referenceDate: new Date('2026-11-11T15:00:00.000Z'),
+      });
+      expect(r3.summary).toMatchObject({ newEventsCount: 0, updatedEventsCount: 1 });
+      expect(r3.statesToUpsert[0].previousCanonicalEventId).toBeUndefined();
+    });
+
+    it('21. SEEN media-only -> official-only promotes to UPDATED; subsequent media-only fallback stays non-regressive without NEW', () => {
+      const portfolioId = '11111111-1111-4111-8111-111111111111';
+      const baseline = makeEvent({ id: 'baseline_evt', ticker: 'VALE3' });
+
+      const r0 = applyPortfolioNewsState({
+        portfolioId,
+        events: [baseline],
+        persistedStates: [],
+        syncState: null,
+        referenceDate: new Date('2026-11-11T08:00:00.000Z'),
+      });
+
+      const [mediaNew] = canonicalizeNewsEvents(
+        [
+          {
+            id: 'raw-valor-hglg11-emissao',
+            ticker: 'HGLG11',
+            headline: 'HGLG11 anuncia nova emissão de cotas de R$ 500 milhões - Valor Econômico',
+            summary: 'Fundo imobiliário HGLG11 protocolou nova oferta de emissão de cotas de R$ 500 milhões.',
+            url: 'https://valor.globo.com/financas/noticia/hglg11-nova-emissao.ghtml',
+            sourceName: 'Valor Econômico',
+            publishedAt: '2026-11-11T10:00:00.000Z',
+            provider: 'GOOGLE_NEWS',
+            sourceType: 'TRUSTED_FINANCIAL_MEDIA',
+            official: false,
+          },
+        ],
+        new Date('2026-11-11T16:00:00.000Z'),
+      );
+
+      const persisted0 = r0.statesToUpsert.map((i) => ({
+        canonicalEventId: i.canonicalEventId,
+        firstSeenAt: i.firstSeenAt,
+        lastObservedAt: i.lastObservedAt,
+        lastSeenByUserAt: i.lastSeenByUserAt,
+        firstFingerprint: i.firstFingerprint,
+        latestFingerprint: i.latestFingerprint,
+        state: i.state,
+        latestUpdateReasons: i.latestUpdateReasons,
+        eventPublishedAt: i.eventPublishedAt,
+        meta: i.meta,
+      }));
+
+      // Media-only appears as NEW
+      const r1 = applyPortfolioNewsState({
+        portfolioId,
+        events: [baseline, mediaNew],
+        persistedStates: persisted0,
+        syncState: r0.syncStateToPersist,
+        referenceDate: new Date('2026-11-11T10:30:00.000Z'),
+      });
+      expect(r1.summary.newEventsCount).toBe(1);
+
+      // User marks as SEEN
+      const persisted1: PersistedPortfolioNewsEventState[] = r1.statesToUpsert.map((i) => ({
+        canonicalEventId: i.canonicalEventId,
+        firstSeenAt: i.firstSeenAt,
+        lastObservedAt: i.lastObservedAt,
+        lastSeenByUserAt: i.canonicalEventId === mediaNew.canonicalEventId ? '2026-11-11T11:00:00.000Z' : i.lastSeenByUserAt,
+        firstFingerprint: i.firstFingerprint,
+        latestFingerprint: i.latestFingerprint,
+        state: i.canonicalEventId === mediaNew.canonicalEventId ? ('SEEN' as const) : i.state,
+        latestUpdateReasons: i.canonicalEventId === mediaNew.canonicalEventId ? [] : i.latestUpdateReasons,
+        eventPublishedAt: i.eventPublishedAt,
+        meta: i.meta,
+      }));
+
+      // Official-only (FNET) appears later without Valor URL
+      const [officialFnet] = canonicalizeNewsEvents(
+        [
+          {
+            id: 'fnet-hglg11-emissao-8881',
+            ticker: 'HGLG11',
+            headline: 'Fato Relevante - HGLG11 aprova 10ª emissão de cotas de R$ 500 milhões',
+            summary: 'Administrador do HGLG11 comunica aprovação de nova emissão de cotas no montante de R$ 500 milhões.',
+            url: 'https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=8881',
+            sourceName: 'B3 FNET',
+            publishedAt: '2026-11-11T13:00:00.000Z',
+            provider: 'B3',
+            sourceType: 'OFFICIAL_REGULATORY',
+            official: true,
+          },
+        ],
+        new Date('2026-11-11T16:00:00.000Z'),
+      );
+
+      const r2 = applyPortfolioNewsState({
+        portfolioId,
+        events: [baseline, officialFnet],
+        persistedStates: persisted1,
+        syncState: r1.syncStateToPersist,
+        referenceDate: new Date('2026-11-11T13:30:00.000Z'),
+      });
+      expect(r2.summary).toMatchObject({ newEventsCount: 0, updatedEventsCount: 1 });
+      const promoted = r2.events.find((e) => e.canonicalEventId === officialFnet.canonicalEventId);
+      expect(promoted?.state).toBe('UPDATED');
+      expect(promoted?.updateReasons).toContain('OFFICIAL_SOURCE_ADDED');
+
+      // Mark promoted official event as SEEN
+      const persisted2: PersistedPortfolioNewsEventState[] = r2.statesToUpsert.map((i) => ({
+        canonicalEventId: i.canonicalEventId,
+        firstSeenAt: i.firstSeenAt,
+        lastObservedAt: i.lastObservedAt,
+        lastSeenByUserAt: i.canonicalEventId === officialFnet.canonicalEventId ? '2026-11-11T14:00:00.000Z' : i.lastSeenByUserAt,
+        firstFingerprint: i.firstFingerprint,
+        latestFingerprint: i.latestFingerprint,
+        state: i.canonicalEventId === officialFnet.canonicalEventId ? ('SEEN' as const) : i.state,
+        latestUpdateReasons: i.canonicalEventId === officialFnet.canonicalEventId ? [] : i.latestUpdateReasons,
+        eventPublishedAt: i.eventPublishedAt,
+        meta: i.meta,
+      }));
+
+      // Refresh 3: Suppose official feed is temporarily absent and only media returns
+      const r3 = applyPortfolioNewsState({
+        portfolioId,
+        events: [baseline, mediaNew],
+        persistedStates: persisted2,
+        syncState: r2.syncStateToPersist,
+        referenceDate: new Date('2026-11-11T16:00:00.000Z'),
+      });
+      expect(r3.summary).toMatchObject({ newEventsCount: 0, updatedEventsCount: 0, seenEventsCount: 1 });
+      const returnedMedia = r3.events.find((e) => e.canonicalEventId === mediaNew.canonicalEventId);
+      expect(returnedMedia?.state).toBe('SEEN');
+      expect(returnedMedia?.isNew).toBe(false);
+    });
+
+    it('22. False-positive protection: blocks merging distinct events on same ticker/date, DIVIDEND vs CAPITAL/EARNINGS, and different material numbers', () => {
+      const portfolioId = '11111111-1111-4111-8111-111111111111';
+
+      const [petrDividend2Bi] = canonicalizeNewsEvents(
+        [
+          {
+            id: 'media-petr4-div-2bi',
+            ticker: 'PETR4',
+            headline: 'Petrobras aprova dividendos de R$ 2 bilhões - Suno',
+            summary: 'A companhia anunciou dividendos de R$ 2 bilhões.',
+            url: 'https://www.suno.com.br/noticias/petr4-dividendos-2bi',
+            sourceName: 'Suno',
+            publishedAt: '2026-11-11T09:00:00.000Z',
+            provider: 'GOOGLE_NEWS',
+            sourceType: 'TRUSTED_FINANCIAL_MEDIA',
+            official: false,
+          },
+        ],
+        new Date('2026-11-11T12:00:00.000Z'),
+      );
+
+      const r1 = applyPortfolioNewsState({
+        portfolioId,
+        events: [petrDividend2Bi],
+        persistedStates: [],
+        syncState: null,
+        referenceDate: new Date('2026-11-11T10:00:00.000Z'),
+      });
+
+      const persisted: PersistedPortfolioNewsEventState[] = r1.statesToUpsert.map((i) => ({
+        canonicalEventId: i.canonicalEventId,
+        firstSeenAt: i.firstSeenAt,
+        lastObservedAt: i.lastObservedAt,
+        lastSeenByUserAt: i.lastSeenByUserAt,
+        firstFingerprint: i.firstFingerprint,
+        latestFingerprint: i.latestFingerprint,
+        state: i.state,
+        latestUpdateReasons: i.latestUpdateReasons,
+        eventPublishedAt: i.eventPublishedAt,
+        meta: i.meta,
+      }));
+
+      // Case A: Same ticker + same date, DIFFERENT event topic (PETR4 nova emissão)
+      const [petrCapitalOffer] = canonicalizeNewsEvents(
+        [
+          {
+            id: 'cvm-petr4-emissao',
+            ticker: 'PETR4',
+            headline: 'Fato Relevante - Petrobras realiza nova emissão de debêntures',
+            summary: 'Oferta de captação de recursos no mercado de capitais.',
+            url: 'https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx?ID=1001',
+            sourceName: 'CVM Fatos Relevantes',
+            publishedAt: '2026-11-11T11:00:00.000Z',
+            provider: 'CVM',
+            sourceType: 'OFFICIAL_REGULATORY',
+            official: true,
+          },
+        ],
+        new Date('2026-11-11T12:00:00.000Z'),
+      );
+
+      // Case B: Same ticker + same date, EARNINGS instead of DIVIDEND
+      const [petrEarnings] = canonicalizeNewsEvents(
+        [
+          {
+            id: 'cvm-petr4-resultado',
+            ticker: 'PETR4',
+            headline: 'Divulgação de Resultado do 3T26 da Petrobras',
+            summary: 'Lucro líquido consolidado e balanço trimestral.',
+            url: 'https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx?ID=1002',
+            sourceName: 'CVM IPE',
+            publishedAt: '2026-11-11T11:15:00.000Z',
+            provider: 'CVM',
+            sourceType: 'OFFICIAL_REGULATORY',
+            official: true,
+          },
+        ],
+        new Date('2026-11-11T12:00:00.000Z'),
+      );
+
+      // Case C: Same ticker + same topic (dividendos), DIFFERENT material number (R$ 5 bilhões vs R$ 2 bilhões)
+      const [petrDividend5Bi] = canonicalizeNewsEvents(
+        [
+          {
+            id: 'cvm-petr4-div-5bi',
+            ticker: 'PETR4',
+            headline: 'Fato Relevante - Petrobras aprova pagamento de dividendos de R$ 5 bilhões',
+            summary: 'Nova deliberação adicional de dividendos de R$ 5 bilhões.',
+            url: 'https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx?ID=1003',
+            sourceName: 'CVM Fatos Relevantes',
+            publishedAt: '2026-11-11T11:30:00.000Z',
+            provider: 'CVM',
+            sourceType: 'OFFICIAL_REGULATORY',
+            official: true,
+          },
+        ],
+        new Date('2026-11-11T12:00:00.000Z'),
+      );
+
+      const r2 = applyPortfolioNewsState({
+        portfolioId,
+        events: [petrCapitalOffer, petrEarnings, petrDividend5Bi],
+        persistedStates: persisted,
+        syncState: r1.syncStateToPersist,
+        referenceDate: new Date('2026-11-11T12:00:00.000Z'),
+      });
+
+      // None of these three may falsely promote/merge with petrDividend2Bi!
+      expect(r2.summary).toMatchObject({ newEventsCount: 3, updatedEventsCount: 0 });
+      expect(r2.events.every((e) => e.state === 'NEW')).toBe(true);
+      expect(r2.statesToUpsert.some((s) => s.previousCanonicalEventId === petrDividend2Bi.canonicalEventId)).toBe(false);
+    });
+
+    it('23. End-to-end controller refresh: Media-Only -> Official-Only without URL overlap produces NEW=0 UPDATED=1 and keeps model/score intact', async () => {
+      expect(OPPORTUNITY_MODEL_VERSION).toBe('opportunity-v2.3.1');
+
+      const repo = new InMemoryPortfolioNewsStateRepo();
+      const refNow = new Date('2026-11-11T12:00:00.000Z');
+      let pipelineEvents: PortfolioNewsEvent[] = canonicalizeNewsEvents(
+        [
+          {
+            id: 'ctrl-media-itub4',
+            ticker: 'ITUB4',
+            headline: 'Itaú Unibanco aprova recompra de ações de até R$ 3 bilhões - InfoMoney',
+            summary: 'Programa de recompra de ações ordinárias e preferenciais aprovado pelo conselho.',
+            url: 'https://www.infomoney.com.br/mercados/itau-aprova-recompra-acoes-3bi/',
+            sourceName: 'InfoMoney',
+            publishedAt: '2026-11-11T09:00:00.000Z',
+            provider: 'GOOGLE_NEWS',
+            sourceType: 'TRUSTED_FINANCIAL_MEDIA',
+            official: false,
+          },
+        ],
+        refNow,
+      );
+
+      const useCase = new GetOpportunityRadarUseCase(
+        {
+          findById: vi.fn().mockResolvedValue({
+            id: 'portfolio-r1',
+            userId: 'user-r1',
+            name: 'Carteira Real',
+            baseCurrency: 'BRL',
+          }),
+        } as any,
+        {} as any,
+        { list: vi.fn().mockResolvedValue({ items: [], hasMore: false }) } as any,
+        {
+          execute: vi.fn().mockResolvedValue({
+            positions: [
+              { assetId: 'asset-itub', ticker: 'ITUB4', assetName: 'Itau Unibanco', status: 'VALUED', marketValue: { amount: '25000.00' } },
+            ],
+            totalValue: '100000',
+          }),
+        } as any,
+        { getActiveStrategy: vi.fn().mockResolvedValue(null) } as any,
+        new OpportunityRadarCacheService(),
+        { getToken: () => undefined } as any,
+        {
+          getPortfolioNews: vi.fn().mockImplementation(async () => ({
+            events: pipelineEvents,
+            totalEvents: pipelineEvents.length,
+            byAssetCount: { ITUB4: pipelineEvents.length },
+            digest: buildDailyNewsDigest(pipelineEvents, { referenceDate: refNow, maxItems: 10 }),
+            assetDailyStatus: { ITUB4: 'MATERIAL_EVENT' },
+            metrics: {
+              breakingCount: pipelineEvents.length,
+              recentCount: pipelineEvents.length,
+              officialCount: pipelineEvents.filter((e) => e.official).length,
+              highImportanceCount: 1,
+              materialCount: 1,
+              criticalCount: 0,
+              highCount: 1,
+              mediumCount: 0,
+              routineCount: 0,
+              totalAuditedAssets: 1,
+              assetsWithNews: 1,
+              assetsWithoutNews: 0,
+              officialCoverageCount: 1,
+              providerStatus: {
+                brapiNewsAvailable: false,
+                brapiNewsStatus: 'BRAPI_NEWS_PRO_UNAVAILABLE',
+                officialStatus: 'OFFICIAL_PROVIDER_AVAILABLE',
+                cvmStatus: 'AVAILABLE',
+                fnetStatus: 'AVAILABLE',
+                fallbackActive: true,
+                providersUsed: ['Google News RSS (Agregador)'],
+              },
+            },
+            asOf: refNow.toISOString(),
+          })),
+        } as any,
+        repo,
+      );
+      const ctrl = new PortfolioOpportunityRadarController(useCase);
+      const principal = { userId: 'user-r1', sessionId: 'sess-r1' } as any;
+
+      // Refresh 1: Baseline media-only
+      const res1 = await ctrl.getPortfolioNews('portfolio-r1', principal);
+      expect(res1.data.newsState).toMatchObject({ newEventsCount: 0, updatedEventsCount: 0, seenEventsCount: 0 });
+      expect(res1.data.events[0].official).toBe(false);
+
+      // Refresh 2: Official-only arrives with no media URL
+      const officialEvents = canonicalizeNewsEvents(
+        [
+          {
+            id: 'ctrl-cvm-itub4',
+            ticker: 'ITUB4',
+            headline: 'Fato Relevante - Itaú Unibanco aprova programa de recompra de ações de R$ 3 bilhões',
+            summary: 'Conselho de administração do Itaú Unibanco aprovou programa de recompra de ações.',
+            url: 'https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx?ID=777222',
+            sourceName: 'CVM Fatos Relevantes',
+            publishedAt: '2026-11-11T12:00:00.000Z',
+            provider: 'CVM',
+            sourceType: 'OFFICIAL_REGULATORY',
+            official: true,
+          },
+        ],
+        refNow,
+      );
+      pipelineEvents = officialEvents;
+
+      const res2 = await ctrl.refreshPortfolioNews('portfolio-r1', principal);
+      expect(res2.data.newsState).toMatchObject({
+        newEventsCount: 0,
+        updatedEventsCount: 1,
+      });
+      expect(res2.data.events).toHaveLength(1);
+      expect(res2.data.events[0]).toMatchObject({
+        canonicalEventId: officialEvents[0].canonicalEventId,
+        official: true,
+        state: 'UPDATED',
+      });
+      expect(res2.data.events[0].updateReasons).toContain('OFFICIAL_SOURCE_ADDED');
+    });
+  });
 });

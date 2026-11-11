@@ -145,4 +145,141 @@ describe('Database Integration: APP-16M Portfolio News State Persistence', () =>
     const snap = await repo.loadSnapshot(portfolioAId);
     expect(snap.eventStates).toHaveLength(25);
   });
+
+  it('3. Consolidates Media-Only -> Official-Only promotion in PostgreSQL keeping exact 1 row across restarts', async () => {
+    const t0 = '2026-11-11T10:00:00.000Z';
+    const t1 = '2026-11-11T13:00:00.000Z';
+    const t2 = '2026-11-11T14:00:00.000Z';
+
+    // Step 1: Initial baseline media-only event persisted
+    await repo.persistSnapshot({
+      portfolioId: portfolioAId,
+      syncState: {
+        portfolioId: portfolioAId,
+        newsStateInitializedAt: t0,
+        lastRefreshedAt: t0,
+      },
+      items: [
+        {
+          portfolioId: portfolioAId,
+          canonicalEventId: 'evt_media_petr4_div',
+          firstSeenAt: t0,
+          lastObservedAt: t0,
+          lastSeenByUserAt: null,
+          firstFingerprint: 'fp_media_1',
+          latestFingerprint: 'fp_media_1',
+          state: 'UNCHANGED',
+          latestUpdateReasons: [],
+          eventPublishedAt: '2026-11-11T09:30:00.000Z',
+          meta: {
+            ticker: 'PETR4',
+            headline: 'Petrobras aprova dividendos de R$ 2 bilhões',
+            eventType: 'DIVIDEND',
+            materiality: 'HIGH',
+            official: false,
+            sources: ['InfoMoney'],
+            sourceUrls: ['https://www.infomoney.com.br/mercados/petrobras-aprova-dividendos/'],
+          },
+        },
+      ],
+    });
+
+    // Step 2: Concurrent refreshes promote media-only -> official-only via previousCanonicalEventId
+    await Promise.all([
+      repo.persistSnapshot({
+        portfolioId: portfolioAId,
+        syncState: {
+          portfolioId: portfolioAId,
+          newsStateInitializedAt: t0,
+          lastRefreshedAt: t1,
+        },
+        items: [
+          {
+            portfolioId: portfolioAId,
+            canonicalEventId: 'evt_cvm_petr4_div',
+            previousCanonicalEventId: 'evt_media_petr4_div',
+            firstSeenAt: t0,
+            lastObservedAt: t1,
+            lastSeenByUserAt: null,
+            firstFingerprint: 'fp_media_1',
+            latestFingerprint: 'fp_cvm_2',
+            state: 'UPDATED',
+            latestUpdateReasons: ['OFFICIAL_SOURCE_ADDED'],
+            eventPublishedAt: '2026-11-11T12:30:00.000Z',
+            meta: {
+              ticker: 'PETR4',
+              headline: 'Fato Relevante - Aprovação de Dividendos de R$ 2 bilhões',
+              eventType: 'DIVIDEND',
+              materiality: 'HIGH',
+              official: true,
+              sources: ['CVM Fatos Relevantes'],
+              sourceUrls: ['https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx?ID=999111'],
+            },
+          },
+        ],
+      }),
+      repo.persistSnapshot({
+        portfolioId: portfolioAId,
+        syncState: {
+          portfolioId: portfolioAId,
+          newsStateInitializedAt: t0,
+          lastRefreshedAt: t1,
+        },
+        items: [
+          {
+            portfolioId: portfolioAId,
+            canonicalEventId: 'evt_cvm_petr4_div',
+            previousCanonicalEventId: 'evt_media_petr4_div',
+            firstSeenAt: t0,
+            lastObservedAt: t1,
+            lastSeenByUserAt: null,
+            firstFingerprint: 'fp_media_1',
+            latestFingerprint: 'fp_cvm_2',
+            state: 'UPDATED',
+            latestUpdateReasons: ['OFFICIAL_SOURCE_ADDED'],
+            eventPublishedAt: '2026-11-11T12:30:00.000Z',
+            meta: {
+              ticker: 'PETR4',
+              headline: 'Fato Relevante - Aprovação de Dividendos de R$ 2 bilhões',
+              eventType: 'DIVIDEND',
+              materiality: 'HIGH',
+              official: true,
+              sources: ['CVM Fatos Relevantes'],
+              sourceUrls: ['https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx?ID=999111'],
+            },
+          },
+        ],
+      }),
+    ]);
+
+    const afterPromo = await repo.loadSnapshot(portfolioAId);
+    expect(afterPromo.eventStates).toHaveLength(1);
+    expect(afterPromo.eventStates[0]).toMatchObject({
+      canonicalEventId: 'evt_cvm_petr4_div',
+      state: 'UPDATED',
+      latestUpdateReasons: ['OFFICIAL_SOURCE_ADDED'],
+    });
+
+    // Step 3: User marks consolidated official event as SEEN and restarts PrismaClient
+    const marked = await repo.markSeen({
+      portfolioId: portfolioAId,
+      canonicalEventIds: ['evt_cvm_petr4_div'],
+      seenAt: t2,
+    });
+    expect(marked.updatedCount).toBe(1);
+
+    const restartedPrisma = new PrismaClient({
+      datasources: { db: { url: TEST_DATABASE_URL } },
+    });
+    const restartedRepo = new PortfolioNewsStateRepository(restartedPrisma);
+    try {
+      const snapAfterRestart = await restartedRepo.loadSnapshot(portfolioAId);
+      expect(snapAfterRestart.eventStates).toHaveLength(1);
+      expect(snapAfterRestart.eventStates[0].state).toBe('SEEN');
+      expect(snapAfterRestart.eventStates[0].lastSeenByUserAt).toBe(t2);
+      expect(snapAfterRestart.eventStates[0].meta.official).toBe(true);
+    } finally {
+      await restartedPrisma.$disconnect();
+    }
+  });
 });

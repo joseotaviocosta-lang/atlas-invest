@@ -13,6 +13,7 @@ import { configureApp } from '../../apps/api/src/main';
 import { PRISMA_CLIENT } from '../../apps/api/src/database/tokens';
 import { FISCAL_CLOCK } from '../../apps/api/src/application/fiscal/tokens';
 import { TokenService } from '../../apps/api/src/auth/services/token.service';
+import { listTrackedMigrations, seedPreLgpdHistoricalEntities } from './migration-test-helpers';
 
 /**
  * Phase 4J.2B — Comprehensive Missing Evidence, Integrity Audit & Database Verification.
@@ -80,13 +81,16 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
   // --------------------------------------------------------------------------
   // SECTION 1: FRESH DB DEPLOYMENT & MIGRATION INTEGRITY (Sections 6–7)
   // --------------------------------------------------------------------------
-  it('Fresh DB: prisma migrate deploy applies all 19 migrations from zero cleanly', async () => {
+  it('Fresh DB: prisma migrate deploy applies all tracked migrations from zero cleanly', async () => {
+    const totalMigrations = listTrackedMigrations().length;
+    expect(totalMigrations).toBeGreaterThanOrEqual(23);
+
     const output = execSync('pnpm --filter @atlas/database exec prisma migrate deploy', {
       env: { ...process.env, DATABASE_URL: freshDbUrl },
       encoding: 'utf-8',
     });
 
-    expect(output).toContain('23 migrations found in prisma/migrations');
+    expect(output).toContain(`${totalMigrations} migrations found in prisma/migrations`);
     expect(output).toContain('All migrations have been successfully applied.');
 
     // Second deploy must be a clean no-op
@@ -100,7 +104,7 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
     const applied = await freshPrisma.$queryRawUnsafe<Array<{ count: bigint }>>(
       `SELECT count(*) as count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL`,
     );
-    expect(Number(applied[0]!.count)).toBe(23);
+    expect(Number(applied[0]!.count)).toBe(totalMigrations);
   }, 180_000);
 
   // --------------------------------------------------------------------------
@@ -261,13 +265,10 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
       `);
 
     const migrationsDir = path.join(process.cwd(), 'packages/database/prisma/migrations');
-    const allMigrationDirs = fs
-      .readdirSync(migrationsDir, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .sort();
+    const allMigrationDirs = listTrackedMigrations(migrationsDir);
 
-    expect(allMigrationDirs.length).toBe(23);
+    expect(allMigrationDirs.length).toBeGreaterThanOrEqual(23);
+    expect(allMigrationDirs).toContain('20261013000000_add_tax_compliance_period_close');
 
     // Apply migrations 1..16 manually
     const preFinalMigrations = allMigrationDirs.slice(0, 16);
@@ -289,62 +290,16 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
     }
 
     // Seed pre-upgrade representative rows
-    await upgradePrisma.user.create({
-      data: {
-        id: upgradeUserId,
-        email: 'upgrade-audit@atlas.dev',
-        name: 'Upgrade Investor',
-        passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$dummy$abcdefghijklmnopqrstuvwxyz0123456789',
-      },
-    });
-
-    const institution = await upgradePrisma.institution.create({
-      data: { id: randomUUID(), name: 'XP Investimentos', type: 'BROKER', country: 'BR' },
-    });
-    await upgradePrisma.portfolio.create({
-      data: {
-        id: upgradePortfolioId,
-        userId: upgradeUserId,
-        name: 'Upgrade Portfolio',
-        baseCurrency: 'BRL',
-        type: 'INDIVIDUAL',
-        status: 'ACTIVE',
-      },
-    });
-    await upgradePrisma.account.create({
-      data: {
-        id: upgradeAccountId,
-        portfolioId: upgradePortfolioId,
-        institutionId: institution.id,
-        name: 'Conta XP',
-        currency: 'BRL',
-        status: 'ACTIVE',
-      },
-    });
-    await upgradePrisma.asset.create({
-      data: {
-        id: upgradeAssetId,
-        ticker: 'PETR4',
-        name: 'Petrobras PN',
-        type: 'STOCK',
-        currency: 'BRL',
-        exchange: 'B3',
-      },
-    });
-    await upgradePrisma.transaction.create({
-      data: {
-        id: upgradeTxId,
-        portfolioId: upgradePortfolioId,
-        accountId: upgradeAccountId,
-        assetId: upgradeAssetId,
-        type: 'BUY',
-        tradeDate: new Date('2025-05-10T00:00:00.000Z'),
-        settlementDate: new Date('2025-05-12T00:00:00.000Z'),
-        quantity: '100',
-        unitPrice: '35.50',
-        amount: '3550.00',
-        currency: 'BRL',
-      },
+    await seedPreLgpdHistoricalEntities(upgradePrisma, {
+      userId: upgradeUserId,
+      email: 'upgrade-audit@atlas.dev',
+      userName: 'Upgrade Investor',
+      portfolioId: upgradePortfolioId,
+      portfolioName: 'Upgrade Portfolio',
+      accountId: upgradeAccountId,
+      accountName: 'Conta XP',
+      assetId: upgradeAssetId,
+      txId: upgradeTxId,
     });
 
     // Run migrate deploy to upgrade to migrations 17 & 18
@@ -538,14 +493,11 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
   // --------------------------------------------------------------------------
   // SECTION 7: MIGRATION HISTORY INTEGRITY (Sections 20–21)
   // --------------------------------------------------------------------------
-  it('Migration History: verifies 18 migration directories, timestamps, and schema.prisma integrity', async () => {
+  it('Migration History: verifies tracked migration directories, timestamps, and schema.prisma integrity', async () => {
     const migrationsDir = path.join(process.cwd(), 'packages/database/prisma/migrations');
-    const allDirs = fs
-      .readdirSync(migrationsDir, { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name);
+    const allDirs = listTrackedMigrations(migrationsDir);
 
-    expect(allDirs.length).toBe(23);
+    expect(allDirs.length).toBeGreaterThanOrEqual(23);
 
     // Verify all directories have valid timestamp prefixes (YYYYMMDDHHMMSS)
     for (const dir of allDirs) {
@@ -561,10 +513,10 @@ describe('Phase 4J.2B — Database Integrity & Fiscal Smoke Audit', () => {
     // Verify timestamps are unique
     const timestamps = allDirs.map((d) => d.split('_')[0]);
     const uniqueTimestamps = new Set(timestamps);
-    expect(uniqueTimestamps.size).toBe(23);
+    expect(uniqueTimestamps.size).toBe(allDirs.length);
 
     // Verify migration names are unique
     const uniqueNames = new Set(allDirs);
-    expect(uniqueNames.size).toBe(23);
+    expect(uniqueNames.size).toBe(allDirs.length);
   });
 });

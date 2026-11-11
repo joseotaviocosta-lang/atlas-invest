@@ -18,6 +18,7 @@
 
 import * as crypto from 'node:crypto';
 import type {
+  NewsEventType,
   NewsEventUpdateReason,
   NewsImportance,
   NewsMateriality,
@@ -30,6 +31,7 @@ import { normalizeHeadlineForMatch, stripPublisherTail } from './news-canonicali
 
 export interface PersistedPortfolioNewsEventMeta {
   official?: boolean;
+  eventType?: NewsEventType;
   materiality?: NewsMateriality;
   importance?: NewsImportance;
   sentiment?: NewsSentiment;
@@ -342,9 +344,220 @@ export function deriveEventUpdateReasons(
 }
 
 /**
+ * Explicit publication proximity window (48 hours) used for safe cross-refresh semantic identity matching.
+ */
+export const CROSS_REFRESH_IDENTITY_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+const SEMANTIC_BOILERPLATE_STOPWORDS = new Set([
+  'a', 'o', 'as', 'os', 'e', 'em', 'de', 'da', 'do', 'das', 'dos',
+  'na', 'no', 'nas', 'nos', 'para', 'por', 'com', 'sem', 'sobre', 'entre',
+  'que', 'se', 'um', 'uma', 'uns', 'umas', 'ao', 'aos', 'seu', 'sua', 'seus', 'suas',
+  'the', 'and', 'for', 'of', 'to', 'in', 'on', 'with',
+  'empresa', 'companhia', 'mercado', 'acoes', 'acao', 'cotas', 'cota',
+  'comunicado', 'relevante', 'fato', 'aviso', 'acionistas', 'cotistas',
+  'cvm', 'fnet', 'b3', 'oficial', 'informa', 'anuncia', 'divulga',
+]);
+
+const GENERIC_COMPATIBLE_EVENT_TYPES = new Set<NewsEventType>([
+  'FACT_RELEVANT',
+  'MARKET_NOTICE',
+  'OTHER',
+]);
+
+function normalizeNumericString(raw: string): string {
+  const dotted = raw.replace(/,/g, '.');
+  const [intPart, decPart] = dotted.split('.');
+  const cleanInt = (intPart || '0').replace(/^0+(?=\d)/, '') || '0';
+  if (!decPart) return cleanInt;
+  const cleanDec = decPart.replace(/0+$/, '');
+  return cleanDec.length > 0 ? `${cleanInt}.${cleanDec}` : cleanInt;
+}
+
+function stripTickerSymbolsFromNormalizedText(normText: string, tickers: string[]): string {
+  let result = ` ${normText} `;
+  for (const rawTicker of tickers) {
+    const t = rawTicker.toLowerCase().trim();
+    if (!t) continue;
+    const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    result = result.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), ' ');
+  }
+  return result.replace(/\s+/g, ' ').trim();
+}
+
+function extractSemanticMaterialTokens(normHeadline: string, tickers: string[]): Set<string> {
+  const withoutTickers = stripTickerSymbolsFromNormalizedText(normHeadline, tickers);
+  const tokens = withoutTickers
+    .split(/\s+/)
+    .map((t) => canonicalizeSemanticToken(t.trim()))
+    .filter((t) => {
+      if (!t) return false;
+      if (SEMANTIC_BOILERPLATE_STOPWORDS.has(t) || EXTRA_SEMANTIC_FILLER_WORDS.has(t)) return false;
+      return t.length >= 3 || /\d/.test(t);
+    });
+  return new Set(tokens);
+}
+
+const EXTRA_SEMANTIC_FILLER_WORDS = new Set([
+  'anuncia',
+  'comunica',
+  'informa',
+  'divulga',
+  'realiza',
+  'destaca',
+  'revela',
+  'aponta',
+  'mostra',
+  'veja',
+  'saiba',
+  'confira',
+  'para',
+  'sobre',
+  'como',
+  'entre',
+  'apos',
+  'ante',
+  'ate',
+  'pelo',
+  'pela',
+  'pelos',
+  'pelas',
+  'nos',
+  'nas',
+  'dos',
+  'das',
+  'aos',
+  'uma',
+  'uns',
+  'umas',
+  'novo',
+  'nova',
+  'programa',
+]);
+
+function canonicalizeSemanticToken(token: string): string {
+  if (!token) return '';
+  if (/^aprov(?:a|ou|am|ar|ado|ada|ados|adas|acao|acoes)$/.test(token)) return 'aprova';
+  if (/^pag(?:a|ou|am|ar|amento|amentos)$/.test(token)) return 'pagamento';
+  if (/^distribu(?:i|iu|em|ir|icao|icoes)$/.test(token)) return 'distribuicao';
+  if (/^dividendos?$/.test(token)) return 'dividendo';
+  if (/^proventos?$/.test(token)) return 'provento';
+  if (/^rendimentos?$/.test(token)) return 'rendimento';
+  if (/^cotas?$/.test(token)) return 'cota';
+  if (/^ac(?:ao|oes)$/.test(token)) return 'acao';
+  if (/^emiss(?:ao|oes)$/.test(token)) return 'emissao';
+  if (/^bilh(?:ao|oes)$/.test(token)) return 'bilhao';
+  if (/^milh(?:ao|oes)$/.test(token)) return 'milhao';
+  if (/^rea(?:l|is)$/.test(token)) return 'real';
+  if (/^recompr(?:a|ou|am|ar|as)$/.test(token)) return 'recompra';
+  if (/^resultados?$/.test(token)) return 'resultado';
+  if (/^lucros?$/.test(token)) return 'lucro';
+  if (/^debentures?$/.test(token)) return 'debenture';
+  if (/^acionistas?$/.test(token)) return 'acionista';
+  if (/^(?:aquisic(?:ao|oes)|adquir(?:e|iu|iram|ir))$/.test(token)) return 'aquisicao';
+  if (/^vend(?:a|as|e|eu|er)$/.test(token)) return 'venda';
+  if (/^subscric(?:ao|oes)$/.test(token)) return 'subscricao';
+  if (/^bonificac(?:ao|oes)$/.test(token)) return 'bonificacao';
+  if (/^amortizac(?:ao|oes)$/.test(token)) return 'amortizacao';
+  if (/^desdobramentos?$/.test(token)) return 'desdobramento';
+  if (/^grupamentos?$/.test(token)) return 'grupamento';
+  return token;
+}
+
+function inferSpecificTopicFromText(normText: string): NewsEventType | null {
+  if (/\b(dividendo|dividendos|jcp|juros sobre capital|provento|proventos|rendimento|rendimentos)\b/.test(normText)) {
+    return 'DIVIDEND';
+  }
+  if (/\b(resultado|resultados|balanco|trimestral|[1-4]t\d{2}|itr|dfp|ebitda|lucro liquido)\b/.test(normText)) {
+    return 'EARNINGS';
+  }
+  if (/\b(emissao|subscricao|debenture|debentures|bonificacao|desdobramento|grupamento|aumento de capital|recompra)\b/.test(normText)) {
+    return 'CAPITAL_EVENT';
+  }
+  if (/\b(aquisicao|compra|fusao|incorporacao|m&a)\b/.test(normText)) {
+    return 'ACQUISITION';
+  }
+  if (/\b(venda|desinvestimento|alienacao)\b/.test(normText)) {
+    return 'SALE';
+  }
+  if (/\b(assembleia|age|ago|convocacao)\b/.test(normText)) {
+    return 'ASSEMBLY';
+  }
+  return null;
+}
+
+function hasSpecificTopicMismatch(
+  typeA: NewsEventType | undefined,
+  normA: string,
+  typeB: NewsEventType | undefined,
+  normB: string,
+): boolean {
+  const effectiveA =
+    typeA && !GENERIC_COMPATIBLE_EVENT_TYPES.has(typeA) ? typeA : inferSpecificTopicFromText(normA);
+  const effectiveB =
+    typeB && !GENERIC_COMPATIBLE_EVENT_TYPES.has(typeB) ? typeB : inferSpecificTopicFromText(normB);
+  if (!effectiveA || !effectiveB) return false;
+  return effectiveA !== effectiveB;
+}
+
+function extractMaterialNumericTokensForMatch(normHeadline: string, tickers: string[]): string[] {
+  const withoutTickers = stripTickerSymbolsFromNormalizedText(normHeadline, tickers);
+  const matches = withoutTickers.match(/\d+(?:[.,]\d+)?/g);
+  if (!matches) return [];
+  return Array.from(
+    new Set(
+      matches
+        .map(normalizeNumericString)
+        .filter((n) => !/^(?:19|20)\d{2}$/.test(n)),
+    ),
+  ).sort();
+}
+
+function analyzeMaterialNumbersForMatch(
+  normA: string,
+  tickersA: string[],
+  normB: string,
+  tickersB: string[],
+): { conflict: boolean; sharedCount: number } {
+  const numsA = extractMaterialNumericTokensForMatch(normA, tickersA);
+  const numsB = extractMaterialNumericTokensForMatch(normB, tickersB);
+  if (numsA.length === 0 || numsB.length === 0) {
+    return { conflict: false, sharedCount: 0 };
+  }
+
+  const setB = new Set(numsB);
+  const shared = numsA.filter((n) => setB.has(n));
+  if (shared.length === 0) {
+    return { conflict: true, sharedCount: 0 };
+  }
+
+  const setA = new Set(numsA);
+  const aHasExtra = numsA.some((n) => !setB.has(n));
+  const bHasExtra = numsB.some((n) => !setA.has(n));
+  return { conflict: aHasExtra && bHasExtra, sharedCount: shared.length };
+}
+
+function areEventTypesCompatibleForIdentity(typeA?: NewsEventType, typeB?: NewsEventType): boolean {
+  if (!typeA || !typeB) return true;
+  if (typeA === typeB) return true;
+  if (GENERIC_COMPATIBLE_EVENT_TYPES.has(typeA) || GENERIC_COMPATIBLE_EVENT_TYPES.has(typeB)) {
+    return true;
+  }
+  if (
+    (typeA === 'ASSEMBLY' && typeB === 'REGULATORY') ||
+    (typeA === 'REGULATORY' && typeB === 'ASSEMBLY')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Finds the matching previously persisted event record for an incoming canonical event.
- * Matches by exact `canonicalEventId` first, then falls back cleanly to URL-overlap official-promotion
- * matching in case a media cluster absorbed a retroactive regulatory timestamp and shifted cluster seed ID.
+ * Matches cleanly in 3 strict passes:
+ *   1. Exact `canonicalEventId` match.
+ *   2. URL-overlap official-promotion match (shared source URL + shared ticker).
+ *   3. Safe cross-refresh semantic continuity match without URL overlap
+ *      (same ticker + compatible eventType + <= 48h window + zero numeric conflict + strong material token similarity).
  */
 function findMatchingPersistedEvent(
   event: PortfolioNewsEvent,
@@ -357,30 +570,118 @@ function findMatchingPersistedEvent(
     return exact;
   }
 
-  // Fallback promotion match: incoming official event contains a source URL already recorded on an unmatched persisted event
   const { allUrls } = extractNormalizedUrls(event);
-  if (allUrls.length === 0) return undefined;
-
   const incomingUrlSet = new Set(allUrls.filter((u) => !u.startsWith('src:')));
-  if (incomingUrlSet.size === 0) return undefined;
+  const incomingTickers = Array.from(new Set(event.assets.map((t) => t.toUpperCase().trim()).filter(Boolean)));
+  const incomingTickerSet = new Set(incomingTickers);
 
-  const incomingTickers = new Set(event.assets.map((t) => t.toUpperCase()));
+  // Pass 2: URL overlap fallback
+  if (incomingUrlSet.size > 0) {
+    for (const candidate of persistedAll) {
+      if (claimedPrevIds.has(candidate.canonicalEventId)) continue;
+      const prevUrls = candidate.meta?.allSourceUrls || [];
+      const sharesUrl = prevUrls.some((u) => incomingUrlSet.has(u));
+      if (!sharesUrl) continue;
 
-  for (const candidate of persistedAll) {
-    if (claimedPrevIds.has(candidate.canonicalEventId)) continue;
-    const prevUrls = candidate.meta?.allSourceUrls || [];
-    const sharesUrl = prevUrls.some((u) => incomingUrlSet.has(u));
-    if (!sharesUrl) continue;
-
-    const prevTickers = candidate.meta?.tickers || [];
-    const sharesTicker =
-      prevTickers.length === 0 || prevTickers.some((t) => incomingTickers.has(t.toUpperCase()));
-    if (sharesTicker) {
-      return candidate;
+      const prevTickers = candidate.meta?.tickers || [];
+      const sharesTicker =
+        prevTickers.length === 0 || prevTickers.some((t) => incomingTickerSet.has(t.toUpperCase()));
+      if (sharesTicker) {
+        return candidate;
+      }
     }
   }
 
-  return undefined;
+  // Pass 3: Safe semantic cross-refresh continuity fallback (e.g. media-only -> official-only)
+  if (incomingTickerSet.size === 0) return undefined;
+  const eventTime = Date.parse(event.publishedAt);
+  if (!Number.isFinite(eventTime)) return undefined;
+
+  const incomingHeadlineNorm = extractMaterialHeadlineTokens(event.headline);
+  const incomingTokens = extractSemanticMaterialTokens(incomingHeadlineNorm, incomingTickers);
+  if (incomingTokens.size === 0) return undefined;
+
+  let bestCandidate: PersistedPortfolioNewsEventState | undefined;
+  let bestJaccard = 0;
+  let bestOverlap = 0;
+  let bestTimeDiff = Number.POSITIVE_INFINITY;
+
+  for (const candidate of persistedAll) {
+    if (claimedPrevIds.has(candidate.canonicalEventId)) continue;
+
+    const candTickers = (candidate.meta?.tickers || []).map((t) => t.toUpperCase().trim()).filter(Boolean);
+    const sharesTicker = candTickers.some((t) => incomingTickerSet.has(t));
+    if (!sharesTicker) continue;
+
+    if (!candidate.eventPublishedAt) continue;
+    const candTime = Date.parse(candidate.eventPublishedAt);
+    if (!Number.isFinite(candTime)) continue;
+    const timeDiff = Math.abs(eventTime - candTime);
+    if (timeDiff > CROSS_REFRESH_IDENTITY_WINDOW_MS) continue;
+
+    const candEventType = candidate.meta?.eventType;
+    if (!areEventTypesCompatibleForIdentity(event.eventType, candEventType)) continue;
+
+    const candHeadlineNorm = candidate.meta?.headlineCore || '';
+    if (!candHeadlineNorm) continue;
+
+    if (hasSpecificTopicMismatch(event.eventType, incomingHeadlineNorm, candEventType, candHeadlineNorm)) {
+      continue;
+    }
+
+    const numCheck = analyzeMaterialNumbersForMatch(
+      incomingHeadlineNorm,
+      incomingTickers,
+      candHeadlineNorm,
+      candTickers,
+    );
+    if (numCheck.conflict) {
+      continue;
+    }
+
+    const candTokens = extractSemanticMaterialTokens(candHeadlineNorm, candTickers);
+    if (candTokens.size === 0) continue;
+
+    let intersection = 0;
+    for (const token of incomingTokens) {
+      if (candTokens.has(token)) intersection++;
+    }
+    if (intersection === 0) continue;
+
+    const union = incomingTokens.size + candTokens.size - intersection;
+    const jaccard = union > 0 ? intersection / union : 0;
+    const minLen = Math.min(incomingTokens.size, candTokens.size);
+    const overlap = minLen > 0 ? intersection / minLen : 0;
+
+    const sameSpecificEventType =
+      candEventType !== undefined &&
+      candEventType === event.eventType &&
+      !GENERIC_COMPATIBLE_EVENT_TYPES.has(event.eventType);
+
+    const exactSingleTokenMatch =
+      incomingTokens.size === 1 && candTokens.size === 1 && intersection === 1;
+
+    const passesThreshold = sameSpecificEventType
+      ? exactSingleTokenMatch || (intersection >= 2 && (jaccard >= 0.45 || overlap >= 0.70))
+      : (numCheck.sharedCount >= 1 && intersection >= 3 && (jaccard >= 0.35 || overlap >= 0.60)) ||
+        (intersection >= 2 && (jaccard >= 0.50 || (overlap >= 0.75 && intersection >= 3)));
+
+    if (!passesThreshold) continue;
+
+    const isBetter =
+      jaccard > bestJaccard ||
+      (jaccard === bestJaccard && overlap > bestOverlap) ||
+      (jaccard === bestJaccard && overlap === bestOverlap && timeDiff < bestTimeDiff);
+
+    if (isBetter) {
+      bestCandidate = candidate;
+      bestJaccard = jaccard;
+      bestOverlap = overlap;
+      bestTimeDiff = timeDiff;
+    }
+  }
+
+  return bestCandidate;
 }
 
 /**
@@ -474,6 +775,7 @@ export function applyPortfolioNewsState(params: {
     const { officialUrls, allUrls } = extractNormalizedUrls(event);
     const nextMeta: PersistedPortfolioNewsEventMeta = {
       official: Boolean(event.official),
+      eventType: event.eventType,
       materiality: event.materiality ?? 'MEDIUM',
       importance: event.importance,
       sentiment: event.sentiment,
@@ -488,15 +790,42 @@ export function applyPortfolioNewsState(params: {
       claimedPrevIds.add(prev.canonicalEventId);
     }
 
+    const isNonRegressiveOfficialAbsence =
+      Boolean(prev) &&
+      prev!.meta?.official === true &&
+      !event.official &&
+      (prev!.meta?.materiality ?? 'MEDIUM') === (event.materiality ?? 'MEDIUM') &&
+      (prev!.meta?.sentiment ?? event.sentiment) === event.sentiment &&
+      !hasMaterialTextRevision(
+        prev!.meta?.headlineCore,
+        nextMeta.headlineCore || '',
+        prev!.meta?.headlineCore || '',
+        `${event.headline} ${event.summary || ''}`,
+      );
+
     let nextState: PortfolioNewsEventStateType;
     let firstSeenAt = prev?.firstSeenAt ?? nowIso;
     let lastSeenByUserAt = prev?.lastSeenByUserAt ?? null;
     let firstFingerprint = prev?.firstFingerprint ?? fingerprint;
+    let latestFingerprintToPersist = fingerprint;
+    let persistedMetaToSave: PersistedPortfolioNewsEventMeta = nextMeta;
     let updateReasons: NewsEventUpdateReason[] = [];
 
     if (!prev) {
       // Brand new event not yet persisted for this portfolio
       nextState = isBaselineRollout ? 'UNCHANGED' : 'NEW';
+    } else if (isNonRegressiveOfficialAbsence) {
+      // Official feed temporarily omitted an already-known official event while media still echoes it:
+      // retain existing lifecycle state, official provenance, and fingerprint without creating NEW or noisy UPDATED.
+      nextState = prev.state;
+      latestFingerprintToPersist = prev.latestFingerprint;
+      if (nextState === 'UPDATED') {
+        updateReasons = [...(prev.latestUpdateReasons || [])];
+      }
+      persistedMetaToSave = {
+        ...prev.meta,
+        allSourceUrls: Array.from(new Set([...(prev.meta?.allSourceUrls || []), ...allUrls])).sort(),
+      };
     } else if (prev.latestFingerprint !== fingerprint) {
       // Event changed meaningfully -> UPDATED (even if previously SEEN, NEW, or UNCHANGED)
       updateReasons = deriveEventUpdateReasons(prev, event);
@@ -530,7 +859,7 @@ export function applyPortfolioNewsState(params: {
       firstSeenAt,
       lastObservedAt: nowIso,
       lastSeenByUserAt,
-      eventVersionFingerprint: fingerprint,
+      eventVersionFingerprint: latestFingerprintToPersist,
       isNew,
       isUpdated,
       isSeen,
@@ -550,11 +879,11 @@ export function applyPortfolioNewsState(params: {
       lastObservedAt: nowIso,
       lastSeenByUserAt,
       firstFingerprint,
-      latestFingerprint: fingerprint,
+      latestFingerprint: latestFingerprintToPersist,
       state: nextState,
       latestUpdateReasons: updateReasons,
       eventPublishedAt: event.publishedAt || null,
-      meta: nextMeta,
+      meta: persistedMetaToSave,
     });
   }
 

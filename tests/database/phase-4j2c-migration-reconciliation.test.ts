@@ -13,6 +13,7 @@ import { configureApp } from '../../apps/api/src/main';
 import { PRISMA_CLIENT } from '../../apps/api/src/database/tokens';
 import { FISCAL_CLOCK } from '../../apps/api/src/application/fiscal/tokens';
 import { TokenService } from '../../apps/api/src/auth/services/token.service';
+import { listTrackedMigrations, seedPreLgpdHistoricalEntities } from './migration-test-helpers';
 
 /**
  * Phase 4J.2C — Canonical PostgreSQL & Migration History Reconciliation Test Suite.
@@ -109,13 +110,8 @@ describe('Phase 4J.2C — Canonical PostgreSQL & Migration History Reconciliatio
     const migrationsDir = path.resolve(__dirname, '../../packages/database/prisma/migrations');
     expect(fs.existsSync(migrationsDir)).toBe(true);
 
-    const entries = fs
-      .readdirSync(migrationsDir, { withFileTypes: true })
-      .filter((d) => d.isDirectory())
-      .map((d) => d.name)
-      .sort();
-
-    expect(entries.length).toBe(23);
+    const entries = listTrackedMigrations(migrationsDir);
+    expect(entries.length).toBeGreaterThanOrEqual(23);
 
     const expectedMigrations = [
       '20260915000000_init_financial_persistence',
@@ -143,7 +139,7 @@ describe('Phase 4J.2C — Canonical PostgreSQL & Migration History Reconciliatio
       '20261013000000_add_tax_compliance_period_close',
     ];
 
-    expect(entries).toEqual(expectedMigrations);
+    expect(entries.slice(0, expectedMigrations.length)).toEqual(expectedMigrations);
 
     // Verify chronological monotonicity of timestamp prefixes
     const timestamps = entries.map((name) => name.split('_')[0]);
@@ -191,9 +187,9 @@ describe('Phase 4J.2C — Canonical PostgreSQL & Migration History Reconciliatio
         }>
       >`SELECT migration_name, finished_at, rolled_back_at, applied_steps_count, checksum FROM _prisma_migrations ORDER BY migration_name ASC;`;
 
-      expect(rows.length).toBe(23);
-
       const migrationsDir = path.resolve(__dirname, '../../packages/database/prisma/migrations');
+      const totalMigrations = listTrackedMigrations(migrationsDir).length;
+      expect(rows.length).toBe(totalMigrations);
 
       for (const row of rows) {
         expect(row.finished_at).not.toBeNull();
@@ -214,11 +210,12 @@ describe('Phase 4J.2C — Canonical PostgreSQL & Migration History Reconciliatio
 
   it('3. Fresh-DB Deployment & Idempotency on localhost:5433', async () => {
     // First deploy: 19 migrations applied
+    const totalMigrations = listTrackedMigrations().length;
     const deployOutput1 = execSync('pnpm --filter @atlas/database exec prisma migrate deploy', {
       env: { ...process.env, DATABASE_URL: freshDbUrl },
       encoding: 'utf8',
     });
-    expect(deployOutput1).toContain('23 migrations found in prisma/migrations');
+    expect(deployOutput1).toContain(`${totalMigrations} migrations found in prisma/migrations`);
     expect(deployOutput1).toContain('All migrations have been successfully applied.');
 
     // Second deploy: idempotent (0 pending)
@@ -434,61 +431,23 @@ describe('Phase 4J.2C — Canonical PostgreSQL & Migration History Reconciliatio
     const assetId = randomUUID();
     const txId = randomUUID();
 
-    await upgradePrisma.user.create({
-      data: {
-        id: upgradeUserId,
-        email: 'upgrade-4j2c-user@atlas.local',
-        passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$dummyhashtestfor4j2cupgrade00',
-        name: 'Upgrade 4J.2C Taxpayer',
-      },
-    });
-    const institution = await upgradePrisma.institution.create({
-      data: { id: institutionId, name: 'Upgrade Bank', type: 'BROKER', country: 'BR' },
-    });
-    const portfolio = await upgradePrisma.portfolio.create({
-      data: {
-        id: portfolioId,
-        userId: upgradeUserId,
-        name: 'Upgrade Portfolio',
-        baseCurrency: 'BRL',
-        type: 'INDIVIDUAL',
-        status: 'ACTIVE',
-      },
-    });
-    const account = await upgradePrisma.account.create({
-      data: {
-        id: accountId,
-        portfolioId: portfolio.id,
-        institutionId: institution.id,
-        name: 'Upgrade Account',
-        currency: 'BRL',
-        status: 'ACTIVE',
-      },
-    });
-    const asset = await upgradePrisma.asset.create({
-      data: {
-        id: assetId,
-        ticker: 'PETR4',
-        name: 'Petrobras PN',
-        type: 'STOCK',
-        currency: 'BRL',
-        exchange: 'B3',
-      },
-    });
-    await upgradePrisma.transaction.create({
-      data: {
-        id: txId,
-        portfolioId: portfolio.id,
-        accountId: account.id,
-        assetId: asset.id,
-        type: 'BUY',
-        tradeDate: new Date('2026-02-10T00:00:00.000Z'),
-        settlementDate: new Date('2026-02-12T00:00:00.000Z'),
-        quantity: '500',
-        unitPrice: '38.50',
-        amount: '19250.00',
-        currency: 'BRL',
-      },
+    await seedPreLgpdHistoricalEntities(upgradePrisma, {
+      userId: upgradeUserId,
+      email: 'upgrade-4j2c-user@atlas.local',
+      userName: 'Upgrade 4J.2C Taxpayer',
+      portfolioId,
+      portfolioName: 'Upgrade Portfolio',
+      institutionId,
+      institutionName: 'Upgrade Bank',
+      accountId,
+      accountName: 'Upgrade Account',
+      assetId,
+      txId,
+      tradeDate: '2026-02-10',
+      settlementDate: '2026-02-12',
+      quantity: '500',
+      unitPrice: '38.50',
+      amount: '19250.00',
     });
 
     // Run prisma migrate deploy to apply remaining migrations (17 and 18)
