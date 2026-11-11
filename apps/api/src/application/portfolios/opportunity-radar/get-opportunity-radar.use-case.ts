@@ -463,15 +463,34 @@ export class GetOpportunityRadarUseCase {
         : process.env.BRAPI_API_KEY || process.env.MARKET_DATA_API_TOKEN;
 
     if (!this.newsPipelineService) {
+      const nowIso = (params.now ?? new Date()).toISOString();
       return {
         events: [],
         totalEvents: 0,
         byAssetCount: {},
+        digest: {
+          date: nowIso.slice(0, 10),
+          totalEvents: 0,
+          materialEventsCount: 0,
+          criticalCount: 0,
+          highCount: 0,
+          mediumCount: 0,
+          routineCount: 0,
+          affectedAssetsCount: 0,
+          affectedAssets: [],
+          items: [],
+        },
+        assetDailyStatus: {},
         metrics: {
           breakingCount: 0,
           recentCount: 0,
           officialCount: 0,
           highImportanceCount: 0,
+          materialCount: 0,
+          criticalCount: 0,
+          highCount: 0,
+          mediumCount: 0,
+          routineCount: 0,
           totalAuditedAssets: tickers.length,
           assetsWithNews: 0,
           assetsWithoutNews: tickers.length,
@@ -486,7 +505,7 @@ export class GetOpportunityRadarUseCase {
             providersUsed: [],
           },
         },
-        asOf: (params.now ?? new Date()).toISOString(),
+        asOf: nowIso,
       };
     }
 

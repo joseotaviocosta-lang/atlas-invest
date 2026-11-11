@@ -1,10 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  AssetNewsDailyStatus,
   OfficialComponentStatus,
   OfficialProviderStatus,
   PortfolioNewsInboxResult,
   RawNewsInput,
   canonicalizeNewsEvents,
+  buildDailyNewsDigest,
+  deriveAssetDailyNewsStatus,
   CvmOfficialNewsProvider,
 } from '@atlas/market-data';
 
@@ -190,7 +193,7 @@ export class PortfolioNewsPipelineService {
     // 4. Deduplicate and Canonicalize
     const canonicalEvents = canonicalizeNewsEvents(rawArticles, referenceDate);
 
-    // 5. Compute Metrics & Breakdown
+    // 5. Compute Metrics & Breakdown (APP-16L)
     const byAssetCount: Record<string, number> = {};
     for (const t of uniqueTickers) {
       byAssetCount[t] = 0;
@@ -200,6 +203,10 @@ export class PortfolioNewsPipelineService {
     let recentCount = 0;
     let officialCount = 0;
     let highImportanceCount = 0;
+    let criticalCount = 0;
+    let highCount = 0;
+    let mediumCount = 0;
+    let routineCount = 0;
 
     for (const ev of canonicalEvents) {
       if (ev.freshness === 'BREAKING') breakingCount++;
@@ -208,6 +215,11 @@ export class PortfolioNewsPipelineService {
       }
       if (ev.official) officialCount++;
       if (ev.importance >= 4) highImportanceCount++;
+
+      if (ev.materiality === 'CRITICAL') criticalCount++;
+      else if (ev.materiality === 'HIGH') highCount++;
+      else if (ev.materiality === 'MEDIUM') mediumCount++;
+      else if (ev.materiality === 'ROUTINE') routineCount++;
 
       for (const asset of ev.assets) {
         if (byAssetCount[asset] !== undefined) {
@@ -226,15 +238,37 @@ export class PortfolioNewsPipelineService {
       }
     }
 
+    // 6. Build Daily News Digest (Top 5-10 material events for today) — APP-16L
+    const digest = buildDailyNewsDigest(canonicalEvents, {
+      referenceDate,
+      maxItems: 10,
+    });
+
+    // 7. Derive Asset Daily News Status for each portfolio asset — APP-16L
+    const assetDailyStatus: Record<string, AssetNewsDailyStatus> = {};
+    for (const t of uniqueTickers) {
+      assetDailyStatus[t] = deriveAssetDailyNewsStatus(t, canonicalEvents, {
+        officialStatus,
+        fallbackActive,
+      });
+    }
+
     const result: PortfolioNewsInboxResult = {
       events: canonicalEvents,
       totalEvents: canonicalEvents.length,
       byAssetCount,
+      digest,
+      assetDailyStatus,
       metrics: {
         breakingCount,
         recentCount,
         officialCount,
         highImportanceCount,
+        materialCount: criticalCount + highCount,
+        criticalCount,
+        highCount,
+        mediumCount,
+        routineCount,
         totalAuditedAssets: uniqueTickers.length,
         assetsWithNews,
         assetsWithoutNews,

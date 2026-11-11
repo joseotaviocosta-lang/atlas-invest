@@ -84,13 +84,15 @@ export function calculateNewsScoreV2(
   let totalWeight = 0;
   let weightedSentimentSum = 0;
   let maxImportance = 1;
-  let hasOfficial = false;
+  let hasMaterialOfficial = false;
   let dominantEvent: PortfolioNewsEvent = effectiveEvents[0]!;
 
   for (const ev of effectiveEvents) {
     const isPrimary = ev.primaryTickers.includes(tick);
     const relevanceMultiplier = isPrimary ? 1.0 : 0.6;
-    const officialMultiplier = ev.official ? 1.2 : 1.0;
+    // Routine filings do not get the official multiplier bonus (APP-16L Parte I)
+    const isRoutine = ev.materiality === 'ROUTINE';
+    const officialMultiplier = ev.official && !isRoutine ? 1.2 : 1.0;
     const importanceRatio = Math.max(1, ev.importance) / 5;
 
     const eventWeight = ev.decayWeight * importanceRatio * relevanceMultiplier * officialMultiplier;
@@ -111,8 +113,9 @@ export function calculateNewsScoreV2(
       maxImportance = ev.importance;
       dominantEvent = ev;
     }
-    if (ev.official) {
-      hasOfficial = true;
+    // Only non-routine official events grant the official confidence bonus
+    if (ev.official && !isRoutine) {
+      hasMaterialOfficial = true;
     }
   }
 
@@ -159,15 +162,16 @@ export function calculateNewsScoreV2(
       explainability = `Noticiário recente com pressão pontual sobre a cotação.`;
     }
   } else {
-    explainability = hasOfficial
+    explainability = hasMaterialOfficial
       ? `Comunicações oficiais recentes com impacto balanceado na avaliação.`
       : `Notícias recentes com tom predominantemente neutro ou equilibrado.`;
   }
 
   // Confidence multiplier: based on number of events and max importance
+  // Routine paperwork does NOT grant the official bonus (APP-16L)
   const countBonus = Math.min(0.4, effectiveEvents.length * 0.1);
   const importanceBonus = (maxImportance / 5) * 0.4;
-  const officialBonus = hasOfficial ? 0.2 : 0.0;
+  const officialBonus = hasMaterialOfficial ? 0.2 : 0.0;
   const confidenceMultiplier = Math.min(1.0, 0.4 + countBonus + importanceBonus + officialBonus);
 
   return {

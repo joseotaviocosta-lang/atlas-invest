@@ -2,6 +2,7 @@ import {
   NewsEventType,
   NewsFreshness,
   NewsImportance,
+  NewsMateriality,
   NewsProvider,
   NewsSentiment,
   NewsSourceRef,
@@ -11,6 +12,7 @@ import {
   SentimentMethod,
   SourceTrustLevel,
 } from './portfolio-news.types';
+import { classifyNewsMateriality } from './news-materiality';
 
 /**
  * Classifies the provenance and trust tier of a news source.
@@ -501,7 +503,7 @@ export function canonicalizeNewsEvents(
       const sim = jaccardSimilarity(c.normalizedMatch, normMatch);
       const sameEventType = c.eventType === eventType && eventType !== 'OTHER';
 
-      if (sim >= 0.40 || (sameEventType && sim >= 0.25)) {
+      if (sim >= 0.30 || (sameEventType && sim >= 0.20)) {
         matchedCluster = c;
         break;
       }
@@ -515,6 +517,7 @@ export function canonicalizeNewsEvents(
       } else {
         matchedCluster.secondaryTickers.add(raw.ticker);
       }
+
       // Upgrade importance / official if this source is truly official
       if (isOfficial) {
         matchedCluster.official = true;
@@ -525,7 +528,19 @@ export function canonicalizeNewsEvents(
         if (matchedCluster.sentimentMethod === 'EVENT_HEADLINE_RULE') {
           matchedCluster.sentimentMethod = 'OFFICIAL_EVENT_RULE';
         }
+
+        // Headline preference (Parte AE): if official headline is sufficiently descriptive, prefer it;
+        // if official headline is too generic/short and existing media headline is informative, retain the informative headline
+        if (cleanedHeadline.length >= 35 && !matchedCluster.headline.includes(' — ')) {
+          matchedCluster.headline = cleanedHeadline;
+        }
+      } else {
+        // If current cluster headline is bureaucratic/terse and incoming media headline is rich, use it for display
+        if (matchedCluster.headline.length < 30 && cleanedHeadline.length >= 35) {
+          matchedCluster.headline = cleanedHeadline;
+        }
       }
+
       // Keep earlier publication date if older, or later if fresh
       if (pubDate.getTime() > matchedCluster.publishedAt.getTime()) {
         matchedCluster.publishedAt = pubDate;
@@ -577,12 +592,22 @@ export function canonicalizeNewsEvents(
     }
   }
 
-  // Convert clusters to final canonical events
+  // Convert clusters to final canonical events with deterministic materiality classification
   const result: PortfolioNewsEvent[] = clusters.map(c => {
     const { freshness, decayWeight } = classifyFreshness(c.publishedAt, referenceDate);
     const primaryArr = Array.from(c.primaryTickers);
     const secondaryArr = Array.from(c.secondaryTickers).filter(t => !c.primaryTickers.has(t));
     const allAssets = Array.from(new Set([...primaryArr, ...secondaryArr]));
+
+    const materiality = classifyNewsMateriality({
+      headline: c.headline,
+      summary: c.summary,
+      eventType: c.eventType,
+      official: c.official,
+      importance: c.importance,
+      freshness,
+      sourceType: c.sourceType,
+    });
 
     return {
       id: c.canonicalId,
@@ -605,14 +630,32 @@ export function canonicalizeNewsEvents(
       official: c.official,
       freshness,
       decayWeight,
+      materiality: materiality.level,
+      materialityScore: materiality.score,
+      materialityReason: materiality.primaryReason,
     };
   });
 
   // Sort deterministically:
-  // 1. Freshness / Recency (publishedAt desc)
-  // 2. Importance desc
-  // 3. Official first
+  // 1. Materiality level (CRITICAL > HIGH > MEDIUM > LOW > ROUTINE)
+  // 2. Freshness / Recency (publishedAt desc)
+  // 3. Importance desc
+  // 4. Official first
+  const materialityWeight: Record<NewsMateriality, number> = {
+    CRITICAL: 5,
+    HIGH: 4,
+    MEDIUM: 3,
+    LOW: 2,
+    ROUTINE: 1,
+  };
+
   result.sort((a, b) => {
+    const matA = a.materiality ? materialityWeight[a.materiality] : 2;
+    const matB = b.materiality ? materialityWeight[b.materiality] : 2;
+    if (matB !== matA) {
+      return matB - matA;
+    }
+
     const timeA = new Date(a.publishedAt).getTime();
     const timeB = new Date(b.publishedAt).getTime();
     if (b.importance !== a.importance) {

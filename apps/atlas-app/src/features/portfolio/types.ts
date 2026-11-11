@@ -315,6 +315,44 @@ export interface PortfolioNewsEventDto {
   official: boolean;
   freshness: 'BREAKING' | 'VERY_RECENT' | 'RECENT' | 'CURRENT' | 'CONTEXT' | 'EXPIRED';
   decayWeight: number;
+  materiality?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'ROUTINE';
+  materialityScore?: number;
+  materialityReason?: string;
+}
+
+export interface DailyNewsDigestItemDto {
+  id: string;
+  canonicalEventId: string;
+  ticker: string;
+  assets: string[];
+  headline: string;
+  summary: string;
+  eventType: string;
+  materiality: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'ROUTINE';
+  materialityScore: number;
+  materialityReason: string;
+  sentiment: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | 'UNKNOWN';
+  sentimentScore: number;
+  official: boolean;
+  publishedAt: string;
+  sourceName: string;
+  canonicalUrl?: string;
+  sourcesCount: number;
+  sources: NewsSourceRefDto[];
+  radarImpact?: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+}
+
+export interface PortfolioDailyNewsDigestDto {
+  date: string;
+  totalEvents: number;
+  materialEventsCount: number;
+  criticalCount: number;
+  highCount: number;
+  mediumCount: number;
+  routineCount: number;
+  affectedAssetsCount: number;
+  affectedAssets: string[];
+  items: DailyNewsDigestItemDto[];
 }
 
 export interface PortfolioNewsInboxMetricsDto {
@@ -322,6 +360,11 @@ export interface PortfolioNewsInboxMetricsDto {
   recentCount: number;
   officialCount: number;
   highImportanceCount: number;
+  materialCount?: number;
+  criticalCount?: number;
+  highCount?: number;
+  mediumCount?: number;
+  routineCount?: number;
   totalAuditedAssets: number;
   assetsWithNews: number;
   assetsWithoutNews: number;
@@ -342,6 +385,8 @@ export interface PortfolioNewsInboxResponseDto {
   totalEvents: number;
   byAssetCount: Record<string, number>;
   metrics: PortfolioNewsInboxMetricsDto;
+  digest?: PortfolioDailyNewsDigestDto;
+  assetDailyStatus?: Record<string, string>;
   asOf: string;
 }
 

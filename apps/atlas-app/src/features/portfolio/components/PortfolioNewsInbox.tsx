@@ -8,7 +8,7 @@ interface PortfolioNewsInboxProps {
   portfolioId: string | null | undefined;
 }
 
-type FilterOption = 'ALL' | 'STOCKS' | 'FIIS' | 'OFFICIAL' | 'HIGH_IMPORTANCE' | '24H' | '7D';
+type FilterOption = 'ALL' | 'MATERIAL' | 'OFFICIAL' | 'HIGH_IMPORTANCE' | '24H' | '7D' | 'STOCKS' | 'FIIS' | 'ROUTINE';
 
 function formatRelativeTime(isoString: string): string {
   try {
@@ -47,6 +47,12 @@ export const PortfolioNewsInbox: React.FC<PortfolioNewsInboxProps> = ({ portfoli
 
   const filteredEvents = useMemo(() => {
     return events.filter((ev: PortfolioNewsEventDto) => {
+      if (activeFilter === 'MATERIAL') {
+        return ev.materiality === 'CRITICAL' || ev.materiality === 'HIGH';
+      }
+      if (activeFilter === 'ROUTINE') {
+        return ev.materiality === 'ROUTINE';
+      }
       if (activeFilter === 'OFFICIAL') return ev.official;
       if (activeFilter === 'HIGH_IMPORTANCE') return ev.importance >= 4;
       if (activeFilter === '24H') return ev.freshness === 'BREAKING';
@@ -202,12 +208,14 @@ export const PortfolioNewsInbox: React.FC<PortfolioNewsInboxProps> = ({ portfoli
           {(
             [
               { id: 'ALL', label: `Todos (${events.length})` },
+              { id: 'MATERIAL', label: `🔥 Relevantes (${metrics?.materialCount ?? 0})` },
               { id: 'OFFICIAL', label: `🏛 Oficiais (${metrics?.officialCount ?? 0})` },
               { id: 'HIGH_IMPORTANCE', label: `⭐ Alta Importância (${metrics?.highImportanceCount ?? 0})` },
               { id: '24H', label: `⚡ Últimas 24h (${metrics?.breakingCount ?? 0})` },
               { id: '7D', label: `📅 Últimos 7 dias (${metrics?.recentCount ?? 0})` },
               { id: 'STOCKS', label: 'Ações' },
               { id: 'FIIS', label: 'FIIs' },
+              { id: 'ROUTINE', label: `⚪ Rotina (${metrics?.routineCount ?? 0})` },
             ] as const
           ).map((tab) => {
             const isSelected = activeFilter === tab.id;
@@ -313,6 +321,63 @@ export const PortfolioNewsInbox: React.FC<PortfolioNewsInboxProps> = ({ portfoli
                         </span>
                       ))}
 
+                      {ev.materiality === 'CRITICAL' && (
+                        <span
+                          style={{
+                            padding: '2px 8px',
+                            borderRadius: `${borderRadius.full}px`,
+                            backgroundColor: `${colors.negative}20`,
+                            color: colors.negative,
+                            fontSize: '0.6875rem',
+                            fontWeight: 700,
+                          }}
+                        >
+                          🔴 Crítico
+                        </span>
+                      )}
+                      {ev.materiality === 'HIGH' && (
+                        <span
+                          style={{
+                            padding: '2px 8px',
+                            borderRadius: `${borderRadius.full}px`,
+                            backgroundColor: `${colors.warning}20`,
+                            color: colors.warning,
+                            fontSize: '0.6875rem',
+                            fontWeight: 700,
+                          }}
+                        >
+                          🟠 Alta
+                        </span>
+                      )}
+                      {ev.materiality === 'MEDIUM' && (
+                        <span
+                          style={{
+                            padding: '2px 8px',
+                            borderRadius: `${borderRadius.full}px`,
+                            backgroundColor: `${colors.accent}15`,
+                            color: colors.accent,
+                            fontSize: '0.6875rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          🟡 Média
+                        </span>
+                      )}
+                      {ev.materiality === 'ROUTINE' && (
+                        <span
+                          style={{
+                            padding: '2px 8px',
+                            borderRadius: `${borderRadius.full}px`,
+                            backgroundColor: `${colors.border}40`,
+                            color: colors.textSecondary,
+                            fontSize: '0.6875rem',
+                            fontWeight: 500,
+                          }}
+                        >
+                          ⚪ Rotina
+                        </span>
+                      )}
+
                       {ev.eventType === 'FACT_RELEVANT' && (
                         <Badge variant="warning">Fato Relevante</Badge>
                       )}
@@ -396,6 +461,21 @@ export const PortfolioNewsInbox: React.FC<PortfolioNewsInboxProps> = ({ portfoli
                       <p style={{ margin: '4px 0 0 0', fontSize: '0.8125rem', color: colors.textSecondary, lineHeight: 1.4 }}>
                         {ev.summary}
                       </p>
+                    )}
+                    {ev.materialityReason && (
+                      <div
+                        style={{
+                          marginTop: '6px',
+                          fontSize: '0.75rem',
+                          color: colors.textSecondary,
+                          backgroundColor: colors.background,
+                          padding: '4px 8px',
+                          borderRadius: `${borderRadius.sm}px`,
+                        }}
+                      >
+                        <strong style={{ color: colors.textPrimary }}>Por que importa: </strong>
+                        {ev.materialityReason}
+                      </div>
                     )}
                   </div>
 

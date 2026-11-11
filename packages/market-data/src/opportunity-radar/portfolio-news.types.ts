@@ -38,6 +38,57 @@ export type NewsFreshness =
 
 export type NewsImportance = 1 | 2 | 3 | 4 | 5;
 
+export type NewsMateriality = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'ROUTINE';
+
+export interface MaterialityClassification {
+  level: NewsMateriality;
+  score: number; // 0 to 100
+  reasons: string[];
+  primaryReason: string;
+}
+
+export type AssetNewsDailyStatus =
+  | 'MATERIAL_EVENT'
+  | 'RECENT_NEWS'
+  | 'ROUTINE_ONLY'
+  | 'NO_RECENT_NEWS'
+  | 'PROVIDER_UNAVAILABLE';
+
+export interface DailyNewsDigestItem {
+  id: string;
+  canonicalEventId: string;
+  ticker: string;
+  assets: string[];
+  headline: string;
+  summary: string;
+  eventType: NewsEventType;
+  materiality: NewsMateriality;
+  materialityScore: number;
+  materialityReason: string;
+  sentiment: NewsSentiment;
+  sentimentScore: number;
+  official: boolean;
+  publishedAt: string; // ISO 8601
+  sourceName: string;
+  canonicalUrl?: string;
+  sourcesCount: number;
+  sources: NewsSourceRef[];
+  radarImpact?: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+}
+
+export interface PortfolioDailyNewsDigest {
+  date: string; // YYYY-MM-DD
+  totalEvents: number;
+  materialEventsCount: number; // CRITICAL + HIGH + MEDIUM
+  criticalCount: number;
+  highCount: number;
+  mediumCount: number;
+  routineCount: number;
+  affectedAssetsCount: number;
+  affectedAssets: string[];
+  items: DailyNewsDigestItem[];
+}
+
 export type SourceTrustLevel =
   | 'OFFICIAL'
   | 'TRUSTED_MEDIA'
@@ -90,6 +141,9 @@ export interface PortfolioNewsEvent {
   official: boolean;
   freshness: NewsFreshness;
   decayWeight: number; // 0.0 to 1.0
+  materiality?: NewsMateriality;
+  materialityScore?: number;
+  materialityReason?: string;
 }
 
 export interface RawNewsInput {
@@ -160,6 +214,11 @@ export interface PortfolioNewsInboxMetrics {
   recentCount: number;   // <= 7d
   officialCount: number;
   highImportanceCount: number; // >= 4
+  materialCount?: number;      // CRITICAL + HIGH
+  criticalCount?: number;
+  highCount?: number;
+  mediumCount?: number;
+  routineCount?: number;
   totalAuditedAssets: number; // 36
   assetsWithNews: number;
   assetsWithoutNews: number;
@@ -180,5 +239,7 @@ export interface PortfolioNewsInboxResult {
   totalEvents: number;
   byAssetCount: Record<string, number>;
   metrics: PortfolioNewsInboxMetrics;
+  digest?: PortfolioDailyNewsDigest;
+  assetDailyStatus?: Record<string, AssetNewsDailyStatus>;
   asOf: string;
 }
