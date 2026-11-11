@@ -47,6 +47,20 @@ export interface MaterialityClassification {
   primaryReason: string;
 }
 
+export type PortfolioNewsEventStateType =
+  | 'NEW'
+  | 'UPDATED'
+  | 'SEEN'
+  | 'UNCHANGED';
+
+export type NewsEventUpdateReason =
+  | 'OFFICIAL_SOURCE_ADDED'
+  | 'MATERIALITY_CHANGED'
+  | 'SENTIMENT_CHANGED'
+  | 'NEW_DOCUMENT_VERSION'
+  | 'NEW_MATERIAL_INFORMATION'
+  | 'SOURCE_SET_CHANGED';
+
 export type AssetNewsDailyStatus =
   | 'MATERIAL_EVENT'
   | 'RECENT_NEWS'
@@ -74,6 +88,11 @@ export interface DailyNewsDigestItem {
   sourcesCount: number;
   sources: NewsSourceRef[];
   radarImpact?: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+  state?: PortfolioNewsEventStateType;
+  isNew?: boolean;
+  isUpdated?: boolean;
+  isSeen?: boolean;
+  updateReasons?: NewsEventUpdateReason[];
 }
 
 export interface PortfolioDailyNewsDigest {
@@ -88,6 +107,10 @@ export interface PortfolioDailyNewsDigest {
   affectedAssetsCount: number;
   affectedAssets: string[];
   items: DailyNewsDigestItem[];
+  newEventsCount?: number;
+  newMaterialEventsCount?: number;
+  updatedEventsCount?: number;
+  seenEventsCount?: number;
 }
 
 export type SourceTrustLevel =
@@ -145,6 +168,15 @@ export interface PortfolioNewsEvent {
   materiality?: NewsMateriality;
   materialityScore?: number;
   materialityReason?: string;
+  state?: PortfolioNewsEventStateType;
+  firstSeenAt?: string;
+  lastObservedAt?: string;
+  lastSeenByUserAt?: string | null;
+  eventVersionFingerprint?: string;
+  isNew?: boolean;
+  isUpdated?: boolean;
+  isSeen?: boolean;
+  updateReasons?: NewsEventUpdateReason[];
 }
 
 export interface RawNewsInput {
@@ -220,6 +252,10 @@ export interface PortfolioNewsInboxMetrics {
   highCount?: number;
   mediumCount?: number;
   routineCount?: number;
+  newEventsCount?: number;
+  newMaterialEventsCount?: number;
+  updatedEventsCount?: number;
+  seenEventsCount?: number;
   totalAuditedAssets: number; // 36
   assetsWithNews: number;
   assetsWithoutNews: number;
@@ -235,6 +271,16 @@ export interface PortfolioNewsInboxMetrics {
   };
 }
 
+export interface PortfolioNewsStateSummary {
+  initialized: boolean;
+  initializedAt: string | null;
+  lastRefreshedAt: string | null;
+  newEventsCount: number;
+  newMaterialEventsCount: number;
+  updatedEventsCount: number;
+  seenEventsCount: number;
+}
+
 export interface PortfolioNewsInboxResult {
   events: PortfolioNewsEvent[];
   totalEvents: number;
@@ -242,5 +288,6 @@ export interface PortfolioNewsInboxResult {
   metrics: PortfolioNewsInboxMetrics;
   digest?: PortfolioDailyNewsDigest;
   assetDailyStatus?: Record<string, AssetNewsDailyStatus>;
+  newsState?: PortfolioNewsStateSummary;
   asOf: string;
 }

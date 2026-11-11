@@ -27,14 +27,14 @@ describe('API Integration: Health & Readiness Probes', () => {
     expect(res.headers['x-request-id']).toBe('custom-health-trace-id');
   });
 
-  it('GET /ready should return 200 with database connection status and 48 migrations baseline', async () => {
+  it('GET /ready should return 200 with database connection status and 49 migrations baseline', async () => {
     const res = await request(app.getHttpServer()).get('/ready');
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ok');
     expect(res.body.database).toBe('connected');
-    expect(res.body.checks.migrations.expected).toBe(48);
-    expect(res.body.checks.migrations.applied).toBeGreaterThanOrEqual(48);
+    expect(res.body.checks.migrations.expected).toBe(49);
+    expect(res.body.checks.migrations.applied).toBeGreaterThanOrEqual(49);
     expect(res.body.checks.migrations.status).toBe('up_to_date');
     expect(res.body.timestamp).toBeDefined();
     expect(res.headers['x-request-id']).toBeDefined();

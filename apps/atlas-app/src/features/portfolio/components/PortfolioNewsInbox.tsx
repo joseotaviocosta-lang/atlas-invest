@@ -1,14 +1,30 @@
 import React, { useState, useMemo } from 'react';
 import { colors, borderRadius, spacing } from '@atlas/ui';
 import { Card, Badge, EmptyState } from '../../../components/ui';
-import { usePortfolioNews } from '../usePortfolioNews';
+import {
+  useMarkPortfolioNewsSeen,
+  usePortfolioNews,
+  useRefreshPortfolioNews,
+} from '../usePortfolioNews';
+import { formatUpdateReasonsSummary } from '../newsStateUtils';
 import type { PortfolioNewsEventDto } from '../types';
 
 interface PortfolioNewsInboxProps {
   portfolioId: string | null | undefined;
 }
 
-type FilterOption = 'ALL' | 'MATERIAL' | 'OFFICIAL' | 'HIGH_IMPORTANCE' | '24H' | '7D' | 'STOCKS' | 'FIIS' | 'ROUTINE';
+type FilterOption =
+  | 'ALL'
+  | 'NEW'
+  | 'UPDATED'
+  | 'MATERIAL'
+  | 'OFFICIAL'
+  | 'HIGH_IMPORTANCE'
+  | '24H'
+  | '7D'
+  | 'STOCKS'
+  | 'FIIS'
+  | 'ROUTINE';
 
 function formatRelativeTime(isoString: string): string {
   try {
@@ -38,15 +54,43 @@ function handleOpenLink(url?: string) {
 }
 
 export const PortfolioNewsInbox: React.FC<PortfolioNewsInboxProps> = ({ portfolioId }) => {
-  const { data: newsRes, isLoading, isError, refetch } = usePortfolioNews(portfolioId);
+  const { data: newsRes, isLoading, isError } = usePortfolioNews(portfolioId);
+  const refreshNews = useRefreshPortfolioNews(portfolioId);
+  const markSeen = useMarkPortfolioNewsSeen(portfolioId);
   const [activeFilter, setActiveFilter] = useState<FilterOption>('ALL');
 
   const inbox = newsRes?.data;
   const events = useMemo(() => inbox?.events || [], [inbox?.events]);
   const metrics = inbox?.metrics;
+  const newsState = inbox?.newsState;
+
+  const newEventsCount = useMemo(
+    () => newsState?.newEventsCount ?? metrics?.newEventsCount ?? events.filter((e) => e.state === 'NEW').length,
+    [newsState?.newEventsCount, metrics?.newEventsCount, events],
+  );
+  const updatedEventsCount = useMemo(
+    () =>
+      newsState?.updatedEventsCount ??
+      metrics?.updatedEventsCount ??
+      events.filter((e) => e.state === 'UPDATED').length,
+    [newsState?.updatedEventsCount, metrics?.updatedEventsCount, events],
+  );
+
+  const handleMarkEventSeen = (ev: PortfolioNewsEventDto) => {
+    const targetId = ev.canonicalEventId || ev.id;
+    if (ev.state === 'NEW' || ev.state === 'UPDATED') {
+      markSeen.mutate({ canonicalEventIds: [targetId] });
+    }
+  };
 
   const filteredEvents = useMemo(() => {
     return events.filter((ev: PortfolioNewsEventDto) => {
+      if (activeFilter === 'NEW') {
+        return ev.state === 'NEW';
+      }
+      if (activeFilter === 'UPDATED') {
+        return ev.state === 'UPDATED';
+      }
       if (activeFilter === 'MATERIAL') {
         return ev.materiality === 'CRITICAL' || ev.materiality === 'HIGH';
       }
@@ -122,24 +166,46 @@ export const PortfolioNewsInbox: React.FC<PortfolioNewsInboxProps> = ({ portfoli
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {newEventsCount + updatedEventsCount > 0 && (
+              <button
+                type="button"
+                onClick={() => markSeen.mutate({ markAllNew: true })}
+                disabled={markSeen.isPending}
+                style={{
+                  backgroundColor: `${colors.accent}15`,
+                  border: `1px solid ${colors.accent}`,
+                  borderRadius: `${borderRadius.sm}px`,
+                  color: colors.accent,
+                  cursor: markSeen.isPending ? 'default' : 'pointer',
+                  padding: '4px 10px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                }}
+              >
+                ✓ Marcar novidades como vistas
+              </button>
+            )}
             <Badge variant={metrics?.providerStatus.brapiNewsAvailable ? 'success' : 'neutral'}>
               {providerLabel}
             </Badge>
             <button
-              onClick={() => refetch()}
+              type="button"
+              onClick={() => refreshNews.mutate()}
+              disabled={refreshNews.isPending}
               style={{
                 backgroundColor: 'transparent',
                 border: `1px solid ${colors.border}`,
                 borderRadius: `${borderRadius.sm}px`,
                 color: colors.textSecondary,
-                cursor: 'pointer',
+                cursor: refreshNews.isPending ? 'wait' : 'pointer',
                 padding: '4px 8px',
                 fontSize: '0.75rem',
               }}
               title="Atualizar Notícias"
+              aria-label="Atualizar Notícias"
             >
-              🔄
+              {refreshNews.isPending ? '⏳' : '🔄'}
             </button>
           </div>
         </div>
@@ -208,6 +274,8 @@ export const PortfolioNewsInbox: React.FC<PortfolioNewsInboxProps> = ({ portfoli
           {(
             [
               { id: 'ALL', label: `Todos (${events.length})` },
+              { id: 'NEW', label: `🆕 Novos (${newEventsCount})` },
+              { id: 'UPDATED', label: `🔄 Atualizados (${updatedEventsCount})` },
               { id: 'MATERIAL', label: `🔥 Relevantes (${metrics?.materialCount ?? 0})` },
               { id: 'OFFICIAL', label: `🏛 Oficiais (${metrics?.officialCount ?? 0})` },
               { id: 'HIGH_IMPORTANCE', label: `⭐ Alta Importância (${metrics?.highImportanceCount ?? 0})` },
@@ -320,6 +388,22 @@ export const PortfolioNewsInbox: React.FC<PortfolioNewsInboxProps> = ({ portfoli
                           {asset}
                         </span>
                       ))}
+
+                      {ev.state === 'NEW' && (
+                        <Badge variant="warning" aria-label="Novo evento">
+                          NOVO
+                        </Badge>
+                      )}
+                      {ev.state === 'UPDATED' && (
+                        <Badge variant="primary" aria-label="Evento atualizado">
+                          ATUALIZADO
+                        </Badge>
+                      )}
+                      {ev.state === 'SEEN' && (
+                        <Badge variant="neutral" aria-label="Evento visto">
+                          VISTO
+                        </Badge>
+                      )}
 
                       {ev.materiality === 'CRITICAL' && (
                         <span
@@ -435,7 +519,10 @@ export const PortfolioNewsInbox: React.FC<PortfolioNewsInboxProps> = ({ portfoli
                   {/* Headline & Link */}
                   <div>
                     <h4
-                      onClick={() => handleOpenLink(ev.sources[0]?.url)}
+                      onClick={() => {
+                        handleMarkEventSeen(ev);
+                        handleOpenLink(ev.sources[0]?.url);
+                      }}
                       style={{
                         margin: 0,
                         fontSize: '0.9375rem',
@@ -477,32 +564,80 @@ export const PortfolioNewsInbox: React.FC<PortfolioNewsInboxProps> = ({ portfoli
                         {ev.materialityReason}
                       </div>
                     )}
+                    {ev.state === 'UPDATED' && formatUpdateReasonsSummary(ev.updateReasons) && (
+                      <div
+                        style={{
+                          marginTop: '6px',
+                          fontSize: '0.75rem',
+                          color: colors.accent,
+                          fontWeight: 500,
+                        }}
+                      >
+                        {formatUpdateReasonsSummary(ev.updateReasons)}
+                      </div>
+                    )}
                   </div>
 
                   {/* Sources Bar */}
-                  {ev.sources && ev.sources.length > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
-                      <span style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>Fontes:</span>
-                      {ev.sources.map((s, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => handleOpenLink(s.url)}
-                          disabled={!s.url}
-                          style={{
-                            padding: '2px 8px',
-                            borderRadius: `${borderRadius.sm}px`,
-                            backgroundColor: colors.surface,
-                            border: `1px solid ${colors.border}`,
-                            color: s.url ? colors.accent : colors.textSecondary,
-                            fontSize: '0.6875rem',
-                            cursor: s.url ? 'pointer' : 'default',
-                          }}
-                        >
-                          {s.name}
-                        </button>
-                      ))}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '8px',
+                      flexWrap: 'wrap',
+                      marginTop: '4px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      {ev.sources && ev.sources.length > 0 && (
+                        <>
+                          <span style={{ fontSize: '0.6875rem', color: colors.textSecondary }}>Fontes:</span>
+                          {ev.sources.map((s, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => {
+                                handleMarkEventSeen(ev);
+                                handleOpenLink(s.url);
+                              }}
+                              disabled={!s.url}
+                              style={{
+                                padding: '2px 8px',
+                                borderRadius: `${borderRadius.sm}px`,
+                                backgroundColor: colors.surface,
+                                border: `1px solid ${colors.border}`,
+                                color: s.url ? colors.accent : colors.textSecondary,
+                                fontSize: '0.6875rem',
+                                cursor: s.url ? 'pointer' : 'default',
+                              }}
+                            >
+                              {s.name}
+                            </button>
+                          ))}
+                        </>
+                      )}
                     </div>
-                  )}
+
+                    {(ev.state === 'NEW' || ev.state === 'UPDATED') && (
+                      <button
+                        type="button"
+                        onClick={() => handleMarkEventSeen(ev)}
+                        style={{
+                          background: 'none',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: `${borderRadius.sm}px`,
+                          color: colors.textSecondary,
+                          fontSize: '0.6875rem',
+                          fontWeight: 500,
+                          cursor: 'pointer',
+                          padding: '2px 8px',
+                        }}
+                      >
+                        ✓ Marcar como visto
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}

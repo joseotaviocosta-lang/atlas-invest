@@ -2829,3 +2829,61 @@ export interface ICostBasisEvidenceRepository {
     rejectedReason?: string | null;
   }): Promise<{ outcome: CostBasisEvidenceWriteOutcome; record: CostBasisEvidenceRow }>;
 }
+
+export type PersistedNewsEventStateValue = 'NEW' | 'UPDATED' | 'SEEN' | 'UNCHANGED';
+
+export interface PersistedPortfolioNewsSyncStateRow {
+  portfolioId: string;
+  newsStateInitializedAt: string | null;
+  lastRefreshedAt: string | null;
+}
+
+export interface PersistedPortfolioNewsEventStateRow {
+  id: string;
+  portfolioId: string;
+  canonicalEventId: string;
+  firstSeenAt: string;
+  lastObservedAt: string;
+  lastSeenByUserAt: string | null;
+  firstFingerprint: string;
+  latestFingerprint: string;
+  state: PersistedNewsEventStateValue;
+  latestUpdateReasons: string[];
+  eventPublishedAt: string | null;
+  meta: Record<string, unknown>;
+}
+
+export interface UpsertPortfolioNewsEventStateInput {
+  portfolioId: string;
+  canonicalEventId: string;
+  previousCanonicalEventId?: string;
+  firstSeenAt: string;
+  lastObservedAt: string;
+  lastSeenByUserAt: string | null;
+  firstFingerprint: string;
+  latestFingerprint: string;
+  state: PersistedNewsEventStateValue;
+  latestUpdateReasons: string[];
+  eventPublishedAt: string | null;
+  meta: Record<string, unknown>;
+}
+
+export interface IPortfolioNewsStateRepository {
+  loadSnapshot(portfolioId: string): Promise<{
+    syncState: PersistedPortfolioNewsSyncStateRow | null;
+    eventStates: PersistedPortfolioNewsEventStateRow[];
+  }>;
+
+  persistSnapshot(input: {
+    portfolioId: string;
+    syncState: PersistedPortfolioNewsSyncStateRow;
+    items: UpsertPortfolioNewsEventStateInput[];
+  }): Promise<void>;
+
+  markSeen(input: {
+    portfolioId: string;
+    canonicalEventIds?: string[];
+    markAllNovel?: boolean;
+    seenAt: string;
+  }): Promise<{ updatedCount: number; updatedIds: string[] }>;
+}

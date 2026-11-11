@@ -1,9 +1,14 @@
 import React, { useState } from 'react';
 import { colors, borderRadius, spacing } from '@atlas/ui';
 import { Card, Badge } from '../../../components/ui';
-import { usePortfolioNews } from '../usePortfolioNews';
-import { PortfolioNewsInbox } from './PortfolioNewsInbox';
+import {
+  useMarkPortfolioNewsSeen,
+  usePortfolioNews,
+  useRefreshPortfolioNews,
+} from '../usePortfolioNews';
+import { formatUpdateReasonsSummary } from '../newsStateUtils';
 import type { DailyNewsDigestItemDto } from '../types';
+import { PortfolioNewsInbox } from './PortfolioNewsInbox';
 
 interface DailyNewsDigestSectionProps {
   portfolioId: string | null | undefined;
@@ -37,22 +42,60 @@ function handleOpenLink(url?: string) {
 }
 
 export const DailyNewsDigestSection: React.FC<DailyNewsDigestSectionProps> = ({ portfolioId }) => {
-  const { data: newsRes, isLoading, isError, refetch } = usePortfolioNews(portfolioId);
+  const { data: newsRes, isLoading, isError } = usePortfolioNews(portfolioId);
+  const refreshNews = useRefreshPortfolioNews(portfolioId);
+  const markSeen = useMarkPortfolioNewsSeen(portfolioId);
   const [showFullInbox, setShowFullInbox] = useState(false);
 
   const inbox = newsRes?.data;
   const digest = inbox?.digest;
   const metrics = inbox?.metrics;
+  const newsState = inbox?.newsState;
 
   const items = digest?.items ?? [];
   const attentionCount = digest?.attentionEventsCount ?? ((digest?.criticalCount ?? 0) + (digest?.highCount ?? 0));
   const totalAudited = metrics?.totalAuditedAssets ?? 36;
 
-  // Derive dynamic header summary (APP-16L-R1: attention count prioritizes CRITICAL + HIGH)
-  const summaryHeader =
-    attentionCount > 0
+  const hasNoveltyTracking =
+    newsState?.initialized === true ||
+    digest?.newEventsCount !== undefined ||
+    metrics?.newEventsCount !== undefined;
+  const newEventsCount = newsState?.newEventsCount ?? digest?.newEventsCount ?? metrics?.newEventsCount ?? 0;
+  const newMaterialCount =
+    newsState?.newMaterialEventsCount ??
+    digest?.newMaterialEventsCount ??
+    metrics?.newMaterialEventsCount ??
+    0;
+  const updatedEventsCount =
+    newsState?.updatedEventsCount ?? digest?.updatedEventsCount ?? metrics?.updatedEventsCount ?? 0;
+  const unseenTotal = newEventsCount + updatedEventsCount;
+
+  // Derive dynamic header summary: novelty-first when APP-16M state is active, backward-compatible otherwise
+  const summaryHeader = React.useMemo(() => {
+    if (hasNoveltyTracking) {
+      if (newEventsCount > 0 && updatedEventsCount > 0) {
+        return `${newEventsCount} ${newEventsCount === 1 ? 'novidade' : 'novidades'} (${newMaterialCount} de alta relevância) • ${updatedEventsCount} ${updatedEventsCount === 1 ? 'atualizado' : 'atualizados'}`;
+      }
+      if (newEventsCount > 0) {
+        return `${newEventsCount} ${newEventsCount === 1 ? 'novidade' : 'novidades'} • ${newMaterialCount} de alta relevância`;
+      }
+      if (updatedEventsCount > 0) {
+        return `${updatedEventsCount} ${updatedEventsCount === 1 ? 'evento atualizado' : 'eventos atualizados'} desde sua última consulta`;
+      }
+      return 'Nenhuma novidade relevante desde sua última consulta';
+    }
+
+    return attentionCount > 0
       ? `${attentionCount} ${attentionCount === 1 ? 'evento relevante merece' : 'eventos relevantes merecem'} atenção hoje`
       : 'Nenhum evento crítico ou de alta relevância identificado hoje';
+  }, [hasNoveltyTracking, newEventsCount, newMaterialCount, updatedEventsCount, attentionCount]);
+
+  const handleMarkItemSeen = (item: DailyNewsDigestItemDto) => {
+    const targetId = item.canonicalEventId || item.id;
+    if (item.state === 'NEW' || item.state === 'UPDATED') {
+      markSeen.mutate({ canonicalEventIds: [targetId] });
+    }
+  };
 
   const providerLabel = React.useMemo(() => {
     if (!metrics) return 'Carregando...';
@@ -107,24 +150,46 @@ export const DailyNewsDigestSection: React.FC<DailyNewsDigestSectionProps> = ({ 
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {unseenTotal > 0 && (
+              <button
+                type="button"
+                onClick={() => markSeen.mutate({ markAllNew: true })}
+                disabled={markSeen.isPending}
+                style={{
+                  backgroundColor: `${colors.accent}15`,
+                  border: `1px solid ${colors.accent}`,
+                  borderRadius: `${borderRadius.sm}px`,
+                  color: colors.accent,
+                  cursor: markSeen.isPending ? 'default' : 'pointer',
+                  padding: '4px 10px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                }}
+              >
+                ✓ Marcar novidades como vistas
+              </button>
+            )}
             <Badge variant={metrics?.providerStatus.brapiNewsAvailable ? 'success' : 'neutral'}>
               {providerLabel}
             </Badge>
             <button
-              onClick={() => refetch()}
+              type="button"
+              onClick={() => refreshNews.mutate()}
+              disabled={refreshNews.isPending}
               style={{
                 backgroundColor: 'transparent',
                 border: `1px solid ${colors.border}`,
                 borderRadius: `${borderRadius.sm}px`,
                 color: colors.textSecondary,
-                cursor: 'pointer',
+                cursor: refreshNews.isPending ? 'wait' : 'pointer',
                 padding: '4px 8px',
                 fontSize: '0.75rem',
               }}
               title="Atualizar Notícias"
+              aria-label="Atualizar Notícias"
             >
-              🔄
+              {refreshNews.isPending ? '⏳' : '🔄'}
             </button>
           </div>
         </div>
@@ -220,6 +285,23 @@ export const DailyNewsDigestSection: React.FC<DailyNewsDigestSectionProps> = ({ 
                       >
                         {item.ticker}
                       </span>
+
+                      {/* Novelty Lifecycle Badge (APP-16M) */}
+                      {item.state === 'NEW' && (
+                        <Badge variant="warning" aria-label="Novo evento">
+                          NOVO
+                        </Badge>
+                      )}
+                      {item.state === 'UPDATED' && (
+                        <Badge variant="primary" aria-label="Evento atualizado">
+                          ATUALIZADO
+                        </Badge>
+                      )}
+                      {item.state === 'SEEN' && (
+                        <Badge variant="neutral" aria-label="Evento visto">
+                          VISTO
+                        </Badge>
+                      )}
 
                       {/* Materiality Badge */}
                       {item.materiality === 'CRITICAL' && (
@@ -378,24 +460,70 @@ export const DailyNewsDigestSection: React.FC<DailyNewsDigestSectionProps> = ({ 
                     )}
                   </div>
 
-                  {/* Footer: Official Link & Source Details */}
-                  {item.canonicalUrl && (
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2px' }}>
-                      <button
-                        onClick={() => handleOpenLink(item.canonicalUrl)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: colors.accent,
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          padding: 0,
-                          textDecoration: 'underline',
-                        }}
-                      >
-                        {item.official ? 'Acessar documento oficial ↗' : 'Acessar matéria original ↗'}
-                      </button>
+                  {/* Update Reason Context (when UPDATED) */}
+                  {item.state === 'UPDATED' && formatUpdateReasonsSummary(item.updateReasons) && (
+                    <div
+                      style={{
+                        fontSize: '0.75rem',
+                        color: colors.accent,
+                        fontWeight: 500,
+                      }}
+                    >
+                      {formatUpdateReasonsSummary(item.updateReasons)}
+                    </div>
+                  )}
+
+                  {/* Footer: Mark Seen & Official Link */}
+                  {(item.canonicalUrl || item.state === 'NEW' || item.state === 'UPDATED') && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                        alignItems: 'center',
+                        gap: '12px',
+                        marginTop: '2px',
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      {(item.state === 'NEW' || item.state === 'UPDATED') && (
+                        <button
+                          type="button"
+                          onClick={() => handleMarkItemSeen(item)}
+                          style={{
+                            background: 'none',
+                            border: `1px solid ${colors.border}`,
+                            borderRadius: `${borderRadius.sm}px`,
+                            color: colors.textSecondary,
+                            fontSize: '0.75rem',
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                            padding: '2px 8px',
+                          }}
+                        >
+                          ✓ Marcar como visto
+                        </button>
+                      )}
+                      {item.canonicalUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleMarkItemSeen(item);
+                            handleOpenLink(item.canonicalUrl);
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: colors.accent,
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            padding: 0,
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          {item.official ? 'Acessar documento oficial ↗' : 'Acessar matéria original ↗'}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

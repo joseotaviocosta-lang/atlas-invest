@@ -7,16 +7,23 @@ import {
   FiiDividendCalendarEvent,
   FiiCashSourceEvent,
   formatIsoDateString,
+  applyPortfolioNewsState,
+  buildDailyNewsDigest,
+  type PersistedPortfolioNewsEventState,
+  type PersistedPortfolioNewsSyncState,
+  type NewsEventUpdateReason,
 } from '@atlas/market-data';
 import {
   IPortfolioRepository,
   IAssetRepository,
   IMarketIntelligenceRepository,
+  IPortfolioNewsStateRepository,
 } from '@atlas/database';
 import {
   PORTFOLIO_REPOSITORY,
   ASSET_REPOSITORY,
   MARKET_INTELLIGENCE_REPOSITORY,
+  PORTFOLIO_NEWS_STATE_REPOSITORY,
 } from '../../../database/tokens';
 import { GetPortfolioValuationUseCase } from '../../valuation/get-portfolio-valuation.use-case';
 import { GetPortfolioAllocationStrategyUseCase } from '../get-portfolio-allocation-strategy.use-case';
@@ -46,7 +53,31 @@ export class GetOpportunityRadarUseCase {
     @Optional()
     @Inject(PortfolioNewsPipelineService)
     private readonly newsPipelineService?: PortfolioNewsPipelineService,
+    @Optional()
+    @Inject(PORTFOLIO_NEWS_STATE_REPOSITORY)
+    private readonly newsStateRepo?: IPortfolioNewsStateRepository,
   ) {}
+
+  private readonly newsStateSyncLocks = new Map<string, Promise<unknown>>();
+
+  private withPortfolioNewsLock<T>(portfolioId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.newsStateSyncLocks.get(portfolioId) ?? Promise.resolve();
+    const next = prev.then(fn, fn);
+    const cleanup = next.then(
+      () => {
+        if (this.newsStateSyncLocks.get(portfolioId) === cleanup) {
+          this.newsStateSyncLocks.delete(portfolioId);
+        }
+      },
+      () => {
+        if (this.newsStateSyncLocks.get(portfolioId) === cleanup) {
+          this.newsStateSyncLocks.delete(portfolioId);
+        }
+      },
+    );
+    this.newsStateSyncLocks.set(portfolioId, cleanup);
+    return next;
+  }
 
   async execute(params: {
     portfolioId: string;
@@ -509,11 +540,121 @@ export class GetOpportunityRadarUseCase {
       };
     }
 
-    return this.newsPipelineService.getPortfolioNews({
+    const referenceDate = params.now ?? new Date();
+    const rawInbox = await this.newsPipelineService.getPortfolioNews({
       tickers,
       token: brapiToken,
-      referenceDate: params.now ?? new Date(),
+      referenceDate,
       forceRefresh: params.forceRefresh,
     });
+
+    return this.withPortfolioNewsLock(params.portfolioId, async () => {
+      const snapshot = this.newsStateRepo
+        ? await this.newsStateRepo.loadSnapshot(params.portfolioId)
+        : { syncState: null, eventStates: [] };
+
+      const persistedSyncState: PersistedPortfolioNewsSyncState | null = snapshot.syncState;
+      const persistedEventStates: PersistedPortfolioNewsEventState[] = snapshot.eventStates.map((row) => ({
+        portfolioId: row.portfolioId,
+        canonicalEventId: row.canonicalEventId,
+        firstSeenAt: row.firstSeenAt,
+        lastObservedAt: row.lastObservedAt,
+        lastSeenByUserAt: row.lastSeenByUserAt,
+        firstFingerprint: row.firstFingerprint,
+        latestFingerprint: row.latestFingerprint,
+        state: row.state,
+        latestUpdateReasons: row.latestUpdateReasons as NewsEventUpdateReason[],
+        eventPublishedAt: row.eventPublishedAt,
+        meta: row.meta as PersistedPortfolioNewsEventState['meta'],
+      }));
+
+      const stateResult = applyPortfolioNewsState({
+        portfolioId: params.portfolioId,
+        events: rawInbox.events,
+        persistedStates: persistedEventStates,
+        syncState: persistedSyncState,
+        referenceDate,
+      });
+
+      if (this.newsStateRepo) {
+        await this.newsStateRepo.persistSnapshot({
+          portfolioId: params.portfolioId,
+          syncState: stateResult.syncStateToPersist,
+          items: stateResult.statesToUpsert.map((item) => ({
+            portfolioId: item.portfolioId,
+            canonicalEventId: item.canonicalEventId,
+            previousCanonicalEventId: item.previousCanonicalEventId,
+            firstSeenAt: item.firstSeenAt,
+            lastObservedAt: item.lastObservedAt,
+            lastSeenByUserAt: item.lastSeenByUserAt,
+            firstFingerprint: item.firstFingerprint,
+            latestFingerprint: item.latestFingerprint,
+            state: item.state,
+            latestUpdateReasons: item.latestUpdateReasons,
+            eventPublishedAt: item.eventPublishedAt,
+            meta: item.meta as Record<string, unknown>,
+          })),
+        });
+      }
+
+      const updatedDigest = buildDailyNewsDigest(stateResult.events, {
+        referenceDate,
+        maxItems: 10,
+      });
+
+      return {
+        ...rawInbox,
+        events: stateResult.events,
+        digest: updatedDigest,
+        metrics: {
+          ...rawInbox.metrics,
+          newEventsCount: stateResult.summary.newEventsCount,
+          newMaterialEventsCount: stateResult.summary.newMaterialEventsCount,
+          updatedEventsCount: stateResult.summary.updatedEventsCount,
+          seenEventsCount: stateResult.summary.seenEventsCount,
+        },
+        newsState: stateResult.summary,
+      };
+    });
+  }
+
+  /**
+   * Explicitly marks specific portfolio news events (or all current NEW/UPDATED events) as SEEN.
+   * Strict portfolio ownership check (404 anti-enumeration).
+   */
+  async markPortfolioNewsSeen(params: {
+    portfolioId: string;
+    userId: string;
+    canonicalEventIds?: string[];
+    markAllNew?: boolean;
+    now?: Date;
+  }): Promise<{ updatedCount: number; updatedIds: string[]; seenAt: string }> {
+    const portfolio = await this.portfolioRepo.findById(params.portfolioId);
+    if (!portfolio || portfolio.userId !== params.userId) {
+      throw new NotFoundException({
+        message: `Portfolio with id '${params.portfolioId}' not found`,
+        code: 'PORTFOLIO.NOT_FOUND',
+      });
+    }
+
+    const seenAtDate = params.now ?? new Date();
+    const seenAt = seenAtDate.toISOString();
+
+    if (!this.newsStateRepo) {
+      return { updatedCount: 0, updatedIds: [], seenAt };
+    }
+
+    return this.withPortfolioNewsLock(params.portfolioId, async () =>
+      this.newsStateRepo!.markSeen({
+        portfolioId: params.portfolioId,
+        canonicalEventIds: params.canonicalEventIds,
+        markAllNovel: Boolean(params.markAllNew),
+        seenAt,
+      }),
+    ).then((res) => ({
+      updatedCount: res.updatedCount,
+      updatedIds: res.updatedIds,
+      seenAt,
+    }));
   }
 }

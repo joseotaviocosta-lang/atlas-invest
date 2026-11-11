@@ -129,6 +129,8 @@ model Portfolio {
   reconciliationDecisions ReconciliationDecisionRecord[]
   transactionRectifications TransactionRectificationRecord[]
   costBasisEvidence      CostBasisEvidenceRecord[]
+  newsSyncState          PortfolioNewsSyncState?
+  newsEventStates        PortfolioNewsEventStateRecord[]
 
   @@index([userId])
   @@map("portfolios")
@@ -1698,4 +1700,46 @@ model CostBasisEvidenceRecord {
   @@unique([portfolioId, fingerprint, version], name: "cost_evidence_fingerprint_version_identity")
   @@index([portfolioId, accountId, assetId, status], map: "cost_evidence_scope_status_idx")
   @@map("cost_basis_evidence")
+}
+
+/// APP-16M — Portfolio-scoped news intelligence baseline & refresh watermark.
+/// Tracks when novelty tracking was initialized for a portfolio so existing
+/// historical events do not generate a flood of false NEW alerts on rollout.
+model PortfolioNewsSyncState {
+  portfolioId            String    @id @map("portfolio_id") @db.Uuid
+  newsStateInitializedAt DateTime? @map("news_state_initialized_at") @db.Timestamptz(6)
+  lastRefreshedAt        DateTime? @map("last_refreshed_at") @db.Timestamptz(6)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@map("portfolio_news_sync_states")
+}
+
+/// APP-16M — Per-portfolio canonical news event novelty, version fingerprint, and seen status.
+/// Scoped strictly by (portfolioId, canonicalEventId) with CASCADE delete on portfolio.
+model PortfolioNewsEventStateRecord {
+  id                  String    @id @default(uuid()) @db.Uuid
+  portfolioId         String    @map("portfolio_id") @db.Uuid
+  canonicalEventId    String    @map("canonical_event_id") @db.VarChar(120)
+  firstSeenAt         DateTime  @map("first_seen_at") @db.Timestamptz(6)
+  lastObservedAt      DateTime  @map("last_observed_at") @db.Timestamptz(6)
+  lastSeenByUserAt    DateTime? @map("last_seen_by_user_at") @db.Timestamptz(6)
+  firstFingerprint    String    @map("first_fingerprint") @db.VarChar(64)
+  latestFingerprint   String    @map("latest_fingerprint") @db.VarChar(64)
+  state               String    @db.VarChar(20)
+  latestUpdateReasons Json      @default("[]") @map("latest_update_reasons")
+  eventPublishedAt    DateTime? @map("event_published_at") @db.Timestamptz(6)
+  snapshotMeta        Json      @default("{}") @map("snapshot_meta")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@unique([portfolioId, canonicalEventId], map: "portfolio_news_event_states_portfolio_canonical_key")
+  @@index([portfolioId, state], map: "portfolio_news_event_states_portfolio_state_idx")
+  @@index([portfolioId, lastObservedAt(sort: Desc)], map: "portfolio_news_event_states_portfolio_observed_idx")
+  @@index([portfolioId, eventPublishedAt(sort: Desc)], map: "portfolio_news_event_states_portfolio_published_idx")
+  @@map("portfolio_news_event_states")
 }

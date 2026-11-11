@@ -20,7 +20,7 @@ interface CachedNewsResult {
 export class PortfolioNewsPipelineService {
   private readonly logger = new Logger(PortfolioNewsPipelineService.name);
   private readonly cvmProvider = new CvmOfficialNewsProvider();
-  private cache: CachedNewsResult | null = null;
+  private cache = new Map<string, CachedNewsResult>();
   private readonly CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
 
   /**
@@ -44,12 +44,14 @@ export class PortfolioNewsPipelineService {
   }): Promise<PortfolioNewsInboxResult> {
     const referenceDate = params.referenceDate ?? new Date();
     const now = Date.now();
+    const uniqueTickers = Array.from(new Set(params.tickers.map((t) => t.toUpperCase().trim()))).filter(Boolean);
+    const cacheKey = uniqueTickers.slice().sort().join(',');
 
-    if (!params.forceRefresh && this.cache && now - this.cache.timestamp < this.CACHE_TTL_MS) {
-      return this.cache.result;
+    const existingCache = this.cache.get(cacheKey);
+    if (!params.forceRefresh && existingCache && now - existingCache.timestamp < this.CACHE_TTL_MS) {
+      return existingCache.result;
     }
 
-    const uniqueTickers = Array.from(new Set(params.tickers.map((t) => t.toUpperCase().trim()))).filter(Boolean);
     const rawArticles: RawNewsInput[] = [];
     const providersUsed: string[] = [];
 
@@ -286,10 +288,10 @@ export class PortfolioNewsPipelineService {
       asOf: referenceDate.toISOString(),
     };
 
-    this.cache = {
+    this.cache.set(cacheKey, {
       result,
       timestamp: now,
-    };
+    });
 
     return result;
   }
@@ -366,6 +368,6 @@ export class PortfolioNewsPipelineService {
    * Clears the in-memory news cache (e.g. on manual refresh).
    */
   clearCache(): void {
-    this.cache = null;
+    this.cache.clear();
   }
 }

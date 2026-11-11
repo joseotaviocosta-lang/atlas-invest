@@ -294,6 +294,16 @@ export interface NewsSourceRefDto {
   publishedAt?: string;
 }
 
+export type PortfolioNewsEventStateType = 'NEW' | 'UPDATED' | 'SEEN' | 'UNCHANGED';
+
+export type NewsEventUpdateReason =
+  | 'OFFICIAL_SOURCE_ADDED'
+  | 'MATERIALITY_CHANGED'
+  | 'SENTIMENT_CHANGED'
+  | 'NEW_DOCUMENT_VERSION'
+  | 'NEW_MATERIAL_INFORMATION'
+  | 'SOURCE_SET_CHANGED';
+
 export interface PortfolioNewsEventDto {
   id: string;
   canonicalEventId: string;
@@ -318,6 +328,15 @@ export interface PortfolioNewsEventDto {
   materiality?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'ROUTINE';
   materialityScore?: number;
   materialityReason?: string;
+  state?: PortfolioNewsEventStateType;
+  firstSeenAt?: string;
+  lastObservedAt?: string;
+  lastSeenByUserAt?: string | null;
+  eventVersionFingerprint?: string;
+  isNew?: boolean;
+  isUpdated?: boolean;
+  isSeen?: boolean;
+  updateReasons?: NewsEventUpdateReason[];
 }
 
 export interface DailyNewsDigestItemDto {
@@ -340,6 +359,11 @@ export interface DailyNewsDigestItemDto {
   sourcesCount: number;
   sources: NewsSourceRefDto[];
   radarImpact?: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+  state?: PortfolioNewsEventStateType;
+  isNew?: boolean;
+  isUpdated?: boolean;
+  isSeen?: boolean;
+  updateReasons?: NewsEventUpdateReason[];
 }
 
 export interface PortfolioDailyNewsDigestDto {
@@ -354,6 +378,10 @@ export interface PortfolioDailyNewsDigestDto {
   affectedAssetsCount: number;
   affectedAssets: string[];
   items: DailyNewsDigestItemDto[];
+  newEventsCount?: number;
+  newMaterialEventsCount?: number;
+  updatedEventsCount?: number;
+  seenEventsCount?: number;
 }
 
 export interface PortfolioNewsInboxMetricsDto {
@@ -366,6 +394,10 @@ export interface PortfolioNewsInboxMetricsDto {
   highCount?: number;
   mediumCount?: number;
   routineCount?: number;
+  newEventsCount?: number;
+  newMaterialEventsCount?: number;
+  updatedEventsCount?: number;
+  seenEventsCount?: number;
   totalAuditedAssets: number;
   assetsWithNews: number;
   assetsWithoutNews: number;
@@ -381,6 +413,16 @@ export interface PortfolioNewsInboxMetricsDto {
   };
 }
 
+export interface PortfolioNewsStateSummaryDto {
+  initialized: boolean;
+  initializedAt: string | null;
+  lastRefreshedAt: string | null;
+  newEventsCount: number;
+  newMaterialEventsCount: number;
+  updatedEventsCount: number;
+  seenEventsCount: number;
+}
+
 export interface PortfolioNewsInboxResponseDto {
   events: PortfolioNewsEventDto[];
   totalEvents: number;
@@ -388,6 +430,7 @@ export interface PortfolioNewsInboxResponseDto {
   metrics: PortfolioNewsInboxMetricsDto;
   digest?: PortfolioDailyNewsDigestDto;
   assetDailyStatus?: Record<string, string>;
+  newsState?: PortfolioNewsStateSummaryDto;
   asOf: string;
 }
 

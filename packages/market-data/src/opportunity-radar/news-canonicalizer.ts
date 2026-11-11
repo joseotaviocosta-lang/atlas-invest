@@ -406,16 +406,20 @@ function jaccardSimilarity(textA: string, textB: string): number {
 }
 
 /**
- * Generates a deterministic canonical event ID.
+ * Generates a deterministic 64-bit canonical event ID from full event identity attributes.
+ * Avoids truncation collisions while remaining runtime-agnostic (zero Node crypto dependency).
  */
 function generateCanonicalEventId(primaryTicker: string, eventType: string, dateBucket: string, headlineKey: string): string {
-  const raw = `${primaryTicker}:${eventType}:${dateBucket}:${headlineKey.slice(0, 30)}`;
-  let hash = 0;
+  const raw = `${primaryTicker}:${eventType}:${dateBucket}:${headlineKey}`;
+  let h1 = 0x811c9dc5;
+  let h2 = 5381;
   for (let i = 0; i < raw.length; i++) {
-    hash = (hash << 5) - hash + raw.charCodeAt(i);
-    hash |= 0;
+    const ch = raw.charCodeAt(i);
+    h1 ^= ch;
+    h1 = Math.imul(h1, 0x01000193);
+    h2 = Math.imul(h2, 33) ^ ch;
   }
-  return `evt_${Math.abs(hash).toString(16)}`;
+  return `evt_${(h1 >>> 0).toString(16).padStart(8, '0')}${(h2 >>> 0).toString(16).padStart(8, '0')}`;
 }
 
 /**
@@ -430,8 +434,31 @@ export function canonicalizeNewsEvents(
     return [];
   }
 
-  // Filter out invalid items
-  const validArticles = rawArticles.filter(a => a.headline && a.headline.trim().length > 0 && a.ticker);
+  // Filter out invalid items and deterministically order them before clustering
+  // (Chronological ASC -> Official first -> Ticker -> Headline -> ID)
+  // This guarantees canonicalEventId stability regardless of provider fetch ordering.
+  const validArticles = rawArticles
+    .filter(a => a.headline && a.headline.trim().length > 0 && a.ticker)
+    .slice()
+    .sort((a, b) => {
+      const timeA = (typeof a.publishedAt === 'string' ? new Date(a.publishedAt) : a.publishedAt)?.getTime();
+      const timeB = (typeof b.publishedAt === 'string' ? new Date(b.publishedAt) : b.publishedAt)?.getTime();
+      const validA = Number.isFinite(timeA) ? timeA : 0;
+      const validB = Number.isFinite(timeB) ? timeB : 0;
+      if (validA !== validB) {
+        return validA - validB;
+      }
+      const offA = isTrustedOfficialSource(a) ? 1 : 0;
+      const offB = isTrustedOfficialSource(b) ? 1 : 0;
+      if (offB !== offA) {
+        return offB - offA;
+      }
+      const tickDiff = a.ticker.toUpperCase().localeCompare(b.ticker.toUpperCase());
+      if (tickDiff !== 0) return tickDiff;
+      const headDiff = stripPublisherTail(a.headline).localeCompare(stripPublisherTail(b.headline));
+      if (headDiff !== 0) return headDiff;
+      return (a.id || '').localeCompare(b.id || '');
+    });
 
   interface EventCluster {
     canonicalId: string;
@@ -503,7 +530,7 @@ export function canonicalizeNewsEvents(
       const sim = jaccardSimilarity(c.normalizedMatch, normMatch);
       const sameEventType = c.eventType === eventType && eventType !== 'OTHER';
 
-      if (sim >= 0.30 || (sameEventType && sim >= 0.20)) {
+      if (c.normalizedMatch === normMatch || sim >= 0.30 || (sameEventType && sim >= 0.20)) {
         matchedCluster = c;
         break;
       }
@@ -552,7 +579,12 @@ export function canonicalizeNewsEvents(
     } else {
       // Create new cluster
       const dateBucket = pubDate.toISOString().slice(0, 10);
-      const canonicalId = generateCanonicalEventId(raw.ticker, eventType, dateBucket, normMatch);
+      const baseCanonicalId = generateCanonicalEventId(raw.ticker, eventType, dateBucket, normMatch);
+      let canonicalId = baseCanonicalId;
+      let dupIndex = 2;
+      while (clusters.some((existing) => existing.canonicalId === canonicalId)) {
+        canonicalId = `${baseCanonicalId}_${dupIndex++}`;
+      }
       const sourceMap = new Map<string, NewsSourceRef>();
       sourceMap.set(sourceRef.name + sourceRef.url, sourceRef);
 

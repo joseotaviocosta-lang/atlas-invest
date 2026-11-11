@@ -24,6 +24,7 @@ import {
   PortfolioDailyNewsDigest,
   PortfolioNewsEvent,
 } from './portfolio-news.types.js';
+import { compareEventsByMaterialityAndNovelty } from './news-state.js';
 
 export interface NewsMaterialityInput {
   headline: string;
@@ -488,7 +489,16 @@ export function buildDailyNewsDigest(
   const nonRoutine = candidates.filter((item) => item.materiality.level !== 'ROUTINE');
   const pool = nonRoutine.length > 0 ? nonRoutine : candidates;
 
+  // Sort with novelty-awareness when events carry APP-16M state, preserving materiality hierarchy first
+  // (e.g., CRITICAL SEEN ALWAYS outranks LOW NEW). When state is absent, keep exact APP-16L ordering.
+  const hasNoveltyState = events.some((e) => e.state !== undefined);
+
   pool.sort((a, b) => {
+    if (hasNoveltyState) {
+      const matNovDiff = compareEventsByMaterialityAndNovelty(a.event, b.event);
+      if (matNovDiff !== 0) return matNovDiff;
+    }
+
     // 1. Materiality level desc
     const matDiff = materialityOrder[b.materiality.level] - materialityOrder[a.materiality.level];
     if (matDiff !== 0) return matDiff;
@@ -520,6 +530,26 @@ export function buildDailyNewsDigest(
     return a.event.id.localeCompare(b.event.id);
   });
 
+  let newEventsCount = 0;
+  let newMaterialEventsCount = 0;
+  let updatedEventsCount = 0;
+  let seenEventsCount = 0;
+  if (hasNoveltyState) {
+    for (const entry of enriched) {
+      const ev = entry.event;
+      if (ev.state === 'NEW') {
+        newEventsCount++;
+        if (entry.materiality.level === 'CRITICAL' || entry.materiality.level === 'HIGH') {
+          newMaterialEventsCount++;
+        }
+      } else if (ev.state === 'UPDATED') {
+        updatedEventsCount++;
+      } else if (ev.state === 'SEEN') {
+        seenEventsCount++;
+      }
+    }
+  }
+
   const selectedPool = pool.slice(0, maxItems);
   const affectedAssetsSet = new Set<string>();
 
@@ -537,7 +567,7 @@ export function buildDailyNewsDigest(
     const officialSource = ev.sources.find((s) => s.name === 'CVM' || s.name === 'B3');
     const canonicalUrl = officialSource?.url || ev.sources[0]?.url;
 
-    return {
+    const digestItem: DailyNewsDigestItem = {
       id: `digest_${ev.id}`,
       canonicalEventId: ev.canonicalEventId || ev.id,
       ticker,
@@ -558,9 +588,21 @@ export function buildDailyNewsDigest(
       sources: ev.sources,
       radarImpact,
     };
+
+    if (hasNoveltyState && ev.state !== undefined) {
+      digestItem.state = ev.state;
+      digestItem.isNew = ev.isNew ?? ev.state === 'NEW';
+      digestItem.isUpdated = ev.isUpdated ?? ev.state === 'UPDATED';
+      digestItem.isSeen = ev.isSeen ?? ev.state === 'SEEN';
+      if (ev.updateReasons && ev.updateReasons.length > 0) {
+        digestItem.updateReasons = ev.updateReasons;
+      }
+    }
+
+    return digestItem;
   });
 
-  return {
+  const digestResult: PortfolioDailyNewsDigest = {
     date: dateStr,
     totalEvents: events.length,
     materialEventsCount,
@@ -573,6 +615,15 @@ export function buildDailyNewsDigest(
     affectedAssets: Array.from(affectedAssetsSet).sort(),
     items,
   };
+
+  if (hasNoveltyState) {
+    digestResult.newEventsCount = newEventsCount;
+    digestResult.newMaterialEventsCount = newMaterialEventsCount;
+    digestResult.updatedEventsCount = updatedEventsCount;
+    digestResult.seenEventsCount = seenEventsCount;
+  }
+
+  return digestResult;
 }
 
 /**

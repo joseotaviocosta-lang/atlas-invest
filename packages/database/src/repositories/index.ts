@@ -50,3 +50,4 @@ export * from './calendar.repository';
 export * from './macro.repository';
 export * from './watchlist.repository';
 export * from './privacy.repository';
+export * from './portfolio-news-state.repository';

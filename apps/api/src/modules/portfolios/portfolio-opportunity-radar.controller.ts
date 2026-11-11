@@ -1,8 +1,19 @@
-import { Controller, Get, Post, HttpCode, HttpStatus, Inject, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, HttpCode, HttpStatus, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { z } from 'zod';
 import { GetOpportunityRadarUseCase } from '../../application/portfolios/opportunity-radar/get-opportunity-radar.use-case';
 import { UUIDParamPipe } from '../../common/pipes';
 import { AuthenticatedPrincipal, CurrentPrincipal } from '../../auth';
+
+const MarkPortfolioNewsSeenSchema = z
+  .object({
+    canonicalEventIds: z.array(z.string().trim().min(1).max(120)).max(200).optional(),
+    markAllNew: z.boolean().optional(),
+  })
+  .strict()
+  .refine((data) => Boolean(data.markAllNew) || (data.canonicalEventIds && data.canonicalEventIds.length > 0), {
+    message: 'Provide either markAllNew: true or a non-empty canonicalEventIds array.',
+  });
 
 /**
  * Phase APP-16F / APP-16H / APP-16I — Daily Opportunity Radar (Read-only analysis).
@@ -49,18 +60,71 @@ export class PortfolioOpportunityRadarController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Get portfolio news inbox (read-only)',
-    description: 'Returns canonical deduplicated news events, breakdown, and provider status for portfolio assets.',
+    description:
+      'Returns canonical deduplicated news events, novelty state (NEW/UPDATED/SEEN/UNCHANGED), breakdown, and provider status for portfolio assets.',
   })
   @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiQuery({ name: 'refresh', required: false, description: 'Pass true to bypass the 20-minute raw feed cache and fetch fresh articles' })
   @ApiResponse({ status: 200, description: 'Portfolio news inbox' })
   @ApiResponse({ status: 404, description: 'Portfolio not found' })
   async getPortfolioNews(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Query('refresh') refresh?: string,
+  ) {
+    const forceRefresh = refresh === 'true' || refresh === '1';
+    const data = await this.radarUseCase.getPortfolioNews({
+      portfolioId,
+      userId: principal.userId,
+      forceRefresh,
+    });
+    return { data };
+  }
+
+  @Post('news/refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Explicitly refresh portfolio news intelligence',
+    description:
+      'Fetches fresh regulatory and financial news events without erasing unseen NEW/UPDATED states.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({ status: 200, description: 'Refreshed portfolio news inbox with state' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async refreshPortfolioNews(
     @Param('portfolioId', UUIDParamPipe) portfolioId: string,
     @CurrentPrincipal() principal: AuthenticatedPrincipal,
   ) {
     const data = await this.radarUseCase.getPortfolioNews({
       portfolioId,
       userId: principal.userId,
+      forceRefresh: true,
+    });
+    return { data };
+  }
+
+  @Post('news/seen')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Mark portfolio news events as seen',
+    description:
+      'Explicitly transitions targeted canonicalEventIds or all NEW/UPDATED events in the portfolio to SEEN.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({ status: 200, description: 'Mark seen result' })
+  @ApiResponse({ status: 400, description: 'Invalid input' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async markPortfolioNewsSeen(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Body() body: unknown,
+  ) {
+    const parsed = MarkPortfolioNewsSeenSchema.parse(body ?? {});
+    const data = await this.radarUseCase.markPortfolioNewsSeen({
+      portfolioId,
+      userId: principal.userId,
+      canonicalEventIds: parsed.canonicalEventIds,
+      markAllNew: parsed.markAllNew,
     });
     return { data };
   }

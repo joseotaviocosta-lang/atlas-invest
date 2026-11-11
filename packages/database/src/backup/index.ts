@@ -503,7 +503,7 @@ export async function runRestoreVerificationDrill(
 
     let invariants: RestoreInvariants;
     try {
-      // Invariant 1: Exactly 48 migrations applied (canonical count)
+      // Invariant 1: Exactly 49 migrations applied (canonical count)
       const migrationRows = await tempPrisma.$queryRawUnsafe<{ count: string | number | bigint }[]>(
         'SELECT COUNT(*) as count FROM _prisma_migrations WHERE finished_at IS NOT NULL',
       );
@@ -626,7 +626,7 @@ export async function runRestoreVerificationDrill(
     const rtoMs = Date.now() - drillStartTime;
     const isSuccess =
       checksumResult.valid &&
-      invariants.migrationCount === 48 &&
+      invariants.migrationCount === 49 &&
       invariants.ledgerIntegrity &&
       invariants.notificationsIntact &&
       invariants.auditHistoryIntact &&

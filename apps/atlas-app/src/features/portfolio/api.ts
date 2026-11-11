@@ -87,9 +87,30 @@ export const portfolioApi = {
 
   async getPortfolioNews(
     portfolioId: string,
+    options?: { refresh?: boolean },
   ): Promise<{ data: import('./types').PortfolioNewsInboxResponseDto }> {
+    const query = options?.refresh ? '?refresh=true' : '';
     return apiClient.get<{ data: import('./types').PortfolioNewsInboxResponseDto }>(
-      `/api/v1/portfolios/${portfolioId}/opportunity-radar/news`
+      `/api/v1/portfolios/${portfolioId}/opportunity-radar/news${query}`
+    );
+  },
+
+  async refreshPortfolioNews(
+    portfolioId: string,
+  ): Promise<{ data: import('./types').PortfolioNewsInboxResponseDto }> {
+    return apiClient.post<{ data: import('./types').PortfolioNewsInboxResponseDto }>(
+      `/api/v1/portfolios/${portfolioId}/opportunity-radar/news/refresh`,
+      {}
+    );
+  },
+
+  async markPortfolioNewsSeen(
+    portfolioId: string,
+    payload: { canonicalEventIds?: string[]; markAllNew?: boolean },
+  ): Promise<{ data: { updatedCount: number; updatedIds: string[]; seenAt: string } }> {
+    return apiClient.post<{ data: { updatedCount: number; updatedIds: string[]; seenAt: string } }>(
+      `/api/v1/portfolios/${portfolioId}/opportunity-radar/news/seen`,
+      payload
     );
   },
 };

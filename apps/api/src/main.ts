@@ -192,7 +192,7 @@ async function bootstrap() {
     environment: process.env.NODE_ENV || 'development',
     port,
     databaseTarget: safeDbTarget,
-    migrationBaseline: 48,
+    migrationBaseline: 49,
     taxCostEnrichment:
       process.env.TAX_COST_EVIDENCE_ENRICHMENT_ENABLED === 'true' ? 'ENABLED' : 'DISABLED',
   });
