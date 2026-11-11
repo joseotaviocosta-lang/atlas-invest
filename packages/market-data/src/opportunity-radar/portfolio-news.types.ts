@@ -23,6 +23,8 @@ export type NewsSentiment = 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | 'UNKNOWN';
 export type SentimentMethod =
   | 'BRAPI_AI_AGGREGATED'
   | 'HEADLINE_KEYWORD_HEURISTIC'
+  | 'EVENT_HEADLINE_RULE'
+  | 'HEADLINE_EVENT_RULE'
   | 'OFFICIAL_EVENT_RULE'
   | 'UNKNOWN';
 
@@ -36,17 +38,30 @@ export type NewsFreshness =
 
 export type NewsImportance = 1 | 2 | 3 | 4 | 5;
 
+export type SourceTrustLevel =
+  | 'OFFICIAL'
+  | 'TRUSTED_MEDIA'
+  | 'AGGREGATOR'
+  | 'UNKNOWN';
+
 export type NewsProvider =
   | 'BRAPI_NEWS'
   | 'GOOGLE_NEWS'
   | 'OFFICIAL_REGULATORY'
-  | 'FINANCIAL_MEDIA';
+  | 'FINANCIAL_MEDIA'
+  | 'CVM'
+  | 'B3'
+  | 'CORPORATE_IR'
+  | 'FUND_MANAGER_IR';
 
 export type NewsSourceType =
   | 'OFFICIAL_REGULATORY'
+  | 'CORPORATE_IR'
   | 'BRAPI_NEWS_AGGREGATED'
   | 'TRUSTED_FINANCIAL_MEDIA'
-  | 'GOOGLE_NEWS_RSS_FALLBACK';
+  | 'GOOGLE_NEWS_RSS_FALLBACK'
+  | 'AGGREGATOR'
+  | 'UNKNOWN';
 
 export interface NewsSourceRef {
   name: string;

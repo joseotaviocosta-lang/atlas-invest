@@ -304,10 +304,23 @@ export const PortfolioNewsInbox: React.FC<PortfolioNewsInboxProps> = ({ portfoli
                         </span>
                       ))}
 
+                      {ev.eventType === 'FACT_RELEVANT' && (
+                        <Badge variant="warning">Fato Relevante</Badge>
+                      )}
+                      {ev.eventType === 'MARKET_NOTICE' && (
+                        <Badge variant="neutral">Comunicado ao Mercado</Badge>
+                      )}
+                      {ev.eventType === 'EARNINGS' && (
+                        <Badge variant="neutral">Resultados</Badge>
+                      )}
+                      {ev.eventType === 'DIVIDEND' && (
+                        <Badge variant="neutral">Proventos</Badge>
+                      )}
+
                       {ev.official ? (
                         <Badge variant="primary">🏛 Oficial</Badge>
                       ) : (
-                        <Badge variant="neutral">📰 Imprensa</Badge>
+                        <Badge variant="neutral">📰 {ev.sources[0]?.name || 'Imprensa'}</Badge>
                       )}
 
                       {ev.importance >= 4 && (

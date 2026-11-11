@@ -9,7 +9,146 @@ import {
   PortfolioNewsEvent,
   RawNewsInput,
   SentimentMethod,
+  SourceTrustLevel,
 } from './portfolio-news.types';
+
+/**
+ * Classifies the provenance and trust tier of a news source.
+ * Separates verified official entities from media and aggregators.
+ */
+export function classifySourceTrust(raw: {
+  provider?: string;
+  sourceType?: string;
+  sourceName?: string;
+  url?: string;
+  official?: boolean;
+}): SourceTrustLevel {
+  const provider = (raw.provider || '').toUpperCase().trim();
+  const sourceType = (raw.sourceType || '').toUpperCase().trim();
+  const sourceName = (raw.sourceName || '').toLowerCase().trim();
+  const url = (raw.url || '').toLowerCase().trim();
+
+  // 1. Explicit domain check if URL is provided
+  let isOfficialDomain = false;
+  if (url) {
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.toLowerCase();
+      if (
+        host === 'cvm.gov.br' ||
+        host.endsWith('.cvm.gov.br') ||
+        host === 'b3.com.br' ||
+        host.endsWith('.b3.com.br') ||
+        host.startsWith('ri.') ||
+        host.includes('.ri.') ||
+        host.includes('riweb.') ||
+        host.includes('rad.cvm.gov.br')
+      ) {
+        isOfficialDomain = true;
+      }
+    } catch {
+      // ignore invalid URL
+    }
+  }
+
+  // Explicit official source names
+  const isOfficialSourceName =
+    sourceName === 'cvm' ||
+    sourceName === 'b3' ||
+    sourceName === 'ri' ||
+    sourceName.startsWith('ri ') ||
+    sourceName.endsWith(' ri') ||
+    sourceName.includes('relações com investidores') ||
+    sourceName.includes('relacoes com investidores');
+
+  // Explicit official providers and sourceTypes
+  const isOfficialProvider =
+    provider === 'CVM' ||
+    provider === 'B3' ||
+    provider === 'CORPORATE_IR' ||
+    provider === 'FUND_MANAGER_IR' ||
+    provider === 'OFFICIAL_REGULATORY';
+
+  const isOfficialSourceType =
+    sourceType === 'OFFICIAL_REGULATORY' ||
+    sourceType === 'CORPORATE_IR';
+
+  // An item from an aggregator (Google News, BRAPI aggregated) must NOT be marked OFFICIAL
+  // unless its sourceName or URL domain explicitly proves an official publisher!
+  const isAggregatorContainer =
+    provider === 'GOOGLE_NEWS' ||
+    provider === 'BRAPI_NEWS' ||
+    sourceType === 'GOOGLE_NEWS_RSS_FALLBACK' ||
+    sourceType === 'BRAPI_NEWS_AGGREGATED' ||
+    sourceType === 'AGGREGATOR';
+
+  if (isAggregatorContainer) {
+    if (isOfficialDomain || isOfficialSourceName) {
+      return 'OFFICIAL';
+    }
+  } else if (isOfficialProvider || isOfficialSourceType || isOfficialDomain || isOfficialSourceName) {
+    return 'OFFICIAL';
+  }
+
+  // 2. Trusted Financial Media
+  const trustedMediaNames = [
+    'infomoney',
+    'valor',
+    'valor econômico',
+    'valor economico',
+    'suno',
+    'suno notícias',
+    'suno noticias',
+    'exame',
+    'reuters',
+    'bloomberg',
+    'broadcast',
+    'money times',
+    'brazil journal',
+    'neofeed',
+    'investnews',
+    'investidor10',
+    'fiis',
+    'seu dinheiro',
+    'agência estado',
+    'agencia estado',
+    'estadao',
+    'folha',
+    'oglobo',
+    'o globo',
+    'globo',
+  ];
+
+  if (
+    sourceType === 'TRUSTED_FINANCIAL_MEDIA' ||
+    provider === 'FINANCIAL_MEDIA' ||
+    trustedMediaNames.some((name) => sourceName.includes(name))
+  ) {
+    return 'TRUSTED_MEDIA';
+  }
+
+  // 3. Aggregators
+  if (isAggregatorContainer || sourceName.includes('google')) {
+    return 'AGGREGATOR';
+  }
+
+  return 'UNKNOWN';
+}
+
+/**
+ * Validates whether an incoming raw news article originates from a verified official source.
+ * Strict: Never trusts raw.official without compatible provenance evidence.
+ * Never infers officiality from headline event types (e.g. "fato relevante" in InfoMoney).
+ */
+export function isTrustedOfficialSource(raw: {
+  provider?: string;
+  sourceType?: string;
+  sourceName?: string;
+  url?: string;
+  official?: boolean;
+}): boolean {
+  return classifySourceTrust(raw) === 'OFFICIAL';
+}
 
 /**
  * Strips publisher tails from headlines (e.g. " - InfoMoney", " | Valor Econômico").
@@ -109,21 +248,32 @@ export function classifyNewsImportance(
 
 /**
  * Classifies sentiment and method using official event heuristics and headline keywords.
+ * When official === true and verified, tags method as OFFICIAL_EVENT_RULE.
+ * When official === false (e.g. from financial media), tags method as EVENT_HEADLINE_RULE.
  */
 export function classifyNewsSentiment(
   headline: string,
   summary: string = '',
-  _eventType: NewsEventType = 'OTHER',
+  context?:
+    | {
+        eventType?: NewsEventType;
+        official?: boolean;
+        sourceType?: NewsSourceType;
+      }
+    | NewsEventType,
 ): { sentiment: NewsSentiment; score: number; method: SentimentMethod } {
+  const official = typeof context === 'object' && context !== null ? Boolean(context.official) : false;
   const text = `${headline} ${summary}`.toLowerCase();
 
-  // Official rules for specific event types
+  // Strong event-based rules
   if (/(?:aumento\s+de\s+dividendos|lucro\s+(?:sobe|salta|cresce|recorde|supera|dispara)|forte\s+alta|recompra\s+de\s+a[cç][oõ]es|upgrade|eleva\s+recomenda[cç][aã]o|supera\s+consenso|aprova\s+dividendos)/i.test(text)) {
-    return { sentiment: 'POSITIVE', score: 0.8, method: 'OFFICIAL_EVENT_RULE' };
+    const method: SentimentMethod = official ? 'OFFICIAL_EVENT_RULE' : 'EVENT_HEADLINE_RULE';
+    return { sentiment: 'POSITIVE', score: 0.8, method };
   }
 
   if (/(?:preju[ií]zo|lucro\s+(?:cai|recua|desaba|despenca)|corte\s+de\s+dividendos|rebaix|downgrade|recupera[cç][aã]o\s+judicial|calote|inadimpl[eê]ncia|processo|investiga[cç][aã]o|fraude|multa)/i.test(text)) {
-    return { sentiment: 'NEGATIVE', score: -0.8, method: 'OFFICIAL_EVENT_RULE' };
+    const method: SentimentMethod = official ? 'OFFICIAL_EVENT_RULE' : 'EVENT_HEADLINE_RULE';
+    return { sentiment: 'NEGATIVE', score: -0.8, method };
   }
 
   // Standard headline heuristics
@@ -313,11 +463,12 @@ export function canonicalizeNewsEvents(
     const cleanedHeadline = stripPublisherTail(raw.headline);
     const normMatch = normalizeHeadlineForMatch(cleanedHeadline);
     const eventType = classifyNewsEventType(cleanedHeadline, raw.summary || '');
-    const isOfficial = raw.official ?? (eventType === 'FACT_RELEVANT' || eventType === 'MARKET_NOTICE' || raw.sourceType === 'OFFICIAL_REGULATORY');
+    const trust = classifySourceTrust(raw);
+    const isOfficial = isTrustedOfficialSource(raw);
     const importance = raw.importance ?? classifyNewsImportance(eventType, cleanedHeadline, isOfficial);
     const sentimentInfo = raw.sentiment && raw.sentimentMethod
       ? { sentiment: raw.sentiment, score: raw.sentiment === 'POSITIVE' ? 0.8 : raw.sentiment === 'NEGATIVE' ? -0.8 : 0, method: raw.sentimentMethod }
-      : classifyNewsSentiment(cleanedHeadline, raw.summary || '', eventType);
+      : classifyNewsSentiment(cleanedHeadline, raw.summary || '', { eventType, official: isOfficial, sourceType: raw.sourceType });
 
     const relevance = determineAssetRelevance(cleanedHeadline, raw.ticker);
     const sourceName = raw.sourceName || (raw.provider === 'BRAPI_NEWS' ? 'BRAPI News' : 'Imprensa');
@@ -356,11 +507,15 @@ export function canonicalizeNewsEvents(
       } else {
         matchedCluster.secondaryTickers.add(raw.ticker);
       }
-      // Upgrade importance / official if this source is official
+      // Upgrade importance / official if this source is truly official
       if (isOfficial) {
         matchedCluster.official = true;
+        matchedCluster.sourceType = raw.sourceType === 'CORPORATE_IR' ? 'CORPORATE_IR' : 'OFFICIAL_REGULATORY';
         if (importance > matchedCluster.importance) {
           matchedCluster.importance = importance;
+        }
+        if (matchedCluster.sentimentMethod === 'EVENT_HEADLINE_RULE') {
+          matchedCluster.sentimentMethod = 'OFFICIAL_EVENT_RULE';
         }
       }
       // Keep earlier publication date if older, or later if fresh
@@ -378,6 +533,19 @@ export function canonicalizeNewsEvents(
       const sourceMap = new Map<string, NewsSourceRef>();
       sourceMap.set(sourceRef.name + sourceRef.url, sourceRef);
 
+      let resolvedSourceType: NewsSourceType;
+      if (isOfficial) {
+        resolvedSourceType = raw.sourceType === 'CORPORATE_IR' ? 'CORPORATE_IR' : 'OFFICIAL_REGULATORY';
+      } else if (raw.sourceType && raw.sourceType !== 'OFFICIAL_REGULATORY' && raw.sourceType !== 'CORPORATE_IR') {
+        resolvedSourceType = raw.sourceType;
+      } else if (trust === 'TRUSTED_MEDIA') {
+        resolvedSourceType = 'TRUSTED_FINANCIAL_MEDIA';
+      } else if (raw.provider === 'BRAPI_NEWS') {
+        resolvedSourceType = 'BRAPI_NEWS_AGGREGATED';
+      } else {
+        resolvedSourceType = 'GOOGLE_NEWS_RSS_FALLBACK';
+      }
+
       const cluster: EventCluster = {
         canonicalId,
         headline: cleanedHeadline,
@@ -391,8 +559,8 @@ export function canonicalizeNewsEvents(
         primaryTickers: new Set(relevance === 'PRIMARY' ? [raw.ticker] : []),
         secondaryTickers: new Set(relevance === 'SECONDARY' ? [raw.ticker] : []),
         sources: sourceMap,
-        provider: raw.provider || 'GOOGLE_NEWS',
-        sourceType: raw.sourceType || (isOfficial ? 'OFFICIAL_REGULATORY' : 'GOOGLE_NEWS_RSS_FALLBACK'),
+        provider: raw.provider || (isOfficial ? 'OFFICIAL_REGULATORY' : 'GOOGLE_NEWS'),
+        sourceType: resolvedSourceType,
         official: isOfficial,
         normalizedMatch: normMatch,
       };

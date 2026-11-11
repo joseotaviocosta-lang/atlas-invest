@@ -139,6 +139,8 @@ export function calculateNewsScoreV2(
   if (clampedScore > 65) {
     if (dominantEvent.official && dominantEvent.eventType === 'FACT_RELEVANT') {
       explainability = `Fato relevante recente e favorável (${dominantEvent.headline.slice(0, 70)}).`;
+    } else if (dominantEvent.eventType === 'FACT_RELEVANT') {
+      explainability = `Notícia sobre fato relevante divulgada na imprensa (${dominantEvent.headline.slice(0, 70)}).`;
     } else if (dominantEvent.eventType === 'EARNINGS') {
       explainability = `Divulgação recente de resultados com perspectiva favorável.`;
     } else if (dominantEvent.eventType === 'DIVIDEND') {
@@ -149,6 +151,8 @@ export function calculateNewsScoreV2(
   } else if (clampedScore < 35) {
     if (dominantEvent.official) {
       explainability = `Fato relevante oficial ou comunicado com impacto cautelar no curto prazo.`;
+    } else if (dominantEvent.eventType === 'FACT_RELEVANT') {
+      explainability = `Notícia sobre fato relevante na imprensa com viés de cautela no curto prazo.`;
     } else if (dominantEvent.importance >= 4) {
       explainability = `Notícia recente de alta importância com viés negativo (${dominantEvent.headline.slice(0, 70)}).`;
     } else {

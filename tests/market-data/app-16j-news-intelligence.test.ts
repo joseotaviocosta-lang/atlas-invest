@@ -4,6 +4,8 @@ import {
   classifyNewsImportance,
   classifyNewsSentiment,
   classifyFreshness,
+  classifySourceTrust,
+  isTrustedOfficialSource,
   determineAssetRelevance,
   canonicalizeNewsEvents,
   calculateNewsScoreV2,
@@ -136,13 +138,19 @@ describe('PROJECT ATLAS — APP-16J: Portfolio News Intelligence & Full Coverage
 
   // 9. Sentiment provenance
   it('9. tags sentiment method honestly and distinguishes official rules from heuristics', () => {
+    // When not verified official, method is EVENT_HEADLINE_RULE
     const s1 = classifyNewsSentiment('Lucro sobe 45% e supera projeções do mercado');
     expect(s1.sentiment).toBe('POSITIVE');
-    expect(s1.method).toBe('OFFICIAL_EVENT_RULE');
+    expect(s1.method).toBe('EVENT_HEADLINE_RULE');
+
+    // When verified official, method is OFFICIAL_EVENT_RULE
+    const s1Official = classifyNewsSentiment('Lucro sobe 45% e supera projeções do mercado', '', { official: true });
+    expect(s1Official.sentiment).toBe('POSITIVE');
+    expect(s1Official.method).toBe('OFFICIAL_EVENT_RULE');
 
     const s2 = classifyNewsSentiment('Empresa reporta prejuízo e corte de dividendos');
     expect(s2.sentiment).toBe('NEGATIVE');
-    expect(s2.method).toBe('OFFICIAL_EVENT_RULE');
+    expect(s2.method).toBe('EVENT_HEADLINE_RULE');
 
     const s3 = classifyNewsSentiment('Mercado reage com otimismo moderado ao plano');
     expect(s3.sentiment).toBe('POSITIVE');
@@ -249,6 +257,8 @@ describe('PROJECT ATLAS — APP-16J: Portfolio News Intelligence & Full Coverage
       headline: 'PETR4 divulga Fato Relevante sobre nova política de preços',
       publishedAt: new Date('2026-11-09T14:00:00.000Z'),
       ticker: 'PETR4',
+      provider: 'CVM',
+      sourceType: 'OFFICIAL_REGULATORY',
       official: true,
     };
     const events = canonicalizeNewsEvents([officialRaw], refDate);
@@ -309,8 +319,335 @@ describe('PROJECT ATLAS — APP-16J: Portfolio News Intelligence & Full Coverage
     }
   });
 
-  // 20. Model Version Bump to opportunity-v2.3
-  it('20. model version bumped to opportunity-v2.3', () => {
-    expect(OPPORTUNITY_MODEL_VERSION).toBe('opportunity-v2.3');
+  // 20. Model Version Bump to opportunity-v2.3.1
+  it('20. model version bumped to opportunity-v2.3.1', () => {
+    expect(OPPORTUNITY_MODEL_VERSION).toBe('opportunity-v2.3.1');
+  });
+
+  // =========================================================================
+  // APP-16J-R1: OFFICIAL PROVENANCE & SENTIMENT INTEGRITY HOTFIX TESTS
+  // =========================================================================
+
+  // 1. FACT_RELEVANT via Google RSS != official
+  it('R1-1. FACT_RELEVANT via Google RSS has eventType FACT_RELEVANT but official = false', () => {
+    const raw: RawNewsInput = {
+      headline: 'Empresa X divulga Fato Relevante sobre recompra de ações',
+      publishedAt: new Date('2026-11-10T08:00:00.000Z'),
+      ticker: 'SOJA3',
+      provider: 'GOOGLE_NEWS',
+      sourceType: 'GOOGLE_NEWS_RSS_FALLBACK',
+      sourceName: 'Google News',
+    };
+    const events = canonicalizeNewsEvents([raw], refDate);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.eventType).toBe('FACT_RELEVANT');
+    expect(events[0]?.official).toBe(false);
+    expect(events[0]?.sourceType).toBe('GOOGLE_NEWS_RSS_FALLBACK');
+  });
+
+  // 2. MARKET_NOTICE via Google RSS != official
+  it('R1-2. MARKET_NOTICE via Google RSS has eventType MARKET_NOTICE but official = false', () => {
+    const raw: RawNewsInput = {
+      headline: 'Empresa Y publica comunicado ao mercado sobre alteração societária',
+      publishedAt: new Date('2026-11-10T08:00:00.000Z'),
+      ticker: 'HYPE3',
+      provider: 'GOOGLE_NEWS',
+      sourceType: 'GOOGLE_NEWS_RSS_FALLBACK',
+      sourceName: 'Google News',
+    };
+    const events = canonicalizeNewsEvents([raw], refDate);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.eventType).toBe('MARKET_NOTICE');
+    expect(events[0]?.official).toBe(false);
+  });
+
+  // 3. InfoMoney != official
+  it('R1-3. InfoMoney headline with Fato Relevante is NOT official', () => {
+    const raw: RawNewsInput = {
+      headline: 'Boa Safra (SOJA3) divulga Fato Relevante sobre bonificação - InfoMoney',
+      publishedAt: new Date('2026-11-10T09:00:00.000Z'),
+      ticker: 'SOJA3',
+      sourceName: 'InfoMoney',
+      provider: 'GOOGLE_NEWS',
+      url: 'https://www.infomoney.com.br/soja3-fr',
+    };
+    expect(isTrustedOfficialSource(raw)).toBe(false);
+    expect(classifySourceTrust(raw)).toBe('TRUSTED_MEDIA');
+    const events = canonicalizeNewsEvents([raw], refDate);
+    expect(events[0]?.official).toBe(false);
+    expect(events[0]?.eventType).toBe('FACT_RELEVANT');
+  });
+
+  // 4. Valor != official
+  it('R1-4. Valor Econômico headline with Comunicado ao Mercado is NOT official', () => {
+    const raw: RawNewsInput = {
+      headline: 'Hypera publica comunicado ao mercado sobre aprovação de novo medicamento',
+      publishedAt: new Date('2026-11-10T09:00:00.000Z'),
+      ticker: 'HYPE3',
+      sourceName: 'Valor Econômico',
+      provider: 'FINANCIAL_MEDIA',
+      sourceType: 'TRUSTED_FINANCIAL_MEDIA',
+    };
+    expect(isTrustedOfficialSource(raw)).toBe(false);
+    expect(classifySourceTrust(raw)).toBe('TRUSTED_MEDIA');
+    const events = canonicalizeNewsEvents([raw], refDate);
+    expect(events[0]?.official).toBe(false);
+    expect(events[0]?.eventType).toBe('MARKET_NOTICE');
+  });
+
+  // 5. CVM official
+  it('R1-5. CVM source is classified as official = true', () => {
+    const raw: RawNewsInput = {
+      headline: 'Fato Relevante: Aquisição da subsidiária concluída',
+      publishedAt: new Date('2026-11-10T10:00:00.000Z'),
+      ticker: 'VALE3',
+      provider: 'CVM',
+      sourceType: 'OFFICIAL_REGULATORY',
+      sourceName: 'CVM',
+      url: 'https://rad.cvm.gov.br/ENET/exibirArquivo.aspx',
+    };
+    expect(isTrustedOfficialSource(raw)).toBe(true);
+    expect(classifySourceTrust(raw)).toBe('OFFICIAL');
+    const events = canonicalizeNewsEvents([raw], refDate);
+    expect(events[0]?.official).toBe(true);
+    expect(events[0]?.eventType).toBe('FACT_RELEVANT');
+  });
+
+  // 6. B3 official
+  it('R1-6. B3 regulatory announcement is classified as official = true', () => {
+    const raw: RawNewsInput = {
+      headline: 'Comunicado ao Mercado sobre negociação de ações',
+      publishedAt: new Date('2026-11-10T10:00:00.000Z'),
+      ticker: 'PETR4',
+      provider: 'B3',
+      sourceType: 'OFFICIAL_REGULATORY',
+      sourceName: 'B3',
+      url: 'https://www.b3.com.br/pt_br/noticias/comunicado.htm',
+    };
+    expect(isTrustedOfficialSource(raw)).toBe(true);
+    expect(classifySourceTrust(raw)).toBe('OFFICIAL');
+    const events = canonicalizeNewsEvents([raw], refDate);
+    expect(events[0]?.official).toBe(true);
+  });
+
+  // 7. Corporate RI official
+  it('R1-7. Corporate RI source or domain is classified as official = true', () => {
+    const raw: RawNewsInput = {
+      headline: 'Aviso aos Acionistas: Proventos aprovados em RCA',
+      publishedAt: new Date('2026-11-10T10:00:00.000Z'),
+      ticker: 'ITUB4',
+      provider: 'CORPORATE_IR',
+      sourceType: 'CORPORATE_IR',
+      sourceName: 'Itaú RI',
+      url: 'https://ri.itau.com.br/aviso-acionistas',
+    };
+    expect(isTrustedOfficialSource(raw)).toBe(true);
+    expect(classifySourceTrust(raw)).toBe('OFFICIAL');
+    const events = canonicalizeNewsEvents([raw], refDate);
+    expect(events[0]?.official).toBe(true);
+  });
+
+  // 8. raw.official sem trusted source não basta
+  it('R1-8. raw.official === true is rejected if provider/source is untrusted media', () => {
+    const untrustedRaw: RawNewsInput = {
+      headline: 'Fato Relevante anunciado no blog de investimentos',
+      publishedAt: new Date('2026-11-10T11:00:00.000Z'),
+      ticker: 'PETR4',
+      sourceName: 'Blog de Investimentos',
+      provider: 'GOOGLE_NEWS',
+      official: true, // Claiming official without provenance!
+    };
+    expect(isTrustedOfficialSource(untrustedRaw)).toBe(false);
+    const events = canonicalizeNewsEvents([untrustedRaw], refDate);
+    expect(events[0]?.official).toBe(false);
+  });
+
+  // 9. Official multiplier somente trusted
+  it('R1-9. official multiplier (1.2) is applied ONLY to trusted official events', () => {
+    const mediaEvent: PortfolioNewsEvent = {
+      id: 'ev-media',
+      canonicalEventId: 'ev-media',
+      headline: 'Empresa anuncia lucro recorde e dividendos expressivos',
+      summary: '',
+      publishedAt: '2026-11-10T10:00:00.000Z',
+      importance: 4,
+      sentiment: 'POSITIVE',
+      sentimentScore: 0.8,
+      sentimentMethod: 'EVENT_HEADLINE_RULE',
+      eventType: 'EARNINGS',
+      assets: ['SOJA3'],
+      primaryTickers: ['SOJA3'],
+      secondaryTickers: [],
+      sources: [{ name: 'InfoMoney', url: '' }],
+      provider: 'FINANCIAL_MEDIA',
+      sourceType: 'TRUSTED_FINANCIAL_MEDIA',
+      official: false,
+      freshness: 'BREAKING',
+      decayWeight: 1.0,
+    };
+
+    const officialEvent: PortfolioNewsEvent = {
+      ...mediaEvent,
+      id: 'ev-official',
+      canonicalEventId: 'ev-official',
+      sources: [{ name: 'CVM', url: 'https://rad.cvm.gov.br' }],
+      provider: 'OFFICIAL_REGULATORY',
+      sourceType: 'OFFICIAL_REGULATORY',
+      official: true,
+      sentimentMethod: 'OFFICIAL_EVENT_RULE',
+    };
+
+    const resMedia = calculateNewsScoreV2([mediaEvent], 'SOJA3', refDate);
+    const resOfficial = calculateNewsScoreV2([officialEvent], 'SOJA3', refDate);
+
+    // Official has officialBonus (+0.2) in confidence (capped at 1.0) and 1.2 multiplier
+    expect(resOfficial.confidenceMultiplier).toBe(1.0);
+    expect(resMedia.confidenceMultiplier).toBeCloseTo(0.82, 5);
+    expect(resOfficial.confidenceMultiplier).toBeGreaterThan(resMedia.confidenceMultiplier);
+  });
+
+  // 10. Official confidence bonus somente trusted
+  it('R1-10. official bonus (+0.2) is never granted to media headlines', () => {
+    const mediaEvent: PortfolioNewsEvent = {
+      id: 'ev-m1',
+      canonicalEventId: 'ev-m1',
+      headline: 'Fato Relevante sobre bonificação',
+      summary: '',
+      publishedAt: '2026-11-10T10:00:00.000Z',
+      importance: 5,
+      sentiment: 'POSITIVE',
+      sentimentScore: 0.8,
+      sentimentMethod: 'EVENT_HEADLINE_RULE',
+      eventType: 'FACT_RELEVANT',
+      assets: ['SOJA3'],
+      primaryTickers: ['SOJA3'],
+      secondaryTickers: [],
+      sources: [{ name: 'InfoMoney', url: '' }],
+      provider: 'FINANCIAL_MEDIA',
+      sourceType: 'TRUSTED_FINANCIAL_MEDIA',
+      official: false,
+      freshness: 'BREAKING',
+      decayWeight: 1.0,
+    };
+    const res = calculateNewsScoreV2([mediaEvent], 'SOJA3', refDate);
+    // Base 0.4 + countBonus(0.1) + importanceBonus(0.4) = 0.9 (no official bonus!)
+    expect(res.confidenceMultiplier).toBe(0.9);
+  });
+
+  // 11. EVENT_HEADLINE_RULE para heurística
+  it('R1-11. assigns EVENT_HEADLINE_RULE when rule triggers without official source', () => {
+    const result = classifyNewsSentiment('Empresa aprova dividendos e recompra de ações', '', { official: false });
+    expect(result.method).toBe('EVENT_HEADLINE_RULE');
+    expect(result.sentiment).toBe('POSITIVE');
+  });
+
+  // 12. OFFICIAL_EVENT_RULE apenas trusted source
+  it('R1-12. assigns OFFICIAL_EVENT_RULE ONLY when official is verified true', () => {
+    const result = classifyNewsSentiment('Empresa aprova dividendos e recompra de ações', '', { official: true });
+    expect(result.method).toBe('OFFICIAL_EVENT_RULE');
+    expect(result.sentiment).toBe('POSITIVE');
+  });
+
+  // 13. Official KPI recalculado
+  it('R1-13. officialCount in pipeline metrics counts only verified official events', () => {
+    const articles: RawNewsInput[] = [
+      {
+        headline: 'Fato relevante da SOJA3 no InfoMoney',
+        ticker: 'SOJA3',
+        publishedAt: new Date('2026-11-10T08:00:00.000Z'),
+        sourceName: 'InfoMoney',
+        provider: 'GOOGLE_NEWS',
+      },
+      {
+        headline: 'Comunicado ao mercado da HYPE3 no Valor',
+        ticker: 'HYPE3',
+        publishedAt: new Date('2026-11-10T08:00:00.000Z'),
+        sourceName: 'Valor',
+        provider: 'GOOGLE_NEWS',
+      },
+      {
+        headline: 'VALE3: Fato Relevante oficial na CVM',
+        ticker: 'VALE3',
+        publishedAt: new Date('2026-11-10T08:00:00.000Z'),
+        sourceName: 'CVM',
+        provider: 'CVM',
+        sourceType: 'OFFICIAL_REGULATORY',
+      },
+    ];
+
+    const events = canonicalizeNewsEvents(articles, refDate);
+    const officialEvents = events.filter((e) => e.official);
+    expect(officialEvents).toHaveLength(1);
+    expect(officialEvents[0]?.assets).toContain('VALE3');
+    // SOJA3 and HYPE3 are NOT official
+    const sojaEvent = events.find((e) => e.assets.includes('SOJA3'));
+    expect(sojaEvent?.official).toBe(false);
+    expect(sojaEvent?.eventType).toBe('FACT_RELEVANT');
+  });
+
+  // 14. UI badge official somente real
+  it('R1-14. UI badges: media events keep eventType badge while dropping official badge', () => {
+    const raw: RawNewsInput = {
+      headline: 'Empresa divulga Fato Relevante - InfoMoney',
+      ticker: 'SOJA3',
+      publishedAt: new Date('2026-11-10T08:00:00.000Z'),
+      sourceName: 'InfoMoney',
+      provider: 'GOOGLE_NEWS',
+    };
+    const events = canonicalizeNewsEvents([raw], refDate);
+    const ev = events[0]!;
+    // UI can render Fato Relevante badge because eventType is preserved
+    expect(ev.eventType).toBe('FACT_RELEVANT');
+    // But UI does NOT render 🏛 Oficial because official is false
+    expect(ev.official).toBe(false);
+    expect(ev.sources[0]?.name).toBe('InfoMoney');
+  });
+
+  // 15. eventType preservado
+  it('R1-15. eventType classification operates independently of source provenance', () => {
+    const mediaHeadline = 'Comunicado ao Mercado sobre expansão das operações';
+    const eventType = classifyNewsEventType(mediaHeadline);
+    expect(eventType).toBe('MARKET_NOTICE');
+
+    const trust = classifySourceTrust({
+      headline: mediaHeadline,
+      sourceName: 'Exame',
+      provider: 'GOOGLE_NEWS',
+    });
+    expect(trust).toBe('TRUSTED_MEDIA');
+  });
+
+  // 16. Score replay determinístico
+  it('R1-16. score replay produces identical scores across multiple evaluations', () => {
+    const rawEvents: PortfolioNewsEvent[] = [
+      {
+        id: 'replay-1',
+        canonicalEventId: 'replay-1',
+        headline: 'SOJA3 anuncia aumento de dividendos e bonificação',
+        summary: '',
+        publishedAt: '2026-11-09T12:00:00.000Z',
+        importance: 4,
+        sentiment: 'POSITIVE',
+        sentimentScore: 0.8,
+        sentimentMethod: 'EVENT_HEADLINE_RULE',
+        eventType: 'DIVIDEND',
+        assets: ['SOJA3'],
+        primaryTickers: ['SOJA3'],
+        secondaryTickers: [],
+        sources: [{ name: 'InfoMoney', url: '' }],
+        provider: 'FINANCIAL_MEDIA',
+        sourceType: 'TRUSTED_FINANCIAL_MEDIA',
+        official: false,
+        freshness: 'BREAKING',
+        decayWeight: 1.0,
+      },
+    ];
+
+    const run1 = calculateNewsScoreV2(rawEvents, 'SOJA3', refDate);
+    const run2 = calculateNewsScoreV2(rawEvents, 'SOJA3', refDate);
+    expect(run1.score).toBe(run2.score);
+    expect(run1.confidenceMultiplier).toBe(run2.confidenceMultiplier);
+    expect(run1.explainability).toBe(run2.explainability);
+    expect(run1.score).toBeGreaterThan(60);
   });
 });

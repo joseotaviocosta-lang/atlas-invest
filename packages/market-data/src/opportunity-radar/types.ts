@@ -2,12 +2,12 @@
  * Project Atlas — Opportunity Radar Domain Types (APP-16F / APP-16G / APP-16H / APP-16I / APP-16I-R1 / APP-16I-R2)
  *
  * Deterministic scoring, data quality normalization, dividend calendar strategy, and explainability models.
- * Model version: opportunity-v2.2
+ * Model version: opportunity-v2.3.1
  */
 
 import { PortfolioNewsEvent } from './portfolio-news.types';
 
-export const OPPORTUNITY_MODEL_VERSION = 'opportunity-v2.3';
+export const OPPORTUNITY_MODEL_VERSION = 'opportunity-v2.3.1';
 
 export const RECENT_PAID_LOOKBACK_DAYS = 20;
 
