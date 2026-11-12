@@ -573,3 +573,114 @@ export interface OpportunityRadarResponseDto {
   overallCoveragePercent?: number;
   disclaimer: string;
 }
+
+export type DecisionTierDto =
+  | 'HIGH_PRIORITY'
+  | 'REVIEW'
+  | 'WATCH'
+  | 'INSUFFICIENT_DATA';
+
+export type DecisionChangeTypeDto =
+  | 'SCORE_UP'
+  | 'SCORE_DOWN'
+  | 'RANK_UP'
+  | 'RANK_DOWN'
+  | 'NEW_MATERIAL_NEWS'
+  | 'UPDATED_MATERIAL_NEWS'
+  | 'CONFIDENCE_CHANGED'
+  | 'CALENDAR_CHANGED';
+
+export interface DecisionRecentChangeDto {
+  type: DecisionChangeTypeDto;
+  label: string;
+  source?: string;
+  isOfficial?: boolean;
+  canonicalUrl?: string;
+}
+
+export interface PortfolioDecisionPriorityItemDto {
+  rank: number;
+  assetId: string;
+  ticker: string;
+  name: string;
+  assetType: 'STOCK' | 'FII';
+  opportunityScore: number;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'INSUFFICIENT_DATA';
+  decisionTier: DecisionTierDto;
+  whyNow: string[];
+  cautions: string[];
+  dataGaps: string[];
+  recentChanges: DecisionRecentChangeDto[];
+  allocationContext?: {
+    portfolioWeight: number;
+    classWeight?: number;
+    targetWeight?: number;
+    gapPercent?: number;
+  };
+  dividendContext?: {
+    recordDate: string | null;
+    paymentDate: string | null;
+    eligibilityStatus: string;
+    amountPerShare: number | null;
+    estimatedRecentCash: number | null;
+  };
+  newsContext?: {
+    headline: string;
+    source: string;
+    isOfficial: boolean;
+    aggregator?: string;
+    canonicalUrl?: string;
+    materiality?: string;
+    state?: string;
+  };
+}
+
+export interface FiiCashRotationBriefDto {
+  hasRecentPaidCash: boolean;
+  estimatedRecentCashTotal: number | null;
+  sourceTickers: string[];
+  targetTicker: string | null;
+  targetRecordDate: string | null;
+  targetPaymentDate: string | null;
+  summaryText: string;
+}
+
+export interface DecisionBriefContributionContextDto {
+  plannedAmount: string | null;
+  currency: string;
+  source: 'CONTRIBUTION_GOAL' | 'USER_SIMULATION' | 'NONE';
+  simulationNote: string | null;
+}
+
+export interface DecisionBriefDataQualityDto {
+  label: 'BOA' | 'PARCIAL' | 'LIMITADA';
+  sufficientCount: number;
+  incompleteCount: number;
+  totalAssets: number;
+  priceCoveragePercent: number;
+  fundamentalsCoveragePercent: number;
+  newsCoveragePercent: number;
+  officialProviderStatus?: string | null;
+}
+
+export interface PortfolioDailyDecisionBriefDto {
+  portfolioId: string;
+  asOf: string;
+  generatedAt: string;
+  modelVersion: string;
+  comparisonBasis: 'PREVIOUS_ANALYSIS' | 'INITIAL_BASELINE';
+  summary: string[];
+  topPriorities: PortfolioDecisionPriorityItemDto[];
+  allEvaluatedCount: number;
+  fiiRotation?: FiiCashRotationBriefDto;
+  recentMaterialChanges: Array<{
+    ticker: string;
+    type: DecisionChangeTypeDto;
+    label: string;
+    isOfficial: boolean;
+    source?: string;
+    canonicalUrl?: string;
+  }>;
+  contributionContext: DecisionBriefContributionContextDto;
+  dataQuality: DecisionBriefDataQualityDto;
+}

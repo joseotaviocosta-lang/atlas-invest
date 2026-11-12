@@ -16,6 +16,8 @@ import {
   applyPortfolioNewsState,
   selectAlertEligibleNewsEvents,
   buildDailyNewsDigest,
+  buildPortfolioDailyDecisionBrief,
+  type PortfolioDailyDecisionBrief,
   type PersistedPortfolioNewsEventState,
   type PersistedPortfolioNewsSyncState,
   type NewsEventUpdateReason,
@@ -26,6 +28,7 @@ import {
   IMarketIntelligenceRepository,
   IPortfolioNewsStateRepository,
   ITransactionRepository,
+  IContributionGoalRepository,
   type ListNewsAlertHistoryOutput,
   type NewsAlertDeliveryAuditItem,
   type NewsAlertHistoryStatusValue,
@@ -37,6 +40,7 @@ import {
   MARKET_INTELLIGENCE_REPOSITORY,
   PORTFOLIO_NEWS_STATE_REPOSITORY,
   TRANSACTION_REPOSITORY,
+  CONTRIBUTION_GOAL_REPOSITORY,
 } from '../../../database/tokens';
 import { GetPortfolioValuationUseCase } from '../../valuation/get-portfolio-valuation.use-case';
 import { GetPortfolioAllocationStrategyUseCase } from '../get-portfolio-allocation-strategy.use-case';
@@ -79,6 +83,9 @@ export class GetOpportunityRadarUseCase {
     @Optional()
     @Inject(TRANSACTION_REPOSITORY)
     private readonly transactionRepo?: ITransactionRepository,
+    @Optional()
+    @Inject(CONTRIBUTION_GOAL_REPOSITORY)
+    private readonly contributionGoalRepo?: IContributionGoalRepository,
   ) {}
 
   private readonly newsStateSyncLocks = new Map<string, Promise<unknown>>();
@@ -873,5 +880,86 @@ export class GetOpportunityRadarUseCase {
       updatedIds: res.updatedIds,
       seenAt,
     }));
+  }
+
+  /**
+   * APP-16S: Builds the Daily Portfolio Decision Brief from the cached/evaluated Radar
+   * without duplicating external provider fetches.
+   * Enforces strict portfolio ownership (404 anti-enumeration).
+   */
+  async getDecisionBrief(params: {
+    portfolioId: string;
+    userId: string;
+    contributionAmount?: string;
+    forceRefresh?: boolean;
+    now?: Date;
+  }): Promise<PortfolioDailyDecisionBrief> {
+    const now = params.now ?? new Date();
+    const radar = await this.execute({
+      portfolioId: params.portfolioId,
+      userId: params.userId,
+      forceRefresh: params.forceRefresh,
+      now,
+    });
+
+    const previousRadar = this.cache.getPrevious(params.portfolioId);
+
+    const classTargetWeights: Record<string, number> = {};
+    try {
+      const strategy = await this.strategyUseCase.getStrategy(params.portfolioId, params.userId);
+      if (strategy?.targets) {
+        for (const t of strategy.targets) {
+          if (t.category && typeof t.targetBp === 'number') {
+            classTargetWeights[t.category] = t.targetBp / 100;
+          }
+        }
+      }
+    } catch {
+      // No allocation target configured
+    }
+
+    const evaluated = radar.allEvaluatedItems ?? radar.items;
+    const classWeights: Record<string, number> = {};
+    for (const item of evaluated) {
+      classWeights[item.assetType] = Math.round(((classWeights[item.assetType] ?? 0) + item.portfolioWeight) * 100) / 100;
+    }
+
+    let plannedContribution: {
+      amount: string;
+      currency: string;
+      source: 'CONTRIBUTION_GOAL' | 'USER_SIMULATION';
+    } | null = null;
+
+    if (params.contributionAmount && /^\d+(\.\d{1,2})?$/.test(params.contributionAmount.trim()) && Number(params.contributionAmount) > 0) {
+      plannedContribution = {
+        amount: params.contributionAmount.trim(),
+        currency: 'BRL',
+        source: 'USER_SIMULATION',
+      };
+    } else if (this.contributionGoalRepo) {
+      try {
+        const activeGoal = await this.contributionGoalRepo.findOpen(params.portfolioId);
+        if (activeGoal && activeGoal.amount && !/^0+(\.0+)?$/.test(activeGoal.amount.trim())) {
+          plannedContribution = {
+            amount: activeGoal.amount,
+            currency: activeGoal.currency,
+            source: 'CONTRIBUTION_GOAL',
+          };
+        }
+      } catch {
+        // Contribution goal lookup is optional
+      }
+    }
+
+    return buildPortfolioDailyDecisionBrief({
+      radar,
+      previousRadar,
+      allocationContext: {
+        classWeights,
+        classTargetWeights,
+      },
+      plannedContribution,
+      referenceDate: now,
+    });
   }
 }

@@ -85,6 +85,23 @@ export const portfolioApi = {
     );
   },
 
+  async getDecisionBrief(
+    portfolioId: string,
+    options?: { contributionAmount?: string; refresh?: boolean },
+  ): Promise<{ data: import('./types').PortfolioDailyDecisionBriefDto }> {
+    const params = new URLSearchParams();
+    if (options?.contributionAmount) {
+      params.set('contributionAmount', options.contributionAmount);
+    }
+    if (options?.refresh) {
+      params.set('refresh', 'true');
+    }
+    const qs = params.toString();
+    return apiClient.get<{ data: import('./types').PortfolioDailyDecisionBriefDto }>(
+      `/api/v1/portfolios/${portfolioId}/decision-brief${qs ? `?${qs}` : ''}`
+    );
+  },
+
   async getPortfolioNews(
     portfolioId: string,
     options?: { refresh?: boolean },

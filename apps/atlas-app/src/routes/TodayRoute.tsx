@@ -7,6 +7,7 @@ import { PositionsTable } from '../features/portfolio/components/PositionsTable'
 import { DocumentaryExceptionsBanner } from '../features/portfolio/components/DocumentaryExceptionsBanner';
 import { OperationalHealthSummary } from '../features/portfolio/components/OperationalHealthSummary';
 import { OpportunityRadarSection } from '../features/portfolio/components/OpportunityRadarSection';
+import { DecisionBriefSection } from '../features/portfolio/components/DecisionBriefSection';
 import { DailyNewsDigestSection } from '../features/portfolio/components/DailyNewsDigestSection';
 import { ManualRefreshButton } from '../features/portfolio/components/ManualRefreshButton';
 import { MacroIndicatorsGrid } from '../features/market/components/MacroIndicatorsGrid';
@@ -248,8 +249,13 @@ export const TodayRoute: React.FC = () => {
           <MacroIndicatorsGrid />
         </div>
 
+        {/* APP-16S: Daily Portfolio Decision Brief (Top 3 Study Shortlist) */}
+        <DecisionBriefSection portfolioId={selectedPortfolioId} />
+
         {/* APP-16F: Daily Opportunity Radar (Top 5 Ações & FIIs) */}
-        <OpportunityRadarSection portfolioId={selectedPortfolioId} />
+        <div id="opportunity-radar">
+          <OpportunityRadarSection portfolioId={selectedPortfolioId} />
+        </div>
 
         {/* APP-16L: Daily News Intelligence & Material Event Prioritization */}
         <DailyNewsDigestSection portfolioId={selectedPortfolioId} />

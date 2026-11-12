@@ -19,12 +19,14 @@ import { PortfolioAuditHistoryController } from './portfolio-audit-history.contr
 import { PortfolioCostEvidenceController } from './portfolio-cost-evidence.controller';
 import { PortfolioTaxIntelligenceController } from './portfolio-tax-intelligence.controller';
 import { PortfolioOpportunityRadarController } from './portfolio-opportunity-radar.controller';
+import { PortfolioDecisionBriefController } from './portfolio-decision-brief.controller';
 
 @Module({
   imports: [ApplicationModule],
   controllers: [
     PortfoliosController,
     PortfolioOpportunityRadarController,
+    PortfolioDecisionBriefController,
     PortfolioCostEvidenceController,
     PortfolioTaxIntelligenceController,
     ValuationController,

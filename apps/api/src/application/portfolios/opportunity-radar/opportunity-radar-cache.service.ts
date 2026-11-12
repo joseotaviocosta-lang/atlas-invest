@@ -8,14 +8,13 @@ interface CacheEntry {
 }
 
 /**
- * Ephemeral in-memory cache for Opportunity Radar results (APP-16F PARTE X, Y).
- *
- * Cache key: `${portfolioId}:${analysisDate}:${OPPORTUNITY_MODEL_VERSION}`.
- * Provides instant startup response (< 5ms) without re-fetching external providers on every render.
+ * Ephemeral in-memory cache for Opportunity Radar results (APP-16F PARTE X, Y)
+ * and previous reference snapshot for APP-16S decision brief comparisons.
  */
 @Injectable()
 export class OpportunityRadarCacheService {
   private readonly cache = new Map<string, CacheEntry>();
+  private readonly previousByPortfolio = new Map<string, OpportunityRadarResult>();
 
   private buildKey(portfolioId: string, analysisDate: string): string {
     return `${portfolioId}:${analysisDate}:${OPPORTUNITY_MODEL_VERSION}`;
@@ -26,8 +25,11 @@ export class OpportunityRadarCacheService {
     const entry = this.cache.get(key);
     if (!entry) return null;
 
-    // Cache is valid for the current analysis date (up to 24h)
     return entry.result;
+  }
+
+  getPrevious(portfolioId: string): OpportunityRadarResult | null {
+    return this.previousByPortfolio.get(portfolioId) ?? null;
   }
 
   set(
@@ -36,6 +38,10 @@ export class OpportunityRadarCacheService {
     analysisDate: string = new Date().toISOString().slice(0, 10),
   ): void {
     const key = this.buildKey(portfolioId, analysisDate);
+    const existing = this.cache.get(key);
+    if (existing) {
+      this.previousByPortfolio.set(portfolioId, existing.result);
+    }
     this.cache.set(key, {
       result,
       cachedAt: Date.now(),
@@ -44,8 +50,9 @@ export class OpportunityRadarCacheService {
   }
 
   invalidate(portfolioId: string): void {
-    for (const key of this.cache.keys()) {
+    for (const [key, entry] of this.cache.entries()) {
       if (key.startsWith(`${portfolioId}:`)) {
+        this.previousByPortfolio.set(portfolioId, entry.result);
         this.cache.delete(key);
       }
     }
@@ -53,5 +60,6 @@ export class OpportunityRadarCacheService {
 
   clear(): void {
     this.cache.clear();
+    this.previousByPortfolio.clear();
   }
 }
