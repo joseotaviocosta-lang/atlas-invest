@@ -87,6 +87,7 @@ export interface NotificationPreferences {
   materialNewsThreshold: MaterialNewsAlertThreshold;
   materialNewsAlertsActivatedAt?: string | null;
   automaticNewsMonitoring: boolean;
+  closedAppNewsMonitoring: boolean;
   newsMonitoringIntervalMinutes: NewsMonitoringIntervalMinutes;
   quietHoursEnabled: boolean;
   quietHoursStart: string; // HH:mm format, default '22:00'

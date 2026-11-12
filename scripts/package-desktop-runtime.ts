@@ -25,11 +25,26 @@ const nodeTarget = path.join(runtimeDir, 'node.exe');
 console.log(`[2/4] Copying private Node runtime: ${nodeSource} -> ${nodeTarget}`);
 fs.copyFileSync(nodeSource, nodeTarget);
 
-// 4. Copy API bundle
+// 4. Copy API bundle & background news monitor bundle + binary
 const bundleSource = path.join(rootDir, 'apps/api/dist/bundle.cjs');
 const bundleTarget = path.join(apiRuntimeDir, 'bundle.cjs');
 console.log(`[3/4] Copying bundle: ${bundleSource} -> ${bundleTarget}`);
 fs.copyFileSync(bundleSource, bundleTarget);
+
+const monitorBundleSource = path.join(rootDir, 'apps/api/dist/news-monitor.cjs');
+const monitorBundleTarget = path.join(apiRuntimeDir, 'news-monitor.cjs');
+console.log(`Copying background monitor bundle: ${monitorBundleSource} -> ${monitorBundleTarget}`);
+fs.copyFileSync(monitorBundleSource, monitorBundleTarget);
+
+console.log('Building atlas-news-monitor.exe...');
+execSync('cargo build --release --bin atlas-news-monitor --manifest-path apps/atlas-app/src-tauri/Cargo.toml', {
+  cwd: rootDir,
+  stdio: 'inherit',
+});
+const monitorExeSource = path.join(rootDir, 'apps/atlas-app/src-tauri/target/release/atlas-news-monitor.exe');
+const monitorExeTarget = path.join(runtimeDir, 'atlas-news-monitor.exe');
+console.log(`Copying background monitor binary: ${monitorExeSource} -> ${monitorExeTarget}`);
+fs.copyFileSync(monitorExeSource, monitorExeTarget);
 
 // 5. Copy required native runtime packages (@prisma/client, .prisma, argon2)
 console.log('[4/4] Copying native runtime node_modules...');

@@ -177,11 +177,7 @@ impl LocalRuntimeManager {
     }
 
     pub fn check_port(port: u16) -> bool {
-        TcpStream::connect_timeout(
-            &format!("127.0.0.1:{}", port).parse().unwrap(),
-            Duration::from_millis(500),
-        )
-        .is_ok()
+        crate::pg_bootstrap::check_port(port)
     }
 
     pub fn check_api_ready(port: u16) -> Result<bool, String> {
@@ -215,56 +211,11 @@ impl LocalRuntimeManager {
     }
 
     fn find_postgres_binary(&self) -> Result<PathBuf, String> {
-        let candidates = [
-            PathBuf::from(r"C:\Program Files\PostgreSQL\18\bin\postgres.exe"),
-            PathBuf::from(r"C:\Program Files\PostgreSQL\17\bin\postgres.exe"),
-            PathBuf::from(r"C:\Program Files\PostgreSQL\16\bin\postgres.exe"),
-        ];
-
-        for p in &candidates {
-            if p.exists() {
-                return Ok(p.clone());
-            }
-        }
-
-        // Try where/which
-        #[cfg(target_os = "windows")]
-        if let Ok(output) = Command::new("where").arg("postgres.exe").output() {
-            if output.status.success() {
-                if let Ok(path_str) = String::from_utf8(output.stdout) {
-                    if let Some(first_line) = path_str.lines().next() {
-                        let pb = PathBuf::from(first_line.trim());
-                        if pb.exists() {
-                            return Ok(pb);
-                        }
-                    }
-                }
-            }
-        }
-
-        Err("Executável do PostgreSQL 18 não foi encontrado em C:\\Program Files\\PostgreSQL\\18\\bin\\postgres.exe nem no PATH".to_string())
+        crate::pg_bootstrap::find_postgres_binary()
     }
 
     fn find_pg_data_dir(&self) -> PathBuf {
-        if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
-            let p = PathBuf::from(localappdata).join("Atlas").join("pg_data");
-            if p.exists() {
-                return p;
-            }
-        }
-
-        if let Ok(userprofile) = std::env::var("USERPROFILE") {
-            let p = PathBuf::from(userprofile)
-                .join("AppData")
-                .join("Local")
-                .join("Atlas")
-                .join("pg_data");
-            if p.exists() {
-                return p;
-            }
-        }
-
-        PathBuf::from(r"C:\Users\joseo\AppData\Local\Atlas\pg_data")
+        crate::pg_bootstrap::find_pg_data_dir()
     }
 
     fn find_runtime_files(&self, app_handle: &tauri::AppHandle) -> Result<(PathBuf, PathBuf), String> {
@@ -368,45 +319,11 @@ impl LocalRuntimeManager {
             "Preparando banco de dados local...",
         );
 
-        let pg_bin = self.find_postgres_binary()?;
-        let pg_data = self.find_pg_data_dir();
-
-        if !pg_data.exists() {
-            return Err(format!(
-                "Diretório de dados do PostgreSQL não encontrado em {:?}",
-                pg_data
-            ));
+        let outcome = crate::pg_bootstrap::ensure_postgres()?;
+        if outcome.started_postgres {
+            self.log("PostgreSQL iniciado e pronto na porta 5434.");
         }
-
-        self.log(&format!(
-            "Iniciando PostgreSQL: bin={:?}, data={:?}",
-            pg_bin, pg_data
-        ));
-
-        let mut cmd = Command::new(&pg_bin);
-        cmd.arg("-D").arg(&pg_data);
-
-        #[cfg(target_os = "windows")]
-        cmd.creation_flags(CREATE_NO_WINDOW);
-
-        let _child = cmd
-            .spawn()
-            .map_err(|e| format!("Falha ao iniciar postgres.exe: {}", e))?;
-
-        // Poll for postgres port opening (up to 15s)
-        let start = Instant::now();
-        while start.elapsed() < Duration::from_secs(15) {
-            std::thread::sleep(Duration::from_millis(500));
-            if Self::check_port(PG_PORT) {
-                self.log(&format!(
-                    "PostgreSQL pronto na porta 5434 em {:?}",
-                    start.elapsed()
-                ));
-                return Ok(());
-            }
-        }
-
-        Err("Tempo esgotado aguardando o PostgreSQL inicializar na porta 5434 (15s)".to_string())
+        Ok(())
     }
 
     pub fn ensure_api(&self, app_handle: &tauri::AppHandle) -> Result<(), String> {

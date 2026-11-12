@@ -14,6 +14,8 @@ export const NotificationSettingsSection: React.FC = () => {
     preferences,
     updatePreferences,
     sendTestNotification,
+    closedAppMonitoring,
+    repairClosedAppMonitoring,
   } = useNotifications();
 
   const [testStatus, setTestStatus] = useState<string | null>(null);
@@ -219,7 +221,7 @@ export const NotificationSettingsSection: React.FC = () => {
                 <select
                   id="news-monitoring-interval-select"
                   aria-label="Frequência"
-                  disabled={!preferences.automaticNewsMonitoring}
+                  disabled={!preferences.automaticNewsMonitoring && !preferences.closedAppNewsMonitoring}
                   value={preferences.newsMonitoringIntervalMinutes}
                   onChange={(e) =>
                     updatePreferences({
@@ -243,6 +245,84 @@ export const NotificationSettingsSection: React.FC = () => {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Closed-App Local Monitoring Opt-in (APP-16Q) */}
+              <div style={{ marginTop: spacing.xs, paddingTop: spacing.sm, borderTop: `1px dashed ${colors.border}` }}>
+                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+                  <div>
+                    <div style={{ fontWeight: 600, color: colors.textPrimary }}>
+                      Monitorar notícias com o Atlas fechado
+                    </div>
+                    <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                      Quando ativado, o Windows executará verificações periódicas locais mesmo com o aplicativo fechado.
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={preferences.closedAppNewsMonitoring}
+                    onChange={(e) => updatePreferences({ closedAppNewsMonitoring: e.target.checked })}
+                    aria-label="Monitorar notícias com o Atlas fechado"
+                    style={{ width: 18, height: 18, accentColor: colors.accent }}
+                  />
+                </label>
+
+                {(preferences.closedAppNewsMonitoring || closedAppMonitoring?.task.needsRepair || closedAppMonitoring?.lastExecution) && (
+                  <div
+                    style={{
+                      marginTop: spacing.sm,
+                      padding: spacing.sm,
+                      backgroundColor: colors.surfaceHover,
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: borderRadius.sm,
+                      fontSize: '0.75rem',
+                      color: colors.textSecondary,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4,
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, color: colors.textPrimary }}>
+                      {closedAppMonitoring?.task.needsRepair
+                        ? 'Monitoramento com Atlas fechado: Needs repair'
+                        : closedAppMonitoring?.task.installed && closedAppMonitoring?.task.enabled
+                          ? 'Monitoramento com Atlas fechado: Ativo'
+                          : preferences.closedAppNewsMonitoring
+                            ? 'Monitoramento com Atlas fechado: Configurando...'
+                            : 'Monitoramento com Atlas fechado: Inativo'}
+                    </div>
+                    <div>
+                      Última execução:{' '}
+                      {closedAppMonitoring?.lastExecution?.lastRunAt
+                        ? new Date(closedAppMonitoring.lastExecution.lastRunAt).toLocaleString('pt-BR')
+                        : closedAppMonitoring?.task.lastRunAt
+                          ? new Date(closedAppMonitoring.task.lastRunAt).toLocaleString('pt-BR')
+                          : '—'}
+                    </div>
+                    <div>
+                      Último resultado:{' '}
+                      {closedAppMonitoring?.lastExecution
+                        ? `${closedAppMonitoring.lastExecution.status} (${closedAppMonitoring.lastExecution.auditedAssets} ativos, ${closedAppMonitoring.lastExecution.eventsCount} eventos)`
+                        : '—'}
+                    </div>
+                    <div>
+                      Próxima execução:{' '}
+                      {closedAppMonitoring?.task.nextRunAt
+                        ? new Date(closedAppMonitoring.task.nextRunAt).toLocaleString('pt-BR')
+                        : '—'}
+                    </div>
+                    {closedAppMonitoring?.task.needsRepair && (
+                      <div style={{ marginTop: 4 }}>
+                        <Button
+                          variant="secondary"
+                          onClick={() => void repairClosedAppMonitoring()}
+                        >
+                          Reparar monitoramento
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>

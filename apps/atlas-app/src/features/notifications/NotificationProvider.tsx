@@ -50,6 +50,12 @@ import {
   processPortfolioNewsAlerts,
   type NewsAlertCoordinatorPorts,
 } from './news-alerts';
+import {
+  getClosedAppMonitoringStatus,
+  repairClosedAppMonitoringTask,
+  syncClosedAppMonitoringPreferences,
+  type ClosedAppMonitoringDiagnostics,
+} from './background-monitoring';
 
 export interface NotificationContextValue {
   permissionState: NotificationPermissionState;
@@ -64,6 +70,9 @@ export interface NotificationContextValue {
   sendTestNotification: (customBody?: string) => Promise<boolean>;
   evaluateNow: () => Promise<void>;
   newsMonitoring: PortfolioNewsMonitoringDiagnostics;
+  closedAppMonitoring: ClosedAppMonitoringDiagnostics | null;
+  refreshClosedAppMonitoringStatus: () => Promise<void>;
+  repairClosedAppMonitoring: () => Promise<void>;
   refreshPortfolioNewsNow: (portfolioId?: string, source?: NewsRefreshSource) => Promise<void>;
 }
 
@@ -181,6 +190,8 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
   const [newsMonitoring, setNewsMonitoring] = useState<PortfolioNewsMonitoringDiagnostics>(() =>
     buildDefaultMonitoringDiagnostics(getNotificationPreferences(userId))
   );
+  const [closedAppMonitoring, setClosedAppMonitoring] =
+    useState<ClosedAppMonitoringDiagnostics | null>(null);
   const [history, setHistory] = useState<NotificationHistoryItem[]>(() =>
     notificationCenter.getHistory(userId)
   );
@@ -367,6 +378,29 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     };
   }, [queryClient]);
 
+  const refreshClosedAppMonitoringStatus = useCallback(async () => {
+    try {
+      const diag = await getClosedAppMonitoringStatus(
+        preferences.closedAppNewsMonitoring,
+        preferences.newsMonitoringIntervalMinutes,
+      );
+      if (diag) {
+        setClosedAppMonitoring(diag);
+      }
+    } catch {
+      // Non-fatal in non-Tauri environments
+    }
+  }, [preferences.closedAppNewsMonitoring, preferences.newsMonitoringIntervalMinutes]);
+
+  const repairClosedAppMonitoring = useCallback(async () => {
+    try {
+      await repairClosedAppMonitoringTask(preferences.newsMonitoringIntervalMinutes);
+      await refreshClosedAppMonitoringStatus();
+    } catch {
+      // Non-fatal
+    }
+  }, [preferences.newsMonitoringIntervalMinutes, refreshClosedAppMonitoringStatus]);
+
   // Sync monitoring scheduler when auth, portfolio, preferences, or online status changes
   useEffect(() => {
     const coordinator = monitoringCoordinatorRef.current;
@@ -379,6 +413,23 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
       isOnline,
     });
   }, [isAuthenticated, userId, activePortfolioId, preferences, isOnline]);
+
+  // APP-16Q: Sync closed-app Windows Task Scheduler opt-in and non-secret prefs
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    void syncClosedAppMonitoringPreferences(preferences)
+      .then(() => {
+        if (!cancelled) {
+          return refreshClosedAppMonitoringStatus();
+        }
+        return undefined;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, preferences, refreshClosedAppMonitoringStatus]);
 
   // Single refresh path shared by manual refresh button, automatic timer, resume, and recovery
   const refreshPortfolioNewsNow = useCallback(
@@ -538,6 +589,9 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     sendTestNotification,
     evaluateNow,
     newsMonitoring,
+    closedAppMonitoring,
+    refreshClosedAppMonitoringStatus,
+    repairClosedAppMonitoring,
     refreshPortfolioNewsNow,
   };
 
@@ -562,6 +616,9 @@ const defaultNotificationContext: NotificationContextValue = {
   sendTestNotification: async () => false,
   evaluateNow: async () => {},
   newsMonitoring: buildDefaultMonitoringDiagnostics(DEFAULT_NOTIFICATION_PREFERENCES),
+  closedAppMonitoring: null,
+  refreshClosedAppMonitoringStatus: async () => {},
+  repairClosedAppMonitoring: async () => {},
   refreshPortfolioNewsNow: async (portfolioIdArg?: string) => {
     if (!portfolioIdArg) return;
     await portfolioApi.refreshPortfolioNews(portfolioIdArg);

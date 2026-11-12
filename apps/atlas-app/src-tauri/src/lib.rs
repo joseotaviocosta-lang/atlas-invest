@@ -1,6 +1,8 @@
 pub mod lifecycle;
+pub mod pg_bootstrap;
 pub mod runtime;
 pub mod storage;
+pub mod task_scheduler;
 
 use std::sync::Arc;
 use tauri::Manager;
@@ -80,6 +82,84 @@ async fn runtime_restart(
     .map_err(|e| format!("Falha na execução assíncrona de reinício: {}", e))?
 }
 
+fn atlas_local_data_dir() -> std::path::PathBuf {
+    if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
+        return std::path::PathBuf::from(localappdata).join("Atlas");
+    }
+    if let Ok(userprofile) = std::env::var("USERPROFILE") {
+        return std::path::PathBuf::from(userprofile)
+            .join("AppData")
+            .join("Local")
+            .join("Atlas");
+    }
+    std::path::PathBuf::from(r"C:\Users\joseo\AppData\Local\Atlas")
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BackgroundMonitorPrefsPayload {
+    #[serde(default)]
+    closed_app_news_monitoring: bool,
+    #[serde(default = "default_interval_minutes")]
+    news_monitoring_interval_minutes: u32,
+}
+
+fn default_interval_minutes() -> u32 {
+    30
+}
+
+#[tauri::command]
+fn background_monitor_sync(prefs_json: String) -> Result<task_scheduler::TaskSchedulerStatus, String> {
+    let parsed: BackgroundMonitorPrefsPayload = serde_json::from_str(&prefs_json)
+        .map_err(|e| format!("Preferências inválidas para monitoramento fechado: {}", e))?;
+
+    let dir = atlas_local_data_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let prefs_path = dir.join("news-monitor-prefs.json");
+    std::fs::write(&prefs_path, prefs_json.as_bytes())
+        .map_err(|e| format!("Falha ao persistir preferências do monitor fechado: {}", e))?;
+
+    let interval = task_scheduler::normalize_interval_minutes(parsed.news_monitoring_interval_minutes);
+    if parsed.closed_app_news_monitoring {
+        task_scheduler::ensure_task_enabled(interval)?;
+    } else {
+        task_scheduler::remove_task_if_present()?;
+    }
+
+    Ok(task_scheduler::query_task_status(
+        parsed.closed_app_news_monitoring,
+        interval,
+    ))
+}
+
+#[tauri::command]
+fn background_monitor_status(
+    expected_enabled: bool,
+    expected_interval: u32,
+) -> Result<serde_json::Value, String> {
+    let interval = task_scheduler::normalize_interval_minutes(expected_interval);
+    let task = task_scheduler::query_task_status(expected_enabled, interval);
+
+    let status_path = atlas_local_data_dir().join("news-monitor-status.json");
+    let last_status: serde_json::Value = std::fs::read_to_string(&status_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or(serde_json::Value::Null);
+
+    Ok(serde_json::json!({
+        "task": task,
+        "lastExecution": last_status,
+        "atlasVersion": env!("CARGO_PKG_VERSION"),
+    }))
+}
+
+#[tauri::command]
+fn background_monitor_repair(interval_minutes: u32) -> Result<task_scheduler::TaskSchedulerStatus, String> {
+    let interval = task_scheduler::normalize_interval_minutes(interval_minutes);
+    task_scheduler::ensure_task_enabled(interval)?;
+    Ok(task_scheduler::query_task_status(true, interval))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 1. Single Instance check BEFORE initializing WebView2 or Tauri Builder
@@ -129,6 +209,9 @@ pub fn run() {
             runtime_get_status,
             runtime_get_diagnostics,
             runtime_restart,
+            background_monitor_sync,
+            background_monitor_status,
+            background_monitor_repair,
         ])
         .setup(|_app| {
             log::info!("[WINDOW_CREATED] Janela principal criada com sucesso.");

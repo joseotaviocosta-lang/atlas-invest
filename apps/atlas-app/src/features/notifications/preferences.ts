@@ -20,6 +20,8 @@ function normalizePreferences(prefs: NotificationPreferences): NotificationPrefe
     ...prefs,
     automaticNewsMonitoring:
       typeof prefs.automaticNewsMonitoring === 'boolean' ? prefs.automaticNewsMonitoring : true,
+    closedAppNewsMonitoring:
+      typeof prefs.closedAppNewsMonitoring === 'boolean' ? prefs.closedAppNewsMonitoring : false,
     newsMonitoringIntervalMinutes: normalizeNewsMonitoringIntervalMinutes(
       prefs.newsMonitoringIntervalMinutes,
     ),
@@ -37,6 +39,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   materialNewsThreshold: 'HIGH_AND_CRITICAL',
   materialNewsAlertsActivatedAt: null,
   automaticNewsMonitoring: true, // APP-16P: Default ON while Atlas Desktop is open/minimized
+  closedAppNewsMonitoring: false, // APP-16Q: Opt-in default OFF for Windows Task Scheduler
   newsMonitoringIntervalMinutes: DEFAULT_NEWS_MONITORING_INTERVAL_MINUTES,
   quietHoursEnabled: true,
   quietHoursStart: '22:00',
