@@ -45,6 +45,45 @@ export class PortfolioNewsPipelineService {
     const referenceDate = params.referenceDate ?? new Date();
     const now = Date.now();
     const uniqueTickers = Array.from(new Set(params.tickers.map((t) => t.toUpperCase().trim()))).filter(Boolean);
+
+    if (uniqueTickers.length === 0) {
+      return {
+        events: [],
+        totalEvents: 0,
+        byAssetCount: {},
+        digest: buildDailyNewsDigest([], {
+          referenceDate,
+          maxItems: 10,
+        }),
+        assetDailyStatus: {},
+        metrics: {
+          breakingCount: 0,
+          recentCount: 0,
+          officialCount: 0,
+          highImportanceCount: 0,
+          materialCount: 0,
+          criticalCount: 0,
+          highCount: 0,
+          mediumCount: 0,
+          routineCount: 0,
+          totalAuditedAssets: 0,
+          assetsWithNews: 0,
+          assetsWithoutNews: 0,
+          officialCoverageCount: 0,
+          providerStatus: {
+            brapiNewsAvailable: false,
+            brapiNewsStatus: 'BRAPI_NEWS_PRO_UNAVAILABLE',
+            officialStatus: 'NO_OFFICIAL_EVENTS',
+            cvmStatus: 'NOT_APPLICABLE',
+            fnetStatus: 'NOT_APPLICABLE',
+            fallbackActive: false,
+            providersUsed: [],
+          },
+        },
+        asOf: referenceDate.toISOString(),
+      };
+    }
+
     const cacheKey = uniqueTickers.slice().sort().join(',');
 
     const existingCache = this.cache.get(cacheKey);

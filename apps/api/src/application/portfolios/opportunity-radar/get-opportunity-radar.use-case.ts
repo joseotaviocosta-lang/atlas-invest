@@ -1,4 +1,10 @@
-import { Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import {
   OpportunityRadarEngine,
   OpportunityRadarResult,
@@ -19,6 +25,7 @@ import {
   IAssetRepository,
   IMarketIntelligenceRepository,
   IPortfolioNewsStateRepository,
+  ITransactionRepository,
   type ListNewsAlertHistoryOutput,
   type NewsAlertDeliveryAuditItem,
   type NewsAlertHistoryStatusValue,
@@ -29,6 +36,7 @@ import {
   ASSET_REPOSITORY,
   MARKET_INTELLIGENCE_REPOSITORY,
   PORTFOLIO_NEWS_STATE_REPOSITORY,
+  TRANSACTION_REPOSITORY,
 } from '../../../database/tokens';
 import { GetPortfolioValuationUseCase } from '../../valuation/get-portfolio-valuation.use-case';
 import { GetPortfolioAllocationStrategyUseCase } from '../get-portfolio-allocation-strategy.use-case';
@@ -37,9 +45,16 @@ import { fetchBrapiAssetIntelligence } from './brapi-intelligence.fetcher';
 import { MarketDataConfigService } from '../../../market-data/market-data-config.service';
 import { PortfolioNewsPipelineService } from './portfolio-news-pipeline.service';
 import { PortfolioNewsInboxResult } from '@atlas/market-data';
+import {
+  resolvePortfolioNewsUniverseFromLedger,
+  resolvePortfolioNewsUniverseFromPositions,
+  type PortfolioNewsUniverseResolution,
+} from './resolve-portfolio-news-tickers';
 
 @Injectable()
 export class GetOpportunityRadarUseCase {
+  private readonly logger = new Logger(GetOpportunityRadarUseCase.name);
+
   constructor(
     @Inject(PORTFOLIO_REPOSITORY)
     private readonly portfolioRepo: IPortfolioRepository,
@@ -61,6 +76,9 @@ export class GetOpportunityRadarUseCase {
     @Optional()
     @Inject(PORTFOLIO_NEWS_STATE_REPOSITORY)
     private readonly newsStateRepo?: IPortfolioNewsStateRepository,
+    @Optional()
+    @Inject(TRANSACTION_REPOSITORY)
+    private readonly transactionRepo?: ITransactionRepository,
   ) {}
 
   private readonly newsStateSyncLocks = new Map<string, Promise<unknown>>();
@@ -469,18 +487,28 @@ export class GetOpportunityRadarUseCase {
     return result;
   }
 
-  async getPortfolioNews(params: {
+  /**
+   * Resolves active portfolio tickers for news monitoring strictly from holdings (APP-16P-R1),
+   * independent of quote freshness or valuation status.
+   */
+  async resolvePortfolioNewsTickers(params: {
     portfolioId: string;
     userId: string;
-    forceRefresh?: boolean;
-    now?: Date;
-  }): Promise<PortfolioNewsInboxResult> {
-    const portfolio = await this.portfolioRepo.findById(params.portfolioId);
-    if (!portfolio || portfolio.userId !== params.userId) {
-      throw new NotFoundException({
-        message: `Portfolio with id '${params.portfolioId}' not found`,
-        code: 'PORTFOLIO.NOT_FOUND',
+  }): Promise<PortfolioNewsUniverseResolution> {
+    await this.assertPortfolioOwner(params.portfolioId, params.userId);
+
+    if (this.transactionRepo) {
+      const resolution = await resolvePortfolioNewsUniverseFromLedger({
+        portfolioId: params.portfolioId,
+        transactionRepo: this.transactionRepo,
+        assetRepo: this.assetRepo,
       });
+      if (resolution.ignoredWithoutTickerCount > 0) {
+        this.logger.warn(
+          `[APP-16P-R1] Ignored ${resolution.ignoredWithoutTickerCount} active holding(s) without valid ticker in portfolio news universe`,
+        );
+      }
+      return resolution;
     }
 
     const valuation = await this.valuationUseCase.execute({
@@ -488,11 +516,27 @@ export class GetOpportunityRadarUseCase {
       userId: params.userId,
     });
 
-    const positions = valuation.positions.filter(
-      (pos) => pos.status === 'VALUED' && pos.marketValue && parseFloat(pos.marketValue.amount) > 0,
-    );
+    const resolution = resolvePortfolioNewsUniverseFromPositions(valuation.positions);
+    if (resolution.ignoredWithoutTickerCount > 0) {
+      this.logger.warn(
+        `[APP-16P-R1] Ignored ${resolution.ignoredWithoutTickerCount} active position(s) without valid ticker in fallback news universe`,
+      );
+    }
+    return resolution;
+  }
 
-    const tickers = positions.map((p) => p.ticker).filter((t): t is string => Boolean(t));
+  async getPortfolioNews(params: {
+    portfolioId: string;
+    userId: string;
+    forceRefresh?: boolean;
+    now?: Date;
+  }): Promise<PortfolioNewsInboxResult> {
+    const universe = await this.resolvePortfolioNewsTickers({
+      portfolioId: params.portfolioId,
+      userId: params.userId,
+    });
+
+    const tickers = universe.tickers;
     const brapiToken =
       typeof this.configService.getToken === 'function'
         ? this.configService.getToken()
