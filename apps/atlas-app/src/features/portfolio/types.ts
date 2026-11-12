@@ -765,3 +765,117 @@ export interface ContributionScenarioComparisonDto {
   dataQuality: ContributionAllocationSimulationDataQualityDto;
   modelVersion: string;
 }
+
+// APP-16V: Projected Portfolio After Contribution
+export interface ProjectedClassAllocationDto {
+  classId: string;
+  label: string;
+  beforeValue: string;
+  afterValue: string;
+  beforeCents: number;
+  afterCents: number;
+  beforeWeightPercent: number;
+  afterWeightPercent: number;
+  targetWeightPercent?: number;
+  beforeGapPercent?: number;
+  afterGapPercent?: number;
+  gapImprovementPercent?: number;
+  status: 'IMPROVED' | 'WORSENED' | 'UNCHANGED' | 'NO_TARGET';
+}
+
+export interface ProjectedAssetAllocationDto {
+  assetId: string;
+  ticker: string;
+  name: string;
+  assetType: 'STOCK' | 'FII' | string;
+  beforeValue: string;
+  simulatedContribution: string;
+  afterValue: string;
+  beforeCents: number;
+  contributionCents: number;
+  afterCents: number;
+  beforeWeightPercent: number;
+  afterWeightPercent: number;
+  deltaWeightPercent: number;
+  dataFreshness: 'FRESH' | 'STALE' | 'UNKNOWN';
+}
+
+export interface TargetProgressSummaryDto {
+  improvedCount: number;
+  worsenedCount: number;
+  unchangedCount: number;
+  largestResidualGap?: { classId: string; gapPercent: number } | null;
+  closestToTarget?: { classId: string; gapPercent: number } | null;
+}
+
+export interface ConcentrationProjectionDto {
+  largestAssetTickerBefore: string | null;
+  largestAssetTickerAfter: string | null;
+  largestAssetWeightBefore: number;
+  largestAssetWeightAfter: number;
+  top3WeightBefore: number;
+  top3WeightAfter: number;
+  deltaLargestAssetWeight: number;
+  deltaTop3Weight: number;
+}
+
+export interface ProjectionDataQualityDto {
+  totalAssets: number;
+  valuedAssets: number;
+  incompleteAssets: number;
+  quoteFreshCount: number;
+  quoteStaleCount: number;
+  projectionComplete: boolean;
+}
+
+export interface ProjectedPortfolioStateDto {
+  portfolioMarketValue: string;
+  investedAssetValue: string;
+  investedAssetCents: number;
+  classWeights: Record<string, number>;
+  assetWeights: Record<string, number>;
+}
+
+export interface ProjectedPortfolioAfterContributionDto {
+  portfolioId: string;
+  asOf: string;
+  scenarioId?: string;
+  scenarioLabel?: string;
+  contributionAmount: string;
+  allocatedAmount: string;
+  unallocatedAmount: string;
+  totalCents: number;
+  allocatedCents: number;
+  unallocatedCents: number;
+  before: ProjectedPortfolioStateDto;
+  after: ProjectedPortfolioStateDto;
+  deltas: {
+    investedAssetValueDelta: string;
+    investedAssetCentsDelta: number;
+  };
+  classProjection: ProjectedClassAllocationDto[];
+  assetProjection: ProjectedAssetAllocationDto[];
+  concentration: ConcentrationProjectionDto;
+  targetProgress: TargetProgressSummaryDto;
+  warnings: string[];
+  dataQuality: ProjectionDataQualityDto;
+  modelVersion: string;
+}
+
+export interface ProjectedPortfolioScenarioComparisonDto {
+  portfolioId: string;
+  asOf: string;
+  contributionAmount: string;
+  currency: string;
+  before: ProjectedPortfolioStateDto;
+  scenarios: Array<{
+    scenarioId: string;
+    scenarioLabel: string;
+    description: string;
+    projection: ProjectedPortfolioAfterContributionDto;
+  }>;
+  comparisonInsights: string[];
+  commonWarnings: string[];
+  dataQuality: ProjectionDataQualityDto;
+  modelVersion: string;
+}

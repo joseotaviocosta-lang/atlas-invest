@@ -232,6 +232,7 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
   const [appliedAmount, setAppliedAmount] = useState<string | undefined>(undefined);
   const [inputError, setInputError] = useState<string | null>(null);
   const [selectedScenarioTab, setSelectedScenarioTab] = useState<'CAUTIOUS' | 'BALANCED' | 'OPPORTUNITY_FOCUS'>('BALANCED');
+  const [showProjection, setShowProjection] = useState(false);
 
   const {
     data: brief,
@@ -248,6 +249,14 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
     isComparing,
     comparisonResult,
     resetComparison,
+    projectPortfolio,
+    isProjecting,
+    projectionResult,
+    resetProjection,
+    projectScenarios,
+    isProjectingScenarios,
+    projectedScenariosResult,
+    resetProjectedScenarios,
   } = useDecisionBrief(portfolioId, appliedAmount);
 
   if (!portfolioId) {
@@ -269,6 +278,9 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
       setInputError(null);
       resetSimulation();
       resetComparison();
+      resetProjection();
+      resetProjectedScenarios();
+      setShowProjection(false);
       return;
     }
     if (!/^\d+(\.\d{1,2})?$/.test(normalized) || /^0+(\.0{1,2})?$/.test(normalized)) {
@@ -280,6 +292,9 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
     try {
       await simulateContribution({ amount: normalized });
       resetComparison();
+      resetProjection();
+      resetProjectedScenarios();
+      setShowProjection(false);
     } catch {
       // Error handled via simulationError
     }
@@ -301,8 +316,26 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
     try {
       await compareContributionScenarios({ amount: normalized });
       resetSimulation();
+      resetProjection();
+      resetProjectedScenarios();
+      setShowProjection(false);
     } catch {
       // Error handled via comparisonError
+    }
+  };
+
+  const handleLoadProjection = async () => {
+    const normalized = draftAmount.trim().replace(',', '.') || appliedAmount;
+    if (!normalized) return;
+    try {
+      if (comparisonResult) {
+        await projectScenarios({ amount: normalized });
+      } else {
+        await projectPortfolio({ amount: normalized });
+      }
+      setShowProjection(true);
+    } catch {
+      // handled
     }
   };
 
@@ -312,6 +345,9 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
     setInputError(null);
     resetSimulation();
     resetComparison();
+    resetProjection();
+    resetProjectedScenarios();
+    setShowProjection(false);
   };
 
   if (isLoading) {
@@ -558,6 +594,22 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
             </div>
           )}
 
+          {/* Action button to view projected portfolio */}
+          <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border)] pt-3">
+            <span className="text-[11px] text-[var(--text-secondary)]">
+              Deseja visualizar como a carteira e as classes ficariam após este aporte?
+            </span>
+            <button
+              type="button"
+              data-testid="decision-brief-view-projection-button"
+              disabled={isProjecting}
+              onClick={() => void handleLoadProjection()}
+              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-3 py-1.5 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/20 disabled:opacity-50"
+            >
+              {isProjecting ? 'Calculando projeção...' : 'Ver carteira projetada'}
+            </button>
+          </div>
+
           <p className="mt-3 text-[10px] text-[var(--text-secondary)] italic">
             Simulação informativa. Nenhuma ordem é criada ou enviada.
           </p>
@@ -799,8 +851,269 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
             </div>
           )}
 
+          {/* Action button to view projected portfolio comparison */}
+          <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border)] pt-3">
+            <span className="text-[11px] text-[var(--text-secondary)]">
+              Deseja projetar o impacto de cada cenário sobre a composição da carteira?
+            </span>
+            <button
+              type="button"
+              data-testid="decision-brief-view-scenarios-projection-button"
+              disabled={isProjectingScenarios}
+              onClick={() => void handleLoadProjection()}
+              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-3 py-1.5 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/20 disabled:opacity-50"
+            >
+              {isProjectingScenarios ? 'Calculando projeções...' : 'Ver projeção dos cenários'}
+            </button>
+          </div>
+
           <p className="mt-3 text-[10px] text-[var(--text-secondary)] italic">
             Os cenários são simulações informativas. Nenhuma ordem é criada ou enviada.
+          </p>
+        </div>
+      )}
+
+      {/* APP-16V: Projected Portfolio After Contribution Panel */}
+      {showProjection && (projectionResult || projectedScenariosResult) && (
+        <div
+          data-testid="portfolio-projection-panel"
+          className="mt-4 rounded-xl border border-[var(--accent)]/30 bg-[var(--surface-elevated)] p-4 text-xs"
+        >
+          {projectionResult && (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-[var(--text-primary)]">
+                    Projeção da carteira pós-aporte — R$ {projectionResult.contributionAmount}
+                  </h3>
+                  <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">
+                    Como a carteira ficaria caso a distribuição simulada fosse concretizada (com cotações e preços constantes).
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">
+                    Alocado: R$ {projectionResult.allocatedAmount}
+                  </span>
+                  {projectionResult.unallocatedCents > 0 && (
+                    <span className="ml-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-300">
+                      Não alocado: R$ {projectionResult.unallocatedAmount}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Warnings */}
+              {projectionResult.warnings.length > 0 && (
+                <div className="mt-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-[11px] text-amber-200">
+                  {projectionResult.warnings.map((w, idx) => (
+                    <p key={idx} className="leading-relaxed">
+                      {w}
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              {/* Progress and Concentration Metrics */}
+              <div className="mt-3 grid gap-2.5 sm:grid-cols-2 md:grid-cols-4">
+                <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5">
+                  <span className="text-[10px] text-[var(--text-secondary)]">Ativos Projetados</span>
+                  <div className="mt-1 font-bold text-sm text-[var(--text-primary)]">
+                    R$ {projectionResult.after.investedAssetValue}
+                  </div>
+                  <div className="text-[10px] text-emerald-400">
+                    + R$ {projectionResult.deltas.investedAssetValueDelta}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5">
+                  <span className="text-[10px] text-[var(--text-secondary)]">Evolução dos Gaps</span>
+                  <div className="mt-1 font-bold text-sm text-[var(--text-primary)]">
+                    {projectionResult.targetProgress.improvedCount} classe(s) melhorada(s)
+                  </div>
+                  <div className="text-[10px] text-[var(--text-secondary)]">
+                    {projectionResult.targetProgress.worsenedCount} piorada(s) · {projectionResult.targetProgress.unchangedCount} sem alteração
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5">
+                  <span className="text-[10px] text-[var(--text-secondary)]">Maior Ativo</span>
+                  <div className="mt-1 font-bold text-sm text-[var(--text-primary)]">
+                    {projectionResult.concentration.largestAssetTickerAfter ?? '—'} ({projectionResult.concentration.largestAssetWeightAfter}%)
+                  </div>
+                  <div className="text-[10px] text-[var(--text-secondary)]">
+                    Antes: {projectionResult.concentration.largestAssetTickerBefore ?? '—'} ({projectionResult.concentration.largestAssetWeightBefore}%)
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5">
+                  <span className="text-[10px] text-[var(--text-secondary)]">Concentração Top 3</span>
+                  <div className="mt-1 font-bold text-sm text-[var(--text-primary)]">
+                    {projectionResult.concentration.top3WeightAfter}%
+                  </div>
+                  <div className="text-[10px] text-[var(--text-secondary)]">
+                    Antes: {projectionResult.concentration.top3WeightBefore}% ({projectionResult.concentration.deltaTop3Weight >= 0 ? `+${projectionResult.concentration.deltaTop3Weight}` : projectionResult.concentration.deltaTop3Weight} pp)
+                  </div>
+                </div>
+              </div>
+
+              {/* Class Projection Breakdown */}
+              <div className="mt-3.5">
+                <h4 className="font-semibold text-xs text-[var(--text-primary)]">
+                  Projeção por Classe de Ativos
+                </h4>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+                  {projectionResult.classProjection.map((cls) => {
+                    const statusColor =
+                      cls.status === 'IMPROVED'
+                        ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-400'
+                        : cls.status === 'WORSENED'
+                          ? 'border-rose-500/30 bg-rose-500/5 text-rose-400'
+                          : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)]';
+
+                    return (
+                      <div
+                        key={cls.classId}
+                        data-testid={`projected-class-${cls.classId}`}
+                        className={`rounded-lg border p-3 ${statusColor}`}
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-bold text-xs text-[var(--text-primary)]">{cls.label}</span>
+                          <span className="rounded px-1.5 py-0.5 text-[9px] font-semibold border border-current">
+                            {cls.status === 'IMPROVED'
+                              ? 'APROXIMOU DA META'
+                              : cls.status === 'WORSENED'
+                                ? 'DISTANCIOU DA META'
+                                : cls.status === 'UNCHANGED'
+                                  ? 'ESTÁVEL'
+                                  : 'SEM META'}
+                          </span>
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+                          <div>
+                            <span className="text-[10px] text-[var(--text-secondary)]">Peso Atual</span>
+                            <div className="font-semibold text-[var(--text-secondary)]">{cls.beforeWeightPercent}%</div>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-[var(--text-secondary)]">Peso Projetado</span>
+                            <div className="font-bold text-[var(--text-primary)]">{cls.afterWeightPercent}%</div>
+                          </div>
+                        </div>
+                        {cls.targetWeightPercent !== undefined && (
+                          <div className="mt-1.5 border-t border-current/20 pt-1 text-[10px]">
+                            Meta: {cls.targetWeightPercent}% · Gap projetado: {cls.afterGapPercent! >= 0 ? `+${cls.afterGapPercent}%` : `${cls.afterGapPercent}%`}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Assets Projection Breakdown */}
+              <div className="mt-3.5">
+                <h4 className="font-semibold text-xs text-[var(--text-primary)]">
+                  Projeção por Ativo
+                </h4>
+                <div className="mt-2 space-y-1.5">
+                  {projectionResult.assetProjection.map((asset) => (
+                    <div
+                      key={asset.assetId}
+                      data-testid={`projected-asset-${asset.ticker}`}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs"
+                    >
+                      <div className="min-w-[120px]">
+                        <span className="font-bold text-[var(--text-primary)]">{asset.ticker}</span>
+                        <span className="ml-1 text-[10px] text-[var(--text-secondary)]">({asset.name})</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-4 text-[11px]">
+                        <div>
+                          <span className="text-[10px] text-[var(--text-secondary)]">Aporte simulado: </span>
+                          <span className="font-semibold text-[var(--accent)]">
+                            {asset.contributionCents > 0 ? `R$ ${asset.simulatedContribution}` : '—'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[var(--text-secondary)]">Peso: </span>
+                          <span>{asset.beforeWeightPercent}% → </span>
+                          <strong className="text-[var(--text-primary)]">{asset.afterWeightPercent}%</strong>
+                          <span className="ml-1 text-[10px] text-[var(--text-secondary)]">
+                            ({asset.deltaWeightPercent >= 0 ? `+${asset.deltaWeightPercent}` : asset.deltaWeightPercent} pp)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {projectedScenariosResult && (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-[var(--text-primary)]">
+                    Projeção comparada dos 3 cenários — R$ {projectedScenariosResult.contributionAmount}
+                  </h3>
+                  <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">
+                    Comparativo da carteira projetada em cada modo de distribuição com base nas mesmas premissas de preço.
+                  </p>
+                </div>
+              </div>
+
+              {/* Scenario cards side by side */}
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                {projectedScenariosResult.scenarios.map((scen) => (
+                  <div
+                    key={scen.scenarioId}
+                    data-testid={`projected-scenario-card-${scen.scenarioId}`}
+                    className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 text-xs"
+                  >
+                    <span className="font-bold text-sm text-[var(--text-primary)]">{scen.scenarioLabel}</span>
+                    <p className="mt-0.5 text-[10px] text-[var(--text-secondary)]">{scen.description}</p>
+                    <div className="mt-2.5 space-y-1 text-[11px]">
+                      <div className="flex justify-between">
+                        <span className="text-[var(--text-secondary)]">Valor projetado:</span>
+                        <span className="font-semibold text-[var(--text-primary)]">
+                          R$ {scen.projection.after.investedAssetValue}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[var(--text-secondary)]">Gaps melhorados:</span>
+                        <span className="font-semibold text-emerald-400">
+                          {scen.projection.targetProgress.improvedCount} classe(s)
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[var(--text-secondary)]">Maior ativo pós-aporte:</span>
+                        <span>
+                          {scen.projection.concentration.largestAssetTickerAfter} ({scen.projection.concentration.largestAssetWeightAfter}%)
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[var(--text-secondary)]">Top 3 concentração:</span>
+                        <span>{scen.projection.concentration.top3WeightAfter}%</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {projectedScenariosResult.comparisonInsights.length > 0 && (
+                <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5 text-[11px] text-[var(--text-secondary)]">
+                  <span className="font-semibold text-[var(--text-primary)]">Observações comparativas: </span>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-3.5">
+                    {projectedScenariosResult.comparisonInsights.map((ins, idx) => (
+                      <li key={idx}>{ins}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+
+          <p className="mt-3 text-[10px] text-[var(--text-secondary)] italic">
+            Projeções matemáticas informativas. Não consideram valorização de cotas nem proventos futuros. Zero ordens emitidas.
           </p>
         </div>
       )}

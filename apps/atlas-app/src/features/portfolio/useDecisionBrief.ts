@@ -5,6 +5,8 @@ import type {
   PortfolioDailyDecisionBriefDto,
   ContributionAllocationSimulationDto,
   ContributionScenarioComparisonDto,
+  ProjectedPortfolioAfterContributionDto,
+  ProjectedPortfolioScenarioComparisonDto,
 } from './types';
 
 export function decisionBriefQueryKey(portfolioId: string, contributionAmount?: string) {
@@ -69,6 +71,30 @@ export function useDecisionBrief(portfolioId: string | null | undefined, contrib
     },
   });
 
+  const projectMutation = useMutation<
+    ProjectedPortfolioAfterContributionDto,
+    Error,
+    { amount: string; currency?: string }
+  >({
+    mutationFn: async ({ amount, currency }) => {
+      if (!portfolioId) throw new Error('Portfolio ID is required');
+      const res = await portfolioApi.projectPortfolio(portfolioId, { amount, currency });
+      return res.data;
+    },
+  });
+
+  const projectScenariosMutation = useMutation<
+    ProjectedPortfolioScenarioComparisonDto,
+    Error,
+    { amount: string; currency?: string }
+  >({
+    mutationFn: async ({ amount, currency }) => {
+      if (!portfolioId) throw new Error('Portfolio ID is required');
+      const res = await portfolioApi.projectScenarios(portfolioId, { amount, currency });
+      return res.data;
+    },
+  });
+
   return {
     ...query,
     refresh,
@@ -83,5 +109,15 @@ export function useDecisionBrief(portfolioId: string | null | undefined, contrib
     comparisonResult: compareMutation.data,
     comparisonError: compareMutation.error,
     resetComparison: compareMutation.reset,
+    projectPortfolio: projectMutation.mutateAsync,
+    isProjecting: projectMutation.isPending,
+    projectionResult: projectMutation.data,
+    projectionError: projectMutation.error,
+    resetProjection: projectMutation.reset,
+    projectScenarios: projectScenariosMutation.mutateAsync,
+    isProjectingScenarios: projectScenariosMutation.isPending,
+    projectedScenariosResult: projectScenariosMutation.data,
+    projectedScenariosError: projectScenariosMutation.error,
+    resetProjectedScenarios: projectScenariosMutation.reset,
   };
 }

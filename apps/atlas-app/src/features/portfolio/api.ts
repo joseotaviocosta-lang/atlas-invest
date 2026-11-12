@@ -122,6 +122,26 @@ export const portfolioApi = {
     );
   },
 
+  async projectPortfolio(
+    portfolioId: string,
+    params: { amount: string; currency?: string; refresh?: boolean },
+  ): Promise<{ data: import('./types').ProjectedPortfolioAfterContributionDto }> {
+    return apiClient.post<{ data: import('./types').ProjectedPortfolioAfterContributionDto }>(
+      `/api/v1/portfolios/${portfolioId}/decision-brief/projection`,
+      params,
+    );
+  },
+
+  async projectScenarios(
+    portfolioId: string,
+    params: { amount: string; currency?: string; refresh?: boolean },
+  ): Promise<{ data: import('./types').ProjectedPortfolioScenarioComparisonDto }> {
+    return apiClient.post<{ data: import('./types').ProjectedPortfolioScenarioComparisonDto }>(
+      `/api/v1/portfolios/${portfolioId}/decision-brief/project-scenarios`,
+      params,
+    );
+  },
+
   async getPortfolioNews(
     portfolioId: string,
     options?: { refresh?: boolean },

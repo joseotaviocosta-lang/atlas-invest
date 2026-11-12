@@ -19,10 +19,14 @@ import {
   buildPortfolioDailyDecisionBrief,
   buildContributionAllocationSimulation,
   buildContributionScenarioComparison,
+  buildProjectedPortfolioAfterContribution,
+  buildProjectedPortfolioScenarioComparison,
   deriveNewsProviderQuality,
   type PortfolioDailyDecisionBrief,
   type ContributionAllocationSimulation,
   type ContributionScenarioComparison,
+  type ProjectedPortfolioAfterContribution,
+  type ProjectedPortfolioScenarioComparison,
   type PortfolioNewsInboxMetrics,
   type PersistedPortfolioNewsEventState,
   type PersistedPortfolioNewsSyncState,
@@ -1078,6 +1082,108 @@ export class GetOpportunityRadarUseCase {
       contributionAmount: params.contributionAmount,
       currency: params.currency || 'BRL',
       decisionBrief,
+      radarItems: evaluated,
+      referenceDate: now,
+    });
+  }
+
+  /**
+   * Phase APP-16V — Projected Portfolio After Contribution (Read-only analysis).
+   *
+   * Projects portfolio weights, class gaps, and concentration before vs after a simulated contribution.
+   * Single resolution of Opportunity Radar & Decision Brief, zero orders, exact money conservation.
+   */
+  async projectPortfolioAfterContribution(params: {
+    portfolioId: string;
+    userId: string;
+    contributionAmount: string;
+    currency?: string;
+    forceRefresh?: boolean;
+    now?: Date;
+  }): Promise<ProjectedPortfolioAfterContribution> {
+    const now = params.now ?? new Date();
+
+    const decisionBrief = await this.getDecisionBrief({
+      portfolioId: params.portfolioId,
+      userId: params.userId,
+      contributionAmount: params.contributionAmount,
+      forceRefresh: params.forceRefresh,
+      now,
+    });
+
+    const radar = await this.execute({
+      portfolioId: params.portfolioId,
+      userId: params.userId,
+      forceRefresh: false,
+      now,
+    });
+
+    const evaluated = radar.allEvaluatedItems ?? radar.items;
+
+    const simulation = buildContributionAllocationSimulation({
+      portfolioId: params.portfolioId,
+      contributionAmount: params.contributionAmount,
+      currency: params.currency || 'BRL',
+      decisionBrief,
+      radarItems: evaluated,
+      referenceDate: now,
+    });
+
+    return buildProjectedPortfolioAfterContribution({
+      portfolioId: params.portfolioId,
+      currency: params.currency || 'BRL',
+      contributionSimulation: simulation,
+      radarItems: evaluated,
+      referenceDate: now,
+    });
+  }
+
+  /**
+   * Phase APP-16V — Projected Portfolio Scenario Comparison (Read-only analysis).
+   *
+   * Compares portfolio projections across the three simulated contribution modes (Cautious, Balanced, Opportunity-Focused)
+   * on the exact same baseline before state. Single resolution, zero duplicate external network calls.
+   */
+  async projectPortfolioScenarioComparison(params: {
+    portfolioId: string;
+    userId: string;
+    contributionAmount: string;
+    currency?: string;
+    forceRefresh?: boolean;
+    now?: Date;
+  }): Promise<ProjectedPortfolioScenarioComparison> {
+    const now = params.now ?? new Date();
+
+    const decisionBrief = await this.getDecisionBrief({
+      portfolioId: params.portfolioId,
+      userId: params.userId,
+      contributionAmount: params.contributionAmount,
+      forceRefresh: params.forceRefresh,
+      now,
+    });
+
+    const radar = await this.execute({
+      portfolioId: params.portfolioId,
+      userId: params.userId,
+      forceRefresh: false,
+      now,
+    });
+
+    const evaluated = radar.allEvaluatedItems ?? radar.items;
+
+    const scenarioComparison = buildContributionScenarioComparison({
+      portfolioId: params.portfolioId,
+      contributionAmount: params.contributionAmount,
+      currency: params.currency || 'BRL',
+      decisionBrief,
+      radarItems: evaluated,
+      referenceDate: now,
+    });
+
+    return buildProjectedPortfolioScenarioComparison({
+      portfolioId: params.portfolioId,
+      currency: params.currency || 'BRL',
+      scenarioComparison,
       radarItems: evaluated,
       referenceDate: now,
     });

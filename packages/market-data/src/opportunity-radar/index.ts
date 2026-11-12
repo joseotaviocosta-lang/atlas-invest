@@ -18,3 +18,4 @@ export * from './explainability';
 export * from './engine';
 export * from './decision-brief';
 export * from './contribution-simulator';
+export * from './portfolio-projection';

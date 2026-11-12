@@ -145,4 +145,58 @@ export class PortfolioDecisionBriefController {
     });
     return { data };
   }
+
+  @Post('projection')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Project portfolio after contribution (read-only)',
+    description:
+      'Projects portfolio weights, class gaps, and concentration before vs after a simulated contribution. Read-only, exact cents conservation, zero orders.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({ status: 200, description: 'Projected portfolio after contribution' })
+  @ApiResponse({ status: 400, description: 'Invalid simulation input' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async projectPortfolio(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Body() rawBody: Record<string, unknown>,
+  ) {
+    const body = SimulateContributionBodySchema.parse(rawBody);
+    const data = await this.radarUseCase.projectPortfolioAfterContribution({
+      portfolioId,
+      userId: principal.userId,
+      contributionAmount: body.amount,
+      currency: body.currency,
+      forceRefresh: body.refresh,
+    });
+    return { data };
+  }
+
+  @Post('project-scenarios')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Project portfolio scenarios after contribution (read-only)',
+    description:
+      'Compares projected portfolio states across the three contribution modes (Cautious, Balanced, and Opportunity-Focused) on a shared before baseline. Read-only, zero orders.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({ status: 200, description: 'Projected portfolio scenario comparison' })
+  @ApiResponse({ status: 400, description: 'Invalid simulation input' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async projectScenarios(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Body() rawBody: Record<string, unknown>,
+  ) {
+    const body = SimulateContributionBodySchema.parse(rawBody);
+    const data = await this.radarUseCase.projectPortfolioScenarioComparison({
+      portfolioId,
+      userId: principal.userId,
+      contributionAmount: body.amount,
+      currency: body.currency,
+      forceRefresh: body.refresh,
+    });
+    return { data };
+  }
 }
