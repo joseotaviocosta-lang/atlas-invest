@@ -12,15 +12,24 @@ import { QueryClientContext } from '@tanstack/react-query';
 import { useInRouterContext, useNavigate } from 'react-router-dom';
 import type {
   LocalNotification,
+  NewsRefreshSource,
   NotificationHistoryItem,
   NotificationPermissionState,
   NotificationPreferences,
+  PortfolioNewsMonitoringDiagnostics,
 } from './types';
 import {
   getNotificationPreferences,
   saveNotificationPreferences,
   clearNotificationPreferences,
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  DEFAULT_NEWS_MONITORING_INTERVAL_MINUTES,
 } from './preferences';
+import {
+  clearPortfolioNewsMonitoringState,
+  DEFERRED_HIGH_ALERT_MAX_AGE_HOURS,
+  PortfolioNewsMonitoringCoordinator,
+} from './news-monitoring';
 import { notificationCenter } from './notification-center';
 import { getNotificationService, TauriNotificationService } from './service';
 import {
@@ -54,6 +63,8 @@ export interface NotificationContextValue {
   clearHistory: () => void;
   sendTestNotification: (customBody?: string) => Promise<boolean>;
   evaluateNow: () => Promise<void>;
+  newsMonitoring: PortfolioNewsMonitoringDiagnostics;
+  refreshPortfolioNewsNow: (portfolioId?: string, source?: NewsRefreshSource) => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationContextValue | null>(null);
@@ -83,22 +94,101 @@ function RouterNavigatorInner({
   return null;
 }
 
+function buildDefaultMonitoringDiagnostics(
+  prefs: NotificationPreferences = DEFAULT_NOTIFICATION_PREFERENCES,
+): PortfolioNewsMonitoringDiagnostics {
+  return {
+    status: 'PAUSED_NO_PORTFOLIO',
+    monitoringEnabled: false,
+    intervalMinutes: prefs.newsMonitoringIntervalMinutes ?? DEFAULT_NEWS_MONITORING_INTERVAL_MINUTES,
+    portfolioId: null,
+    lastAttemptAt: null,
+    lastSuccessAt: null,
+    lastSuccessfulAutomaticRefreshAt: null,
+    lastAutomaticRefreshAttemptAt: null,
+    nextScheduledAt: null,
+    inFlight: false,
+    quietHours: {
+      enabled: prefs.quietHoursEnabled,
+      active: false,
+      start: prefs.quietHoursStart,
+      end: prefs.quietHoursEnd,
+      policy: 'REFRESH_CONTINUES_ALERTS_SUPPRESSED',
+      criticalBypassesQuietHours: false,
+      highDeferralWindowHours: DEFERRED_HIGH_ALERT_MAX_AGE_HOURS,
+    },
+    lastTrigger: null,
+    consecutiveFailures: 0,
+    backoffUntilAt: null,
+    lastCycleDurationMs: null,
+    lastError: null,
+    overlapSkips: 0,
+    automaticCyclesCompleted: 0,
+    networkFailures: 0,
+  };
+}
+
+function createNewsAlertApiPorts(): NewsAlertCoordinatorPorts {
+  return {
+    claimPendingAlerts: async (
+      portfolioId: string,
+      items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
+    ) => {
+      const res = await portfolioApi.claimPortfolioNewsAlerts(portfolioId, items);
+      return res.data.claimed;
+    },
+    confirmAlertsDelivered: async (portfolioId, items, meta) => {
+      await portfolioApi.confirmPortfolioNewsAlertsDelivered(portfolioId, {
+        items,
+        alertAttemptId: meta?.alertAttemptId,
+        notificationId: meta?.notificationId,
+      });
+    },
+    releaseAlertsClaim: async (portfolioId, items, meta) => {
+      await portfolioApi.releasePortfolioNewsAlertsClaim(portfolioId, {
+        items,
+        deliveryStatus: meta?.deliveryStatus,
+        failureReason: meta?.failureReason,
+        attemptedAt: meta?.attemptedAt,
+        alertAttemptId: meta?.alertAttemptId,
+        recordHistory: meta?.recordHistory ?? true,
+      });
+    },
+    suppressBaseline: async (
+      portfolioId: string,
+      items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
+    ) => {
+      await portfolioApi.suppressPortfolioNewsAlertsBaseline(portfolioId, items);
+    },
+  };
+}
+
 export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { isAuthenticated, user } = useAuth();
   const { selectedPortfolio } = usePortfolio();
   const queryClient = useContext(QueryClientContext);
   const processedInboxObjectsRef = useRef<WeakSet<object>>(new WeakSet());
+  const quietSuppressedInboxesRef = useRef<WeakSet<object>>(new WeakSet());
   const [navigateFn, setNavigateFn] = useState<((path: string) => void) | null>(null);
 
   const userId = user?.id || null;
+  const activePortfolioId = selectedPortfolio?.id || null;
 
   const [permissionState, setPermissionState] = useState<NotificationPermissionState>('default');
   const [preferences, setPreferences] = useState<NotificationPreferences>(() =>
     getNotificationPreferences(userId)
   );
+  const [newsMonitoring, setNewsMonitoring] = useState<PortfolioNewsMonitoringDiagnostics>(() =>
+    buildDefaultMonitoringDiagnostics(getNotificationPreferences(userId))
+  );
   const [history, setHistory] = useState<NotificationHistoryItem[]>(() =>
     notificationCenter.getHistory(userId)
   );
+
+  const latestAuthRef = useRef({ isAuthenticated, userId, activePortfolioId, preferences });
+  latestAuthRef.current = { isAuthenticated, userId, activePortfolioId, preferences };
+  const monitoringCoordinatorRef = useRef<PortfolioNewsMonitoringCoordinator | null>(null);
+  const evaluateCachedInboxRef = useRef<(portfolioId: string) => void>(() => {});
 
   // Sync preferences and history when active user changes
   useEffect(() => {
@@ -226,10 +316,13 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     preferences,
   ]);
 
-  // App Lifecycle: Re-evaluate when app resumes to foreground
-  useAppLifecycle(useCallback(() => {
-    evaluateNow();
-  }, [evaluateNow]));
+  // App Lifecycle: Re-evaluate notifications and check stale news monitoring on foreground resume
+  const handleForegroundLifecycle = useCallback(() => {
+    void evaluateNow();
+    monitoringCoordinatorRef.current?.handleForegroundResume();
+  }, [evaluateNow]);
+
+  const { isOnline } = useAppLifecycle(handleForegroundLifecycle);
 
   // Auto-evaluation whenever domain models refresh and are ready
   useEffect(() => {
@@ -238,49 +331,87 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     }
   }, [isAuthenticated, userId, complianceTimeline, reviewInbox, evaluateNow]);
 
-  // APP-16N: Evaluate material news alerts whenever portfolio-news query resolves or refreshes
+  // APP-16P: Single timer owner for in-app automatic portfolio news monitoring (open or minimized)
+  useEffect(() => {
+    const coordinator = new PortfolioNewsMonitoringCoordinator({
+      onRefreshPortfolioNews: async (targetPortfolioId: string) => {
+        const res = await portfolioApi.refreshPortfolioNews(targetPortfolioId);
+        if (queryClient) {
+          queryClient.setQueryData(['portfolio-news', targetPortfolioId], res);
+        }
+      },
+      onQuietHoursEnded: (targetPortfolioId: string) => {
+        evaluateCachedInboxRef.current(targetPortfolioId);
+      },
+      onDiagnosticsChange: (diag) => {
+        setNewsMonitoring(diag);
+      },
+    });
+    monitoringCoordinatorRef.current = coordinator;
+
+    const handleBeforeUnload = () => {
+      coordinator.dispose();
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', handleBeforeUnload);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+      }
+      coordinator.dispose();
+      if (monitoringCoordinatorRef.current === coordinator) {
+        monitoringCoordinatorRef.current = null;
+      }
+    };
+  }, [queryClient]);
+
+  // Sync monitoring scheduler when auth, portfolio, preferences, or online status changes
+  useEffect(() => {
+    const coordinator = monitoringCoordinatorRef.current;
+    if (!coordinator) return;
+    coordinator.updateContext({
+      isAuthenticated,
+      userId,
+      portfolioId: activePortfolioId,
+      preferences,
+      isOnline,
+    });
+  }, [isAuthenticated, userId, activePortfolioId, preferences, isOnline]);
+
+  // Single refresh path shared by manual refresh button, automatic timer, resume, and recovery
+  const refreshPortfolioNewsNow = useCallback(
+    async (portfolioIdArg?: string, source: NewsRefreshSource = 'MANUAL') => {
+      const targetId = portfolioIdArg || activePortfolioId;
+      if (!targetId) return;
+
+      const coordinator = monitoringCoordinatorRef.current;
+      if (coordinator && coordinator.getDiagnostics().portfolioId === targetId) {
+        await coordinator.refreshNow(source);
+        return;
+      }
+
+      const res = await portfolioApi.refreshPortfolioNews(targetId);
+      if (queryClient) {
+        queryClient.setQueryData(['portfolio-news', targetId], res);
+      }
+    },
+    [activePortfolioId, queryClient],
+  );
+
+  // APP-16N / APP-16O / APP-16P: Evaluate material news alerts with Quiet Hours awareness
   useEffect(() => {
     if (!queryClient || !isAuthenticated || !userId) return;
 
-    const apiPorts: NewsAlertCoordinatorPorts = {
-      claimPendingAlerts: async (
-        portfolioId: string,
-        items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
-      ) => {
-        const res = await portfolioApi.claimPortfolioNewsAlerts(portfolioId, items);
-        return res.data.claimed;
-      },
-      confirmAlertsDelivered: async (portfolioId, items, meta) => {
-        await portfolioApi.confirmPortfolioNewsAlertsDelivered(portfolioId, {
-          items,
-          alertAttemptId: meta?.alertAttemptId,
-          notificationId: meta?.notificationId,
-        });
-      },
-      releaseAlertsClaim: async (portfolioId, items, meta) => {
-        await portfolioApi.releasePortfolioNewsAlertsClaim(portfolioId, {
-          items,
-          deliveryStatus: meta?.deliveryStatus,
-          failureReason: meta?.failureReason,
-          attemptedAt: meta?.attemptedAt,
-          alertAttemptId: meta?.alertAttemptId,
-          recordHistory: meta?.recordHistory ?? true,
-        });
-      },
-      suppressBaseline: async (
-        portfolioId: string,
-        items: Array<{ canonicalEventId: string; eventVersionFingerprint: string }>,
-      ) => {
-        await portfolioApi.suppressPortfolioNewsAlertsBaseline(portfolioId, items);
-      },
-    };
+    const apiPorts = createNewsAlertApiPorts();
 
-    const handleInbox = (portfolioId: string, payload: unknown) => {
+    const handleInbox = (portfolioId: string, payload: unknown, forceReevaluateQuiet = false) => {
       if (!payload || typeof payload !== 'object') return;
       const inbox = (payload as { data?: PortfolioNewsInboxResponseDto }).data;
       if (!inbox || !inbox.alertsMeta || inbox.alertsMeta.eligibleEvents.length === 0) return;
       if (processedInboxObjectsRef.current.has(inbox)) return;
-      processedInboxObjectsRef.current.add(inbox);
+      if (!forceReevaluateQuiet && quietSuppressedInboxesRef.current.has(inbox)) return;
 
       void processPortfolioNewsAlerts({
         portfolioId,
@@ -289,9 +420,17 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         preferences,
         ports: apiPorts,
         notifier: new DesktopServiceNewsAlertNotifier(),
+        enforceQuietHours: true,
+        deferHighMaxAgeHours: DEFERRED_HIGH_ALERT_MAX_AGE_HOURS,
+        now: Date.now(),
       })
         .then((diag) => {
-          if (diag.eligibleAlerts > 0) {
+          if (diag.notificationStatus === 'SUPPRESSED_QUIET_HOURS') {
+            quietSuppressedInboxesRef.current.add(inbox);
+          } else {
+            processedInboxObjectsRef.current.add(inbox);
+          }
+          if (diag.eligibleAlerts > 0 && diag.notificationStatus !== 'SUPPRESSED_QUIET_HOURS') {
             void queryClient.invalidateQueries({
               queryKey: ['portfolio-news-alert-history', portfolioId],
             });
@@ -300,6 +439,13 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         .catch(() => {
           // Non-blocking: alert delivery issues must never disrupt news inbox or refresh UX
         });
+    };
+
+    evaluateCachedInboxRef.current = (targetPortfolioId: string) => {
+      const cached = queryClient.getQueryData(['portfolio-news', targetPortfolioId]);
+      if (cached) {
+        handleInbox(targetPortfolioId, cached, true);
+      }
     };
 
     // Process any already-cached portfolio-news query once on mount
@@ -320,6 +466,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     });
 
     return () => {
+      evaluateCachedInboxRef.current = () => {};
       unsubscribe();
     };
   }, [queryClient, isAuthenticated, userId, preferences]);
@@ -331,6 +478,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
       service.cancelAll();
       purgeUserNotifications(userId);
       clearNotificationPreferences(userId);
+      clearPortfolioNewsMonitoringState(userId);
       notificationCenter.clearHistory(userId);
     }
   }, [isAuthenticated, userId]);
@@ -389,6 +537,8 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     clearHistory,
     sendTestNotification,
     evaluateNow,
+    newsMonitoring,
+    refreshPortfolioNewsNow,
   };
 
   return (
@@ -402,22 +552,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
 const defaultNotificationContext: NotificationContextValue = {
   permissionState: 'default',
   requestPermission: async () => 'default',
-  preferences: {
-    enabled: true,
-    fiscalReminders: true,
-    darfReminders: true,
-    costEvidenceAlerts: true,
-    reconciliationAlerts: true,
-    portfolioSummaryAlerts: false,
-    materialNewsAlerts: true,
-    materialNewsThreshold: 'HIGH_AND_CRITICAL',
-    materialNewsAlertsActivatedAt: null,
-    quietHoursEnabled: true,
-    quietHoursStart: '22:00',
-    quietHoursEnd: '08:00',
-    maxDailyNotifications: 5,
-    cooldownHours: 6,
-  },
+  preferences: { ...DEFAULT_NOTIFICATION_PREFERENCES },
   updatePreferences: () => {},
   history: [],
   unreadCount: 0,
@@ -426,9 +561,25 @@ const defaultNotificationContext: NotificationContextValue = {
   clearHistory: () => {},
   sendTestNotification: async () => false,
   evaluateNow: async () => {},
+  newsMonitoring: buildDefaultMonitoringDiagnostics(DEFAULT_NOTIFICATION_PREFERENCES),
+  refreshPortfolioNewsNow: async (portfolioIdArg?: string) => {
+    if (!portfolioIdArg) return;
+    await portfolioApi.refreshPortfolioNews(portfolioIdArg);
+  },
 };
 
 export function useNotifications(): NotificationContextValue {
   const context = useContext(NotificationContext);
   return context ?? defaultNotificationContext;
+}
+
+export function usePortfolioNewsMonitoring() {
+  const { newsMonitoring, refreshPortfolioNewsNow, preferences, updatePreferences } = useNotifications();
+  return {
+    monitoring: newsMonitoring,
+    refreshNow: refreshPortfolioNewsNow,
+    automaticNewsMonitoring: preferences.automaticNewsMonitoring,
+    intervalMinutes: preferences.newsMonitoringIntervalMinutes,
+    updatePreferences,
+  };
 }

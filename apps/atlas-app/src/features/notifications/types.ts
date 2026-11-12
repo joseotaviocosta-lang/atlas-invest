@@ -16,6 +16,51 @@ export type NotificationCategory =
 
 export type MaterialNewsAlertThreshold = 'CRITICAL_ONLY' | 'HIGH_AND_CRITICAL' | 'ALL_MATERIAL';
 
+export type NewsMonitoringIntervalMinutes = 15 | 30 | 60;
+
+export type PortfolioNewsMonitoringStatus =
+  | 'ENABLED'
+  | 'DISABLED'
+  | 'PAUSED_QUIET_HOURS'
+  | 'PAUSED_OFFLINE'
+  | 'PAUSED_NO_PORTFOLIO';
+
+export type NewsRefreshSource =
+  | 'MANUAL'
+  | 'AUTOMATIC_INTERVAL'
+  | 'FOREGROUND_RESUME'
+  | 'RECOVERY';
+
+export interface PortfolioNewsMonitoringDiagnostics {
+  status: PortfolioNewsMonitoringStatus;
+  monitoringEnabled: boolean;
+  intervalMinutes: NewsMonitoringIntervalMinutes;
+  portfolioId: string | null;
+  lastAttemptAt: string | null;
+  lastSuccessAt: string | null;
+  lastSuccessfulAutomaticRefreshAt: string | null;
+  lastAutomaticRefreshAttemptAt: string | null;
+  nextScheduledAt: string | null;
+  inFlight: boolean;
+  quietHours: {
+    enabled: boolean;
+    active: boolean;
+    start: string;
+    end: string;
+    policy: 'REFRESH_CONTINUES_ALERTS_SUPPRESSED';
+    criticalBypassesQuietHours: false;
+    highDeferralWindowHours: number;
+  };
+  lastTrigger: NewsRefreshSource | null;
+  consecutiveFailures: number;
+  backoffUntilAt: string | null;
+  lastCycleDurationMs: number | null;
+  lastError: string | null;
+  overlapSkips: number;
+  automaticCyclesCompleted: number;
+  networkFailures: number;
+}
+
 export type NotificationSeverity = 'HIGH' | 'NORMAL' | 'LOW';
 
 export interface LocalNotification {
@@ -41,6 +86,8 @@ export interface NotificationPreferences {
   materialNewsAlerts: boolean;
   materialNewsThreshold: MaterialNewsAlertThreshold;
   materialNewsAlertsActivatedAt?: string | null;
+  automaticNewsMonitoring: boolean;
+  newsMonitoringIntervalMinutes: NewsMonitoringIntervalMinutes;
   quietHoursEnabled: boolean;
   quietHoursStart: string; // HH:mm format, default '22:00'
   quietHoursEnd: string; // HH:mm format, default '08:00'

@@ -3,6 +3,7 @@ export * from './preferences';
 export * from './engine';
 export * from './rule-engine';
 export * from './news-alerts';
+export * from './news-monitoring';
 export * from './notification-center';
 export * from './service';
 export * from './NotificationProvider';

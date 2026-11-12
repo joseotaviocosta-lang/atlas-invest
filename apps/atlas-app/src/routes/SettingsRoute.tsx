@@ -5,7 +5,7 @@ import { useAuth } from '../providers/AuthProvider';
 import { usePortfolio } from '../providers/PortfolioProvider';
 import { Card, Avatar, Badge, Button } from '../components/ui';
 import { getRuntimeConfig } from '../config/runtime';
-import { NotificationSettingsSection } from '../features/notifications';
+import { NotificationSettingsSection, useNotifications } from '../features/notifications';
 import { exportDiagnostics } from '../lib/diagnostics';
 import { MarketDataProviderCard } from '../features/market/components/MarketDataProviderCard';
 import { LocalBackupCard, RestoreReadinessCard } from '../features/backup';
@@ -15,6 +15,7 @@ export type SettingsTab = 'ALL' | 'profile' | 'market' | 'backup' | 'notificatio
 export const SettingsRoute: React.FC = () => {
   const { user, logout, runtimeMode, clearLocalData } = useAuth();
   const { selectedPortfolio } = usePortfolio();
+  const { newsMonitoring } = useNotifications();
   const navigate = useNavigate();
   const config = getRuntimeConfig();
   const [activeTab, setActiveTab] = useState<SettingsTab>('ALL');
@@ -56,6 +57,7 @@ export const SettingsRoute: React.FC = () => {
       const res = await exportDiagnostics({
         isAuthenticated: Boolean(user),
         hasActivePortfolio: Boolean(selectedPortfolio),
+        newsMonitoring,
       });
       if (res.mode === 'download') {
         setExportStatus('Diagnóstico exportado como JSON com sucesso.');

@@ -10,12 +10,13 @@ import type {
   NotificationPreferences,
   NotificationService,
 } from './types';
-import { stringToNumericId } from './engine';
+import { isInQuietHours, stringToNumericId } from './engine';
 import { getNotificationService } from './service';
 import { notificationCenter } from './notification-center';
 
 export type ClientNewsAlertDeliveryStatus =
   | 'DELIVERED'
+  | 'SUPPRESSED_QUIET_HOURS'
   | 'NOTIFICATIONS_PERMISSION_DENIED'
   | 'NOTIFICATIONS_UNSUPPORTED'
   | 'NOTIFICATIONS_UNAVAILABLE'
@@ -356,6 +357,19 @@ export class DesktopServiceNewsAlertNotifier implements ClientNewsAlertNotifier 
   }
 }
 
+export const DEFAULT_DEFERRED_HIGH_ALERT_MAX_AGE_HOURS = 6;
+
+function resolveCandidateReferenceMs(
+  cand: PortfolioNewsAlertCandidateDto,
+  ev: PortfolioNewsInboxResponseDto['events'][number] | undefined,
+): number {
+  const iso =
+    cand.state === 'UPDATED'
+      ? (ev?.lastObservedAt ?? ev?.firstSeenAt ?? cand.publishedAt)
+      : (ev?.firstSeenAt ?? cand.publishedAt);
+  return Date.parse(iso);
+}
+
 export async function processPortfolioNewsAlerts(params: {
   portfolioId: string;
   userId?: string | null;
@@ -364,6 +378,12 @@ export async function processPortfolioNewsAlerts(params: {
   ports?: NewsAlertCoordinatorPorts;
   notifier?: ClientNewsAlertNotifier;
   recordInNotificationCenter?: boolean;
+  /** Optional clock override for deterministic quiet-hours & deferral window evaluation. */
+  now?: Date | number;
+  /** Enforces Quiet Hours suppression & deferred-HIGH age window (6h). Defaults to true when `now` is provided. */
+  enforceQuietHours?: boolean;
+  /** Maximum age in hours for deferred HIGH alerts after Quiet Hours end (default 6h; CRITICAL never expires). */
+  deferHighMaxAgeHours?: number;
 }): Promise<NewsAlertProcessingDiagnostics> {
   const {
     portfolioId,
@@ -374,6 +394,15 @@ export async function processPortfolioNewsAlerts(params: {
     notifier = new DesktopServiceNewsAlertNotifier(),
     recordInNotificationCenter = true,
   } = params;
+  const evalNowDate =
+    params.now instanceof Date
+      ? params.now
+      : typeof params.now === 'number'
+        ? new Date(params.now)
+        : new Date();
+  const evalNowMs = evalNowDate.getTime();
+  const shouldEnforceQuietHours = params.enforceQuietHours ?? (params.now !== undefined);
+  const deferHighMaxAgeHours = params.deferHighMaxAgeHours ?? DEFAULT_DEFERRED_HIGH_ALERT_MAX_AGE_HOURS;
 
   return withPortfolioNewsAlertMutex(portfolioId, async () => {
     const rawCandidates = inbox.alertsMeta?.eligibleEvents ?? [];
@@ -471,11 +500,76 @@ export async function processPortfolioNewsAlerts(params: {
       };
     }
 
-    let claimedCandidates = eligibleAfterActivation;
+    // APP-16P Quiet Hours Policy:
+    // Refresh continues cleanly in the background while atlas-app.exe is active,
+    // but OS alerts (both HIGH and CRITICAL — no sound bypass) are paused during Quiet Hours.
+    // Claims are NOT acquired while suppressed so CRITICAL and recent HIGH (<= 6h) retain eligibility once Quiet Hours end.
+    if (shouldEnforceQuietHours && isInQuietHours(preferences, evalNowDate)) {
+      return {
+        eligibleAlerts: eligibleAfterActivation.length,
+        deliveredAlerts: 0,
+        suppressedAlreadyDelivered,
+        suppressedByMateriality: totalSuppressedByMateriality,
+        notificationStatus: 'SUPPRESSED_QUIET_HOURS',
+      };
+    }
+
+    // APP-16P Post-Quiet-Hours Anti-Avalanche Policy:
+    // CRITICAL retains eligibility regardless of overnight delay.
+    // HIGH remains alert-eligible only while still recent (<= 6h); older accumulated HIGHs are baseline-suppressed without popup flood.
+    let activeEligibleCandidates = eligibleAfterActivation;
+    if (shouldEnforceQuietHours && deferHighMaxAgeHours > 0) {
+      const maxAgeMs = deferHighMaxAgeHours * 60 * 60 * 1000;
+      const freshOrCritical: PortfolioNewsAlertCandidateDto[] = [];
+      const staleNonCritical: PortfolioNewsAlertCandidateDto[] = [];
+
+      for (const cand of eligibleAfterActivation) {
+        if (cand.materiality === 'CRITICAL') {
+          freshOrCritical.push(cand);
+          continue;
+        }
+        const refMs = resolveCandidateReferenceMs(cand, eventLookup.get(cand.canonicalEventId));
+        if (Number.isFinite(refMs) && evalNowMs - refMs > maxAgeMs) {
+          staleNonCritical.push(cand);
+        } else {
+          freshOrCritical.push(cand);
+        }
+      }
+
+      if (staleNonCritical.length > 0) {
+        suppressedAlreadyDelivered += staleNonCritical.length;
+        if (ports) {
+          try {
+            await ports.suppressBaseline(
+              portfolioId,
+              staleNonCritical.map((c) => ({
+                canonicalEventId: c.canonicalEventId,
+                eventVersionFingerprint: c.eventVersionFingerprint,
+              })),
+            );
+          } catch {
+            // Non-blocking: inbox remains authoritative even if baseline suppression fails
+          }
+        }
+      }
+
+      activeEligibleCandidates = freshOrCritical;
+      if (activeEligibleCandidates.length === 0) {
+        return {
+          eligibleAlerts: 0,
+          deliveredAlerts: 0,
+          suppressedAlreadyDelivered,
+          suppressedByMateriality: totalSuppressedByMateriality,
+          notificationStatus: 'NO_ELIGIBLE_EVENTS',
+        };
+      }
+    }
+
+    let claimedCandidates = activeEligibleCandidates;
     if (ports) {
       const claimed = await ports.claimPendingAlerts(
         portfolioId,
-        eligibleAfterActivation.map((c) => ({
+        activeEligibleCandidates.map((c) => ({
           canonicalEventId: c.canonicalEventId,
           eventVersionFingerprint: c.eventVersionFingerprint,
         })),
@@ -483,10 +577,10 @@ export async function processPortfolioNewsAlerts(params: {
       const claimedSet = new Set(
         claimed.map((k) => `${k.canonicalEventId}::${k.eventVersionFingerprint}`),
       );
-      claimedCandidates = eligibleAfterActivation.filter((c) =>
+      claimedCandidates = activeEligibleCandidates.filter((c) =>
         claimedSet.has(`${c.canonicalEventId}::${c.eventVersionFingerprint}`),
       );
-      suppressedAlreadyDelivered += eligibleAfterActivation.length - claimedCandidates.length;
+      suppressedAlreadyDelivered += activeEligibleCandidates.length - claimedCandidates.length;
 
       if (claimedCandidates.length === 0) {
         return {

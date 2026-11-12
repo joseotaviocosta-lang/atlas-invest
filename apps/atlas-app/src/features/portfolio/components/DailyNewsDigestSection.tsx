@@ -47,7 +47,11 @@ export const DailyNewsDigestSection: React.FC<DailyNewsDigestSectionProps> = ({ 
   const { data: newsRes, isLoading, isError } = usePortfolioNews(portfolioId);
   const refreshNews = useRefreshPortfolioNews(portfolioId);
   const markSeen = useMarkPortfolioNewsSeen(portfolioId);
-  const { preferences: notificationPrefs, permissionState: notificationPermission } = useNotifications();
+  const {
+    preferences: notificationPrefs,
+    permissionState: notificationPermission,
+    newsMonitoring,
+  } = useNotifications();
   const [showFullInbox, setShowFullInbox] = useState(false);
   const [showAlertHistory, setShowAlertHistory] = useState(false);
 
@@ -87,6 +91,28 @@ export const DailyNewsDigestSection: React.FC<DailyNewsDigestSectionProps> = ({ 
     notificationPrefs.enabled &&
     notificationPrefs.materialNewsAlerts &&
     notificationPermission === 'granted';
+
+  const monitoringStatusText = React.useMemo(() => {
+    if (!portfolioId) return null;
+    if (!notificationPrefs.automaticNewsMonitoring || newsMonitoring.status === 'DISABLED') {
+      return 'Monitoramento automático desativado';
+    }
+    if (newsMonitoring.status === 'PAUSED_QUIET_HOURS') {
+      return 'Pausado durante horário silencioso';
+    }
+    if (newsMonitoring.status === 'PAUSED_OFFLINE') {
+      return 'Monitoramento pausado (offline)';
+    }
+    if (newsMonitoring.status === 'ENABLED' || notificationPrefs.automaticNewsMonitoring) {
+      return `Monitoramento automático ativo • a cada ${newsMonitoring.intervalMinutes} min`;
+    }
+    return null;
+  }, [
+    portfolioId,
+    notificationPrefs.automaticNewsMonitoring,
+    newsMonitoring.status,
+    newsMonitoring.intervalMinutes,
+  ]);
 
   // Derive dynamic header summary: novelty-first when APP-16M state is active, backward-compatible otherwise
   const summaryHeader = React.useMemo(() => {
@@ -166,8 +192,16 @@ export const DailyNewsDigestSection: React.FC<DailyNewsDigestSectionProps> = ({ 
             <p style={{ margin: '4px 0 0 0', fontSize: '0.8125rem', color: colors.textSecondary }}>
               {summaryHeader}
             </p>
-            {(effectiveUnseenMaterialCount > 0 || localNewsAlertsActive) && (
+            {(effectiveUnseenMaterialCount > 0 || localNewsAlertsActive || monitoringStatusText) && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px', flexWrap: 'wrap' }}>
+                {monitoringStatusText && (
+                  <span
+                    style={{ fontSize: '0.75rem', color: colors.textSecondary }}
+                    data-testid="news-monitoring-status"
+                  >
+                    {monitoringStatusText}
+                  </span>
+                )}
                 {effectiveUnseenMaterialCount > 0 && (
                   <span style={{ fontSize: '0.75rem', fontWeight: 600, color: colors.accent }}>
                     {effectiveUnseenMaterialCount === 1
@@ -180,22 +214,24 @@ export const DailyNewsDigestSection: React.FC<DailyNewsDigestSectionProps> = ({ 
                     🔔 Alertas relevantes ativos
                   </span>
                 )}
-                <button
-                  type="button"
-                  onClick={() => setShowAlertHistory(true)}
-                  style={{
-                    backgroundColor: 'transparent',
-                    border: 'none',
-                    padding: 0,
-                    color: colors.accent,
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    textDecoration: 'underline',
-                  }}
-                >
-                  Histórico de alertas
-                </button>
+                {(effectiveUnseenMaterialCount > 0 || localNewsAlertsActive) && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAlertHistory(true)}
+                    style={{
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      padding: 0,
+                      color: colors.accent,
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    Histórico de alertas
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -226,20 +262,23 @@ export const DailyNewsDigestSection: React.FC<DailyNewsDigestSectionProps> = ({ 
             <button
               type="button"
               onClick={() => refreshNews.mutate()}
-              disabled={refreshNews.isPending}
+              disabled={refreshNews.isPending || (newsMonitoring.portfolioId === portfolioId && newsMonitoring.inFlight)}
               style={{
                 backgroundColor: 'transparent',
                 border: `1px solid ${colors.border}`,
                 borderRadius: `${borderRadius.sm}px`,
                 color: colors.textSecondary,
-                cursor: refreshNews.isPending ? 'wait' : 'pointer',
+                cursor:
+                  refreshNews.isPending || (newsMonitoring.portfolioId === portfolioId && newsMonitoring.inFlight)
+                    ? 'wait'
+                    : 'pointer',
                 padding: '4px 8px',
                 fontSize: '0.75rem',
               }}
               title="Atualizar Notícias"
               aria-label="Atualizar Notícias"
             >
-              {refreshNews.isPending ? '⏳' : '🔄'}
+              {refreshNews.isPending || (newsMonitoring.portfolioId === portfolioId && newsMonitoring.inFlight) ? '⏳' : '🔄'}
             </button>
           </div>
         </div>

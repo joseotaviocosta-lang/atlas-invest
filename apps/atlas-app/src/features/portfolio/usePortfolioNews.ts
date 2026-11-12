@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { portfolioApi } from './api';
 import { applyOptimisticSeenToCache } from './newsStateUtils';
+import { useNotifications } from '../notifications/NotificationProvider';
 import type {
   PortfolioNewsAlertHistoryResponseDto,
   PortfolioNewsAlertHistoryStatusDto,
@@ -25,15 +26,27 @@ export function usePortfolioNews(portfolioId: string | null | undefined) {
 
 export function useRefreshPortfolioNews(portfolioId: string | null | undefined) {
   const queryClient = useQueryClient();
+  const { refreshPortfolioNewsNow, newsMonitoring } = useNotifications();
   return useMutation({
     mutationFn: async () => {
       if (!portfolioId) {
         throw new Error('No portfolio ID provided');
       }
-      return portfolioApi.refreshPortfolioNews(portfolioId);
+      // Route manual refresh through the single monitoring coordinator path when managed,
+      // preventing overlapping fetches and resetting nextScheduledAt = now + interval.
+      if (newsMonitoring.portfolioId === portfolioId) {
+        await refreshPortfolioNewsNow(portfolioId, 'MANUAL');
+        return queryClient.getQueryData<{ data: PortfolioNewsInboxResponseDto }>([
+          'portfolio-news',
+          portfolioId,
+        ]);
+      }
+      const res = await portfolioApi.refreshPortfolioNews(portfolioId);
+      queryClient.setQueryData(['portfolio-news', portfolioId], res);
+      return res;
     },
     onSuccess: (res) => {
-      if (portfolioId) {
+      if (portfolioId && res) {
         queryClient.setQueryData(['portfolio-news', portfolioId], res);
       }
     },

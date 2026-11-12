@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
 import { useNotifications } from '../NotificationProvider';
+import {
+  ALLOWED_NEWS_MONITORING_INTERVALS,
+  normalizeNewsMonitoringIntervalMinutes,
+} from '../news-monitoring';
 import { Card, Button, Badge } from '../../../components/ui';
 import { colors, spacing, borderRadius } from '@atlas/ui';
 
@@ -184,6 +188,63 @@ export const NotificationSettingsSection: React.FC = () => {
                 style={{ width: 18, height: 18, accentColor: colors.accent }}
               />
             </label>
+
+            {/* Automatic In-App News Monitoring (APP-16P) */}
+            <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: spacing.md, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+                <div>
+                  <div style={{ fontWeight: 600, color: colors.textPrimary }}>
+                    Monitoramento automático de notícias
+                  </div>
+                  <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
+                    O Atlas monitora automaticamente enquanto o aplicativo está aberto ou minimizado.
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={preferences.automaticNewsMonitoring}
+                  onChange={(e) => updatePreferences({ automaticNewsMonitoring: e.target.checked })}
+                  aria-label="Monitoramento automático de notícias"
+                  style={{ width: 18, height: 18, accentColor: colors.accent }}
+                />
+              </label>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
+                <label
+                  htmlFor="news-monitoring-interval-select"
+                  style={{ fontSize: '0.8125rem', color: colors.textSecondary }}
+                >
+                  Frequência
+                </label>
+                <select
+                  id="news-monitoring-interval-select"
+                  aria-label="Frequência"
+                  disabled={!preferences.automaticNewsMonitoring}
+                  value={preferences.newsMonitoringIntervalMinutes}
+                  onChange={(e) =>
+                    updatePreferences({
+                      newsMonitoringIntervalMinutes: normalizeNewsMonitoringIntervalMinutes(
+                        Number(e.target.value),
+                      ),
+                    })
+                  }
+                  style={{
+                    padding: '6px 10px',
+                    backgroundColor: colors.surfaceHover,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: borderRadius.sm,
+                    color: colors.textPrimary,
+                    fontSize: '0.8125rem',
+                  }}
+                >
+                  {ALLOWED_NEWS_MONITORING_INTERVALS.map((minutes) => (
+                    <option key={minutes} value={minutes}>
+                      {`${minutes} min`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
 
           {/* Quiet Hours */}
@@ -194,7 +255,7 @@ export const NotificationSettingsSection: React.FC = () => {
                   Horário de Silêncio (Quiet Hours)
                 </div>
                 <div style={{ fontSize: '0.8125rem', color: colors.textSecondary }}>
-                  Suprime notificações não-urgentes durante o período de descanso
+                  Durante o horário silencioso, o Atlas continua monitorando, mas não exibe alertas sonoros do sistema.
                 </div>
               </div>
               <input

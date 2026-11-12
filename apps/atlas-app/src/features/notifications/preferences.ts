@@ -1,4 +1,30 @@
-import type { NotificationPreferences } from './types';
+import type { NewsMonitoringIntervalMinutes, NotificationPreferences } from './types';
+
+export const ALLOWED_NEWS_MONITORING_INTERVALS: readonly NewsMonitoringIntervalMinutes[] = [15, 30, 60];
+export const DEFAULT_NEWS_MONITORING_INTERVAL_MINUTES: NewsMonitoringIntervalMinutes = 30;
+
+/**
+ * Validates monitoring cadence strictly against allowed discrete intervals (15 | 30 | 60 min).
+ * Invalid or aggressive sub-15m intervals fall back safely to 30 min.
+ */
+export function normalizeNewsMonitoringIntervalMinutes(raw: unknown): NewsMonitoringIntervalMinutes {
+  const num = typeof raw === 'string' ? Number(raw) : raw;
+  if (num === 15 || num === 30 || num === 60) {
+    return num;
+  }
+  return DEFAULT_NEWS_MONITORING_INTERVAL_MINUTES;
+}
+
+function normalizePreferences(prefs: NotificationPreferences): NotificationPreferences {
+  return {
+    ...prefs,
+    automaticNewsMonitoring:
+      typeof prefs.automaticNewsMonitoring === 'boolean' ? prefs.automaticNewsMonitoring : true,
+    newsMonitoringIntervalMinutes: normalizeNewsMonitoringIntervalMinutes(
+      prefs.newsMonitoringIntervalMinutes,
+    ),
+  };
+}
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   enabled: true,
@@ -10,6 +36,8 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   materialNewsAlerts: true, // APP-16N: Default ON for Desktop local owner (CRITICAL + HIGH only)
   materialNewsThreshold: 'HIGH_AND_CRITICAL',
   materialNewsAlertsActivatedAt: null,
+  automaticNewsMonitoring: true, // APP-16P: Default ON while Atlas Desktop is open/minimized
+  newsMonitoringIntervalMinutes: DEFAULT_NEWS_MONITORING_INTERVAL_MINUTES,
   quietHoursEnabled: true,
   quietHoursStart: '22:00',
   quietHoursEnd: '08:00',
@@ -38,10 +66,10 @@ export function getNotificationPreferences(userId?: string | null): Notification
       const raw = storage.getItem(`${PREFS_STORAGE_PREFIX}${uid}`);
       if (raw) {
         const parsed = JSON.parse(raw);
-        return {
+        return normalizePreferences({
           ...DEFAULT_NOTIFICATION_PREFERENCES,
           ...parsed,
-        };
+        });
       }
     } catch {
       // Return defaults on parse error
@@ -50,10 +78,10 @@ export function getNotificationPreferences(userId?: string | null): Notification
 
   const inMem = memoryPrefsStore.get(uid);
   if (inMem) {
-    return { ...inMem };
+    return normalizePreferences({ ...inMem });
   }
 
-  return { ...DEFAULT_NOTIFICATION_PREFERENCES };
+  return normalizePreferences({ ...DEFAULT_NOTIFICATION_PREFERENCES });
 }
 
 export function saveNotificationPreferences(
@@ -62,10 +90,10 @@ export function saveNotificationPreferences(
 ): NotificationPreferences {
   const uid = userId?.trim() || 'default';
   const current = getNotificationPreferences(uid);
-  const updated: NotificationPreferences = {
+  const updated: NotificationPreferences = normalizePreferences({
     ...current,
     ...prefs,
-  };
+  });
 
   const storage = getStorage();
   if (storage) {

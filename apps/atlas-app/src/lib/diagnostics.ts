@@ -1,5 +1,6 @@
 import { getRuntimeConfig } from '../config/runtime';
 import { isAndroidUserAgent } from './api';
+import type { PortfolioNewsMonitoringDiagnostics } from '../features/notifications/types';
 
 export interface SanitizedDiagnosticError {
   timestamp: string;
@@ -45,6 +46,7 @@ export interface SanitizedDiagnosticPackage {
     macroStatus?: string;
     backupStatus?: string;
   };
+  newsMonitoring?: PortfolioNewsMonitoringDiagnostics;
   recentErrors: SanitizedDiagnosticError[];
   exportedAt: string;
 }
@@ -106,6 +108,7 @@ export function clearDiagnosticErrorHistory(): void {
 export function generateSanitizedDiagnostics(options?: {
   isAuthenticated?: boolean;
   hasActivePortfolio?: boolean;
+  newsMonitoring?: PortfolioNewsMonitoringDiagnostics;
   health?: {
     apiHealth?: string;
     postgresHealth?: string;
@@ -166,11 +169,21 @@ export function generateSanitizedDiagnostics(options?: {
     health: {
       apiHealth: options?.health?.apiHealth ?? 'ready',
       postgresHealth: options?.health?.postgresHealth ?? 'port_5434_connected',
-      migrationsCount: options?.health?.migrationsCount ?? 45,
+      migrationsCount: options?.health?.migrationsCount ?? 50,
       quotesCoverage: options?.health?.quotesCoverage ?? '36/36_priced',
       macroStatus: options?.health?.macroStatus ?? 'synced_selic_ipca_ptax_ibov',
       backupStatus: options?.health?.backupStatus ?? 'sha256_verified',
     },
+    ...(options?.newsMonitoring
+      ? {
+          newsMonitoring: {
+            ...options.newsMonitoring,
+            lastError: options.newsMonitoring.lastError
+              ? sanitizeLogString(options.newsMonitoring.lastError)
+              : null,
+          },
+        }
+      : {}),
     recentErrors: [...errorHistory],
     exportedAt: new Date().toISOString(),
   };
@@ -179,6 +192,7 @@ export function generateSanitizedDiagnostics(options?: {
 export async function exportDiagnostics(options?: {
   isAuthenticated?: boolean;
   hasActivePortfolio?: boolean;
+  newsMonitoring?: PortfolioNewsMonitoringDiagnostics;
   health?: {
     apiHealth?: string;
     postgresHealth?: string;
