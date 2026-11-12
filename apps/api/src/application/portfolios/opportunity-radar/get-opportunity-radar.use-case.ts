@@ -17,7 +17,9 @@ import {
   selectAlertEligibleNewsEvents,
   buildDailyNewsDigest,
   buildPortfolioDailyDecisionBrief,
+  deriveNewsProviderQuality,
   type PortfolioDailyDecisionBrief,
+  type PortfolioNewsInboxMetrics,
   type PersistedPortfolioNewsEventState,
   type PersistedPortfolioNewsSyncState,
   type NewsEventUpdateReason,
@@ -203,11 +205,14 @@ export class GetOpportunityRadarUseCase {
 
     // Fetch and canonicalize news across portfolio assets (APP-16J)
     let newsInbox: PortfolioNewsInboxResult | null = null;
+    let newsFetchFailed = false;
+    let auditedTickersCount = 0;
     if (this.newsPipelineService) {
       if (params.forceRefresh) {
         this.newsPipelineService.clearCache();
       }
       const allTickers = positions.map((p) => p.ticker).filter((t): t is string => Boolean(t));
+      auditedTickersCount = allTickers.length;
       newsInbox = await this.newsPipelineService
         .getPortfolioNews({
           tickers: allTickers,
@@ -215,7 +220,10 @@ export class GetOpportunityRadarUseCase {
           referenceDate: now,
           forceRefresh: params.forceRefresh,
         })
-        .catch(() => null);
+        .catch(() => {
+          newsFetchFailed = true;
+          return null;
+        });
     }
 
     for (const pos of positions) {
@@ -477,7 +485,7 @@ export class GetOpportunityRadarUseCase {
     }
 
     // 6. Run pure deterministic OpportunityRadarEngine (APP-16I)
-    const result = OpportunityRadarEngine.evaluate({
+    const engineResult = OpportunityRadarEngine.evaluate({
       portfolioId: params.portfolioId,
       assets: evaluatedAssets,
       analysisDate,
@@ -485,6 +493,22 @@ export class GetOpportunityRadarUseCase {
       maxResults: 5,
       enableDividendCalendarStrategy,
     });
+
+    const newsProviderStatus: PortfolioNewsInboxMetrics['providerStatus'] | undefined =
+      newsInbox?.metrics?.providerStatus ??
+      (newsFetchFailed && auditedTickersCount > 0
+        ? {
+            brapiNewsAvailable: false,
+            brapiNewsStatus: 'BRAPI_NEWS_PRO_UNAVAILABLE',
+            officialStatus: 'OFFICIAL_PROVIDER_UNAVAILABLE',
+            fallbackActive: false,
+            providersUsed: [],
+          }
+        : undefined);
+
+    const result: OpportunityRadarResult = newsProviderStatus
+      ? { ...engineResult, newsProviderStatus }
+      : engineResult;
 
     // 7. Store in ephemeral cache (only if default strategy enabled)
     if (enableDividendCalendarStrategy) {
@@ -951,6 +975,8 @@ export class GetOpportunityRadarUseCase {
       }
     }
 
+    const providerQuality = deriveNewsProviderQuality(radar.newsProviderStatus);
+
     return buildPortfolioDailyDecisionBrief({
       radar,
       previousRadar,
@@ -959,6 +985,8 @@ export class GetOpportunityRadarUseCase {
         classTargetWeights,
       },
       plannedContribution,
+      newsProviderPartial: providerQuality.newsProviderPartial,
+      officialProviderStatus: providerQuality.officialProviderStatus,
       referenceDate: now,
     });
   }

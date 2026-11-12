@@ -369,6 +369,17 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
             {brief.dataQuality.newsCoveragePercent}%
           </span>
         </div>
+        {(brief.dataQuality.officialProviderStatus === 'OFFICIAL_PROVIDER_PARTIAL' ||
+          brief.dataQuality.officialProviderStatus === 'OFFICIAL_PROVIDER_UNAVAILABLE' ||
+          brief.dataQuality.officialProviderStatus === 'OFFICIAL_PROVIDER_STALE_CACHE') && (
+          <p className="mt-1.5 text-amber-300">
+            {brief.dataQuality.officialProviderStatus === 'OFFICIAL_PROVIDER_UNAVAILABLE'
+              ? 'Fontes oficiais indisponíveis no momento — cobertura de notícias baseada nos demais provedores.'
+              : brief.dataQuality.officialProviderStatus === 'OFFICIAL_PROVIDER_STALE_CACHE'
+                ? 'Fontes oficiais em cache temporário — cobertura parcial de notícias nesta execução.'
+                : 'Fontes oficiais: cobertura parcial nesta execução.'}
+          </p>
+        )}
       </div>
 
       {/* Optional read-only contribution simulation */}

@@ -5,7 +5,7 @@ import {
   OpportunityRadarItem,
   OpportunityRadarResult,
 } from './types';
-import { PortfolioNewsEvent } from './portfolio-news.types';
+import { PortfolioNewsEvent, PortfolioNewsInboxMetrics } from './portfolio-news.types';
 
 export type DecisionTier = 'HIGH_PRIORITY' | 'REVIEW' | 'WATCH' | 'INSUFFICIENT_DATA';
 
@@ -222,6 +222,59 @@ function resolveOfficialSourceLabel(ev: PortfolioNewsEvent): string {
 
 function resolveCanonicalEventUrl(ev: PortfolioNewsEvent): string | undefined {
   return ev.sources?.find((s) => Boolean(s.url))?.url ?? undefined;
+}
+
+export interface NewsProviderQualitySummary {
+  newsProviderPartial: boolean;
+  officialProviderStatus: string | null;
+  cvmStatus?: string | null;
+  fnetStatus?: string | null;
+  brapiNewsStatus?: string | null;
+  fallbackActive?: boolean;
+}
+
+/**
+ * Derives canonical news provider quality signals from an already-resolved
+ * `PortfolioNewsInboxMetrics['providerStatus']` without performing any extra fetch.
+ *
+ * Rules:
+ * - `OFFICIAL_PROVIDER_AVAILABLE`, `NO_OFFICIAL_EVENTS`, and `UNRESOLVED_REGULATORY_IDENTITY`
+ *   do NOT mark provider quality as partial.
+ * - `fallbackActive` (e.g. Google News RSS fallback for BRAPI Pro) alone does NOT mark
+ *   provider quality as partial.
+ * - `OFFICIAL_PROVIDER_PARTIAL`, `OFFICIAL_PROVIDER_UNAVAILABLE`, `OFFICIAL_PROVIDER_STALE_CACHE`,
+ *   component `STALE_CACHE`, or component `UNAVAILABLE` mark `newsProviderPartial = true`.
+ */
+export function deriveNewsProviderQuality(
+  providerStatus?: PortfolioNewsInboxMetrics['providerStatus'] | null,
+): NewsProviderQualitySummary {
+  if (!providerStatus) {
+    return {
+      newsProviderPartial: false,
+      officialProviderStatus: null,
+    };
+  }
+
+  const { officialStatus, cvmStatus, fnetStatus, brapiNewsStatus, fallbackActive } = providerStatus;
+
+  const hasStaleComponent = cvmStatus === 'STALE_CACHE' || fnetStatus === 'STALE_CACHE';
+  const hasUnavailableComponent = cvmStatus === 'UNAVAILABLE' || fnetStatus === 'UNAVAILABLE';
+  const isOfficialDegraded =
+    officialStatus === 'OFFICIAL_PROVIDER_PARTIAL' ||
+    officialStatus === 'OFFICIAL_PROVIDER_UNAVAILABLE' ||
+    officialStatus === 'OFFICIAL_PROVIDER_STALE_CACHE';
+
+  const newsProviderPartial =
+    isOfficialDegraded || hasStaleComponent || hasUnavailableComponent;
+
+  return {
+    newsProviderPartial,
+    officialProviderStatus: officialStatus,
+    cvmStatus: cvmStatus ?? null,
+    fnetStatus: fnetStatus ?? null,
+    brapiNewsStatus,
+    fallbackActive,
+  };
 }
 
 export function evaluateDecisionReadiness(
@@ -756,7 +809,7 @@ export function buildPortfolioDailyDecisionBrief(
   const pct = (count: number) =>
     totalAssets > 0 ? Math.round((count / totalAssets) * 100) : 0;
 
-  const qualityLabel: DecisionBriefDataQuality['label'] =
+  const baseQualityLabel: DecisionBriefDataQuality['label'] =
     totalAssets === 0
       ? 'LIMITADA'
       : sufficientCount / totalAssets >= 0.7 && freshPriceCount / totalAssets >= 0.7
@@ -764,6 +817,11 @@ export function buildPortfolioDailyDecisionBrief(
         : sufficientCount > 0
           ? 'PARCIAL'
           : 'LIMITADA';
+
+  const qualityLabel: DecisionBriefDataQuality['label'] =
+    baseQualityLabel === 'BOA' && params.newsProviderPartial
+      ? 'PARCIAL'
+      : baseQualityLabel;
 
   // Summary lines (PARTE AF / BG / BH)
   const summary: string[] = [];

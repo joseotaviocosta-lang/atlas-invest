@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildPortfolioDailyDecisionBrief,
+  deriveNewsProviderQuality,
   evaluateDecisionReadiness,
   OPPORTUNITY_MODEL_VERSION,
   type OpportunityRadarItem,
@@ -291,5 +292,108 @@ describe('APP-16S: Daily Portfolio Decision Brief Engine', () => {
     expect(brief.topPriorities).toEqual([]);
     expect(brief.dataQuality.totalAssets).toBe(0);
     expect(brief.summary.length).toBeGreaterThan(0);
+  });
+
+  describe('APP-16S-R1: deriveNewsProviderQuality & propagation', () => {
+    it('classifies OFFICIAL_PROVIDER_AVAILABLE, NO_OFFICIAL_EVENTS, and fallbackActive=true as non-partial', () => {
+      expect(
+        deriveNewsProviderQuality({
+          brapiNewsAvailable: true,
+          brapiNewsStatus: 'BRAPI_NEWS_PRO_AVAILABLE',
+          officialStatus: 'OFFICIAL_PROVIDER_AVAILABLE',
+          cvmStatus: 'AVAILABLE',
+          fnetStatus: 'AVAILABLE',
+          fallbackActive: false,
+          providersUsed: ['CVM', 'B3_FNET'],
+        }).newsProviderPartial,
+      ).toBe(false);
+
+      expect(
+        deriveNewsProviderQuality({
+          brapiNewsAvailable: false,
+          brapiNewsStatus: 'BRAPI_NEWS_PRO_UNAVAILABLE',
+          officialStatus: 'NO_OFFICIAL_EVENTS',
+          cvmStatus: 'NO_EVENTS',
+          fnetStatus: 'NO_EVENTS',
+          fallbackActive: true,
+          providersUsed: ['GOOGLE_NEWS_RSS'],
+        }).newsProviderPartial,
+      ).toBe(false);
+    });
+
+    it('classifies OFFICIAL_PROVIDER_PARTIAL, OFFICIAL_PROVIDER_UNAVAILABLE, and STALE_CACHE as partial', () => {
+      expect(
+        deriveNewsProviderQuality({
+          brapiNewsAvailable: false,
+          brapiNewsStatus: 'BRAPI_NEWS_PRO_UNAVAILABLE',
+          officialStatus: 'OFFICIAL_PROVIDER_PARTIAL',
+          cvmStatus: 'AVAILABLE',
+          fnetStatus: 'UNAVAILABLE',
+          fallbackActive: true,
+          providersUsed: ['CVM', 'GOOGLE_NEWS_RSS'],
+        }),
+      ).toMatchObject({
+        newsProviderPartial: true,
+        officialProviderStatus: 'OFFICIAL_PROVIDER_PARTIAL',
+      });
+
+      expect(
+        deriveNewsProviderQuality({
+          brapiNewsAvailable: false,
+          brapiNewsStatus: 'BRAPI_NEWS_PRO_UNAVAILABLE',
+          officialStatus: 'OFFICIAL_PROVIDER_UNAVAILABLE',
+          cvmStatus: 'UNAVAILABLE',
+          fnetStatus: 'UNAVAILABLE',
+          fallbackActive: false,
+          providersUsed: [],
+        }).newsProviderPartial,
+      ).toBe(true);
+
+      expect(
+        deriveNewsProviderQuality({
+          brapiNewsAvailable: true,
+          brapiNewsStatus: 'BRAPI_NEWS_PRO_AVAILABLE',
+          officialStatus: 'OFFICIAL_PROVIDER_AVAILABLE',
+          cvmStatus: 'STALE_CACHE',
+          fnetStatus: 'AVAILABLE',
+          fallbackActive: false,
+          providersUsed: ['CVM'],
+        }).newsProviderPartial,
+      ).toBe(true);
+    });
+
+    it('propagates newsProviderPartial to cautions and dataQuality (degrading BOA -> PARCIAL, never LIMITADA) without changing score/ranking', () => {
+      const items = [
+        makeRadarItem({ ticker: 'BBAS3', score: 86, confidence: 'HIGH', dataFreshness: 'FRESH' }),
+        makeRadarItem({ ticker: 'ITUB4', assetId: '2', score: 78, confidence: 'HIGH', dataFreshness: 'FRESH' }),
+        makeRadarItem({ ticker: 'WEGE3', assetId: '3', score: 71, confidence: 'MEDIUM', dataFreshness: 'FRESH' }),
+      ];
+      const radar = makeRadarResult(items);
+
+      const healthy = buildPortfolioDailyDecisionBrief({
+        radar,
+        newsProviderPartial: false,
+        officialProviderStatus: 'OFFICIAL_PROVIDER_AVAILABLE',
+      });
+      const partial = buildPortfolioDailyDecisionBrief({
+        radar,
+        newsProviderPartial: true,
+        officialProviderStatus: 'OFFICIAL_PROVIDER_PARTIAL',
+      });
+
+      expect(healthy.dataQuality.label).toBe('BOA');
+      expect(healthy.topPriorities[0].cautions).not.toContain(
+        'Cobertura de notícias parcial nesta execução.',
+      );
+
+      expect(partial.dataQuality.label).toBe('PARCIAL');
+      expect(partial.dataQuality.officialProviderStatus).toBe('OFFICIAL_PROVIDER_PARTIAL');
+      expect(partial.topPriorities[0].cautions).toContain(
+        'Cobertura de notícias parcial nesta execução.',
+      );
+      expect(partial.topPriorities.map((p) => ({ ticker: p.ticker, score: p.opportunityScore }))).toEqual(
+        healthy.topPriorities.map((p) => ({ ticker: p.ticker, score: p.opportunityScore })),
+      );
+    });
   });
 });

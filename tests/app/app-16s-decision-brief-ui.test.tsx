@@ -158,4 +158,61 @@ describe('APP-16S UI: DecisionBriefSection', () => {
 
     expect(html).toContain('Nenhum ativo elegível encontrado');
   });
+
+  it('shows partial news provider caution and human-friendly official source note when degraded, and omits it when healthy', () => {
+    queryClient.setQueryData(
+      decisionBriefQueryKey(portfolioId),
+      makeBrief({
+        dataQuality: {
+          label: 'PARCIAL',
+          sufficientCount: 28,
+          incompleteCount: 8,
+          totalAssets: 36,
+          priceCoveragePercent: 100,
+          fundamentalsCoveragePercent: 78,
+          newsCoveragePercent: 100,
+          officialProviderStatus: 'OFFICIAL_PROVIDER_PARTIAL',
+        },
+        topPriorities: [
+          {
+            ...makeBrief().topPriorities[0],
+            cautions: ['Cobertura de notícias parcial nesta execução.'],
+          },
+        ],
+      }),
+    );
+
+    const partialHtml = renderToString(
+      <QueryClientProvider client={queryClient}>
+        <DecisionBriefSection portfolioId={portfolioId} />
+      </QueryClientProvider>,
+    );
+    expect(partialHtml).toContain('Cobertura de notícias parcial nesta execução.');
+    expect(partialHtml).toContain('Fontes oficiais: cobertura parcial nesta execução.');
+    expect(partialHtml).not.toContain('OFFICIAL_PROVIDER_PARTIAL');
+
+    queryClient.setQueryData(
+      decisionBriefQueryKey(portfolioId),
+      makeBrief({
+        dataQuality: {
+          label: 'BOA',
+          sufficientCount: 36,
+          incompleteCount: 0,
+          totalAssets: 36,
+          priceCoveragePercent: 100,
+          fundamentalsCoveragePercent: 100,
+          newsCoveragePercent: 100,
+          officialProviderStatus: 'NO_OFFICIAL_EVENTS',
+        },
+      }),
+    );
+
+    const healthyHtml = renderToString(
+      <QueryClientProvider client={queryClient}>
+        <DecisionBriefSection portfolioId={portfolioId} />
+      </QueryClientProvider>,
+    );
+    expect(healthyHtml).not.toContain('Cobertura de notícias parcial nesta execução.');
+    expect(healthyHtml).not.toContain('Fontes oficiais:');
+  });
 });

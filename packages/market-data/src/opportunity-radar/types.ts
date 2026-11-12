@@ -5,7 +5,7 @@
  * Model version: opportunity-v2.3.1
  */
 
-import { PortfolioNewsEvent } from './portfolio-news.types';
+import { PortfolioNewsEvent, PortfolioNewsInboxMetrics } from './portfolio-news.types';
 
 export const OPPORTUNITY_MODEL_VERSION = 'opportunity-v2.3.1';
 
@@ -201,5 +201,6 @@ export interface OpportunityRadarResult {
   lowConfidenceItems?: readonly OpportunityRadarItem[];
   allEvaluatedItems?: readonly OpportunityRadarItem[];
   overallCoveragePercent?: number;
+  newsProviderStatus?: PortfolioNewsInboxMetrics['providerStatus'];
   disclaimer: string;
 }
