@@ -78,4 +78,18 @@ describe('APP-16T UI: Contribution Allocation Simulation Panel', () => {
     expect(html).not.toMatch(/\bEnviar ordem\b/i);
     expect(html).not.toMatch(/\bVenda agora\b/i);
   });
+
+  it('renders simulated proposal and unallocated warning without transactional language', () => {
+    queryClient.setQueryData(decisionBriefQueryKey(portfolioId), makeBrief());
+
+    const html = renderToString(
+      <QueryClientProvider client={queryClient}>
+        <DecisionBriefSection portfolioId={portfolioId} />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain('Contexto de aporte');
+    expect(html).not.toMatch(/\bCompre agora\b/i);
+    expect(html).not.toMatch(/\bVenda agora\b/i);
+  });
 });

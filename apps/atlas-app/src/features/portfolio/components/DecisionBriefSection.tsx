@@ -468,6 +468,16 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
             </span>
           </div>
 
+          {simulationResult.warnings.length > 0 && (
+            <div className="mt-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-[11px] text-amber-200">
+              {simulationResult.warnings.map((w, idx) => (
+                <p key={idx} className="leading-relaxed">
+                  {w}
+                </p>
+              ))}
+            </div>
+          )}
+
           {simulationResult.allocations.length > 0 ? (
             <div className="mt-3 grid gap-2.5 md:grid-cols-3">
               {simulationResult.allocations.map((alloc) => (

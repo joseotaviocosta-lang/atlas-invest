@@ -189,4 +189,21 @@ describe('API Integration: APP-16T Contribution Allocation Simulator', () => {
       .send({ amount: '1000.00' })
       .expect(404);
   });
+
+  it('preserves exact integer cents conservation and emits explainable warning when amount is unallocated', async () => {
+    // Portfolio with no active positions -> zero eligible assets -> 100% unallocated with warning
+    const res = await request(app.getHttpServer())
+      .post(`/api/v1/portfolios/${portfolioId}/decision-brief/simulate`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ amount: '1500.00' })
+      .expect(200);
+
+    const data = res.body.data;
+    expect(data.contributionAmount).toBe('1500.00');
+    expect(data.totalCents).toBe(150000);
+    expect(data.allocatedCents + data.unallocatedCents).toBe(150000);
+    expect(data.unallocatedCents).toBe(150000);
+    expect(data.allocatedCents).toBe(0);
+    expect(data.warnings.length).toBeGreaterThan(0);
+  });
 });

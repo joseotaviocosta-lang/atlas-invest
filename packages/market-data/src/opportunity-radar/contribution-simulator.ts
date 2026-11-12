@@ -69,11 +69,17 @@ export interface BuildContributionAllocationSimulationParams {
   decisionBrief: PortfolioDailyDecisionBrief;
   radarItems?: readonly OpportunityRadarItem[];
   referenceDate?: Date;
-  /** Maximum single-asset concentration cap. Defaults to 0.50 (50%). */
+  /** Maximum single-asset concentration cap. Defaults to DEFAULT_MAX_ASSET_CONCENTRATION_CAP (0.50 = 50%). */
   maxAssetConcentrationCap?: number;
-  /** Minimum allocation per asset in cents. Defaults to 5000 (R$ 50.00). */
+  /** Minimum allocation per asset in cents. Defaults to DEFAULT_MIN_ALLOCATION_CENTS (5000 = R$ 50.00). */
   minAllocationCents?: number;
 }
+
+/** Default maximum single-asset concentration cap in multi-asset simulation (50%). */
+export const DEFAULT_MAX_ASSET_CONCENTRATION_CAP = 0.5;
+
+/** Default minimum allocation slice per asset in cents (R$ 50.00). */
+export const DEFAULT_MIN_ALLOCATION_CENTS = 5000;
 
 /**
  * Pure, deterministic simulator for distributing a user-declared contribution amount
@@ -83,7 +89,9 @@ export interface BuildContributionAllocationSimulationParams {
  * Principles:
  * - Read-only: zero order generation, zero trade execution, zero DB writes.
  * - Money conservation: allocatedCents + unallocatedCents === totalCents exactly.
- * - Zero floats for currency: integer cents for all intermediate math.
+ * - Final monetary allocations and conservation use integer cents.
+ * - Concentration cap integrity: in multi-asset scenarios, targetCents <= floor(totalCents * maxCap).
+ * - Single-asset exception: 100% permitted only when exactly 1 asset is eligible (with warning).
  * - Respects decision tiers: LOW/INSUFFICIENT never receive allocations.
  * - WATCH excluded by default.
  * - Deterministic tiebreak: priorityWeight DESC -> brief rank ASC -> score DESC -> ticker ASC.
@@ -94,8 +102,8 @@ export function buildContributionAllocationSimulation(
   const currency = params.currency || 'BRL';
   const modelVersion = OPPORTUNITY_MODEL_VERSION;
   const asOf = params.decisionBrief.asOf;
-  const maxCap = params.maxAssetConcentrationCap ?? 0.5;
-  const minCents = params.minAllocationCents ?? 5000; // R$ 50.00
+  const maxCap = params.maxAssetConcentrationCap ?? DEFAULT_MAX_ASSET_CONCENTRATION_CAP;
+  const minCents = params.minAllocationCents ?? DEFAULT_MIN_ALLOCATION_CENTS;
 
   // 1. Parse contribution amount into integer cents
   const totalCents = parseDecimalToCents(params.contributionAmount);
@@ -343,13 +351,20 @@ export function buildContributionAllocationSimulation(
       rawShare: capped[idx] ?? (1 / initialShares.length),
     }));
 
-    // Convert to provisional cents
+    // Multi-asset concentration cap in integer cents: floor(totalCents * maxCap)
+    const maxAssetCents = Math.floor(totalCents * maxCap);
+
+    // Convert to provisional cents respecting maxAssetCents and minCents threshold
     let distributedCents = 0;
     const provAmounts: number[] = [];
 
     for (let i = 0; i < shares.length; i++) {
       const share = shares[i]?.rawShare ?? 0;
       let cents = Math.floor(totalCents * share);
+      // Hard clamp to maxAssetCents
+      if (cents > maxAssetCents) {
+        cents = maxAssetCents;
+      }
       // If below minCents, do not allocate tiny slices
       if (cents < minCents) {
         cents = 0;
@@ -358,15 +373,29 @@ export function buildContributionAllocationSimulation(
       distributedCents += cents;
     }
 
-    // Allocate remaining cents (from floor rounding) to highest priority asset that has > 0 allocation
+    // Active allocation set: only assets that met or exceeded the minimum threshold
+    // Assets zeroed out by minCents MUST NOT be reintroduced to receive remainder
+    const activeIndices: number[] = [];
+    for (let i = 0; i < provAmounts.length; i++) {
+      if ((provAmounts[i] ?? 0) > 0) {
+        activeIndices.push(i);
+      }
+    }
+
+    // Cap-aware remainder distribution:
+    // Only active assets can receive remainder, strictly up to their remaining capacity (maxAssetCents - currentAllocation)
     let remainder = totalCents - distributedCents;
-    if (remainder > 0) {
-      for (let i = 0; i < provAmounts.length; i++) {
-        const currentAmount = provAmounts[i];
-        if (typeof currentAmount === 'number' && (currentAmount > 0 || (provAmounts.length === 1 && remainder >= minCents))) {
-          provAmounts[i] = currentAmount + remainder;
-          distributedCents += remainder;
-          remainder = 0;
+    if (remainder > 0 && activeIndices.length > 0) {
+      for (const idx of activeIndices) {
+        const currentAmount = provAmounts[idx] ?? 0;
+        const remainingCapacityCents = Math.max(0, maxAssetCents - currentAmount);
+        const delta = Math.min(remainder, remainingCapacityCents);
+        if (delta > 0) {
+          provAmounts[idx] = currentAmount + delta;
+          distributedCents += delta;
+          remainder -= delta;
+        }
+        if (remainder === 0) {
           break;
         }
       }
@@ -393,6 +422,15 @@ export function buildContributionAllocationSimulation(
         });
       }
     }
+
+    // Defensive assert (Part AA & Part AD): in multi-asset scenario, no allocation may exceed maxAssetCents
+    for (const alloc of rawAllocations) {
+      if (alloc.targetCents > maxAssetCents) {
+        throw new Error(
+          `Defensive invariant violation: asset ${alloc.candidate.item.ticker} allocation (${alloc.targetCents} cents) exceeds max allowed cap (${maxAssetCents} cents).`,
+        );
+      }
+    }
   }
 
   // Invariant check: allocatedCents <= totalCents
@@ -400,6 +438,17 @@ export function buildContributionAllocationSimulation(
     allocatedCents = totalCents;
   }
   const unallocatedCents = totalCents - allocatedCents;
+
+  // Add explainable warnings for unallocated remainder due to concentration cap or minimum thresholds
+  if (unallocatedCents > 0 && allocatedCents > 0) {
+    warnings.push(
+      'Parte do valor ficou não alocada porque o limite de concentração impediria distribuição segura.',
+    );
+  } else if (unallocatedCents > 0 && allocatedCents === 0 && warnings.length === 0) {
+    warnings.push(
+      'Nenhum ativo atingiu a fatia mínima recomendada para este valor de aporte.',
+    );
+  }
 
   // 5. Build final allocation items and unit estimations
   let priceUsableCount = 0;
@@ -429,16 +478,16 @@ export function buildContributionAllocationSimulation(
       radarItem?.dataFreshness === 'FRESH' &&
       !candidate.cautions.some((c: string) => /desatualizad|defasad/i.test(c));
 
-    const priceNum = rawPriceStr ? parseFloat(rawPriceStr) : 0;
+    const unitPriceCents = parsePriceToCents(rawPriceStr);
 
-    if (isQuoteFresh && priceNum > 0) {
+    if (isQuoteFresh && unitPriceCents > 0) {
       priceUsableCount++;
-      unitPrice = priceNum.toFixed(2);
-      // Floor units to whole number for stocks/FIIs
-      const units = Math.floor((targetCents / 100) / priceNum);
+      unitPrice = formatCentsToDecimal(unitPriceCents);
+      // Floor units to whole number for stocks/FIIs using exact integer cents
+      const units = Math.floor(targetCents / unitPriceCents);
       estimatedUnits = units > 0 ? units : null;
       if (units > 0) {
-        const costCents = Math.round(units * priceNum * 100);
+        const costCents = units * unitPriceCents;
         roundingResidualCents = Math.max(0, targetCents - costCents);
       }
     } else if (rawPriceStr && !isQuoteFresh) {
@@ -493,12 +542,18 @@ export function buildContributionAllocationSimulation(
 function parseDecimalToCents(amountStr?: string | null): number {
   if (!amountStr) return 0;
   const cleaned = amountStr.trim().replace(',', '.');
-  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(cleaned);
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(cleaned);
   if (!match || !match[1]) return 0;
   const whole = parseInt(match[1], 10);
   const fracStr = (match[2] || '').padEnd(2, '0');
   const frac = parseInt(fracStr.slice(0, 2), 10);
   return whole * 100 + frac;
+}
+
+/** Parses quote price to integer cents (e.g. "28.50" -> 2850 cents). */
+function parsePriceToCents(priceStr?: string | null): number {
+  if (!priceStr) return 0;
+  return parseDecimalToCents(priceStr);
 }
 
 /** Formats integer cents e.g. 200050 to canonical "2000.50". */
