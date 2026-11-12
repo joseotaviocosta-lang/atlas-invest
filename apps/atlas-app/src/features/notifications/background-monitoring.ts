@@ -9,6 +9,11 @@ export interface ClosedAppTaskStatus {
   nextRunAt: string | null;
   lastTaskResult: number | null;
   needsRepair: boolean;
+  commandPath?: string | null;
+  expectedCommandPath?: string | null;
+  runtimeHealthy?: boolean;
+  runtimeIssue?: string | null;
+  repairReasons?: string[];
 }
 
 export interface ClosedAppExecutionStatus {
@@ -35,6 +40,7 @@ export interface ClosedAppMonitoringDiagnostics {
   task: ClosedAppTaskStatus;
   lastExecution: ClosedAppExecutionStatus | null;
   atlasVersion: string | null;
+  buildId?: string | null;
 }
 
 function isTauriEnvironment(): boolean {

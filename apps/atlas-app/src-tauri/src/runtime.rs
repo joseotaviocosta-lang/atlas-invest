@@ -12,8 +12,7 @@ use std::os::windows::process::CommandExt;
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-const PG_PORT: u16 = 5434;
-const API_PORT: u16 = 3001;
+use crate::bootstrap_config::{apply_clean_node_env, API_PORT, PG_PORT};
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
 pub struct RuntimeStatus {
@@ -53,6 +52,7 @@ pub struct LocalRuntimeManager {
     pub diagnostics_log: Mutex<Vec<String>>,
     pub single_instance: Mutex<Option<SingleInstanceGuard>>,
     pub single_instance_role: Mutex<String>,
+    desktop_pg_lease: Mutex<Option<SingleInstanceGuard>>,
 }
 
 fn redact_value(text: String, marker: &str) -> String {
@@ -139,6 +139,7 @@ impl LocalRuntimeManager {
             diagnostics_log: Mutex::new(Vec::new()),
             single_instance: Mutex::new(None),
             single_instance_role: Mutex::new("UNKNOWN".to_string()),
+            desktop_pg_lease: Mutex::new(None),
         }
     }
 
@@ -307,8 +308,14 @@ impl LocalRuntimeManager {
 
     pub fn ensure_postgres(&self) -> Result<(), String> {
         self.log("Verificando status do PostgreSQL na porta 5434...");
-        if Self::check_port(PG_PORT) {
-            self.log("PostgreSQL já está em execução na porta 5434.");
+        if let Ok(mut lease) = self.desktop_pg_lease.lock() {
+            if lease.is_none() {
+                *lease = crate::pg_bootstrap::acquire_desktop_pg_lease();
+            }
+        }
+
+        if crate::pg_bootstrap::is_postgres_ready(PG_PORT) {
+            self.log("PostgreSQL já está em execução e pronto na porta 5434.");
             return Ok(());
         }
 
@@ -353,39 +360,16 @@ impl LocalRuntimeManager {
             .parent()
             .ok_or_else(|| "Diretório do bundle inválido".to_string())?;
 
-        let mut cmd = Command::new(&node_bin);
-        cmd.arg(&bundle_cjs);
-        cmd.current_dir(working_dir);
-        cmd.env("PORT", API_PORT.to_string());
-        cmd.env(
-            "DATABASE_URL",
-            format!("postgresql://atlas:atlas@127.0.0.1:{}/atlas_local?schema=public", PG_PORT),
-        );
-        cmd.env("ATLAS_LOCAL_OWNER_MODE", "true");
-        cmd.env("NODE_ENV", "production");
-        cmd.env("EMAIL_PROVIDER", "CONSOLE");
-        cmd.env(
-            "JWT_ACCESS_SECRET",
-            "atlas-desktop-local-owner-jwt-access-secret-production-32chars",
-        );
-        cmd.env(
-            "REFRESH_TOKEN_PEPPER",
-            "atlas-desktop-local-owner-refresh-pepper-production-32chars",
-        );
-        cmd.env(
-            "PASSWORD_RESET_PEPPER",
-            "atlas-desktop-local-owner-reset-pepper-production-32chars",
-        );
-
         // Resolve BRAPI_API_KEY securely from credential store (Windows Credential Manager) or environment
         let brapi_token = crate::storage::get_brapi_api_key()
             .ok()
             .flatten()
             .or_else(|| std::env::var("BRAPI_API_KEY").ok().filter(|k| !k.trim().is_empty()));
 
-        if let Some(token) = brapi_token {
-            cmd.env("BRAPI_API_KEY", token);
-        }
+        let mut cmd = Command::new(&node_bin);
+        cmd.arg(&bundle_cjs);
+        cmd.current_dir(working_dir);
+        apply_clean_node_env(&mut cmd, true, brapi_token.as_deref(), &[]);
 
         // Setup api.log for capturing stdout and stderr with rotation
         let api_log_path = std::env::var("LOCALAPPDATA")
@@ -558,7 +542,10 @@ impl LocalRuntimeManager {
                 self.log("Processo filho da API finalizado com sucesso.");
             }
         }
-        // Explicitly release single instance guard so subsequent launches are not blocked
+        // Explicitly release single instance guard & Desktop PG lease
+        if let Ok(mut lease) = self.desktop_pg_lease.lock() {
+            let _ = lease.take();
+        }
         if let Ok(mut guard) = self.single_instance.lock() {
             if let Some(g) = guard.take() {
                 drop(g);

@@ -1,5 +1,12 @@
+import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
+
+const rootDir = path.resolve(__dirname, '..');
+const tauriConfPath = path.join(rootDir, 'apps/atlas-app/src-tauri/tauri.conf.json');
+const tauriVersion = JSON.parse(fs.readFileSync(tauriConfPath, 'utf-8')).version as string;
+const gitSha = execSync('git rev-parse --short=12 HEAD', { cwd: rootDir, encoding: 'utf-8' }).trim() || 'unknown';
+const atlasBuildId = process.env.ATLAS_BUILD_ID?.trim() || `${tauriVersion}+${gitSha}`;
 
 const esbuildExe = path.resolve(
   __dirname,
@@ -12,7 +19,7 @@ const outDir = path.resolve(__dirname, '../apps/api/dist');
 const outFile = path.join(outDir, 'bundle.cjs');
 const monitorOutFile = path.join(outDir, 'news-monitor.cjs');
 
-console.log('Building Project Atlas API production bundle...');
+console.log(`Building Project Atlas API production bundle (buildId=${atlasBuildId})...`);
 
 const externals = [
   '@prisma/client',
@@ -28,9 +35,11 @@ const externals = [
 ];
 
 const externalArgs = externals.map((ext) => `--external:${ext}`).join(' ');
+const defineBuildId = `--define:globalThis.__ATLAS_BUILD_ID__=${JSON.stringify(JSON.stringify(atlasBuildId))}`;
+const defineBundleVer = `--define:globalThis.__ATLAS_BUNDLE_VERSION__=${JSON.stringify(JSON.stringify(tauriVersion))}`;
 
 const cmd = `"${esbuildExe}" "${entryPoint}" --bundle --platform=node --target=node20 --format=cjs "--outfile=${outFile}" ${externalArgs} --banner:js="const import_meta_url = require('url').pathToFileURL(__filename).href;" --define:import.meta.url=import_meta_url --sourcemap`;
-const monitorCmd = `"${esbuildExe}" "${monitorEntryPoint}" --bundle --platform=node --target=node20 --format=cjs "--outfile=${monitorOutFile}" ${externalArgs} --banner:js="const import_meta_url = require('url').pathToFileURL(__filename).href;" --define:import.meta.url=import_meta_url --sourcemap`;
+const monitorCmd = `"${esbuildExe}" "${monitorEntryPoint}" --bundle --platform=node --target=node20 --format=cjs "--outfile=${monitorOutFile}" ${externalArgs} --banner:js="const import_meta_url = require('url').pathToFileURL(__filename).href;" --define:import.meta.url=import_meta_url ${defineBuildId} ${defineBundleVer} --sourcemap`;
 
 try {
   const output = execSync(cmd, { encoding: 'utf-8', stdio: 'pipe' });

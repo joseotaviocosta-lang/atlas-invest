@@ -1,6 +1,8 @@
+pub mod bootstrap_config;
 pub mod lifecycle;
 pub mod pg_bootstrap;
 pub mod runtime;
+pub mod runtime_manifest;
 pub mod storage;
 pub mod task_scheduler;
 
@@ -82,19 +84,6 @@ async fn runtime_restart(
     .map_err(|e| format!("Falha na execução assíncrona de reinício: {}", e))?
 }
 
-fn atlas_local_data_dir() -> std::path::PathBuf {
-    if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
-        return std::path::PathBuf::from(localappdata).join("Atlas");
-    }
-    if let Ok(userprofile) = std::env::var("USERPROFILE") {
-        return std::path::PathBuf::from(userprofile)
-            .join("AppData")
-            .join("Local")
-            .join("Atlas");
-    }
-    std::path::PathBuf::from(r"C:\Users\joseo\AppData\Local\Atlas")
-}
-
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BackgroundMonitorPrefsPayload {
@@ -113,10 +102,9 @@ fn background_monitor_sync(prefs_json: String) -> Result<task_scheduler::TaskSch
     let parsed: BackgroundMonitorPrefsPayload = serde_json::from_str(&prefs_json)
         .map_err(|e| format!("Preferências inválidas para monitoramento fechado: {}", e))?;
 
-    let dir = atlas_local_data_dir();
-    let _ = std::fs::create_dir_all(&dir);
+    let dir = bootstrap_config::atlas_data_dir();
     let prefs_path = dir.join("news-monitor-prefs.json");
-    std::fs::write(&prefs_path, prefs_json.as_bytes())
+    bootstrap_config::atomic_write_bytes(&prefs_path, prefs_json.as_bytes())
         .map_err(|e| format!("Falha ao persistir preferências do monitor fechado: {}", e))?;
 
     let interval = task_scheduler::normalize_interval_minutes(parsed.news_monitoring_interval_minutes);
@@ -138,9 +126,9 @@ fn background_monitor_status(
     expected_interval: u32,
 ) -> Result<serde_json::Value, String> {
     let interval = task_scheduler::normalize_interval_minutes(expected_interval);
-    let task = task_scheduler::query_task_status(expected_enabled, interval);
+    let task = task_scheduler::reconcile_task_after_upgrade_if_safe(expected_enabled, interval);
 
-    let status_path = atlas_local_data_dir().join("news-monitor-status.json");
+    let status_path = bootstrap_config::atlas_data_dir().join("news-monitor-status.json");
     let last_status: serde_json::Value = std::fs::read_to_string(&status_path)
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
@@ -149,7 +137,8 @@ fn background_monitor_status(
     Ok(serde_json::json!({
         "task": task,
         "lastExecution": last_status,
-        "atlasVersion": env!("CARGO_PKG_VERSION"),
+        "atlasVersion": env!("ATLAS_TAURI_VERSION"),
+        "buildId": env!("ATLAS_BUILD_ID"),
     }))
 }
 

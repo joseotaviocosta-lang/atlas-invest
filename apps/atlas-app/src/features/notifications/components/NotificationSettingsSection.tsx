@@ -283,14 +283,23 @@ export const NotificationSettingsSection: React.FC = () => {
                     }}
                   >
                     <div style={{ fontWeight: 600, color: colors.textPrimary }}>
-                      {closedAppMonitoring?.task.needsRepair
-                        ? 'Monitoramento com Atlas fechado: Needs repair'
-                        : closedAppMonitoring?.task.installed && closedAppMonitoring?.task.enabled
-                          ? 'Monitoramento com Atlas fechado: Ativo'
-                          : preferences.closedAppNewsMonitoring
-                            ? 'Monitoramento com Atlas fechado: Configurando...'
-                            : 'Monitoramento com Atlas fechado: Inativo'}
+                      {closedAppMonitoring?.lastExecution?.status === 'RUNTIME_VERSION_MISMATCH' ||
+                      closedAppMonitoring?.task.runtimeHealthy === false
+                        ? 'Monitoramento com Atlas fechado: Version mismatch'
+                        : closedAppMonitoring?.task.needsRepair
+                          ? 'Monitoramento com Atlas fechado: Needs repair'
+                          : closedAppMonitoring?.task.installed && closedAppMonitoring?.task.enabled
+                            ? 'Monitoramento com Atlas fechado: Healthy'
+                            : preferences.closedAppNewsMonitoring
+                              ? 'Monitoramento com Atlas fechado: Configurando...'
+                              : 'Monitoramento com Atlas fechado: Inativo'}
                     </div>
+                    {closedAppMonitoring?.lastExecution?.error &&
+                      closedAppMonitoring.lastExecution.status !== 'SUCCESS' && (
+                        <div style={{ color: colors.negative }}>
+                          Última falha: {closedAppMonitoring.lastExecution.status}
+                        </div>
+                      )}
                     <div>
                       Última execução:{' '}
                       {closedAppMonitoring?.lastExecution?.lastRunAt
@@ -311,7 +320,8 @@ export const NotificationSettingsSection: React.FC = () => {
                         ? new Date(closedAppMonitoring.task.nextRunAt).toLocaleString('pt-BR')
                         : '—'}
                     </div>
-                    {closedAppMonitoring?.task.needsRepair && (
+                    {(closedAppMonitoring?.task.needsRepair ||
+                      closedAppMonitoring?.task.runtimeHealthy === false) && (
                       <div style={{ marginTop: 4 }}>
                         <Button
                           variant="secondary"

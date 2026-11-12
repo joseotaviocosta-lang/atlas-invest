@@ -28,6 +28,7 @@ export const CLOSED_APP_MONITOR_EXIT_CODES = {
   LOCKED: 30,
   DEPENDENCY_FAILURE: 40,
   UNEXPECTED_FAILURE: 50,
+  RUNTIME_VERSION_MISMATCH: 60,
 } as const;
 
 export type ClosedAppMonitorExitCode =
@@ -65,7 +66,13 @@ export interface ClosedAppMonitorStatusRecord {
   lastRunAt: string;
   lastRefreshedAt: string | null;
   exitCode: ClosedAppMonitorExitCode;
-  status: 'SUCCESS' | 'SKIPPED' | 'OFFLINE_OR_PROVIDER_UNAVAILABLE' | 'DEPENDENCY_FAILURE' | 'UNEXPECTED_FAILURE';
+  status:
+    | 'SUCCESS'
+    | 'SKIPPED'
+    | 'OFFLINE_OR_PROVIDER_UNAVAILABLE'
+    | 'DEPENDENCY_FAILURE'
+    | 'UNEXPECTED_FAILURE'
+    | 'RUNTIME_VERSION_MISMATCH';
   auditedAssets: number;
   eventsCount: number;
   deliveredAlertsCount: number;
@@ -98,7 +105,12 @@ export function sanitizeMonitorText(raw: string): string {
   return raw
     .replace(/postgresql:\/\/[^@\s]+@/gi, 'postgresql://[REDACTED]@')
     .replace(/\b(Bearer\s+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]')
-    .replace(/\b(BRAPI_API_KEY|MARKET_DATA_API_TOKEN|token|password|api_key)\s*[:=]\s*\S+/gi, '$1=[REDACTED]')
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[REDACTED_JWT]')
+    .replace(/([?&](?:token|api_key|apikey|password|secret)=)[^&\s]+/gi, '$1[REDACTED]')
+    .replace(
+      /\b(BRAPI_API_KEY|MARKET_DATA_API_TOKEN|JWT_ACCESS_SECRET|REFRESH_TOKEN_PEPPER|PASSWORD_RESET_PEPPER|token|password|api_key|secret)\s*[:=]\s*\S+/gi,
+      '$1=[REDACTED]',
+    )
     .slice(0, 300);
 }
 
@@ -147,15 +159,24 @@ export function writeClosedAppStatus(
   record: ClosedAppMonitorStatusRecord,
   dataDir: string = getAtlasDataDir(),
 ): void {
+  const targetPath = path.join(dataDir, 'news-monitor-status.json');
+  const tempPath = path.join(dataDir, `.news-monitor-status.json.tmp.${process.pid}`);
   try {
     fs.mkdirSync(dataDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(dataDir, 'news-monitor-status.json'),
-      JSON.stringify(record, null, 2),
-      'utf-8',
-    );
+    const fd = fs.openSync(tempPath, 'w');
+    try {
+      fs.writeFileSync(fd, JSON.stringify(record, null, 2), 'utf-8');
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(tempPath, targetPath);
   } catch {
-    // Non-fatal status write failure
+    try {
+      if (fs.existsSync(tempPath)) fs.rmSync(tempPath, { force: true });
+    } catch {
+      // ignore cleanup error
+    }
   }
 }
 
@@ -626,8 +647,52 @@ export async function runClosedAppNewsMonitorCycle(
   });
 }
 
+export function checkBundleVersionCoherence(
+  embeddedBuildId: string | undefined,
+  manifestBuildId: string | undefined,
+): { ok: boolean; reason: string | null } {
+  if (embeddedBuildId && manifestBuildId && embeddedBuildId.trim() !== manifestBuildId.trim()) {
+    return {
+      ok: false,
+      reason: `Bundle buildId (${embeddedBuildId}) incompatível com manifest (${manifestBuildId})`,
+    };
+  }
+  return { ok: true, reason: null };
+}
+
 async function main(): Promise<void> {
   const dataDir = getAtlasDataDir();
+  const embeddedBuildId = (globalThis as unknown as { __ATLAS_BUILD_ID__?: string }).__ATLAS_BUILD_ID__;
+  const manifestBuildId = process.env.ATLAS_MANIFEST_BUILD_ID;
+  const coherence = checkBundleVersionCoherence(embeddedBuildId, manifestBuildId);
+  if (!coherence.ok) {
+    const startedPostgres = process.env.ATLAS_STARTED_POSTGRES === 'true';
+    appendMonitorLog(`Runtime version mismatch (exit=60): ${coherence.reason}`, dataDir);
+    writeClosedAppStatus(
+      {
+        lastRunAt: new Date().toISOString(),
+        lastRefreshedAt: null,
+        exitCode: CLOSED_APP_MONITOR_EXIT_CODES.RUNTIME_VERSION_MISMATCH,
+        status: 'RUNTIME_VERSION_MISMATCH',
+        auditedAssets: 0,
+        eventsCount: 0,
+        deliveredAlertsCount: 0,
+        suppressedQuietHoursCount: 0,
+        startedPostgres,
+        durationMs: 0,
+        atlasVersion: process.env.ATLAS_APP_VERSION ?? '0.1.0',
+        monitorVersion: process.env.ATLAS_MONITOR_VERSION ?? '0.1.0',
+        providersUsed: [],
+        officialStatus: null,
+        cvmStatus: null,
+        fnetStatus: null,
+        error: 'Incompatibilidade de versão do bundle do monitor.',
+      },
+      dataDir,
+    );
+    process.exit(CLOSED_APP_MONITOR_EXIT_CODES.RUNTIME_VERSION_MISMATCH);
+  }
+
   const prefs = readClosedAppPreferences(dataDir);
   const startedPostgres = process.env.ATLAS_STARTED_POSTGRES === 'true';
 
