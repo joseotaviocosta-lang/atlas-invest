@@ -1,4 +1,4 @@
-import { Controller, Get, HttpCode, HttpStatus, Inject, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, HttpCode, HttpStatus, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { GetOpportunityRadarUseCase } from '../../application/portfolios/opportunity-radar/get-opportunity-radar.use-case';
@@ -18,6 +18,25 @@ const DecisionBriefQuerySchema = z
       })
       .optional(),
     refresh: z.enum(['true', 'false']).optional(),
+  })
+  .strict();
+
+const SimulateContributionBodySchema = z
+  .object({
+    amount: z
+      .string()
+      .trim()
+      .regex(/^\d+(\.\d{1,2})?$/, {
+        message: 'amount must be a positive decimal string with up to 2 decimal places.',
+      })
+      .refine((val) => !/^0+(\.0{1,2})?$/.test(val), {
+        message: 'amount must be greater than zero.',
+      })
+      .refine((val) => parseFloat(val) <= 100_000_000, {
+        message: 'amount exceeds maximum simulation limit of R$ 100.000.000,00.',
+      }),
+    currency: z.string().trim().length(3).optional(),
+    refresh: z.boolean().optional(),
   })
   .strict();
 
@@ -69,6 +88,33 @@ export class PortfolioDecisionBriefController {
       userId: principal.userId,
       contributionAmount: query.contributionAmount,
       forceRefresh: query.refresh === 'true',
+    });
+    return { data };
+  }
+
+  @Post('simulate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Simulate contribution allocation across portfolio assets (read-only)',
+    description:
+      'Distributes a user-declared contribution amount among prioritized holdings using Decision Brief rankings, allocation gaps, opportunity scores, and confidence. Stateless, read-only, exact cents conservation, zero orders.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({ status: 200, description: 'Contribution allocation simulation' })
+  @ApiResponse({ status: 400, description: 'Invalid simulation input' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async simulateContribution(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Body() rawBody: Record<string, unknown>,
+  ) {
+    const body = SimulateContributionBodySchema.parse(rawBody);
+    const data = await this.radarUseCase.simulateContributionAllocation({
+      portfolioId,
+      userId: principal.userId,
+      contributionAmount: body.amount,
+      currency: body.currency,
+      forceRefresh: body.refresh,
     });
     return { data };
   }

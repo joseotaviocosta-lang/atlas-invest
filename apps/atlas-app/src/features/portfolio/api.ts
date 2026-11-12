@@ -102,6 +102,16 @@ export const portfolioApi = {
     );
   },
 
+  async simulateContribution(
+    portfolioId: string,
+    params: { amount: string; currency?: string; refresh?: boolean },
+  ): Promise<{ data: import('./types').ContributionAllocationSimulationDto }> {
+    return apiClient.post<{ data: import('./types').ContributionAllocationSimulationDto }>(
+      `/api/v1/portfolios/${portfolioId}/decision-brief/simulate`,
+      params,
+    );
+  },
+
   async getPortfolioNews(
     portfolioId: string,
     options?: { refresh?: boolean },

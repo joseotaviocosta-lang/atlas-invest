@@ -684,3 +684,55 @@ export interface PortfolioDailyDecisionBriefDto {
   contributionContext: DecisionBriefContributionContextDto;
   dataQuality: DecisionBriefDataQualityDto;
 }
+
+export interface ContributionAllocationItemDto {
+  rank: number;
+  assetId: string;
+  ticker: string;
+  name: string;
+  assetType: 'STOCK' | 'FII';
+  decisionTier: DecisionTierDto;
+  opportunityScore: number;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'INSUFFICIENT_DATA';
+  targetAmount: string;
+  targetCents: number;
+  allocationPercent: number;
+  estimatedUnits: number | null;
+  unitPrice: string | null;
+  roundingResidualCents: number;
+  reasons: string[];
+  cautions: string[];
+}
+
+export interface ContributionAllocationExcludedAssetDto {
+  assetId: string;
+  ticker: string;
+  name: string;
+  decisionTier: DecisionTierDto;
+  reason: string;
+}
+
+export interface ContributionAllocationSimulationDataQualityDto {
+  eligibleAssetsCount: number;
+  allocatedAssetsCount: number;
+  excludedAssetsCount: number;
+  priceUsableCount: number;
+}
+
+export interface ContributionAllocationSimulationDto {
+  portfolioId: string;
+  asOf: string;
+  contributionAmount: string;
+  currency: string;
+  allocatedAmount: string;
+  unallocatedAmount: string;
+  allocatedCents: number;
+  unallocatedCents: number;
+  totalCents: number;
+  allocations: ContributionAllocationItemDto[];
+  excludedAssets: ContributionAllocationExcludedAssetDto[];
+  assumptions: string[];
+  warnings: string[];
+  dataQuality: ContributionAllocationSimulationDataQualityDto;
+  modelVersion: string;
+}

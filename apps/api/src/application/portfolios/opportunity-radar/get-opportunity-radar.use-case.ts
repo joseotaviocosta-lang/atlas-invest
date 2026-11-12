@@ -17,8 +17,10 @@ import {
   selectAlertEligibleNewsEvents,
   buildDailyNewsDigest,
   buildPortfolioDailyDecisionBrief,
+  buildContributionAllocationSimulation,
   deriveNewsProviderQuality,
   type PortfolioDailyDecisionBrief,
+  type ContributionAllocationSimulation,
   type PortfolioNewsInboxMetrics,
   type PersistedPortfolioNewsEventState,
   type PersistedPortfolioNewsSyncState,
@@ -987,6 +989,50 @@ export class GetOpportunityRadarUseCase {
       plannedContribution,
       newsProviderPartial: providerQuality.newsProviderPartial,
       officialProviderStatus: providerQuality.officialProviderStatus,
+      referenceDate: now,
+    });
+  }
+
+  /**
+   * Phase APP-16T — Contribution Allocation Simulation (Read-only analysis).
+   *
+   * Consumes existing Opportunity Radar and Decision Brief data to simulate an
+   * explainable allocation of a user-declared contribution amount among prioritized
+   * holdings. Zero orders, zero trade execution, zero DB writes, exact money conservation.
+   */
+  async simulateContributionAllocation(params: {
+    portfolioId: string;
+    userId: string;
+    contributionAmount: string;
+    currency?: string;
+    forceRefresh?: boolean;
+    now?: Date;
+  }): Promise<ContributionAllocationSimulation> {
+    const now = params.now ?? new Date();
+
+    const decisionBrief = await this.getDecisionBrief({
+      portfolioId: params.portfolioId,
+      userId: params.userId,
+      contributionAmount: params.contributionAmount,
+      forceRefresh: params.forceRefresh,
+      now,
+    });
+
+    const radar = await this.execute({
+      portfolioId: params.portfolioId,
+      userId: params.userId,
+      forceRefresh: false,
+      now,
+    });
+
+    const evaluated = radar.allEvaluatedItems ?? radar.items;
+
+    return buildContributionAllocationSimulation({
+      portfolioId: params.portfolioId,
+      contributionAmount: params.contributionAmount,
+      currency: params.currency || 'BRL',
+      decisionBrief,
+      radarItems: evaluated,
       referenceDate: now,
     });
   }

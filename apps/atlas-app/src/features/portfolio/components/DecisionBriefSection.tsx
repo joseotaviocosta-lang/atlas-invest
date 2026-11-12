@@ -232,10 +232,18 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
   const [appliedAmount, setAppliedAmount] = useState<string | undefined>(undefined);
   const [inputError, setInputError] = useState<string | null>(null);
 
-  const { data: brief, isLoading, isError, error, refresh, isRefreshing } = useDecisionBrief(
-    portfolioId,
-    appliedAmount,
-  );
+  const {
+    data: brief,
+    isLoading,
+    isError,
+    error,
+    refresh,
+    isRefreshing,
+    simulateContribution,
+    isSimulating,
+    simulationResult,
+    resetSimulation,
+  } = useDecisionBrief(portfolioId, appliedAmount);
 
   if (!portfolioId) {
     return null;
@@ -248,12 +256,13 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
     }
   };
 
-  const handleApplySimulation = (e: React.FormEvent) => {
+  const handleApplySimulation = async (e: React.FormEvent) => {
     e.preventDefault();
     const normalized = draftAmount.trim().replace(',', '.');
     if (!normalized) {
       setAppliedAmount(undefined);
       setInputError(null);
+      resetSimulation();
       return;
     }
     if (!/^\d+(\.\d{1,2})?$/.test(normalized) || /^0+(\.0{1,2})?$/.test(normalized)) {
@@ -262,12 +271,18 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
     }
     setInputError(null);
     setAppliedAmount(normalized);
+    try {
+      await simulateContribution({ amount: normalized });
+    } catch {
+      // Error handled via simulationError
+    }
   };
 
   const handleClearSimulation = () => {
     setDraftAmount('');
     setAppliedAmount(undefined);
     setInputError(null);
+    resetSimulation();
   };
 
   if (isLoading) {
@@ -400,6 +415,7 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
           </label>
           <input
             id="simulate-contribution-input"
+            data-testid="decision-brief-contribution-input"
             type="text"
             inputMode="decimal"
             value={draftAmount}
@@ -409,9 +425,11 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
           />
           <button
             type="submit"
-            className="h-9 rounded-lg bg-[var(--accent)] px-3 text-xs font-semibold text-white hover:opacity-90"
+            data-testid="decision-brief-simulate-button"
+            disabled={isSimulating}
+            className="h-9 rounded-lg bg-[var(--accent)] px-3 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
           >
-            Simular
+            {isSimulating ? 'Simulando...' : 'Simular distribuição'}
           </button>
           {appliedAmount && (
             <button
@@ -429,6 +447,74 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
           </p>
         )}
       </form>
+
+      {/* APP-16T: Contribution Allocation Simulation Results Panel */}
+      {simulationResult && (
+        <div
+          data-testid="contribution-simulation-panel"
+          className="mt-4 rounded-xl border border-[var(--accent)]/30 bg-[var(--surface-elevated)] p-4 text-xs"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-3">
+            <div>
+              <h3 className="text-sm font-bold text-[var(--text-primary)]">
+                Proposta simulada de distribuição — {simulationResult.currency} {simulationResult.contributionAmount}
+              </h3>
+              <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">
+                Alocado: {simulationResult.currency} {simulationResult.allocatedAmount} · Não alocado: {simulationResult.currency} {simulationResult.unallocatedAmount}
+              </p>
+            </div>
+            <span className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">
+              {simulationResult.dataQuality.allocatedAssetsCount} ativo(s) simulado(s)
+            </span>
+          </div>
+
+          {simulationResult.allocations.length > 0 ? (
+            <div className="mt-3 grid gap-2.5 md:grid-cols-3">
+              {simulationResult.allocations.map((alloc) => (
+                <div
+                  key={alloc.assetId || alloc.ticker}
+                  data-testid={`simulation-card-${alloc.ticker}`}
+                  className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3"
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-bold text-sm text-[var(--text-primary)]">{alloc.ticker}</span>
+                    <span className="font-semibold text-xs text-[var(--accent)]">
+                      {simulationResult.currency} {alloc.targetAmount} ({alloc.allocationPercent}%)
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-[var(--text-secondary)]">
+                    {alloc.estimatedUnits !== null
+                      ? `≈ ${alloc.estimatedUnits} unidades (a R$ ${alloc.unitPrice})`
+                      : 'Quantidade não estimada — cotação desatualizada'}
+                  </div>
+                  {alloc.reasons.length > 0 && (
+                    <ul className="mt-2 list-disc space-y-0.5 pl-3.5 text-[10px] text-[var(--text-secondary)]">
+                      {alloc.reasons.map((r, idx) => (
+                        <li key={idx}>{r}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-3 rounded-lg border border-dashed border-[var(--border)] p-3 text-center text-xs text-[var(--text-secondary)]">
+              {simulationResult.warnings[0] || 'Nenhum ativo elegível para alocação neste valor de aporte.'}
+            </div>
+          )}
+
+          {simulationResult.excludedAssets.length > 0 && (
+            <div className="mt-3 border-t border-[var(--border)] pt-2.5 text-[11px] text-[var(--text-secondary)]">
+              <span className="font-semibold">Ativos não incluídos na distribuição: </span>
+              {simulationResult.excludedAssets.map((ex) => `${ex.ticker} (${ex.reason})`).join(', ')}
+            </div>
+          )}
+
+          <p className="mt-3 text-[10px] text-[var(--text-secondary)] italic">
+            Simulação informativa. Nenhuma ordem é criada ou enviada.
+          </p>
+        </div>
+      )}
 
       {isEmpty ? (
         <div className="mt-4 rounded-xl border border-dashed border-[var(--border)] p-6 text-center text-sm text-[var(--text-secondary)]">
@@ -455,7 +541,7 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
             </div>
           )}
 
-          {brief.recentMaterialChanges.length > 0 && (
+          {brief.recentMaterialChanges && brief.recentMaterialChanges.length > 0 && (
             <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-3.5 text-xs">
               <h3 className="font-semibold text-[var(--text-primary)]">
                 O que mudou desde a última análise

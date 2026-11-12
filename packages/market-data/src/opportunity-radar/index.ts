@@ -17,3 +17,4 @@ export * from './fii-scorer';
 export * from './explainability';
 export * from './engine';
 export * from './decision-brief';
+export * from './contribution-simulator';

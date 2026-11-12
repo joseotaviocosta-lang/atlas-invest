@@ -1,7 +1,10 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useCallback } from 'react';
 import { portfolioApi } from './api';
-import type { PortfolioDailyDecisionBriefDto } from './types';
+import type {
+  PortfolioDailyDecisionBriefDto,
+  ContributionAllocationSimulationDto,
+} from './types';
 
 export function decisionBriefQueryKey(portfolioId: string, contributionAmount?: string) {
   return ['portfolios', portfolioId, 'decision-brief', contributionAmount ?? ''] as const;
@@ -41,9 +44,26 @@ export function useDecisionBrief(portfolioId: string | null | undefined, contrib
     }
   }, [portfolioId, contributionAmount, queryClient]);
 
+  const simulateMutation = useMutation<
+    ContributionAllocationSimulationDto,
+    Error,
+    { amount: string; currency?: string }
+  >({
+    mutationFn: async ({ amount, currency }) => {
+      if (!portfolioId) throw new Error('Portfolio ID is required');
+      const res = await portfolioApi.simulateContribution(portfolioId, { amount, currency });
+      return res.data;
+    },
+  });
+
   return {
     ...query,
     refresh,
     isRefreshing,
+    simulateContribution: simulateMutation.mutateAsync,
+    isSimulating: simulateMutation.isPending,
+    simulationResult: simulateMutation.data,
+    simulationError: simulateMutation.error,
+    resetSimulation: simulateMutation.reset,
   };
 }
