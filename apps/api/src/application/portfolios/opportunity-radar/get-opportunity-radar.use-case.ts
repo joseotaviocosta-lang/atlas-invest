@@ -18,9 +18,11 @@ import {
   buildDailyNewsDigest,
   buildPortfolioDailyDecisionBrief,
   buildContributionAllocationSimulation,
+  buildContributionScenarioComparison,
   deriveNewsProviderQuality,
   type PortfolioDailyDecisionBrief,
   type ContributionAllocationSimulation,
+  type ContributionScenarioComparison,
   type PortfolioNewsInboxMetrics,
   type PersistedPortfolioNewsEventState,
   type PersistedPortfolioNewsSyncState,
@@ -1028,6 +1030,50 @@ export class GetOpportunityRadarUseCase {
     const evaluated = radar.allEvaluatedItems ?? radar.items;
 
     return buildContributionAllocationSimulation({
+      portfolioId: params.portfolioId,
+      contributionAmount: params.contributionAmount,
+      currency: params.currency || 'BRL',
+      decisionBrief,
+      radarItems: evaluated,
+      referenceDate: now,
+    });
+  }
+
+  /**
+   * Phase APP-16U — Contribution Scenario Comparison (Read-only analysis).
+   *
+   * Compares three simulated contribution allocation modes (Cautious, Balanced, and Opportunity-Focused)
+   * across prioritized holdings using a SINGLE underlying Decision Brief and Opportunity Radar resolution.
+   * Zero duplicate network calls to providers, zero orders, exact money conservation.
+   */
+  async compareContributionScenarios(params: {
+    portfolioId: string;
+    userId: string;
+    contributionAmount: string;
+    currency?: string;
+    forceRefresh?: boolean;
+    now?: Date;
+  }): Promise<ContributionScenarioComparison> {
+    const now = params.now ?? new Date();
+
+    const decisionBrief = await this.getDecisionBrief({
+      portfolioId: params.portfolioId,
+      userId: params.userId,
+      contributionAmount: params.contributionAmount,
+      forceRefresh: params.forceRefresh,
+      now,
+    });
+
+    const radar = await this.execute({
+      portfolioId: params.portfolioId,
+      userId: params.userId,
+      forceRefresh: false,
+      now,
+    });
+
+    const evaluated = radar.allEvaluatedItems ?? radar.items;
+
+    return buildContributionScenarioComparison({
       portfolioId: params.portfolioId,
       contributionAmount: params.contributionAmount,
       currency: params.currency || 'BRL',

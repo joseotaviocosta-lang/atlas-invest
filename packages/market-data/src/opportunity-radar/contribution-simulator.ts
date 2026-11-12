@@ -73,13 +73,128 @@ export interface BuildContributionAllocationSimulationParams {
   maxAssetConcentrationCap?: number;
   /** Minimum allocation per asset in cents. Defaults to DEFAULT_MIN_ALLOCATION_CENTS (5000 = R$ 50.00). */
   minAllocationCents?: number;
+  /** Scenario weighting profile. Defaults to BALANCED_WEIGHT_PROFILE. */
+  weightingProfile?: ContributionScenarioWeightProfile;
 }
+
+export type ContributionScenarioMode = 'CAUTIOUS' | 'BALANCED' | 'OPPORTUNITY_FOCUS';
 
 /** Default maximum single-asset concentration cap in multi-asset simulation (50%). */
 export const DEFAULT_MAX_ASSET_CONCENTRATION_CAP = 0.5;
 
 /** Default minimum allocation slice per asset in cents (R$ 50.00). */
 export const DEFAULT_MIN_ALLOCATION_CENTS = 5000;
+
+export interface ContributionScenarioWeightProfile {
+  mode: ContributionScenarioMode;
+  label: string;
+  description: string;
+  tierWeight: (tier: DecisionTier) => number;
+  confidenceWeight: (confidence: OpportunityConfidence) => number;
+  scoreFactor: (score: number) => number;
+  gapFactor: (gapPercent?: number) => number;
+  dataQualityFactor: (
+    item: PortfolioDecisionPriorityItem,
+    radarItem?: OpportunityRadarItem,
+    decisionBrief?: PortfolioDailyDecisionBrief,
+  ) => { factor: number; reason?: string };
+  maxAssetConcentrationCap: number;
+}
+
+export const BALANCED_WEIGHT_PROFILE: ContributionScenarioWeightProfile = {
+  mode: 'BALANCED',
+  label: 'Balanceado',
+  description: 'Equilibra oportunidade, confiança e distância do peso-alvo.',
+  tierWeight: (tier) => (tier === 'HIGH_PRIORITY' ? 1.0 : 0.6),
+  confidenceWeight: (conf) => (conf === 'HIGH' ? 1.0 : 0.8),
+  scoreFactor: (score) => Math.max(0.2, score / 100),
+  gapFactor: (gap) => 1.0 + (typeof gap === 'number' && gap > 0 ? Math.min(0.5, gap / 10) : 0),
+  dataQualityFactor: () => ({ factor: 1.0 }),
+  maxAssetConcentrationCap: DEFAULT_MAX_ASSET_CONCENTRATION_CAP,
+};
+
+export const CAUTIOUS_WEIGHT_PROFILE: ContributionScenarioWeightProfile = {
+  mode: 'CAUTIOUS',
+  label: 'Mais cauteloso',
+  description: 'Dá mais peso à confiança e à qualidade dos dados disponíveis.',
+  tierWeight: (tier) => (tier === 'HIGH_PRIORITY' ? 1.0 : 0.6),
+  confidenceWeight: (conf) => (conf === 'HIGH' ? 1.0 : 0.55),
+  scoreFactor: (score) => 0.4 + 0.6 * (Math.max(20, score) / 100),
+  gapFactor: (gap) => 1.0 + (typeof gap === 'number' && gap > 0 ? Math.min(0.3, gap / 15) : 0),
+  dataQualityFactor: (item, radarItem, brief) => {
+    let factor = 1.0;
+    let reason: string | undefined;
+
+    const isQuoteStale =
+      radarItem?.dataFreshness !== 'FRESH' ||
+      item.cautions.some((c) => /desatualizad|defasad/i.test(c));
+    if (isQuoteStale) {
+      factor *= 0.75;
+      reason = 'Penalizado por cotação desatualizada ou defasada.';
+    }
+
+    const isProviderPartial =
+      brief?.dataQuality.label === 'PARCIAL' ||
+      item.cautions.some((c) => /notícias parciais|provedor degradado|qualidade.*degradada/i.test(c)) ||
+      Boolean(brief?.summary?.some((s) => /provedor.*parcial|notícias parciais/i.test(s)));
+    if (isProviderPartial) {
+      factor *= 0.85;
+      reason = reason ? `${reason} Qualidade parcial do provedor de notícias.` : 'Qualidade parcial do provedor de notícias.';
+    }
+
+    return { factor, reason };
+  },
+  maxAssetConcentrationCap: DEFAULT_MAX_ASSET_CONCENTRATION_CAP,
+};
+
+export const OPPORTUNITY_FOCUS_WEIGHT_PROFILE: ContributionScenarioWeightProfile = {
+  mode: 'OPPORTUNITY_FOCUS',
+  label: 'Mais foco em oportunidades',
+  description: 'Dá maior peso às oportunidades relativas identificadas pelo Radar, mantendo os mesmos limites de segurança.',
+  tierWeight: (tier) => (tier === 'HIGH_PRIORITY' ? 1.0 : 0.5),
+  confidenceWeight: (conf) => (conf === 'HIGH' ? 1.0 : 0.9),
+  scoreFactor: (score) => Math.pow(Math.max(0.1, score / 100), 1.6),
+  gapFactor: (gap) => 1.0 + (typeof gap === 'number' && gap > 0 ? Math.min(0.8, gap / 6) : 0),
+  dataQualityFactor: () => ({ factor: 1.0 }),
+  maxAssetConcentrationCap: DEFAULT_MAX_ASSET_CONCENTRATION_CAP,
+};
+
+export interface ContributionScenario {
+  id: ContributionScenarioMode;
+  label: string;
+  description: string;
+  allocatedAmount: string;
+  unallocatedAmount: string;
+  allocatedCents: number;
+  unallocatedCents: number;
+  totalCents: number;
+  allocations: ContributionAllocationItem[];
+  excludedAssets: ContributionAllocationExcludedAsset[];
+  assumptions: string[];
+  warnings: string[];
+}
+
+export interface ContributionScenarioComparison {
+  portfolioId: string;
+  contributionAmount: string;
+  currency: string;
+  asOf: string;
+  scenarios: ContributionScenario[];
+  comparisonInsights: string[];
+  commonWarnings: string[];
+  dataQuality: ContributionAllocationSimulationDataQuality;
+  modelVersion: string;
+}
+
+export interface BuildContributionScenarioComparisonParams {
+  portfolioId: string;
+  contributionAmount: string; // decimal string
+  currency?: string;
+  decisionBrief: PortfolioDailyDecisionBrief;
+  radarItems?: readonly OpportunityRadarItem[];
+  referenceDate?: Date;
+  minAllocationCents?: number;
+}
 
 /**
  * Pure, deterministic simulator for distributing a user-declared contribution amount
@@ -99,10 +214,11 @@ export const DEFAULT_MIN_ALLOCATION_CENTS = 5000;
 export function buildContributionAllocationSimulation(
   params: BuildContributionAllocationSimulationParams,
 ): ContributionAllocationSimulation {
+  const profile = params.weightingProfile ?? BALANCED_WEIGHT_PROFILE;
   const currency = params.currency || 'BRL';
   const modelVersion = OPPORTUNITY_MODEL_VERSION;
   const asOf = params.decisionBrief.asOf;
-  const maxCap = params.maxAssetConcentrationCap ?? DEFAULT_MAX_ASSET_CONCENTRATION_CAP;
+  const maxCap = params.maxAssetConcentrationCap ?? profile.maxAssetConcentrationCap;
   const minCents = params.minAllocationCents ?? DEFAULT_MIN_ALLOCATION_CENTS;
 
   // 1. Parse contribution amount into integer cents
@@ -218,29 +334,25 @@ export function buildContributionAllocationSimulation(
       continue;
     }
 
-    // Calculate priority weighting factors
-    // Tier weight: HIGH_PRIORITY = 1.0, REVIEW = 0.6
-    const tierWeight = item.decisionTier === 'HIGH_PRIORITY' ? 1.0 : 0.6;
-
-    // Confidence factor: HIGH = 1.0, MEDIUM = 0.8
-    const confidenceFactor = item.confidence === 'HIGH' ? 1.0 : 0.8;
-
-    // Score factor: (score / 100)
-    const scoreFactor = Math.max(0.2, item.opportunityScore / 100);
-
-    // Gap factor: if allocationContext has gapPercent > 0, give boost (e.g. 1.0 + min(gap/10, 0.5))
-    let gapFactor = 1.0;
+    // Calculate priority weighting factors using scenario profile
+    const tierWeight = profile.tierWeight(item.decisionTier);
+    const confidenceFactor = profile.confidenceWeight(item.confidence);
+    const scoreFactor = profile.scoreFactor(item.opportunityScore);
     const gapPercent = item.allocationContext?.gapPercent;
-    if (typeof gapPercent === 'number' && gapPercent > 0) {
-      gapFactor += Math.min(0.5, gapPercent / 10);
-    }
+    const gapFactor = profile.gapFactor(gapPercent);
+    const dq = profile.dataQualityFactor(item, radarItem, params.decisionBrief);
 
-    const priorityWeight = tierWeight * confidenceFactor * scoreFactor * gapFactor;
+    const priorityWeight = tierWeight * confidenceFactor * scoreFactor * gapFactor * dq.factor;
 
     // Synthesize up to 3 explainability reasons
     const reasons: string[] = [];
     if (typeof gapPercent === 'number' && gapPercent > 0.5) {
       reasons.push(`Abaixo do peso-alvo da classe (déficit de ${gapPercent.toFixed(1)}%).`);
+    }
+    if (profile.mode === 'CAUTIOUS' && item.confidence === 'HIGH' && dq.factor >= 1.0) {
+      reasons.push('Favorecido pela alta confiança e qualidade dos dados disponíveis.');
+    } else if (profile.mode === 'OPPORTUNITY_FOCUS' && item.opportunityScore >= 75) {
+      reasons.push(`Destaque para elevado Opportunity Score (${item.opportunityScore}).`);
     }
     if (item.decisionTier === 'HIGH_PRIORITY') {
       reasons.push('Prioridade alta para análise no resumo diário.');
@@ -259,6 +371,9 @@ export function buildContributionAllocationSimulation(
 
     const finalReasons = reasons.slice(0, 3);
     const cautions = [...item.cautions];
+    if (dq.reason && !cautions.includes(dq.reason)) {
+      cautions.push(dq.reason);
+    }
 
     candidates.push({
       item,
@@ -600,4 +715,269 @@ function applyConcentrationCap(shares: number[], maxCap: number): number[] {
   // Re-normalize to sum to 1.0
   const sum = result.reduce((a, b) => a + b, 0);
   return sum > 0 ? result.map((r) => r / sum) : result;
+}
+
+/**
+ * Pure deterministic engine for comparing three explainable contribution scenarios:
+ * CAUTIOUS, BALANCED, and OPPORTUNITY_FOCUS.
+ *
+ * Rules:
+ * - Shared eligibility floor: LOW/INSUFFICIENT/WATCH never allocated in any scenario.
+ * - BALANCED matches current simulator output identically.
+ * - Exact integer cents conservation in all 3 scenarios.
+ * - Multi-asset concentration cap respected by all scenarios.
+ * - Single-asset exception permitted with mandatory warning.
+ * - Pure, deterministic comparison insights derived from scenario outputs.
+ * - Read-only: zero orders, zero persistence.
+ */
+export function buildContributionScenarioComparison(
+  params: BuildContributionScenarioComparisonParams,
+): ContributionScenarioComparison {
+  const currency = params.currency || 'BRL';
+  const totalCents = parseDecimalToCents(params.contributionAmount);
+  const asOf = params.decisionBrief.asOf;
+
+  // Run the 3 canonical scenarios
+  const cautiousSim = buildContributionAllocationSimulation({
+    ...params,
+    weightingProfile: CAUTIOUS_WEIGHT_PROFILE,
+  });
+
+  const balancedSim = buildContributionAllocationSimulation({
+    ...params,
+    weightingProfile: BALANCED_WEIGHT_PROFILE,
+  });
+
+  const opportunitySim = buildContributionAllocationSimulation({
+    ...params,
+    weightingProfile: OPPORTUNITY_FOCUS_WEIGHT_PROFILE,
+  });
+
+  const scenarios: ContributionScenario[] = [
+    {
+      id: CAUTIOUS_WEIGHT_PROFILE.mode,
+      label: CAUTIOUS_WEIGHT_PROFILE.label,
+      description: CAUTIOUS_WEIGHT_PROFILE.description,
+      allocatedAmount: cautiousSim.allocatedAmount,
+      unallocatedAmount: cautiousSim.unallocatedAmount,
+      allocatedCents: cautiousSim.allocatedCents,
+      unallocatedCents: cautiousSim.unallocatedCents,
+      totalCents: cautiousSim.totalCents,
+      allocations: cautiousSim.allocations,
+      excludedAssets: cautiousSim.excludedAssets,
+      assumptions: cautiousSim.assumptions,
+      warnings: cautiousSim.warnings,
+    },
+    {
+      id: BALANCED_WEIGHT_PROFILE.mode,
+      label: BALANCED_WEIGHT_PROFILE.label,
+      description: BALANCED_WEIGHT_PROFILE.description,
+      allocatedAmount: balancedSim.allocatedAmount,
+      unallocatedAmount: balancedSim.unallocatedAmount,
+      allocatedCents: balancedSim.allocatedCents,
+      unallocatedCents: balancedSim.unallocatedCents,
+      totalCents: balancedSim.totalCents,
+      allocations: balancedSim.allocations,
+      excludedAssets: balancedSim.excludedAssets,
+      assumptions: balancedSim.assumptions,
+      warnings: balancedSim.warnings,
+    },
+    {
+      id: OPPORTUNITY_FOCUS_WEIGHT_PROFILE.mode,
+      label: OPPORTUNITY_FOCUS_WEIGHT_PROFILE.label,
+      description: OPPORTUNITY_FOCUS_WEIGHT_PROFILE.description,
+      allocatedAmount: opportunitySim.allocatedAmount,
+      unallocatedAmount: opportunitySim.unallocatedAmount,
+      allocatedCents: opportunitySim.allocatedCents,
+      unallocatedCents: opportunitySim.unallocatedCents,
+      totalCents: opportunitySim.totalCents,
+      allocations: opportunitySim.allocations,
+      excludedAssets: opportunitySim.excludedAssets,
+      assumptions: opportunitySim.assumptions,
+      warnings: opportunitySim.warnings,
+    },
+  ];
+
+  // Derive comparison insights
+  const comparisonInsights = deriveComparisonInsights(scenarios, totalCents, currency);
+
+  // Collect common warnings across scenarios
+  const commonWarningsSet = new Set<string>();
+  for (const s of scenarios) {
+    for (const w of s.warnings) {
+      if (scenarios.every((other) => other.warnings.includes(w))) {
+        commonWarningsSet.add(w);
+      }
+    }
+  }
+
+  return {
+    portfolioId: params.portfolioId,
+    contributionAmount: formatCentsToDecimal(totalCents),
+    currency,
+    asOf,
+    scenarios,
+    comparisonInsights,
+    commonWarnings: Array.from(commonWarningsSet),
+    dataQuality: balancedSim.dataQuality,
+    modelVersion: OPPORTUNITY_MODEL_VERSION,
+  };
+}
+
+/**
+ * Derives explainable comparison insights across the 3 scenarios.
+ * Strictly mechanical and deterministic, zero subjective claims.
+ */
+function deriveComparisonInsights(
+  scenarios: ContributionScenario[],
+  totalCents: number,
+  currency: string,
+): string[] {
+  if (totalCents <= 0) {
+    return ['Informe um valor de aporte para comparar cenários.'];
+  }
+
+  const cautious = scenarios.find((s) => s.id === 'CAUTIOUS')!;
+  const balanced = scenarios.find((s) => s.id === 'BALANCED')!;
+  const opportunity = scenarios.find((s) => s.id === 'OPPORTUNITY_FOCUS')!;
+
+  // Check if no asset is allocated across all scenarios
+  if (
+    cautious.allocations.length === 0 &&
+    balanced.allocations.length === 0 &&
+    opportunity.allocations.length === 0
+  ) {
+    return ['Nenhum ativo atingiu os critérios de elegibilidade para simulação nos cenários.'];
+  }
+
+  // Check if all 3 scenarios have identical allocations
+  const allocFingerprint = (s: ContributionScenario) =>
+    s.allocations.map((a) => `${a.ticker}:${a.targetCents}`).join('|');
+
+  if (
+    allocFingerprint(cautious) === allocFingerprint(balanced) &&
+    allocFingerprint(balanced) === allocFingerprint(opportunity)
+  ) {
+    return ['Os três cenários resultaram na mesma distribuição com os dados atuais.'];
+  }
+
+  const insights: string[] = [];
+
+  // Collect all tickers
+  const allTickers = new Set<string>();
+  for (const s of scenarios) {
+    for (const a of s.allocations) allTickers.add(a.ticker);
+  }
+
+  const tickerStats: Array<{
+    ticker: string;
+    cautiousPct: number;
+    balancedPct: number;
+    oppPct: number;
+    cautiousAmount: number;
+    balancedAmount: number;
+    oppAmount: number;
+    minPct: number;
+    maxPct: number;
+    spread: number;
+    score: number;
+    confidence: string;
+    presentCount: number;
+  }> = [];
+
+  for (const ticker of allTickers) {
+    const cAlloc = cautious.allocations.find((a) => a.ticker === ticker);
+    const bAlloc = balanced.allocations.find((a) => a.ticker === ticker);
+    const oAlloc = opportunity.allocations.find((a) => a.ticker === ticker);
+
+    const cPct = cAlloc?.allocationPercent ?? 0;
+    const bPct = bAlloc?.allocationPercent ?? 0;
+    const oPct = oAlloc?.allocationPercent ?? 0;
+
+    const minPct = Math.min(cPct, bPct, oPct);
+    const maxPct = Math.max(cPct, bPct, oPct);
+    const spread = Math.round((maxPct - minPct) * 10) / 10;
+
+    const score = bAlloc?.opportunityScore ?? oAlloc?.opportunityScore ?? cAlloc?.opportunityScore ?? 0;
+    const confidence = bAlloc?.confidence ?? oAlloc?.confidence ?? cAlloc?.confidence ?? 'HIGH';
+    const presentCount = (cAlloc ? 1 : 0) + (bAlloc ? 1 : 0) + (oAlloc ? 1 : 0);
+
+    tickerStats.push({
+      ticker,
+      cautiousPct: cPct,
+      balancedPct: bPct,
+      oppPct: oPct,
+      cautiousAmount: cAlloc?.targetCents ?? 0,
+      balancedAmount: bAlloc?.targetCents ?? 0,
+      oppAmount: oAlloc?.targetCents ?? 0,
+      minPct,
+      maxPct,
+      spread,
+      score,
+      confidence,
+      presentCount,
+    });
+  }
+
+  // Sort by spread DESC
+  tickerStats.sort((a, b) => b.spread - a.spread);
+
+  // 1. Largest variation
+  const topSpread = tickerStats[0];
+  if (topSpread && topSpread.spread >= 1.0) {
+    insights.push(
+      `Maior variação entre cenários: ${topSpread.ticker} varia de ${topSpread.minPct.toFixed(1)}% a ${topSpread.maxPct.toFixed(1)}% (${topSpread.spread.toFixed(1)} p.p. de amplitude).`,
+    );
+  }
+
+  // 2. Cautious preference
+  const cautiousWinner = tickerStats.find(
+    (t) => t.cautiousPct > t.balancedPct && t.confidence === 'HIGH',
+  );
+  if (cautiousWinner) {
+    insights.push(
+      `${cautiousWinner.ticker} recebe maior peso no cenário cauteloso por apresentar alta confiança e qualidade de dados (${cautiousWinner.cautiousPct.toFixed(1)}% vs ${cautiousWinner.balancedPct.toFixed(1)}% no balanceado).`,
+    );
+  }
+
+  // 3. Opportunity preference
+  const oppWinner = tickerStats.find(
+    (t) => t.oppPct > t.balancedPct && t.oppAmount > t.balancedAmount,
+  );
+  if (oppWinner) {
+    const deltaAmount = formatCentsToDecimal(oppWinner.oppAmount - oppWinner.balancedAmount);
+    insights.push(
+      `${oppWinner.ticker} recebe maior alocação no cenário de oportunidade (+${currency} ${deltaAmount}) impulsionado pelo Opportunity Score de ${oppWinner.score}.`,
+    );
+  }
+
+  // 4. Stable asset across all 3
+  const stable = tickerStats.find(
+    (t) => t.presentCount === 3 && t.spread <= 3.0,
+  );
+  if (stable && insights.length < 4) {
+    insights.push(
+      `${stable.ticker} mantém alocação consistente nos três cenários (~${stable.balancedPct.toFixed(1)}%).`,
+    );
+  }
+
+  // 5. Dropped asset due to min allocation
+  const dropped = tickerStats.find((t) => t.presentCount > 0 && t.presentCount < 3);
+  if (dropped && insights.length < 4) {
+    const inScenarios: string[] = [];
+    if (dropped.cautiousPct > 0) inScenarios.push('Cautela');
+    if (dropped.balancedPct > 0) inScenarios.push('Balanceado');
+    if (dropped.oppPct > 0) inScenarios.push('Oportunidade');
+    insights.push(
+      `${dropped.ticker} recebe alocação apenas no(s) cenário(s) ${inScenarios.join(' e ')} devido ao valor mínimo por ativo.`,
+    );
+  }
+
+  if (insights.length === 0) {
+    insights.push(
+      'Os cenários apresentam variações graduais de acordo com a priorização de confiança vs oportunidade.',
+    );
+  }
+
+  return insights.slice(0, 4);
 }

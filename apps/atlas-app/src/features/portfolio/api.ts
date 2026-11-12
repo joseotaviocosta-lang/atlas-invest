@@ -112,6 +112,16 @@ export const portfolioApi = {
     );
   },
 
+  async compareContributionScenarios(
+    portfolioId: string,
+    params: { amount: string; currency?: string; refresh?: boolean },
+  ): Promise<{ data: import('./types').ContributionScenarioComparisonDto }> {
+    return apiClient.post<{ data: import('./types').ContributionScenarioComparisonDto }>(
+      `/api/v1/portfolios/${portfolioId}/decision-brief/scenarios`,
+      params,
+    );
+  },
+
   async getPortfolioNews(
     portfolioId: string,
     options?: { refresh?: boolean },

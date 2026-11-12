@@ -736,3 +736,32 @@ export interface ContributionAllocationSimulationDto {
   dataQuality: ContributionAllocationSimulationDataQualityDto;
   modelVersion: string;
 }
+
+export type ContributionScenarioModeDto = 'CAUTIOUS' | 'BALANCED' | 'OPPORTUNITY_FOCUS';
+
+export interface ContributionScenarioDto {
+  id: ContributionScenarioModeDto;
+  label: string;
+  description: string;
+  allocatedAmount: string;
+  unallocatedAmount: string;
+  allocatedCents: number;
+  unallocatedCents: number;
+  totalCents: number;
+  allocations: ContributionAllocationItemDto[];
+  excludedAssets: ContributionAllocationExcludedAssetDto[];
+  assumptions: string[];
+  warnings: string[];
+}
+
+export interface ContributionScenarioComparisonDto {
+  portfolioId: string;
+  contributionAmount: string;
+  currency: string;
+  asOf: string;
+  scenarios: ContributionScenarioDto[];
+  comparisonInsights: string[];
+  commonWarnings: string[];
+  dataQuality: ContributionAllocationSimulationDataQualityDto;
+  modelVersion: string;
+}

@@ -4,6 +4,7 @@ import { portfolioApi } from './api';
 import type {
   PortfolioDailyDecisionBriefDto,
   ContributionAllocationSimulationDto,
+  ContributionScenarioComparisonDto,
 } from './types';
 
 export function decisionBriefQueryKey(portfolioId: string, contributionAmount?: string) {
@@ -56,6 +57,18 @@ export function useDecisionBrief(portfolioId: string | null | undefined, contrib
     },
   });
 
+  const compareMutation = useMutation<
+    ContributionScenarioComparisonDto,
+    Error,
+    { amount: string; currency?: string }
+  >({
+    mutationFn: async ({ amount, currency }) => {
+      if (!portfolioId) throw new Error('Portfolio ID is required');
+      const res = await portfolioApi.compareContributionScenarios(portfolioId, { amount, currency });
+      return res.data;
+    },
+  });
+
   return {
     ...query,
     refresh,
@@ -65,5 +78,10 @@ export function useDecisionBrief(portfolioId: string | null | undefined, contrib
     simulationResult: simulateMutation.data,
     simulationError: simulateMutation.error,
     resetSimulation: simulateMutation.reset,
+    compareContributionScenarios: compareMutation.mutateAsync,
+    isComparing: compareMutation.isPending,
+    comparisonResult: compareMutation.data,
+    comparisonError: compareMutation.error,
+    resetComparison: compareMutation.reset,
   };
 }

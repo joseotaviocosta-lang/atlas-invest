@@ -118,4 +118,31 @@ export class PortfolioDecisionBriefController {
     });
     return { data };
   }
+
+  @Post('scenarios')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Compare contribution allocation scenarios (read-only)',
+    description:
+      'Compares three simulated contribution allocation modes (Cautious, Balanced, and Opportunity-Focused) across prioritized holdings without recalculating scores or executing orders. Uses a single underlying decision brief resolution.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiResponse({ status: 200, description: 'Contribution scenario comparison' })
+  @ApiResponse({ status: 400, description: 'Invalid simulation input' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async compareScenarios(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Body() rawBody: Record<string, unknown>,
+  ) {
+    const body = SimulateContributionBodySchema.parse(rawBody);
+    const data = await this.radarUseCase.compareContributionScenarios({
+      portfolioId,
+      userId: principal.userId,
+      contributionAmount: body.amount,
+      currency: body.currency,
+      forceRefresh: body.refresh,
+    });
+    return { data };
+  }
 }

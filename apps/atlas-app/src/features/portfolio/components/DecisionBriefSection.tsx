@@ -231,6 +231,7 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
   const [draftAmount, setDraftAmount] = useState('');
   const [appliedAmount, setAppliedAmount] = useState<string | undefined>(undefined);
   const [inputError, setInputError] = useState<string | null>(null);
+  const [selectedScenarioTab, setSelectedScenarioTab] = useState<'CAUTIOUS' | 'BALANCED' | 'OPPORTUNITY_FOCUS'>('BALANCED');
 
   const {
     data: brief,
@@ -243,6 +244,10 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
     isSimulating,
     simulationResult,
     resetSimulation,
+    compareContributionScenarios,
+    isComparing,
+    comparisonResult,
+    resetComparison,
   } = useDecisionBrief(portfolioId, appliedAmount);
 
   if (!portfolioId) {
@@ -263,6 +268,7 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
       setAppliedAmount(undefined);
       setInputError(null);
       resetSimulation();
+      resetComparison();
       return;
     }
     if (!/^\d+(\.\d{1,2})?$/.test(normalized) || /^0+(\.0{1,2})?$/.test(normalized)) {
@@ -273,8 +279,30 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
     setAppliedAmount(normalized);
     try {
       await simulateContribution({ amount: normalized });
+      resetComparison();
     } catch {
       // Error handled via simulationError
+    }
+  };
+
+  const handleCompareScenarios = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const normalized = draftAmount.trim().replace(',', '.');
+    if (!normalized) {
+      setInputError('Informe um valor de aporte para comparar cenários.');
+      return;
+    }
+    if (!/^\d+(\.\d{1,2})?$/.test(normalized) || /^0+(\.0{1,2})?$/.test(normalized)) {
+      setInputError('Informe um valor positivo com até 2 casas decimais (ex.: 1000.00).');
+      return;
+    }
+    setInputError(null);
+    setAppliedAmount(normalized);
+    try {
+      await compareContributionScenarios({ amount: normalized });
+      resetSimulation();
+    } catch {
+      // Error handled via comparisonError
     }
   };
 
@@ -283,6 +311,7 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
     setAppliedAmount(undefined);
     setInputError(null);
     resetSimulation();
+    resetComparison();
   };
 
   if (isLoading) {
@@ -426,12 +455,21 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
           <button
             type="submit"
             data-testid="decision-brief-simulate-button"
-            disabled={isSimulating}
+            disabled={isSimulating || isComparing}
             className="h-9 rounded-lg bg-[var(--accent)] px-3 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
           >
             {isSimulating ? 'Simulando...' : 'Simular distribuição'}
           </button>
-          {appliedAmount && (
+          <button
+            type="button"
+            data-testid="decision-brief-compare-button"
+            disabled={isSimulating || isComparing}
+            onClick={() => void handleCompareScenarios()}
+            className="h-9 rounded-lg border border-[var(--accent)] bg-transparent px-3 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/10 disabled:opacity-50"
+          >
+            {isComparing ? 'Comparando...' : 'Comparar cenários'}
+          </button>
+          {(appliedAmount || simulationResult || comparisonResult) && (
             <button
               type="button"
               onClick={handleClearSimulation}
@@ -522,6 +560,247 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
 
           <p className="mt-3 text-[10px] text-[var(--text-secondary)] italic">
             Simulação informativa. Nenhuma ordem é criada ou enviada.
+          </p>
+        </div>
+      )}
+
+      {/* APP-16U: Contribution Scenario Comparison Results Panel */}
+      {comparisonResult && (
+        <div
+          data-testid="scenario-comparison-panel"
+          className="mt-4 rounded-xl border border-[var(--accent)]/30 bg-[var(--surface-elevated)] p-4 text-xs"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-3">
+            <div>
+              <h3 className="text-sm font-bold text-[var(--text-primary)]">
+                Comparação de cenários — {comparisonResult.currency} {comparisonResult.contributionAmount}
+              </h3>
+              <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">
+                Simulações independentes para o mesmo valor de aporte sob diferentes critérios de priorização.
+              </p>
+            </div>
+            <span className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">
+              3 cenários simulados
+            </span>
+          </div>
+
+          {/* Scenario Selection Tabs */}
+          <div
+            role="tablist"
+            aria-label="Cenários de simulação"
+            className="mt-3 flex flex-wrap items-center gap-1.5 border-b border-[var(--border)] pb-2.5"
+          >
+            {comparisonResult.scenarios.map((scen) => {
+              const isSelected = selectedScenarioTab === scen.id;
+              const testId =
+                scen.id === 'CAUTIOUS'
+                  ? 'scenario-tab-cautious'
+                  : scen.id === 'BALANCED'
+                    ? 'scenario-tab-balanced'
+                    : 'scenario-tab-opportunity';
+
+              return (
+                <button
+                  key={scen.id}
+                  type="button"
+                  role="tab"
+                  id={`tab-${scen.id.toLowerCase()}`}
+                  aria-selected={isSelected}
+                  data-testid={testId}
+                  onClick={() => setSelectedScenarioTab(scen.id)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    isSelected
+                      ? 'bg-[var(--accent)] text-white'
+                      : 'border border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  {scen.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Active Scenario Details */}
+          {(() => {
+            const activeScenario =
+              comparisonResult.scenarios.find((s) => s.id === selectedScenarioTab) ??
+              comparisonResult.scenarios[1] ??
+              comparisonResult.scenarios[0];
+            if (!activeScenario) return null;
+
+            return (
+              <div className="mt-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-[var(--text-secondary)] italic">
+                    <span className="font-semibold text-[var(--text-primary)] not-italic">{activeScenario.label}: </span>
+                    {activeScenario.description}
+                  </p>
+                  <p className="text-[11px] text-[var(--text-secondary)]">
+                    Alocado: {comparisonResult.currency} {activeScenario.allocatedAmount} · Não alocado: {comparisonResult.currency} {activeScenario.unallocatedAmount}
+                  </p>
+                </div>
+
+                {activeScenario.warnings.length > 0 && (
+                  <div className="mt-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-[11px] text-amber-200">
+                    {activeScenario.warnings.map((w, idx) => (
+                      <p key={idx} className="leading-relaxed">
+                        {w}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {activeScenario.allocations.length > 0 ? (
+                  <div className="mt-3 grid gap-2.5 md:grid-cols-3">
+                    {activeScenario.allocations.map((alloc) => (
+                      <div
+                        key={alloc.assetId || alloc.ticker}
+                        data-testid={`simulation-card-${alloc.ticker}`}
+                        className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3"
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-bold text-sm text-[var(--text-primary)]">{alloc.ticker}</span>
+                          <span className="font-semibold text-xs text-[var(--accent)]">
+                            {comparisonResult.currency} {alloc.targetAmount} ({alloc.allocationPercent}%)
+                          </span>
+                        </div>
+                        <div className="mt-1 text-[11px] text-[var(--text-secondary)]">
+                          {alloc.estimatedUnits !== null
+                            ? `≈ ${alloc.estimatedUnits} unidades (a R$ ${alloc.unitPrice})`
+                            : 'Quantidade não estimada — cotação desatualizada'}
+                        </div>
+                        {alloc.reasons.length > 0 && (
+                          <ul className="mt-2 list-disc space-y-0.5 pl-3.5 text-[10px] text-[var(--text-secondary)]">
+                            {alloc.reasons.map((r, idx) => (
+                              <li key={idx}>{r}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-lg border border-dashed border-[var(--border)] p-3 text-center text-xs text-[var(--text-secondary)]">
+                    {activeScenario.warnings[0] || 'Nenhum ativo elegível para alocação neste cenário com este valor.'}
+                  </div>
+                )}
+
+                {activeScenario.excludedAssets.length > 0 && (
+                  <div className="mt-3 border-t border-[var(--border)] pt-2 text-[11px] text-[var(--text-secondary)]">
+                    <span className="font-semibold">Ativos não incluídos neste cenário: </span>
+                    {activeScenario.excludedAssets.map((ex) => `${ex.ticker} (${ex.reason})`).join(', ')}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Comparison Insights */}
+          {comparisonResult.comparisonInsights.length > 0 && (
+            <div
+              data-testid="scenario-comparison-insights"
+              className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3"
+            >
+              <h4 className="font-bold text-xs text-[var(--text-primary)]">
+                Destaques comparativos entre cenários:
+              </h4>
+              <ul className="mt-1.5 list-disc space-y-1 pl-4 text-[11px] text-[var(--text-secondary)]">
+                {comparisonResult.comparisonInsights.map((insight, idx) => (
+                  <li key={idx} className="leading-relaxed">
+                    {insight}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Comparative Table / Stack */}
+          {comparisonResult.scenarios.some((s) => s.allocations.length > 0) && (
+            <div data-testid="scenario-comparison-table" className="mt-4">
+              <h4 className="font-bold text-xs text-[var(--text-primary)] mb-2">
+                Resumo comparativo de alocação por ativo:
+              </h4>
+
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-hidden rounded-lg border border-[var(--border)]">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[var(--surface)] text-[var(--text-secondary)]">
+                    <tr>
+                      <th className="p-2.5 font-semibold">Ativo</th>
+                      <th className="p-2.5 font-semibold text-right">Mais cauteloso</th>
+                      <th className="p-2.5 font-semibold text-right">Balanceado</th>
+                      <th className="p-2.5 font-semibold text-right">Mais foco em oportunidades</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border)] bg-[var(--surface-elevated)]">
+                    {Array.from(
+                      new Set(
+                        comparisonResult.scenarios.flatMap((s) => s.allocations.map((a) => a.ticker)),
+                      ),
+                    ).map((ticker) => {
+                      const cAlloc = comparisonResult.scenarios.find((s) => s.id === 'CAUTIOUS')?.allocations.find((a) => a.ticker === ticker);
+                      const bAlloc = comparisonResult.scenarios.find((s) => s.id === 'BALANCED')?.allocations.find((a) => a.ticker === ticker);
+                      const oAlloc = comparisonResult.scenarios.find((s) => s.id === 'OPPORTUNITY_FOCUS')?.allocations.find((a) => a.ticker === ticker);
+
+                      return (
+                        <tr key={ticker} className="hover:bg-[var(--surface)]/50">
+                          <td className="p-2.5 font-bold text-[var(--text-primary)]">{ticker}</td>
+                          <td className="p-2.5 text-right text-[var(--text-secondary)]">
+                            {cAlloc ? `${cAlloc.allocationPercent}% (${comparisonResult.currency} ${cAlloc.targetAmount})` : '—'}
+                          </td>
+                          <td className="p-2.5 text-right font-medium text-[var(--text-primary)]">
+                            {bAlloc ? `${bAlloc.allocationPercent}% (${comparisonResult.currency} ${bAlloc.targetAmount})` : '—'}
+                          </td>
+                          <td className="p-2.5 text-right text-[var(--accent)] font-medium">
+                            {oAlloc ? `${oAlloc.allocationPercent}% (${comparisonResult.currency} ${oAlloc.targetAmount})` : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Stack View */}
+              <div className="md:hidden space-y-2">
+                {Array.from(
+                  new Set(
+                    comparisonResult.scenarios.flatMap((s) => s.allocations.map((a) => a.ticker)),
+                  ),
+                ).map((ticker) => {
+                  const cAlloc = comparisonResult.scenarios.find((s) => s.id === 'CAUTIOUS')?.allocations.find((a) => a.ticker === ticker);
+                  const bAlloc = comparisonResult.scenarios.find((s) => s.id === 'BALANCED')?.allocations.find((a) => a.ticker === ticker);
+                  const oAlloc = comparisonResult.scenarios.find((s) => s.id === 'OPPORTUNITY_FOCUS')?.allocations.find((a) => a.ticker === ticker);
+
+                  return (
+                    <div
+                      key={ticker}
+                      className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5 text-xs"
+                    >
+                      <span className="font-bold text-sm text-[var(--text-primary)]">{ticker}</span>
+                      <div className="mt-1.5 grid grid-cols-3 gap-1 text-[11px] text-[var(--text-secondary)]">
+                        <div>
+                          <div className="text-[10px] text-[var(--text-secondary)]">Cauteloso</div>
+                          <div className="font-semibold">{cAlloc ? `${cAlloc.allocationPercent}%` : '—'}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-[var(--text-secondary)]">Balanceado</div>
+                          <div className="font-semibold text-[var(--text-primary)]">{bAlloc ? `${bAlloc.allocationPercent}%` : '—'}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-[var(--text-secondary)]">Oportunidade</div>
+                          <div className="font-semibold text-[var(--accent)]">{oAlloc ? `${oAlloc.allocationPercent}%` : '—'}</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <p className="mt-3 text-[10px] text-[var(--text-secondary)] italic">
+            Os cenários são simulações informativas. Nenhuma ordem é criada ou enviada.
           </p>
         </div>
       )}
