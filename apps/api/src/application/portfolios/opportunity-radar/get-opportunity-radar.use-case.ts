@@ -27,6 +27,7 @@ import {
   type ContributionScenarioComparison,
   type ProjectedPortfolioAfterContribution,
   type ProjectedPortfolioScenarioComparison,
+  type ProjectionBaselinePosition,
   type PortfolioNewsInboxMetrics,
   type PersistedPortfolioNewsEventState,
   type PersistedPortfolioNewsSyncState,
@@ -1088,6 +1089,109 @@ export class GetOpportunityRadarUseCase {
   }
 
   /**
+   * Internal helper to resolve shared projection inputs with zero provider multiplication.
+   * Derives authoritative baseline positions from complete valuation read model (including unvalued/incomplete positions).
+   */
+  private async resolveProjectionInputs(params: {
+    portfolioId: string;
+    userId: string;
+    contributionAmount: string;
+    currency?: string;
+    forceRefresh?: boolean;
+    now: Date;
+  }): Promise<{
+    decisionBrief: PortfolioDailyDecisionBrief;
+    radar: OpportunityRadarResult;
+    evaluatedItems: readonly any[];
+    baselinePositions: ProjectionBaselinePosition[];
+    classTargetWeights: Record<string, number>;
+  }> {
+    const decisionBrief = await this.getDecisionBrief({
+      portfolioId: params.portfolioId,
+      userId: params.userId,
+      contributionAmount: params.contributionAmount,
+      forceRefresh: params.forceRefresh,
+      now: params.now,
+    });
+
+    const radar = await this.execute({
+      portfolioId: params.portfolioId,
+      userId: params.userId,
+      forceRefresh: false,
+      now: params.now,
+    });
+
+    const evaluatedItems = radar.allEvaluatedItems ?? radar.items;
+
+    // Load allocation targets if configured
+    const classTargetWeights: Record<string, number> = {};
+    try {
+      const strategy = await this.strategyUseCase.getStrategy(params.portfolioId, params.userId);
+      if (strategy?.targets) {
+        for (const t of strategy.targets) {
+          if (t.category && typeof t.targetBp === 'number') {
+            classTargetWeights[t.category] = t.targetBp / 100;
+          }
+        }
+      }
+    } catch {
+      // Targets are optional
+    }
+
+    // Authoritative complete holdings baseline from valuationUseCase
+    const valuation = await this.valuationUseCase.execute({
+      portfolioId: params.portfolioId,
+      userId: params.userId,
+    });
+
+    const baselinePositions: ProjectionBaselinePosition[] = [];
+    for (const pos of valuation.positions) {
+      // Filter out strictly zero/closed positions if quantity is 0
+      const qtyNum = parseFloat(pos.quantity) || 0;
+      if (qtyNum === 0) continue;
+
+      const isValued = Boolean(
+        pos.status === 'VALUED' &&
+          pos.marketValue &&
+          parseFloat(pos.marketValue.amount) > 0,
+      );
+
+      let marketValueCents: number | null = null;
+      if (isValued && pos.marketValue) {
+        const cleaned = pos.marketValue.amount.trim().replace(',', '.');
+        const match = /^(\d+)(?:\.(\d+))?$/.exec(cleaned);
+        if (match && match[1]) {
+          const whole = parseInt(match[1], 10);
+          const fracStr = (match[2] || '').padEnd(2, '0');
+          const frac = parseInt(fracStr.slice(0, 2), 10);
+          marketValueCents = whole * 100 + frac;
+        }
+      }
+
+      baselinePositions.push({
+        assetId: pos.assetId,
+        ticker: pos.ticker ?? pos.assetId,
+        name: pos.ticker ?? undefined,
+        assetType: pos.assetType ?? 'STOCK',
+        quantity: pos.quantity,
+        valuationStatus: pos.status,
+        marketValueCents,
+        quoteFreshness: (pos.quoteFreshness as any) ?? null,
+        quoteAsOf: pos.quote?.asOf ?? null,
+        isValued,
+      });
+    }
+
+    return {
+      decisionBrief,
+      radar,
+      evaluatedItems,
+      baselinePositions,
+      classTargetWeights,
+    };
+  }
+
+  /**
    * Phase APP-16V — Projected Portfolio After Contribution (Read-only analysis).
    *
    * Projects portfolio weights, class gaps, and concentration before vs after a simulated contribution.
@@ -1103,29 +1207,21 @@ export class GetOpportunityRadarUseCase {
   }): Promise<ProjectedPortfolioAfterContribution> {
     const now = params.now ?? new Date();
 
-    const decisionBrief = await this.getDecisionBrief({
+    const inputs = await this.resolveProjectionInputs({
       portfolioId: params.portfolioId,
       userId: params.userId,
       contributionAmount: params.contributionAmount,
+      currency: params.currency,
       forceRefresh: params.forceRefresh,
       now,
     });
-
-    const radar = await this.execute({
-      portfolioId: params.portfolioId,
-      userId: params.userId,
-      forceRefresh: false,
-      now,
-    });
-
-    const evaluated = radar.allEvaluatedItems ?? radar.items;
 
     const simulation = buildContributionAllocationSimulation({
       portfolioId: params.portfolioId,
       contributionAmount: params.contributionAmount,
       currency: params.currency || 'BRL',
-      decisionBrief,
-      radarItems: evaluated,
+      decisionBrief: inputs.decisionBrief,
+      radarItems: inputs.evaluatedItems,
       referenceDate: now,
     });
 
@@ -1133,7 +1229,9 @@ export class GetOpportunityRadarUseCase {
       portfolioId: params.portfolioId,
       currency: params.currency || 'BRL',
       contributionSimulation: simulation,
-      radarItems: evaluated,
+      baselinePositions: inputs.baselinePositions,
+      radarItems: inputs.evaluatedItems,
+      classTargetWeights: inputs.classTargetWeights,
       referenceDate: now,
     });
   }
@@ -1154,29 +1252,21 @@ export class GetOpportunityRadarUseCase {
   }): Promise<ProjectedPortfolioScenarioComparison> {
     const now = params.now ?? new Date();
 
-    const decisionBrief = await this.getDecisionBrief({
+    const inputs = await this.resolveProjectionInputs({
       portfolioId: params.portfolioId,
       userId: params.userId,
       contributionAmount: params.contributionAmount,
+      currency: params.currency,
       forceRefresh: params.forceRefresh,
       now,
     });
-
-    const radar = await this.execute({
-      portfolioId: params.portfolioId,
-      userId: params.userId,
-      forceRefresh: false,
-      now,
-    });
-
-    const evaluated = radar.allEvaluatedItems ?? radar.items;
 
     const scenarioComparison = buildContributionScenarioComparison({
       portfolioId: params.portfolioId,
       contributionAmount: params.contributionAmount,
       currency: params.currency || 'BRL',
-      decisionBrief,
-      radarItems: evaluated,
+      decisionBrief: inputs.decisionBrief,
+      radarItems: inputs.evaluatedItems,
       referenceDate: now,
     });
 
@@ -1184,7 +1274,9 @@ export class GetOpportunityRadarUseCase {
       portfolioId: params.portfolioId,
       currency: params.currency || 'BRL',
       scenarioComparison,
-      radarItems: evaluated,
+      baselinePositions: inputs.baselinePositions,
+      radarItems: inputs.evaluatedItems,
+      classTargetWeights: inputs.classTargetWeights,
       referenceDate: now,
     });
   }

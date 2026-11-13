@@ -899,8 +899,26 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
                       Não alocado: R$ {projectionResult.unallocatedAmount}
                     </span>
                   )}
+                  {projectionResult.dataQuality && (
+                    <span
+                      data-testid="projection-quality-badge"
+                      className={`ml-1.5 rounded-md border px-2 py-0.5 text-[10px] font-semibold ${
+                        projectionResult.dataQuality.projectionComplete
+                          ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                          : 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                      }`}
+                    >
+                      {projectionResult.dataQuality.valuedAssets}/{projectionResult.dataQuality.totalAssets} posições avaliadas
+                    </span>
+                  )}
                 </div>
               </div>
+
+              {projectionResult.dataQuality?.weightBasis === 'VALUED_POSITIONS_ONLY' && (
+                <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-200">
+                  Valuation parcial: pesos calculados apenas sobre as posições com valuation disponível. A projeção não cobre 100% da carteira.
+                </div>
+              )}
 
               {/* Warnings */}
               {projectionResult.warnings.length > 0 && (
@@ -980,9 +998,9 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
                           <span className="font-bold text-xs text-[var(--text-primary)]">{cls.label}</span>
                           <span className="rounded px-1.5 py-0.5 text-[9px] font-semibold border border-current">
                             {cls.status === 'IMPROVED'
-                              ? 'APROXIMOU DA META'
+                              ? cls.isPartial ? 'APROXIMOU (ESTIMATIVA)' : 'APROXIMOU DA META'
                               : cls.status === 'WORSENED'
-                                ? 'DISTANCIOU DA META'
+                                ? cls.isPartial ? 'DISTANCIOU (ESTIMATIVA)' : 'DISTANCIOU DA META'
                                 : cls.status === 'UNCHANGED'
                                   ? 'ESTÁVEL'
                                   : 'SEM META'}
@@ -1034,11 +1052,17 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
                         </div>
                         <div>
                           <span className="text-[10px] text-[var(--text-secondary)]">Peso: </span>
-                          <span>{asset.beforeWeightPercent}% → </span>
-                          <strong className="text-[var(--text-primary)]">{asset.afterWeightPercent}%</strong>
-                          <span className="ml-1 text-[10px] text-[var(--text-secondary)]">
-                            ({asset.deltaWeightPercent >= 0 ? `+${asset.deltaWeightPercent}` : asset.deltaWeightPercent} pp)
+                          <span>
+                            {asset.beforeWeightPercent !== null ? `${asset.beforeWeightPercent}%` : 'Indisponível'} →{' '}
                           </span>
+                          <strong className="text-[var(--text-primary)]">
+                            {asset.afterWeightPercent !== null ? `${asset.afterWeightPercent}%` : 'Indisponível'}
+                          </strong>
+                          {asset.deltaWeightPercent !== null && (
+                            <span className="ml-1 text-[10px] text-[var(--text-secondary)]">
+                              ({asset.deltaWeightPercent >= 0 ? `+${asset.deltaWeightPercent}` : asset.deltaWeightPercent} pp)
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

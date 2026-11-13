@@ -169,4 +169,156 @@ describe('API Integration: APP-16V Portfolio Projection After Contribution', () 
       .send({ amount: '1000.00' })
       .expect(404);
   });
+
+  // APP-16V-R1: Test critical baseline separation (2 valued + 1 incomplete)
+  it('APP-16V-R1: preserves complete active positions in projection when an asset lacks quote/valuation (2 valued + 1 unvalued)', async () => {
+    const prisma = getTestPrismaClient();
+
+    // Seed 2 valued assets and 1 unvalued asset
+    const asset1 = await prisma.asset.create({
+      data: {
+        id: randomUUID(),
+        ticker: 'PETR4',
+        name: 'Petrobras PN',
+        type: 'STOCK',
+        exchange: 'B3',
+        currency: 'BRL',
+      },
+    });
+
+    const asset2 = await prisma.asset.create({
+      data: {
+        id: randomUUID(),
+        ticker: 'VALE3',
+        name: 'Vale ON',
+        type: 'STOCK',
+        exchange: 'B3',
+        currency: 'BRL',
+      },
+    });
+
+    const assetUnvalued = await prisma.asset.create({
+      data: {
+        id: randomUUID(),
+        ticker: 'UNVALUED3',
+        name: 'Unvalued Holding ON',
+        type: 'STOCK',
+        exchange: 'B3',
+        currency: 'BRL',
+      },
+    });
+
+    // Transactions for all 3 assets
+    await prisma.transaction.create({
+      data: {
+        id: randomUUID(),
+        portfolioId,
+        accountId,
+        assetId: asset1.id,
+        type: 'BUY',
+        tradeDate: new Date('2026-01-10T00:00:00.000Z'),
+        quantity: '100',
+        unitPrice: '30.00',
+        amount: '3000.00',
+        currency: 'BRL',
+        source: 'MANUAL',
+      },
+    });
+
+    await prisma.transaction.create({
+      data: {
+        id: randomUUID(),
+        portfolioId,
+        accountId,
+        assetId: asset2.id,
+        type: 'BUY',
+        tradeDate: new Date('2026-01-10T00:00:00.000Z'),
+        quantity: '100',
+        unitPrice: '60.00',
+        amount: '6000.00',
+        currency: 'BRL',
+        source: 'MANUAL',
+      },
+    });
+
+    await prisma.transaction.create({
+      data: {
+        id: randomUUID(),
+        portfolioId,
+        accountId,
+        assetId: assetUnvalued.id,
+        type: 'BUY',
+        tradeDate: new Date('2026-01-10T00:00:00.000Z'),
+        quantity: '50',
+        unitPrice: '10.00',
+        amount: '500.00',
+        currency: 'BRL',
+        source: 'MANUAL',
+      },
+    });
+
+    // Seed market quote records for asset1 and asset2 ONLY, leaving assetUnvalued without quote
+    const today = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+
+    await prisma.marketQuoteRecord.create({
+      data: {
+        assetId: asset1.id,
+        tradingDate: new Date(`${today}T00:00:00.000Z`),
+        currency: 'BRL',
+        close: '35.00',
+        provider: 'BRAPI',
+        providerSymbol: 'PETR4',
+        firstFetchedAt: new Date(),
+        lastFetchedAt: new Date(),
+        fetchCount: 1,
+      },
+    });
+
+    await prisma.marketQuoteRecord.create({
+      data: {
+        assetId: asset2.id,
+        tradingDate: new Date(`${today}T00:00:00.000Z`),
+        currency: 'BRL',
+        close: '70.00',
+        provider: 'BRAPI',
+        providerSymbol: 'VALE3',
+        firstFetchedAt: new Date(),
+        lastFetchedAt: new Date(),
+        fetchCount: 1,
+      },
+    });
+
+    const res = await request(app.getHttpServer())
+      .post(`/api/v1/portfolios/${portfolioId}/decision-brief/projection`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ amount: '2000.00', currency: 'BRL' })
+      .expect(200);
+
+    expect(res.body.data).toBeDefined();
+    const proj = res.body.data;
+
+    // Critical proof (Parte BA, BB, BC, BD, BE):
+    // All 3 active holdings are accounted for in dataQuality
+    expect(proj.dataQuality.totalAssets).toBe(3);
+    expect(proj.dataQuality.valuedAssets).toBe(2);
+    expect(proj.dataQuality.incompleteAssets).toBe(1);
+    expect(proj.dataQuality.projectionComplete).toBe(false);
+    expect(proj.dataQuality.weightBasis).toBe('VALUED_POSITIONS_ONLY');
+
+    // Unvalued asset is present in assetProjection
+    const unvaluedInProj = proj.assetProjection.find((a: any) => a.ticker === 'UNVALUED3');
+    expect(unvaluedInProj).toBeDefined();
+    expect(unvaluedInProj.beforeValue).toBeNull();
+    expect(unvaluedInProj.projectionStatus).toBe('INCOMPLETE');
+
+    // Warnings must contain partial valuation alert
+    expect(
+      proj.warnings.some((w: string) => w.includes('Valuation parcial') && w.includes('1 de 3')),
+    ).toBe(true);
+  });
 });

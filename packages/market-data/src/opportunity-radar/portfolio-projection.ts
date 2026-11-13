@@ -9,6 +9,26 @@ import {
   ContributionScenarioComparison,
 } from './contribution-simulator';
 
+export interface ProjectionBaselinePosition {
+  assetId: string;
+  ticker: string;
+  name?: string;
+  assetType: OpportunityAssetType | string;
+  quantity: string;
+  valuationStatus: string;
+  marketValueCents?: number | null;
+  quoteFreshness?: QuoteFreshness | null;
+  quoteAsOf?: string | null;
+  isValued: boolean;
+}
+
+export interface ProjectionPortfolioBaseline {
+  portfolioId: string;
+  asOf: string;
+  currency: string;
+  positions: ProjectionBaselinePosition[];
+}
+
 export interface ProjectedClassAllocation {
   classId: string;
   label: string;
@@ -23,6 +43,8 @@ export interface ProjectedClassAllocation {
   afterGapPercent?: number;
   gapImprovementPercent?: number;
   status: 'IMPROVED' | 'WORSENED' | 'UNCHANGED' | 'NO_TARGET';
+  isPartial?: boolean;
+  incompletePositionCount?: number;
 }
 
 export interface ProjectedAssetAllocation {
@@ -30,16 +52,18 @@ export interface ProjectedAssetAllocation {
   ticker: string;
   name: string;
   assetType: OpportunityAssetType;
-  beforeValue: string;
+  beforeValue: string | null;
   simulatedContribution: string;
-  afterValue: string;
-  beforeCents: number;
+  afterValue: string | null;
+  beforeCents: number | null;
   contributionCents: number;
-  afterCents: number;
-  beforeWeightPercent: number;
-  afterWeightPercent: number;
-  deltaWeightPercent: number;
+  afterCents: number | null;
+  beforeWeightPercent: number | null;
+  afterWeightPercent: number | null;
+  deltaWeightPercent: number | null;
   dataFreshness: QuoteFreshness;
+  isValued: boolean;
+  projectionStatus: 'VALUED' | 'INCOMPLETE';
 }
 
 export interface TargetProgressSummary {
@@ -67,7 +91,9 @@ export interface ProjectionDataQuality {
   incompleteAssets: number;
   quoteFreshCount: number;
   quoteStaleCount: number;
+  quoteUnknownCount: number;
   projectionComplete: boolean;
+  weightBasis: 'FULL_PORTFOLIO' | 'VALUED_POSITIONS_ONLY';
 }
 
 export interface ProjectedPortfolioState {
@@ -128,7 +154,8 @@ export interface BuildProjectedPortfolioAfterContributionParams {
   currency?: string;
   scenarioId?: string;
   scenarioLabel?: string;
-  radarItems: readonly OpportunityRadarItem[];
+  baselinePositions?: readonly ProjectionBaselinePosition[];
+  radarItems?: readonly OpportunityRadarItem[];
   contributionSimulation: ContributionAllocationSimulation;
   classTargetWeights?: Record<string, number>;
   referenceDate?: Date;
@@ -138,7 +165,8 @@ export interface BuildProjectedPortfolioScenarioComparisonParams {
   portfolioId: string;
   asOf?: string;
   currency?: string;
-  radarItems: readonly OpportunityRadarItem[];
+  baselinePositions?: readonly ProjectionBaselinePosition[];
+  radarItems?: readonly OpportunityRadarItem[];
   scenarioComparison: ContributionScenarioComparison;
   classTargetWeights?: Record<string, number>;
   referenceDate?: Date;
@@ -147,13 +175,45 @@ export interface BuildProjectedPortfolioScenarioComparisonParams {
 const TOLERANCE_GAP_IMPROVEMENT_PP = 0.05;
 
 /**
+ * Adapter converting OpportunityRadarItem[] to ProjectionBaselinePosition[].
+ * Used for fallback compatibility when full baselinePositions is not passed directly.
+ */
+export function toProjectionBaselinePositions(
+  radarItems: readonly OpportunityRadarItem[],
+): ProjectionBaselinePosition[] {
+  return radarItems.map((item) => {
+    const rawValStr = item.marketValue;
+    const isValued = Boolean(
+      rawValStr && rawValStr !== '0' && /^\d+(\.\d{1,2})?$/.test(rawValStr),
+    );
+    const marketValueCents = isValued ? parseDecimalToCents(rawValStr) : null;
+
+    return {
+      assetId: item.assetId,
+      ticker: item.ticker,
+      name: item.name,
+      assetType: item.assetType,
+      quantity: '1',
+      valuationStatus: isValued ? 'VALUED' : 'QUOTE_UNAVAILABLE',
+      marketValueCents,
+      quoteFreshness: item.dataFreshness as QuoteFreshness,
+      isValued,
+    };
+  });
+}
+
+/**
  * Pure deterministic projection engine to compute portfolio weights,
  * class gaps, and concentration before vs after a simulated contribution.
  *
- * Principles:
+ * Principles (APP-16V & APP-16V-R1):
+ * - Authoritative baseline from complete active holdings (ProjectionBaselinePosition[]).
  * - Read-only: zero DB mutations, zero orders, zero transaction ledger edits.
  * - Exact cents arithmetic: afterInvestedCents = beforeInvestedCents + allocatedCents.
  * - Unallocated funds (unallocatedCents > 0) are strictly excluded from projected invested asset value.
+ * - Incomplete assets (missing quote/valuation) are preserved in assetProjection with null before/after value.
+ * - weightBasis explicitly signals FULL_PORTFOLIO vs VALUED_POSITIONS_ONLY.
+ * - Class projections mark isPartial when containing incomplete assets.
  * - No price appreciation, no future dividend returns, no CAGR assumptions.
  * - Standard Atlas gap sign convention: gap = targetWeight - currentWeight.
  * - Improvement measured by reduction in absolute distance: abs(beforeGap) - abs(afterGap).
@@ -168,43 +228,48 @@ export function buildProjectedPortfolioAfterContribution(
   const sim = params.contributionSimulation;
   const targetWeights = params.classTargetWeights || {};
 
-  // 1. Audit current portfolio holdings from radarItems
+  // 1. Resolve authoritative baseline positions (Parte J & K)
+  const baseline =
+    params.baselinePositions && params.baselinePositions.length > 0
+      ? params.baselinePositions
+      : toProjectionBaselinePositions(params.radarItems || []);
+
   let beforeInvestedCents = 0;
   let valuedAssets = 0;
   let quoteFreshCount = 0;
   let quoteStaleCount = 0;
+  let quoteUnknownCount = 0;
 
-  const assetBaseMap = new Map<
-    string,
-    {
-      item: OpportunityRadarItem;
-      beforeCents: number;
-      isValued: boolean;
+  // Build radar item fast lookup for supplementary radar metadata (like name or assetType)
+  const radarItemMap = new Map<string, OpportunityRadarItem>();
+  if (params.radarItems) {
+    for (const r of params.radarItems) {
+      radarItemMap.set(r.assetId, r);
+      radarItemMap.set(r.ticker, r);
     }
-  >();
-
-  for (const item of params.radarItems) {
-    const rawValStr = item.marketValue;
-    const isValued = Boolean(rawValStr && rawValStr !== '0' && /^\d+(\.\d{1,2})?$/.test(rawValStr));
-    const cents = isValued ? parseDecimalToCents(rawValStr) : 0;
-
-    if (isValued) {
-      valuedAssets++;
-      beforeInvestedCents += cents;
-    }
-
-    if (item.dataFreshness === 'FRESH') {
-      quoteFreshCount++;
-    } else if (item.dataFreshness === 'STALE') {
-      quoteStaleCount++;
-    }
-
-    assetBaseMap.set(item.assetId, { item, beforeCents: cents, isValued });
   }
 
-  const totalAssets = params.radarItems.length;
+  for (const pos of baseline) {
+    if (pos.isValued && typeof pos.marketValueCents === 'number' && pos.marketValueCents > 0) {
+      valuedAssets++;
+      beforeInvestedCents += pos.marketValueCents;
+    }
+
+    if (pos.quoteFreshness === 'FRESH') {
+      quoteFreshCount++;
+    } else if (pos.quoteFreshness === 'STALE') {
+      quoteStaleCount++;
+    } else {
+      quoteUnknownCount++;
+    }
+  }
+
+  const totalAssets = baseline.length;
   const incompleteAssets = totalAssets - valuedAssets;
-  const projectionComplete = incompleteAssets === 0 && totalAssets > 0;
+  const projectionComplete = totalAssets > 0 && incompleteAssets === 0;
+  const weightBasis: 'FULL_PORTFOLIO' | 'VALUED_POSITIONS_ONLY' = projectionComplete
+    ? 'FULL_PORTFOLIO'
+    : 'VALUED_POSITIONS_ONLY';
 
   // 2. Map simulated allocations
   const allocMap = new Map<string, number>();
@@ -217,18 +282,53 @@ export function buildProjectedPortfolioAfterContribution(
   const unallocatedCents = sim.unallocatedCents;
   const totalContributionCents = sim.totalCents;
 
-  // Invariant (Parte H, I, AN, AO): unallocated funds do NOT enter projected invested asset value!
+  // Invariant (Parte H, I, AN, AO, AQ): unallocated funds do NOT enter projected invested asset value!
   const afterInvestedCents = beforeInvestedCents + allocatedCents;
 
-  // 3. Compute asset-level before and after projections
+  // 3. Compute asset-level before and after projections (Parte S, T, AO, AP)
   const assetProjection: ProjectedAssetAllocation[] = [];
   const beforeAssetWeights: Record<string, number> = {};
   const afterAssetWeights: Record<string, number> = {};
 
-  for (const item of params.radarItems) {
-    const base = assetBaseMap.get(item.assetId);
-    const beforeCents = base?.beforeCents ?? 0;
-    const contribCents = allocMap.get(item.assetId) ?? allocMap.get(item.ticker) ?? 0;
+  for (const pos of baseline) {
+    const radarRef = radarItemMap.get(pos.assetId) ?? radarItemMap.get(pos.ticker);
+    const assetType = (pos.assetType || radarRef?.assetType || 'STOCK') as OpportunityAssetType;
+    const name = pos.name || radarRef?.name || pos.ticker;
+    const dataFreshness = (pos.quoteFreshness || radarRef?.dataFreshness || 'UNKNOWN') as QuoteFreshness;
+
+    const contribCents = allocMap.get(pos.assetId) ?? allocMap.get(pos.ticker) ?? 0;
+
+    if (!pos.isValued || pos.marketValueCents === null || pos.marketValueCents === undefined) {
+      // Incomplete position: preserve visibility without inventing 0 as real market value (Parte S & T)
+      const afterCents = contribCents > 0 ? contribCents : null;
+      const afterWeightPercent =
+        contribCents > 0 && afterInvestedCents > 0
+          ? Math.round((contribCents / afterInvestedCents) * 10000) / 100
+          : null;
+
+      assetProjection.push({
+        assetId: pos.assetId,
+        ticker: pos.ticker,
+        name,
+        assetType,
+        beforeValue: null,
+        simulatedContribution: formatCentsToDecimal(contribCents),
+        afterValue: afterCents !== null ? formatCentsToDecimal(afterCents) : null,
+        beforeCents: null,
+        contributionCents: contribCents,
+        afterCents,
+        beforeWeightPercent: null,
+        afterWeightPercent,
+        deltaWeightPercent: null,
+        dataFreshness,
+        isValued: false,
+        projectionStatus: 'INCOMPLETE',
+      });
+      continue;
+    }
+
+    // Valued position
+    const beforeCents = pos.marketValueCents;
     const afterCents = beforeCents + contribCents;
 
     const beforeWeightPercent =
@@ -242,14 +342,14 @@ export function buildProjectedPortfolioAfterContribution(
     const deltaWeightPercent =
       Math.round((afterWeightPercent - beforeWeightPercent) * 100) / 100;
 
-    beforeAssetWeights[item.ticker] = beforeWeightPercent;
-    afterAssetWeights[item.ticker] = afterWeightPercent;
+    beforeAssetWeights[pos.ticker] = beforeWeightPercent;
+    afterAssetWeights[pos.ticker] = afterWeightPercent;
 
     assetProjection.push({
-      assetId: item.assetId,
-      ticker: item.ticker,
-      name: item.name,
-      assetType: item.assetType,
+      assetId: pos.assetId,
+      ticker: pos.ticker,
+      name,
+      assetType,
       beforeValue: formatCentsToDecimal(beforeCents),
       simulatedContribution: formatCentsToDecimal(contribCents),
       afterValue: formatCentsToDecimal(afterCents),
@@ -259,36 +359,44 @@ export function buildProjectedPortfolioAfterContribution(
       beforeWeightPercent,
       afterWeightPercent,
       deltaWeightPercent,
-      dataFreshness: item.dataFreshness as QuoteFreshness,
+      dataFreshness,
+      isValued: true,
+      projectionStatus: 'VALUED',
     });
   }
 
-  // 4. Compute class-level before and after projections
+  // 4. Compute class-level before and after projections (Parte AA, AB, AC, AD, AE)
   const classBuckets = new Map<
     string,
     {
       beforeCents: number;
       afterCents: number;
+      incompleteCount: number;
     }
   >();
 
   // Ensure classes present in targets or holdings are initialized
-  for (const item of params.radarItems) {
-    if (!classBuckets.has(item.assetType)) {
-      classBuckets.set(item.assetType, { beforeCents: 0, afterCents: 0 });
+  for (const pos of baseline) {
+    const cls = pos.assetType || 'STOCK';
+    if (!classBuckets.has(cls)) {
+      classBuckets.set(cls, { beforeCents: 0, afterCents: 0, incompleteCount: 0 });
     }
   }
   for (const classKey of Object.keys(targetWeights)) {
     if (!classBuckets.has(classKey)) {
-      classBuckets.set(classKey, { beforeCents: 0, afterCents: 0 });
+      classBuckets.set(classKey, { beforeCents: 0, afterCents: 0, incompleteCount: 0 });
     }
   }
 
   for (const ap of assetProjection) {
     const bucket = classBuckets.get(ap.assetType);
     if (bucket) {
-      bucket.beforeCents += ap.beforeCents;
-      bucket.afterCents += ap.afterCents;
+      if (ap.isValued && ap.beforeCents !== null && ap.afterCents !== null) {
+        bucket.beforeCents += ap.beforeCents;
+        bucket.afterCents += ap.afterCents;
+      } else {
+        bucket.incompleteCount++;
+      }
     }
   }
 
@@ -302,8 +410,12 @@ export function buildProjectedPortfolioAfterContribution(
 
   let largestResidualGap: { classId: string; gapPercent: number } | null = null;
   let closestToTarget: { classId: string; gapPercent: number } | null = null;
+  let maxAbsGap = -1;
+  let minAbsGap = 999999;
 
   for (const [classId, bucket] of classBuckets.entries()) {
+    const label = formatClassLabel(classId);
+
     const beforeWeightPercent =
       beforeInvestedCents > 0
         ? Math.round((bucket.beforeCents / beforeInvestedCents) * 10000) / 100
@@ -317,27 +429,26 @@ export function buildProjectedPortfolioAfterContribution(
     afterClassWeights[classId] = afterWeightPercent;
 
     const targetWeightPercent = targetWeights[classId];
-    const hasTarget = targetWeightPercent !== undefined && typeof targetWeightPercent === 'number';
+    const hasTarget = typeof targetWeightPercent === 'number' && !isNaN(targetWeightPercent);
 
     let beforeGapPercent: number | undefined;
     let afterGapPercent: number | undefined;
     let gapImprovementPercent: number | undefined;
-    let status: ProjectedClassAllocation['status'] = 'NO_TARGET';
+    let status: 'IMPROVED' | 'WORSENED' | 'UNCHANGED' | 'NO_TARGET' = 'NO_TARGET';
 
-    if (hasTarget) {
-      // Standard Atlas gap sign convention: target - current
+    if (hasTarget && targetWeightPercent !== undefined) {
       beforeGapPercent = Math.round((targetWeightPercent - beforeWeightPercent) * 100) / 100;
       afterGapPercent = Math.round((targetWeightPercent - afterWeightPercent) * 100) / 100;
 
-      // Improvement by absolute distance: abs(before) - abs(after)
       const beforeDist = Math.abs(beforeGapPercent);
       const afterDist = Math.abs(afterGapPercent);
-      gapImprovementPercent = Math.round((beforeDist - afterDist) * 100) / 100;
+      const distanceReduction = Math.round((beforeDist - afterDist) * 100) / 100;
+      gapImprovementPercent = distanceReduction;
 
-      if (gapImprovementPercent > TOLERANCE_GAP_IMPROVEMENT_PP) {
+      if (distanceReduction > TOLERANCE_GAP_IMPROVEMENT_PP) {
         status = 'IMPROVED';
         improvedCount++;
-      } else if (gapImprovementPercent < -TOLERANCE_GAP_IMPROVEMENT_PP) {
+      } else if (distanceReduction < -TOLERANCE_GAP_IMPROVEMENT_PP) {
         status = 'WORSENED';
         worsenedCount++;
       } else {
@@ -345,28 +456,15 @@ export function buildProjectedPortfolioAfterContribution(
         unchangedCount++;
       }
 
-      // Track largest residual gap and closest to target
-      if (
-        largestResidualGap === null ||
-        Math.abs(afterGapPercent) > Math.abs(largestResidualGap.gapPercent)
-      ) {
+      if (afterDist > maxAbsGap) {
+        maxAbsGap = afterDist;
         largestResidualGap = { classId, gapPercent: afterGapPercent };
       }
-
-      if (
-        closestToTarget === null ||
-        Math.abs(afterGapPercent) < Math.abs(closestToTarget.gapPercent)
-      ) {
+      if (afterDist < minAbsGap) {
+        minAbsGap = afterDist;
         closestToTarget = { classId, gapPercent: afterGapPercent };
       }
     }
-
-    const label =
-      classId === 'STOCK'
-        ? 'Ações'
-        : classId === 'FII'
-          ? 'Fundos Imobiliários (FIIs)'
-          : classId;
 
     classProjection.push({
       classId,
@@ -382,18 +480,24 @@ export function buildProjectedPortfolioAfterContribution(
       afterGapPercent,
       gapImprovementPercent,
       status,
+      isPartial: bucket.incompleteCount > 0,
+      incompletePositionCount: bucket.incompleteCount,
     });
   }
 
   // Sort class projections alphabetically by label
   classProjection.sort((a, b) => a.label.localeCompare(b.label));
 
-  // 5. Compute Concentration Metrics (Parte AB, AC, AD, AE)
-  const sortedBefore = [...assetProjection].sort(
-    (a, b) => b.beforeWeightPercent - a.beforeWeightPercent,
+  // 5. Compute Concentration Metrics on valued assets
+  const valuedAssetProjections = assetProjection.filter(
+    (a) => a.isValued && a.beforeWeightPercent !== null && a.afterWeightPercent !== null,
   );
-  const sortedAfter = [...assetProjection].sort(
-    (a, b) => b.afterWeightPercent - a.afterWeightPercent,
+
+  const sortedBefore = [...valuedAssetProjections].sort(
+    (a, b) => (b.beforeWeightPercent ?? 0) - (a.beforeWeightPercent ?? 0),
+  );
+  const sortedAfter = [...valuedAssetProjections].sort(
+    (a, b) => (b.afterWeightPercent ?? 0) - (a.afterWeightPercent ?? 0),
   );
 
   const largestAssetTickerBefore = sortedBefore[0]?.ticker ?? null;
@@ -403,10 +507,10 @@ export function buildProjectedPortfolioAfterContribution(
   const largestAssetWeightAfter = sortedAfter[0]?.afterWeightPercent ?? 0;
 
   const top3WeightBefore = Math.round(
-    sortedBefore.slice(0, 3).reduce((acc, a) => acc + a.beforeWeightPercent, 0) * 100,
+    sortedBefore.slice(0, 3).reduce((acc, a) => acc + (a.beforeWeightPercent ?? 0), 0) * 100,
   ) / 100;
   const top3WeightAfter = Math.round(
-    sortedAfter.slice(0, 3).reduce((acc, a) => acc + a.afterWeightPercent, 0) * 100,
+    sortedAfter.slice(0, 3).reduce((acc, a) => acc + (a.afterWeightPercent ?? 0), 0) * 100,
   ) / 100;
 
   const concentration: ConcentrationProjection = {
@@ -421,7 +525,7 @@ export function buildProjectedPortfolioAfterContribution(
     deltaTop3Weight: Math.round((top3WeightAfter - top3WeightBefore) * 100) / 100,
   };
 
-  // 6. Gather warnings
+  // 6. Gather warnings (Parte BO & UI)
   const warnings: string[] = [];
 
   if (unallocatedCents > 0) {
@@ -438,7 +542,7 @@ export function buildProjectedPortfolioAfterContribution(
 
   if (incompleteAssets > 0) {
     warnings.push(
-      `Valuation parcial: ${incompleteAssets} ativo(s) sem valor de mercado confiável. A projeção não cobre 100% da carteira.`,
+      `Valuation parcial: ${incompleteAssets} de ${totalAssets} posição(ões) não possui valor confiável. Pesos calculados apenas sobre as posições com valuation disponível.`,
     );
   }
 
@@ -498,7 +602,9 @@ export function buildProjectedPortfolioAfterContribution(
       incompleteAssets,
       quoteFreshCount,
       quoteStaleCount,
+      quoteUnknownCount,
       projectionComplete,
+      weightBasis,
     },
     modelVersion,
   };
@@ -535,6 +641,7 @@ export function buildProjectedPortfolioScenarioComparison(
       currency,
       scenarioId: scen.id,
       scenarioLabel: scen.label,
+      baselinePositions: params.baselinePositions,
       radarItems: params.radarItems,
       contributionSimulation: {
         portfolioId: params.portfolioId,
@@ -548,8 +655,8 @@ export function buildProjectedPortfolioScenarioComparison(
         totalCents: scen.totalCents,
         allocations: scen.allocations,
         excludedAssets: scen.excludedAssets,
-        assumptions: scen.assumptions,
-        warnings: scen.warnings,
+        assumptions: [],
+        warnings: [],
         dataQuality: params.scenarioComparison.dataQuality,
         modelVersion,
       },
@@ -565,7 +672,15 @@ export function buildProjectedPortfolioScenarioComparison(
     });
   }
 
-  const baselineBefore = scenariosOut[0]?.projection.before ?? {
+  // Derive comparison insights across the 3 scenarios
+  const comparisonInsights = deriveScenarioComparisonInsights(scenariosOut);
+
+  // Common warnings (deduplicated)
+  const commonWarnings = Array.from(
+    new Set(scenariosOut.flatMap((s) => s.projection.warnings)),
+  );
+
+  const sharedBefore = scenariosOut[0]?.projection.before ?? {
     portfolioMarketValue: '0.00',
     investedAssetValue: '0.00',
     investedAssetCents: 0,
@@ -573,26 +688,15 @@ export function buildProjectedPortfolioScenarioComparison(
     assetWeights: {},
   };
 
-  // Derive comparison insights objectively
-  const comparisonInsights = deriveScenarioProjectionInsights(scenariosOut);
-
-  // Common warnings
-  const commonWarningsSet = new Set<string>();
-  for (const s of scenariosOut) {
-    for (const w of s.projection.warnings) {
-      if (scenariosOut.every((other) => other.projection.warnings.includes(w))) {
-        commonWarningsSet.add(w);
-      }
-    }
-  }
-
-  const dataQuality = scenariosOut[0]?.projection.dataQuality ?? {
-    totalAssets: params.radarItems.length,
+  const sharedDataQuality = scenariosOut[0]?.projection.dataQuality ?? {
+    totalAssets: 0,
     valuedAssets: 0,
-    incompleteAssets: params.radarItems.length,
+    incompleteAssets: 0,
     quoteFreshCount: 0,
     quoteStaleCount: 0,
+    quoteUnknownCount: 0,
     projectionComplete: false,
+    weightBasis: 'FULL_PORTFOLIO' as const,
   };
 
   return {
@@ -600,52 +704,64 @@ export function buildProjectedPortfolioScenarioComparison(
     asOf,
     contributionAmount: params.scenarioComparison.contributionAmount,
     currency,
-    before: baselineBefore,
+    before: sharedBefore,
     scenarios: scenariosOut,
     comparisonInsights,
-    commonWarnings: Array.from(commonWarningsSet),
-    dataQuality,
+    commonWarnings,
+    dataQuality: sharedDataQuality,
     modelVersion,
   };
 }
 
-/**
- * Derives objective comparison insights comparing the 3 projected scenarios.
- * Strictly neutral, zero suitability claims, zero "melhor cenário".
- */
-function deriveScenarioProjectionInsights(
+/** Formats uppercase class key e.g. "STOCK" -> "Ações", "FII" -> "Fundos Imobiliários". */
+function formatClassLabel(classId: string): string {
+  switch (classId.toUpperCase()) {
+    case 'STOCK':
+    case 'STOCKS':
+    case 'EQUITY':
+      return 'Ações';
+    case 'FII':
+    case 'REIT':
+      return 'Fundos Imobiliários';
+    case 'FIXED_INCOME':
+    case 'RF':
+      return 'Renda Fixa';
+    case 'INTERNATIONAL':
+    case 'GLOBAL':
+      return 'Internacional';
+    case 'CASH':
+      return 'Caixa & Equivalentes';
+    case 'CRYPTO':
+      return 'Criptoativos';
+    default:
+      return classId;
+  }
+}
+
+/** Objective comparison insights across CAUTIOUS, BALANCED, and OPPORTUNITY_FOCUS. */
+function deriveScenarioComparisonInsights(
   scenarios: Array<{
     scenarioId: string;
     scenarioLabel: string;
-    description: string;
     projection: ProjectedPortfolioAfterContribution;
   }>,
 ): string[] {
-  if (scenarios.length === 0) return [];
+  const insights: string[] = [];
 
   const cautious = scenarios.find((s) => s.scenarioId === 'CAUTIOUS')?.projection;
   const balanced = scenarios.find((s) => s.scenarioId === 'BALANCED')?.projection;
   const opportunity = scenarios.find((s) => s.scenarioId === 'OPPORTUNITY_FOCUS')?.projection;
 
-  if (!cautious || !balanced || !opportunity) return [];
-
-  // Check if allocations are identical
-  const bAllocStr = balanced.assetProjection.map((a) => `${a.ticker}:${a.afterCents}`).join('|');
-  const cAllocStr = cautious.assetProjection.map((a) => `${a.ticker}:${a.afterCents}`).join('|');
-  const oAllocStr = opportunity.assetProjection.map((a) => `${a.ticker}:${a.afterCents}`).join('|');
-
-  if (bAllocStr === cAllocStr && cAllocStr === oAllocStr) {
-    return ['As projeções dos três cenários resultaram na mesma estrutura patrimonial com os dados atuais.'];
+  if (!cautious || !balanced || !opportunity) {
+    return insights;
   }
 
-  const insights: string[] = [];
-
-  // 1. Target gaps progress
+  // 1. Target progress comparison
   const bImproved = balanced.targetProgress.improvedCount;
   const cImproved = cautious.targetProgress.improvedCount;
   const oImproved = opportunity.targetProgress.improvedCount;
 
-  if (bImproved > 0 || cImproved > 0 || oImproved > 0) {
+  if (bImproved !== cImproved || bImproved !== oImproved) {
     insights.push(
       `O cenário Balanceado aproxima ${bImproved} classe(s) do alvo, enquanto Cautela aproxima ${cImproved} e Oportunidade aproxima ${oImproved}.`,
     );
@@ -671,7 +787,10 @@ function deriveScenarioProjectionInsights(
   }
 
   // 4. Unallocated difference if any
-  if (cautious.unallocatedCents !== balanced.unallocatedCents || balanced.unallocatedCents !== opportunity.unallocatedCents) {
+  if (
+    cautious.unallocatedCents !== balanced.unallocatedCents ||
+    balanced.unallocatedCents !== opportunity.unallocatedCents
+  ) {
     insights.push(
       'Os cenários diferem no valor retido não alocado devido aos limites de concentração e fatia mínima.',
     );

@@ -781,6 +781,8 @@ export interface ProjectedClassAllocationDto {
   afterGapPercent?: number;
   gapImprovementPercent?: number;
   status: 'IMPROVED' | 'WORSENED' | 'UNCHANGED' | 'NO_TARGET';
+  isPartial?: boolean;
+  incompletePositionCount?: number;
 }
 
 export interface ProjectedAssetAllocationDto {
@@ -788,16 +790,18 @@ export interface ProjectedAssetAllocationDto {
   ticker: string;
   name: string;
   assetType: 'STOCK' | 'FII' | string;
-  beforeValue: string;
+  beforeValue: string | null;
   simulatedContribution: string;
-  afterValue: string;
-  beforeCents: number;
+  afterValue: string | null;
+  beforeCents: number | null;
   contributionCents: number;
-  afterCents: number;
-  beforeWeightPercent: number;
-  afterWeightPercent: number;
-  deltaWeightPercent: number;
+  afterCents: number | null;
+  beforeWeightPercent: number | null;
+  afterWeightPercent: number | null;
+  deltaWeightPercent: number | null;
   dataFreshness: 'FRESH' | 'STALE' | 'UNKNOWN';
+  isValued?: boolean;
+  projectionStatus?: 'VALUED' | 'INCOMPLETE';
 }
 
 export interface TargetProgressSummaryDto {
@@ -825,7 +829,9 @@ export interface ProjectionDataQualityDto {
   incompleteAssets: number;
   quoteFreshCount: number;
   quoteStaleCount: number;
+  quoteUnknownCount?: number;
   projectionComplete: boolean;
+  weightBasis?: 'FULL_PORTFOLIO' | 'VALUED_POSITIONS_ONLY';
 }
 
 export interface ProjectedPortfolioStateDto {

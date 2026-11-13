@@ -819,4 +819,195 @@ describe('APP-16V: Portfolio Projection After Contribution Engine', () => {
     const duration = (performance.now() - start) / 50;
     expect(duration).toBeLessThan(20);
   });
+
+  // APP-16V-R1: Baseline completeness & partial valuation integrity tests
+  describe('APP-16V-R1: Baseline completeness & partial valuation integrity', () => {
+    it('processes complete baseline with unvalued/incomplete position: totalAssets=3, valuedAssets=2, incompleteAssets=1, projectionComplete=false, weightBasis=VALUED_POSITIONS_ONLY', () => {
+      const sim = buildContributionAllocationSimulation({
+        portfolioId: 'port-r1',
+        contributionAmount: '1000.00',
+        decisionBrief: baseDecisionBrief,
+        radarItems: [baseAssetA, baseAssetB],
+      });
+
+      const baselinePositions = [
+        {
+          assetId: 'asset-a',
+          ticker: 'TEST3',
+          name: 'Test Stock A',
+          assetType: 'EQUITY',
+          quantity: '600',
+          valuationStatus: 'VALUED',
+          marketValueCents: 600000,
+          quoteFreshness: 'FRESH' as QuoteFreshness,
+          isValued: true,
+        },
+        {
+          assetId: 'asset-b',
+          ticker: 'TEST4',
+          name: 'Test Stock B',
+          assetType: 'EQUITY',
+          quantity: '200',
+          valuationStatus: 'VALUED',
+          marketValueCents: 400000,
+          quoteFreshness: 'FRESH' as QuoteFreshness,
+          isValued: true,
+        },
+        {
+          assetId: 'asset-c',
+          ticker: 'UNVALUED1',
+          name: 'Unvalued Stock C',
+          assetType: 'EQUITY',
+          quantity: '50',
+          valuationStatus: 'QUOTE_UNAVAILABLE',
+          marketValueCents: null,
+          quoteFreshness: null,
+          isValued: false,
+        },
+      ];
+
+      const projection = buildProjectedPortfolioAfterContribution({
+        portfolioId: 'port-r1',
+        contributionSimulation: sim,
+        baselinePositions,
+        radarItems: [baseAssetA, baseAssetB], // radar has only valued 2 items
+      });
+
+      expect(projection.dataQuality.totalAssets).toBe(3);
+      expect(projection.dataQuality.valuedAssets).toBe(2);
+      expect(projection.dataQuality.incompleteAssets).toBe(1);
+      expect(projection.dataQuality.projectionComplete).toBe(false);
+      expect(projection.dataQuality.weightBasis).toBe('VALUED_POSITIONS_ONLY');
+
+      // Unvalued asset is visible in assetProjection with null beforeValue and projectionStatus=INCOMPLETE
+      const unvaluedProj = projection.assetProjection.find((a) => a.ticker === 'UNVALUED1');
+      expect(unvaluedProj).toBeDefined();
+      expect(unvaluedProj?.isValued).toBe(false);
+      expect(unvaluedProj?.beforeValue).toBeNull();
+      expect(unvaluedProj?.beforeCents).toBeNull();
+      expect(unvaluedProj?.beforeWeightPercent).toBeNull();
+      expect(unvaluedProj?.projectionStatus).toBe('INCOMPLETE');
+
+      // Warnings must include partial valuation note
+      expect(
+        projection.warnings.some((w) => w.includes('Valuation parcial') && w.includes('1 de 3')),
+      ).toBe(true);
+
+      // Class projection marks isPartial = true
+      const equityClass = projection.classProjection.find((c) => c.classId === 'EQUITY');
+      expect(equityClass?.isPartial).toBe(true);
+      expect(equityClass?.incompletePositionCount).toBe(1);
+    });
+
+    it('processes 100% complete baseline: totalAssets=2, valuedAssets=2, projectionComplete=true, weightBasis=FULL_PORTFOLIO', () => {
+      const sim = buildContributionAllocationSimulation({
+        portfolioId: 'port-r1-full',
+        contributionAmount: '1000.00',
+        decisionBrief: baseDecisionBrief,
+        radarItems: [baseAssetA, baseAssetB],
+      });
+
+      const baselinePositions = [
+        {
+          assetId: 'asset-a',
+          ticker: 'TEST3',
+          name: 'Test Stock A',
+          assetType: 'EQUITY',
+          quantity: '600',
+          valuationStatus: 'VALUED',
+          marketValueCents: 600000,
+          quoteFreshness: 'FRESH' as QuoteFreshness,
+          isValued: true,
+        },
+        {
+          assetId: 'asset-b',
+          ticker: 'TEST4',
+          name: 'Test Stock B',
+          assetType: 'EQUITY',
+          quantity: '200',
+          valuationStatus: 'VALUED',
+          marketValueCents: 400000,
+          quoteFreshness: 'FRESH' as QuoteFreshness,
+          isValued: true,
+        },
+      ];
+
+      const projection = buildProjectedPortfolioAfterContribution({
+        portfolioId: 'port-r1-full',
+        contributionSimulation: sim,
+        baselinePositions,
+        radarItems: [baseAssetA, baseAssetB],
+      });
+
+      expect(projection.dataQuality.totalAssets).toBe(2);
+      expect(projection.dataQuality.valuedAssets).toBe(2);
+      expect(projection.dataQuality.incompleteAssets).toBe(0);
+      expect(projection.dataQuality.projectionComplete).toBe(true);
+      expect(projection.dataQuality.weightBasis).toBe('FULL_PORTFOLIO');
+      expect(projection.warnings.some((w) => w.includes('Valuation parcial'))).toBe(false);
+    });
+
+    it('scenario comparison propagates complete baselinePositions across CAUTIOUS, BALANCED, and OPPORTUNITY_FOCUS', () => {
+      const comparison = buildContributionScenarioComparison({
+        portfolioId: 'port-scen-r1',
+        contributionAmount: '2000.00',
+        currency: 'BRL',
+        decisionBrief: baseDecisionBrief,
+        radarItems: [baseAssetA, baseAssetB],
+      });
+
+      const baselinePositions = [
+        {
+          assetId: 'asset-a',
+          ticker: 'TEST3',
+          name: 'Test Stock A',
+          assetType: 'EQUITY',
+          quantity: '600',
+          valuationStatus: 'VALUED',
+          marketValueCents: 600000,
+          quoteFreshness: 'FRESH' as QuoteFreshness,
+          isValued: true,
+        },
+        {
+          assetId: 'asset-b',
+          ticker: 'TEST4',
+          name: 'Test Stock B',
+          assetType: 'EQUITY',
+          quantity: '200',
+          valuationStatus: 'VALUED',
+          marketValueCents: 400000,
+          quoteFreshness: 'FRESH' as QuoteFreshness,
+          isValued: true,
+        },
+        {
+          assetId: 'asset-c',
+          ticker: 'UNVALUED1',
+          name: 'Unvalued Stock C',
+          assetType: 'EQUITY',
+          quantity: '50',
+          valuationStatus: 'QUOTE_UNAVAILABLE',
+          marketValueCents: null,
+          quoteFreshness: null,
+          isValued: false,
+        },
+      ];
+
+      const projectedScenarios = buildProjectedPortfolioScenarioComparison({
+        portfolioId: 'port-scen-r1',
+        scenarioComparison: comparison,
+        baselinePositions,
+        radarItems: [baseAssetA, baseAssetB],
+      });
+
+      expect(projectedScenarios.dataQuality.totalAssets).toBe(3);
+      expect(projectedScenarios.dataQuality.incompleteAssets).toBe(1);
+      expect(projectedScenarios.dataQuality.weightBasis).toBe('VALUED_POSITIONS_ONLY');
+
+      for (const scen of projectedScenarios.scenarios) {
+        expect(scen.projection.dataQuality.totalAssets).toBe(3);
+        expect(scen.projection.dataQuality.incompleteAssets).toBe(1);
+        expect(scen.projection.dataQuality.weightBasis).toBe('VALUED_POSITIONS_ONLY');
+      }
+    });
+  });
 });
