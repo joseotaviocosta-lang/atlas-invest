@@ -144,9 +144,12 @@ export const portfolioApi = {
 
   async getContributionProgress(
     portfolioId: string,
-    options?: { period?: string; contributionAmount?: string; refresh?: boolean },
+    options?: { planId?: string; period?: string; contributionAmount?: string; refresh?: boolean },
   ): Promise<{ data: import('./types').ContributionPlanProgressDto }> {
     const params = new URLSearchParams();
+    if (options?.planId) {
+      params.set('planId', options.planId);
+    }
     if (options?.period) {
       params.set('period', options.period);
     }

@@ -965,6 +965,7 @@ export interface ContributionPlanProgressDto {
   periodEnd: string;
   asOf: string;
   plan: {
+    id?: string;
     portfolioId: string;
     periodStart: string;
     periodEnd: string;
@@ -972,6 +973,9 @@ export interface ContributionPlanProgressDto {
     plannedAmount: string;
     currency: string;
     source: string;
+    baselineMode: 'PERSISTED_PLAN' | 'LIVE_SIMULATION' | 'NO_PLAN';
+    baselineStable: boolean;
+    plannedDate?: string;
     allocations: Array<{
       assetId: string;
       ticker: string;
@@ -981,10 +985,32 @@ export interface ContributionPlanProgressDto {
       plannedAmount: string;
       plannedPercent: number;
     }>;
+    categoryAllocations?: Array<{
+      category: string;
+      plannedCents: number;
+      plannedAmount: string;
+      actualCents: number;
+      remainingCents: number;
+      overPlanCents: number;
+      completionPercent: number;
+      status: 'NOT_STARTED' | 'PARTIAL' | 'COMPLETE' | 'OVER_PLAN';
+    }>;
+    isCategoryLevelPlan?: boolean;
+    createdAt?: string;
   };
   overall: ContributionPlanOverallProgressDto;
   assets: ContributionPlanAssetProgressDto[];
   unplannedAssets: ContributionPlanAssetProgressDto[];
+  categories?: Array<{
+    category: string;
+    plannedCents: number;
+    plannedAmount: string;
+    actualCents: number;
+    remainingCents: number;
+    overPlanCents: number;
+    completionPercent: number;
+    status: 'NOT_STARTED' | 'PARTIAL' | 'COMPLETE' | 'OVER_PLAN';
+  }>;
   deviations: ContributionPlanDeviationItemDto[];
   largestDeviations: string[];
   observedTransactions: ContributionPlanTransactionSummaryDto[];

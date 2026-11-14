@@ -9,9 +9,26 @@ import {
 } from './portfolio-projection';
 
 export type ContributionPlanSource =
+  | 'PERSISTED_PLAN'
   | 'SAVED_GOAL'
   | 'USER_SIMULATION'
-  | 'EXPLICIT_PLAN';
+  | 'NO_PLAN';
+
+export type ContributionPlanBaselineMode =
+  | 'PERSISTED_PLAN'
+  | 'LIVE_SIMULATION'
+  | 'NO_PLAN';
+
+export interface ContributionPlanCategoryAllocation {
+  category: string;
+  plannedCents: number;
+  plannedAmount: string; // e.g. "1200.00"
+  actualCents: number;
+  remainingCents: number;
+  overPlanCents: number;
+  completionPercent: number;
+  status: 'NOT_STARTED' | 'PARTIAL' | 'COMPLETE' | 'OVER_PLAN';
+}
 
 export interface ContributionPlanAllocationItem {
   assetId: string;
@@ -32,8 +49,13 @@ export interface ContributionPlanSnapshot {
   plannedAmount: string; // e.g. "2000.00"
   currency: string; // "BRL"
   source: ContributionPlanSource;
+  baselineMode: ContributionPlanBaselineMode;
+  baselineStable: boolean;
+  plannedDate?: string;
   scenarioId?: string;
   allocations: ContributionPlanAllocationItem[];
+  categoryAllocations?: ContributionPlanCategoryAllocation[];
+  isCategoryLevelPlan?: boolean;
   createdAt?: string;
 }
 
@@ -96,6 +118,7 @@ export interface ContributionPlanTransactionSummary {
   amountCents: number;
   amount: string;
   currency: string;
+  linkStatus?: 'CONFIRMED' | 'CANDIDATE' | 'REJECTED';
 }
 
 export interface ContributionPlanDataQuality {
@@ -107,6 +130,9 @@ export interface ContributionPlanDataQuality {
   trackedPurchaseCount: number;
   excludedSellCount: number;
   excludedOutOfPeriodCount: number;
+  confirmedLinkCount: number;
+  rejectedLinkCount: number;
+  candidateLinkCount: number;
 }
 
 export interface ContributionPlanStructuralComparison {
@@ -128,6 +154,7 @@ export interface ContributionPlanProgressResult {
   overall: ContributionPlanOverallProgress;
   assets: ContributionPlanAssetProgress[];
   unplannedAssets: ContributionPlanAssetProgress[];
+  categories?: ContributionPlanCategoryAllocation[];
   deviations: ContributionPlanDeviationItem[];
   largestDeviations: string[];
   observedTransactions: ContributionPlanTransactionSummary[];
@@ -148,8 +175,10 @@ export interface TransactionInputForTracking {
   ticker?: string;
   type: string; // 'BUY', 'SELL', 'DIVIDEND', etc.
   tradeDate: string; // YYYY-MM-DD
-  amount: string; // decimal string or money JSON
+  amount: string; // decimal string
   currency?: string;
+  linkStatus?: 'CONFIRMED' | 'REJECTED' | 'CANDIDATE';
+  linkedPlanId?: string;
 }
 
 export interface DeriveContributionPlanActualsParams {
@@ -162,7 +191,7 @@ export interface DeriveContributionPlanActualsParams {
   referenceDate?: Date;
 }
 
-function parseMoneyToCents(amount: unknown): number {
+export function parseMoneyToCents(amount: unknown): number {
   if (typeof amount === 'number') {
     return Math.round(amount * 100);
   }
@@ -180,12 +209,37 @@ function parseMoneyToCents(amount: unknown): number {
   return isNeg ? -cents : cents;
 }
 
-function formatCentsToDecimal(cents: number): string {
+export function formatCentsToDecimal(cents: number): string {
   const isNeg = cents < 0;
   const abs = Math.abs(cents);
   const whole = Math.floor(abs / 100);
   const frac = abs % 100;
   return `${isNeg ? '-' : ''}${whole}.${frac.toString().padStart(2, '0')}`;
+}
+
+export function multiplyUnitPriceQuantityToCents(unitPriceStr: string, quantityStr: string): number | null {
+  const priceClean = unitPriceStr.trim().replace(',', '.');
+  const priceMatch = /^(\d+)(?:\.(\d+))?$/.exec(priceClean);
+  if (!priceMatch) return null;
+  const priceWhole = BigInt(priceMatch[1] ?? '0');
+  const priceFracStr = (priceMatch[2] || '').padEnd(2, '0').slice(0, 2);
+  const priceCents = priceWhole * 100n + BigInt(priceFracStr);
+
+  const qtyClean = quantityStr.trim().replace(',', '.');
+  const qtyMatch = /^(\d+)(?:\.(\d+))?$/.exec(qtyClean);
+  if (!qtyMatch) return null;
+  const qtyWhole = BigInt(qtyMatch[1] ?? '0');
+  const qtyFracStr = qtyMatch[2] || '';
+  const qtyScale = qtyFracStr.length;
+  const qtyUnits = qtyWhole * (10n ** BigInt(qtyScale)) + BigInt(qtyFracStr === '' ? '0' : qtyFracStr);
+
+  if (qtyScale === 0) {
+    const totalCents = priceCents * qtyWhole;
+    return Number(totalCents);
+  }
+  const scaleDivisor = 10n ** BigInt(qtyScale);
+  const totalCents = (priceCents * qtyUnits) / scaleDivisor;
+  return Number(totalCents);
 }
 
 /**
@@ -198,6 +252,7 @@ function formatCentsToDecimal(cents: number): string {
  * - Period boundaries: periodStart <= tradeDate <= periodEnd.
  * - Multi-account consolidation: all purchases in portfolio accounts are aggregated by asset.
  * - Does not claim cash-flow causation: distinguishes planned vs actual observed.
+ * - Preserves persisted plan baseline stability.
  */
 export function deriveContributionPlanActuals(
   params: DeriveContributionPlanActualsParams,
@@ -208,7 +263,6 @@ export function deriveContributionPlanActuals(
     baselinePositions = [],
     radarItems = [],
     classTargetWeights = {},
-    projectedState,
     referenceDate = new Date(),
   } = params;
 
@@ -256,13 +310,18 @@ export function deriveContributionPlanActuals(
   // Filter and classify transactions
   let excludedSellCount = 0;
   let excludedOutOfPeriodCount = 0;
+  let confirmedLinkCount = 0;
+  let rejectedLinkCount = 0;
+  let candidateLinkCount = 0;
   const observedPurchases: ContributionPlanTransactionSummary[] = [];
 
   // Group purchases by assetId
   const actualPurchasesByAsset = new Map<
     string,
-    { cents: number; count: number; ticker?: string }
+    { cents: number; count: number; ticker?: string; assetType?: OpportunityAssetType }
   >();
+
+  const warnings: string[] = [];
 
   for (const tx of transactions) {
     const tradeDate = tx.tradeDate.slice(0, 10);
@@ -270,6 +329,23 @@ export function deriveContributionPlanActuals(
     // Period filter
     if (tradeDate < periodStart || tradeDate > periodEnd) {
       excludedOutOfPeriodCount++;
+      if (tx.linkStatus === 'CONFIRMED' && tx.linkedPlanId === plan.id) {
+        warnings.push(
+          `Transação confirmada ${tx.id} possui data (${tradeDate}) fora do período do plano (${periodStart} a ${periodEnd}).`,
+        );
+      }
+      continue;
+    }
+
+    // Exclude double-linked confirmed transactions belonging to another plan
+    if (tx.linkStatus === 'CONFIRMED' && tx.linkedPlanId && plan.id && tx.linkedPlanId !== plan.id) {
+      warnings.push(`Transação ${tx.id} confirmada em outro plano e excluída deste plano.`);
+      continue;
+    }
+
+    // Exclude rejected links
+    if (tx.linkStatus === 'REJECTED' && tx.linkedPlanId === plan.id) {
+      rejectedLinkCount++;
       continue;
     }
 
@@ -277,6 +353,9 @@ export function deriveContributionPlanActuals(
     // SELL transactions are tracked for quality metrics but NEVER added to actual contribution.
     if (tx.type === 'SELL') {
       excludedSellCount++;
+      if (tx.linkStatus === 'CONFIRMED' && tx.linkedPlanId === plan.id) {
+        warnings.push(`Transação de VENDA ${tx.id} desconsiderada para cálculo de aporte mesmo com link.`);
+      }
       continue;
     }
 
@@ -285,47 +364,61 @@ export function deriveContributionPlanActuals(
       continue;
     }
 
+    if (tx.linkStatus === 'CONFIRMED' && tx.linkedPlanId === plan.id) {
+      confirmedLinkCount++;
+    } else if (plan.source === 'PERSISTED_PLAN') {
+      candidateLinkCount++;
+    }
+
     const txCents = parseMoneyToCents(tx.amount);
     if (txCents <= 0) continue;
 
+    const meta = assetMetadata.get(tx.assetId);
     const existing = actualPurchasesByAsset.get(tx.assetId) ?? {
       cents: 0,
       count: 0,
-      ticker: tx.ticker,
+      ticker: tx.ticker || meta?.ticker,
+      assetType: meta?.assetType,
     };
     existing.cents += txCents;
     existing.count += 1;
     if (tx.ticker && !existing.ticker) existing.ticker = tx.ticker;
+    if (meta?.assetType && !existing.assetType) existing.assetType = meta.assetType;
     actualPurchasesByAsset.set(tx.assetId, existing);
 
     observedPurchases.push({
       id: tx.id,
       accountId: tx.accountId,
       assetId: tx.assetId,
-      ticker: tx.ticker,
+      ticker: tx.ticker || meta?.ticker,
       type: tx.type,
       tradeDate,
       amountCents: txCents,
       amount: formatCentsToDecimal(txCents),
       currency: tx.currency || plan.currency,
+      linkStatus: tx.linkStatus,
     });
   }
 
-  // Process planned allocations
-  const plannedAssetIds = new Set<string>();
+  // Asset progress tracking
+  const plannedAllocationsMap = new Map<string, ContributionPlanAllocationItem>();
+  for (const alloc of plan.allocations) {
+    plannedAllocationsMap.set(alloc.assetId, alloc);
+  }
+
   const assetProgressList: ContributionPlanAssetProgress[] = [];
+  const unplannedProgressList: ContributionPlanAssetProgress[] = [];
   const deviations: ContributionPlanDeviationItem[] = [];
 
-  let totalPlannedCents = 0;
   let totalActualOnPlannedCents = 0;
+  let totalUnplannedCents = 0;
 
+  // Process planned allocations
   for (const alloc of plan.allocations) {
-    plannedAssetIds.add(alloc.assetId);
-    totalPlannedCents += alloc.plannedCents;
+    const actualData = actualPurchasesByAsset.get(alloc.assetId);
+    const actualCents = actualData ? actualData.cents : 0;
+    const tradeCount = actualData ? actualData.count : 0;
 
-    const actual = actualPurchasesByAsset.get(alloc.assetId);
-    const actualCents = actual?.cents ?? 0;
-    const tradeCount = actual?.count ?? 0;
     totalActualOnPlannedCents += actualCents;
 
     const remainingCents = Math.max(alloc.plannedCents - actualCents, 0);
@@ -383,51 +476,85 @@ export function deriveContributionPlanActuals(
     });
   }
 
-  // Process unplanned purchases (assets bought in period but not in plan)
-  const unplannedProgressList: ContributionPlanAssetProgress[] = [];
-  let totalUnplannedCents = 0;
+  // Process unplanned purchases (assets bought in period not in the plan)
+  for (const [assetId, actualData] of actualPurchasesByAsset.entries()) {
+    if (!plannedAllocationsMap.has(assetId)) {
+      totalUnplannedCents += actualData.cents;
 
-  for (const [assetId, actual] of actualPurchasesByAsset.entries()) {
-    if (plannedAssetIds.has(assetId)) continue;
+      const meta = assetMetadata.get(assetId);
+      const ticker = meta?.ticker || actualData.ticker || 'UNKNOWN';
+      const name = meta?.name || ticker;
+      const assetType = meta?.assetType || 'STOCK';
 
-    totalUnplannedCents += actual.cents;
-    const meta = assetMetadata.get(assetId) ?? {
-      ticker: actual.ticker || assetId,
-      name: actual.ticker || assetId,
-      assetType: 'STOCK' as OpportunityAssetType,
-    };
+      unplannedProgressList.push({
+        assetId,
+        ticker,
+        name,
+        assetType,
+        plannedCents: 0,
+        actualCents: actualData.cents,
+        remainingCents: 0,
+        overPlanCents: actualData.cents,
+        completionPercent: 0,
+        cappedCompletionPercent: 0,
+        status: 'UNPLANNED',
+        tradeCount: actualData.count,
+      });
 
-    unplannedProgressList.push({
-      assetId,
-      ticker: meta.ticker,
-      name: meta.name,
-      assetType: meta.assetType,
-      plannedCents: 0,
-      actualCents: actual.cents,
-      remainingCents: 0,
-      overPlanCents: actual.cents,
-      completionPercent: 0,
-      cappedCompletionPercent: 0,
-      status: 'UNPLANNED',
-      tradeCount: actual.count,
-    });
-
-    deviations.push({
-      assetId,
-      ticker: meta.ticker,
-      name: meta.name,
-      plannedCents: 0,
-      actualCents: actual.cents,
-      deltaCents: actual.cents,
-      deltaAmount: formatCentsToDecimal(actual.cents),
-      deltaPercent: 100.0,
-      isUnplanned: true,
-      isOverPlan: true,
-    });
+      deviations.push({
+        assetId,
+        ticker,
+        name,
+        plannedCents: 0,
+        actualCents: actualData.cents,
+        deltaCents: actualData.cents,
+        deltaAmount: formatCentsToDecimal(actualData.cents),
+        deltaPercent: 100.0,
+        isUnplanned: true,
+        isOverPlan: true,
+      });
+    }
   }
 
-  // Sort assets: planned allocations by original order, unplanned by actualCents desc
-  unplannedProgressList.sort((a, b) => b.actualCents - a.actualCents);
+  // Category progress tracking (if categoryAllocations present or category-level plan)
+  let categoryResults: ContributionPlanCategoryAllocation[] | undefined;
+  if (plan.categoryAllocations && plan.categoryAllocations.length > 0) {
+    categoryResults = [];
+    const actualCentsByCategory = new Map<string, number>();
+
+    for (const [assetId, actualData] of actualPurchasesByAsset.entries()) {
+      const meta = assetMetadata.get(assetId);
+      const cat = (meta?.assetType as string) || (actualData.assetType as string) || 'OTHER';
+      actualCentsByCategory.set(cat, (actualCentsByCategory.get(cat) ?? 0) + actualData.cents);
+    }
+
+    for (const catAlloc of plan.categoryAllocations) {
+      const actualCatCents = actualCentsByCategory.get(catAlloc.category) ?? 0;
+      const remCatCents = Math.max(catAlloc.plannedCents - actualCatCents, 0);
+      const overCatCents = Math.max(actualCatCents - catAlloc.plannedCents, 0);
+      const completion =
+        catAlloc.plannedCents > 0
+          ? Math.round((actualCatCents / catAlloc.plannedCents) * 1000) / 10
+          : 0;
+
+      let catStatus: 'NOT_STARTED' | 'PARTIAL' | 'COMPLETE' | 'OVER_PLAN';
+      if (actualCatCents === 0) catStatus = 'NOT_STARTED';
+      else if (actualCatCents < catAlloc.plannedCents) catStatus = 'PARTIAL';
+      else if (actualCatCents === catAlloc.plannedCents) catStatus = 'COMPLETE';
+      else catStatus = 'OVER_PLAN';
+
+      categoryResults.push({
+        category: catAlloc.category,
+        plannedCents: catAlloc.plannedCents,
+        plannedAmount: catAlloc.plannedAmount,
+        actualCents: actualCatCents,
+        remainingCents: remCatCents,
+        overPlanCents: overCatCents,
+        completionPercent: completion,
+        status: catStatus,
+      });
+    }
+  }
 
   // Overall totals
   // Note: Total actual purchases in period = totalActualOnPlannedCents + totalUnplannedCents
@@ -442,9 +569,9 @@ export function deriveContributionPlanActuals(
   const overallCappedCompletionPercent = Math.min(overallCompletionPercent, 100.0);
 
   let overallStatus: 'NOT_STARTED' | 'PARTIAL' | 'COMPLETE' | 'OVER_PLAN';
-  if (totalActualOnPlannedCents === 0) {
+  if (totalActualOnPlannedCents === 0 && totalUnplannedCents === 0) {
     overallStatus = 'NOT_STARTED';
-  } else if (totalActualOnPlannedCents < plan.plannedCents) {
+  } else if (totalActualOnPlannedCents < plan.plannedCents && totalUnplannedCents === 0) {
     overallStatus = 'PARTIAL';
   } else if (totalActualOnPlannedCents === plan.plannedCents && totalUnplannedCents === 0) {
     overallStatus = 'COMPLETE';
@@ -485,29 +612,24 @@ export function deriveContributionPlanActuals(
         `${dev.ticker} recebeu R$ ${formatCentsToDecimal(dev.deltaCents)} acima do planejado.`,
       );
     }
-    if (largestDeviations.length >= 3) break;
   }
 
-  // Data quality review
-  let totalPositions = 0;
-  let valuedPositions = 0;
-  let incompletePositions = 0;
+  // Structural progress comparison
+  const hasTargetContext = Object.keys(classTargetWeights).length > 0;
+  const structuralProgress: ContributionPlanStructuralComparison = {
+    hasTargetContext,
+    attributionDisclaimer:
+      'A evolução dos gaps e pesos reflete movimentos de mercado e operações da carteira, não sendo atribuível exclusivamente aos aportes realizados.',
+  };
 
-  for (const pos of baselinePositions) {
-    totalPositions++;
-    if (pos.isValued) {
-      valuedPositions++;
-    } else {
-      incompletePositions++;
-    }
-  }
-
+  // Data quality metrics
+  const totalPositions = baselinePositions.length;
+  const valuedPositions = baselinePositions.filter((p) => p.isValued).length;
+  const incompletePositions = totalPositions - valuedPositions;
   const isPartialValuation = incompletePositions > 0;
-  const valuationQuality: 'FULL_PORTFOLIO' | 'VALUED_POSITIONS_ONLY' =
-    isPartialValuation ? 'VALUED_POSITIONS_ONLY' : 'FULL_PORTFOLIO';
 
   const dataQuality: ContributionPlanDataQuality = {
-    valuationQuality,
+    valuationQuality: isPartialValuation ? 'VALUED_POSITIONS_ONLY' : 'FULL_PORTFOLIO',
     totalPositions,
     valuedPositions,
     incompletePositions,
@@ -515,33 +637,11 @@ export function deriveContributionPlanActuals(
     trackedPurchaseCount: observedPurchases.length,
     excludedSellCount,
     excludedOutOfPeriodCount,
+    confirmedLinkCount,
+    rejectedLinkCount,
+    candidateLinkCount,
   };
 
-  // Structural progress comparison
-  const hasTargetContext = Object.keys(classTargetWeights).length > 0;
-  const attributionDisclaimer =
-    'Variações de peso e alocação na carteira decorrem de múltiplos fatores de mercado (preços, dividendos, compras e vendas). Os movimentos observados não devem ser interpretados como causa exclusiva das alterações estruturais.';
-
-  let plannedProjectedGaps: Record<string, { classId: string; gapPercent: number }> | undefined;
-  if (projectedState?.classProjection) {
-    plannedProjectedGaps = {};
-    for (const cls of projectedState.classProjection) {
-      if (cls.afterGapPercent !== undefined) {
-        plannedProjectedGaps[cls.classId] = {
-          classId: cls.classId,
-          gapPercent: cls.afterGapPercent,
-        };
-      }
-    }
-  }
-
-  const structuralProgress: ContributionPlanStructuralComparison = {
-    hasTargetContext,
-    plannedProjectedGaps,
-    attributionDisclaimer,
-  };
-
-  const warnings: string[] = [];
   if (isPartialValuation) {
     warnings.push(
       `Progresso estrutural calculado com base em ${valuedPositions}/${totalPositions} posições avaliadas. ${incompletePositions} posição(ões) sem cotação recente.`,
@@ -557,16 +657,31 @@ export function deriveContributionPlanActuals(
       `Foram identificadas ${excludedSellCount} operação(ões) de venda no período, as quais foram desconsideradas para o cálculo de aporte.`,
     );
   }
+  if (!plan.baselineStable) {
+    warnings.push(
+      'A distribuição planejada é recalculada com os dados atuais e pode mudar ao longo do tempo.',
+    );
+  }
 
   const assumptions = [
-    'Apenas operações de compra (BUY) registradas no ledger dentro do período do plano são contabilizadas.',
-    'Valores monetários conservam precisão exata em centavos inteiros.',
-    'O acompanhamento não executa ordens nem interage com corretoras.',
+    'Apenas compras registradas no período (BUY) são consideradas como capital aplicado no plano.',
+    'Vendas registradas no período são excluídas do cálculo de aporte para preservar a semântica long-only.',
+    'A consolidação de compras agrega todas as contas do portfólio por ativo.',
   ];
 
-  const sourceTransparencyNote = `Baseado em ${observedPurchases.length} compra(s) registradas no ledger entre ${periodStart} e ${periodEnd}.`;
+  let sourceTransparencyNote = 'Simulação baseada na meta mensal ou parâmetros informados.';
+  if (plan.source === 'PERSISTED_PLAN') {
+    sourceTransparencyNote = `Plano salvo em ${plan.plannedDate || plan.createdAt?.slice(0, 10) || 'data original'}. Base histórica estável (${observedPurchases.length} compra(s) registradas no ledger).`;
+  } else if (plan.source === 'SAVED_GOAL') {
+    sourceTransparencyNote = `Simulação atual baseada na meta mensal (${observedPurchases.length} compra(s) registradas no ledger).`;
+  } else if (plan.source === 'USER_SIMULATION') {
+    sourceTransparencyNote = `Simulação atual baseada no valor informado pelo usuário (${observedPurchases.length} compra(s) registradas no ledger).`;
+  } else if (plan.source === 'NO_PLAN') {
+    sourceTransparencyNote = `Nenhum plano ou meta configurado para o período (${observedPurchases.length} compra(s) registradas no ledger).`;
+  }
+
   const cashSourceLimitationNote =
-    'O Atlas identificou compras no período, mas não distingue com precisão a origem do caixa utilizado (novo capital externo vs. reinvestimento de dividendos ou saldo em conta).';
+    'Valores realizados refletem compras registradas no período e não distinguem capital novo de reinvestimento ou caixa prévio. O Atlas identificou compras no período, mas não distingue com precisão a origem do caixa utilizado (novo capital externo vs. reinvestimento de dividendos ou saldo em conta).';
 
   return {
     portfolioId: plan.portfolioId,
@@ -578,6 +693,7 @@ export function deriveContributionPlanActuals(
     overall,
     assets: assetProgressList,
     unplannedAssets: unplannedProgressList,
+    categories: categoryResults,
     deviations,
     largestDeviations,
     observedTransactions: observedPurchases,

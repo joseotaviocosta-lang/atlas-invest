@@ -30,12 +30,17 @@ import {
   type ProjectedPortfolioScenarioComparison,
   type ContributionPlanProgressResult,
   type ContributionPlanSnapshot,
+  type ContributionPlanAllocationItem,
+  type ContributionPlanSource,
   type TransactionInputForTracking,
   type ProjectionBaselinePosition,
   type PortfolioNewsInboxMetrics,
   type PersistedPortfolioNewsEventState,
   type PersistedPortfolioNewsSyncState,
   type NewsEventUpdateReason,
+  parseMoneyToCents,
+  formatCentsToDecimal,
+  multiplyUnitPriceQuantityToCents,
 } from '@atlas/market-data';
 import {
   IPortfolioRepository,
@@ -44,6 +49,8 @@ import {
   IPortfolioNewsStateRepository,
   ITransactionRepository,
   IContributionGoalRepository,
+  IContributionPlanRepository,
+  IContributionPlanLinkRepository,
   type ListNewsAlertHistoryOutput,
   type NewsAlertDeliveryAuditItem,
   type NewsAlertHistoryStatusValue,
@@ -56,7 +63,10 @@ import {
   PORTFOLIO_NEWS_STATE_REPOSITORY,
   TRANSACTION_REPOSITORY,
   CONTRIBUTION_GOAL_REPOSITORY,
+  CONTRIBUTION_PLAN_REPOSITORY,
+  CONTRIBUTION_PLAN_LINK_REPOSITORY,
 } from '../../../database/tokens';
+import { goalVersionForMonth, type GoalVersionInput } from '@atlas/portfolio-strategy';
 import { GetPortfolioValuationUseCase } from '../../valuation/get-portfolio-valuation.use-case';
 import { GetPortfolioAllocationStrategyUseCase } from '../get-portfolio-allocation-strategy.use-case';
 import { OpportunityRadarCacheService } from './opportunity-radar-cache.service';
@@ -101,6 +111,12 @@ export class GetOpportunityRadarUseCase {
     @Optional()
     @Inject(CONTRIBUTION_GOAL_REPOSITORY)
     private readonly contributionGoalRepo?: IContributionGoalRepository,
+    @Optional()
+    @Inject(CONTRIBUTION_PLAN_REPOSITORY)
+    private readonly contributionPlanRepo?: IContributionPlanRepository,
+    @Optional()
+    @Inject(CONTRIBUTION_PLAN_LINK_REPOSITORY)
+    private readonly contributionPlanLinkRepo?: IContributionPlanLinkRepository,
   ) {}
 
   private readonly newsStateSyncLocks = new Map<string, Promise<unknown>>();
@@ -1286,15 +1302,22 @@ export class GetOpportunityRadarUseCase {
   }
 
   /**
-   * Phase APP-16W — Contribution Plan Tracking & Actual-vs-Planned Progress (Read-only analysis).
+   * Phase APP-16W / APP-16W-R1 — Contribution Plan Tracking & Actual-vs-Planned Progress (Read-only analysis).
    *
-   * Compares a planned contribution (from saved goal or explicit simulation) against actual
-   * purchase movements recorded in the ledger within the period.
+   * Compares a planned contribution (from persisted plan, saved goal or explicit simulation)
+   * against actual purchase movements recorded in the ledger within the period.
    * Read-only, exact cents conservation, zero orders, no fake cash flows.
+   *
+   * Resolution priority:
+   * 1. Persisted contribution plan for requested period (or explicit planId) -> STABLE BASELINE
+   * 2. Explicit user simulation, if intentionally requested -> LIVE SIMULATION
+   * 3. Saved monthly goal for competence month -> LIVE SIMULATION
+   * 4. No plan -> NO_PLAN
    */
   async getContributionProgress(params: {
     portfolioId: string;
     userId: string;
+    planId?: string;
     period?: string; // YYYY-MM
     contributionAmount?: string; // explicit simulated amount
     forceRefresh?: boolean;
@@ -1320,95 +1343,210 @@ export class GetOpportunityRadarUseCase {
       periodKey = spDateStr.slice(0, 7);
     }
 
-    const [yearStr, monthStr] = periodKey.split('-');
-    const year = parseInt(yearStr!, 10);
-    const month = parseInt(monthStr!, 10);
-    const lastDayOfMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-
-    const periodStart = `${periodKey}-01`;
-    const periodEnd = `${periodKey}-${lastDayOfMonth.toString().padStart(2, '0')}`;
-
-    // 3. Resolve planned contribution amount & source
-    let plannedAmount: string = '0.00';
-    let plannedSource: 'SAVED_GOAL' | 'USER_SIMULATION' = 'USER_SIMULATION';
-
-    if (
-      params.contributionAmount &&
-      /^\d+(\.\d{1,2})?$/.test(params.contributionAmount.trim()) &&
-      parseFloat(params.contributionAmount) > 0
-    ) {
-      plannedAmount = params.contributionAmount.trim();
-      plannedSource = 'USER_SIMULATION';
-    } else if (this.contributionGoalRepo) {
-      try {
-        const activeGoal = await this.contributionGoalRepo.findOpen(params.portfolioId);
-        if (activeGoal && activeGoal.amount && parseFloat(activeGoal.amount) > 0) {
-          plannedAmount = activeGoal.amount;
-          plannedSource = 'SAVED_GOAL';
-        }
-      } catch {
-        // Goal lookup optional
+    // 3. Priority 1: Check for Persisted Contribution Plan
+    let persistedPlan: any = null;
+    if (params.planId && this.contributionPlanRepo) {
+      persistedPlan = await this.contributionPlanRepo.findByIdAndPortfolio(
+        params.planId,
+        params.portfolioId,
+      );
+      if (!persistedPlan) {
+        throw new NotFoundException({
+          message: `Contribution plan with id '${params.planId}' not found in portfolio`,
+          code: 'CONTRIBUTION_PLAN.NOT_FOUND',
+        });
+      }
+    } else if (this.contributionPlanRepo) {
+      const plans = await this.contributionPlanRepo.listByPortfolio(params.portfolioId);
+      const matchingPlans = plans.filter(
+        (p) =>
+          p.plannedDate &&
+          p.plannedDate.slice(0, 7) === periodKey &&
+          (p.status === 'PLANNED' || p.status === 'COMPLETED'),
+      );
+      if (matchingPlans.length > 0) {
+        persistedPlan = matchingPlans[0];
       }
     }
 
-    // 4. Resolve baseline projection inputs
+    let planSnapshot: ContributionPlanSnapshot;
+
+    if (persistedPlan) {
+      // Use Persisted Plan as stable baseline (NEVER recalculated with current Radar)
+      const planPeriodKey = persistedPlan.plannedDate ? persistedPlan.plannedDate.slice(0, 7) : periodKey;
+      const [pYearStr, pMonthStr] = planPeriodKey.split('-');
+      const pYear = parseInt(pYearStr!, 10);
+      const pMonth = parseInt(pMonthStr!, 10);
+      const lastDayOfPlanMonth = new Date(Date.UTC(pYear, pMonth, 0)).getUTCDate();
+      const planPeriodStart = `${planPeriodKey}-01`;
+      const planPeriodEnd = `${planPeriodKey}-${lastDayOfPlanMonth.toString().padStart(2, '0')}`;
+
+      let totalPlannedCents = 0;
+      const categoryAllocations: NonNullable<ContributionPlanSnapshot['categoryAllocations']> = [];
+      const assetAllocations: ContributionPlanAllocationItem[] = [];
+
+      for (const item of persistedPlan.items) {
+        const itemCents = parseMoneyToCents(item.amount);
+        totalPlannedCents += itemCents;
+        categoryAllocations.push({
+          category: item.category,
+          plannedCents: itemCents,
+          plannedAmount: formatCentsToDecimal(itemCents),
+          actualCents: 0,
+          remainingCents: itemCents,
+          overPlanCents: 0,
+          completionPercent: 0,
+          status: 'NOT_STARTED',
+        });
+      }
+
+      planSnapshot = {
+        id: persistedPlan.id,
+        portfolioId: params.portfolioId,
+        periodStart: planPeriodStart,
+        periodEnd: planPeriodEnd,
+        plannedCents: totalPlannedCents,
+        plannedAmount: formatCentsToDecimal(totalPlannedCents),
+        currency: persistedPlan.currency || 'BRL',
+        source: 'PERSISTED_PLAN',
+        baselineMode: 'PERSISTED_PLAN',
+        baselineStable: true,
+        plannedDate: persistedPlan.plannedDate,
+        scenarioId: persistedPlan.sourceScenarioId ?? undefined,
+        allocations: assetAllocations,
+        categoryAllocations,
+        isCategoryLevelPlan: true,
+        createdAt: persistedPlan.createdAt ? persistedPlan.createdAt.toISOString() : undefined,
+      };
+    } else {
+      // No persisted plan: evaluate live simulation or saved monthly goal
+      const [yearStr, monthStr] = periodKey.split('-');
+      const year = parseInt(yearStr!, 10);
+      const month = parseInt(monthStr!, 10);
+      const lastDayOfMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+      const periodStart = `${periodKey}-01`;
+      const periodEnd = `${periodKey}-${lastDayOfMonth.toString().padStart(2, '0')}`;
+
+      let plannedAmount: string = '0.00';
+      let plannedSource: ContributionPlanSource = 'NO_PLAN';
+
+      if (
+        params.contributionAmount &&
+        /^\d+(\.\d{1,2})?$/.test(params.contributionAmount.trim()) &&
+        parseFloat(params.contributionAmount) > 0
+      ) {
+        plannedAmount = params.contributionAmount.trim();
+        plannedSource = 'USER_SIMULATION';
+      } else if (this.contributionGoalRepo) {
+        try {
+          const goals = await this.contributionGoalRepo.listByPortfolio(params.portfolioId);
+          const goalInputs: GoalVersionInput[] = goals.map((g) => ({
+            amount: g.amount,
+            currency: g.currency,
+            effectiveFromMonth: g.effectiveFrom.slice(0, 7),
+            effectiveToMonth: g.effectiveTo ? g.effectiveTo.slice(0, 7) : null,
+          }));
+          const version = goalVersionForMonth(goalInputs, periodKey);
+          if (version && parseFloat(version.amount) > 0) {
+            plannedAmount = version.amount;
+            plannedSource = 'SAVED_GOAL';
+          }
+        } catch {
+          // Goal lookup fallback
+        }
+      }
+
+      // Build simulation allocations if plannedAmount > 0
+      const allocations: ContributionPlanSnapshot['allocations'] = [];
+      let plannedCents = 0;
+
+      if (parseFloat(plannedAmount) > 0) {
+        const inputs = await this.resolveProjectionInputs({
+          portfolioId: params.portfolioId,
+          userId: params.userId,
+          contributionAmount: plannedAmount,
+          currency: 'BRL',
+          forceRefresh: params.forceRefresh,
+          now,
+        });
+
+        const simulation = buildContributionAllocationSimulation({
+          portfolioId: params.portfolioId,
+          contributionAmount: plannedAmount,
+          currency: 'BRL',
+          decisionBrief: inputs.decisionBrief,
+          radarItems: inputs.evaluatedItems,
+          referenceDate: now,
+        });
+
+        plannedCents = simulation.allocatedCents > 0 ? simulation.allocatedCents : simulation.totalCents;
+
+        for (const item of simulation.allocations) {
+          allocations.push({
+            assetId: item.assetId,
+            ticker: item.ticker,
+            name: item.name,
+            assetType: item.assetType,
+            plannedCents: item.targetCents,
+            plannedAmount: item.targetAmount,
+            plannedPercent: item.allocationPercent,
+          });
+        }
+      }
+
+      planSnapshot = {
+        portfolioId: params.portfolioId,
+        periodStart,
+        periodEnd,
+        plannedCents,
+        plannedAmount,
+        currency: 'BRL',
+        source: plannedSource,
+        baselineMode: plannedSource === 'NO_PLAN' ? 'NO_PLAN' : 'LIVE_SIMULATION',
+        baselineStable: false,
+        allocations,
+        createdAt: now.toISOString(),
+      };
+    }
+
+    // 4. Resolve baseline projection inputs (for data quality & baseline positions)
     const inputs = await this.resolveProjectionInputs({
       portfolioId: params.portfolioId,
       userId: params.userId,
-      contributionAmount: parseFloat(plannedAmount) > 0 ? plannedAmount : '1000.00',
-      currency: 'BRL',
+      contributionAmount: planSnapshot.plannedCents > 0 ? planSnapshot.plannedAmount : '1000.00',
+      currency: planSnapshot.currency,
       forceRefresh: params.forceRefresh,
       now,
     });
 
-    // 5. Build simulation allocations if plannedAmount > 0
-    const allocations: ContributionPlanSnapshot['allocations'] = [];
-    let plannedCents = 0;
-
-    if (parseFloat(plannedAmount) > 0) {
-      const simulation = buildContributionAllocationSimulation({
-        portfolioId: params.portfolioId,
-        contributionAmount: plannedAmount,
-        currency: 'BRL',
-        decisionBrief: inputs.decisionBrief,
-        radarItems: inputs.evaluatedItems,
-        referenceDate: now,
-      });
-
-      plannedCents = simulation.allocatedCents > 0 ? simulation.allocatedCents : simulation.totalCents;
-
-      for (const item of simulation.allocations) {
-        allocations.push({
-          assetId: item.assetId,
-          ticker: item.ticker,
-          name: item.name,
-          assetType: item.assetType,
-          plannedCents: item.targetCents,
-          plannedAmount: item.targetAmount,
-          plannedPercent: item.allocationPercent,
-        });
-      }
-    }
-
-    const planSnapshot: ContributionPlanSnapshot = {
-      portfolioId: params.portfolioId,
-      periodStart,
-      periodEnd,
-      plannedCents,
-      plannedAmount,
-      currency: 'BRL',
-      source: plannedSource,
-      allocations,
-      createdAt: now.toISOString(),
-    };
-
-    // 6. Fetch ledger transactions for the portfolio across accounts in the period
+    // 5. Fetch ledger transactions for the portfolio across accounts in the period
     const rawTransactions = this.transactionRepo
       ? await this.transactionRepo.findByPortfolioId(params.portfolioId, {
-          startDate: periodStart as any,
-          endDate: periodEnd as any,
+          startDate: planSnapshot.periodStart as any,
+          endDate: planSnapshot.periodEnd as any,
         })
       : [];
+
+    // Load contribution plan transaction links if plan is persisted
+    const linkStatusByTxId = new Map<string, { status: 'CONFIRMED' | 'REJECTED'; planId: string }>();
+    if (this.contributionPlanLinkRepo && rawTransactions.length > 0) {
+      try {
+        const txIds = rawTransactions.map((tx) => tx.id);
+        const confirmedLinks = await this.contributionPlanLinkRepo.findConfirmedByTransactionIds(txIds);
+        for (const [txId, pId] of confirmedLinks.entries()) {
+          linkStatusByTxId.set(txId, { status: 'CONFIRMED', planId: pId });
+        }
+        if (planSnapshot.id) {
+          const planLinks = await this.contributionPlanLinkRepo.listByPlan(planSnapshot.id);
+          for (const l of planLinks) {
+            linkStatusByTxId.set(l.transactionId, { status: l.status, planId: l.planId });
+          }
+        }
+      } catch {
+        // Links optional
+      }
+    }
 
     const trackingTransactions: TransactionInputForTracking[] = [];
     for (const tx of rawTransactions) {
@@ -1421,10 +1559,19 @@ export class GetOpportunityRadarUseCase {
       if (domainTx.amount) {
         amountStr = domainTx.amount.amount ? String(domainTx.amount.amount) : String(domainTx.amount);
       } else if (domainTx.unitPrice && domainTx.quantity) {
-        const u = parseFloat(String(domainTx.unitPrice.amount || domainTx.unitPrice)) || 0;
-        const q = parseFloat(String(domainTx.quantity.value || domainTx.quantity)) || 0;
-        amountStr = (u * q).toFixed(2);
+        const u = String(domainTx.unitPrice.amount || domainTx.unitPrice);
+        const q = String(domainTx.quantity.value || domainTx.quantity);
+        const exactCents = multiplyUnitPriceQuantityToCents(u, q);
+        if (exactCents !== null) {
+          amountStr = formatCentsToDecimal(exactCents);
+        } else {
+          continue; // fail-closed if amount is invalid
+        }
+      } else {
+        continue; // fail-closed if amount unavailable
       }
+
+      const linkInfo = linkStatusByTxId.get(domainTx.id);
 
       trackingTransactions.push({
         id: domainTx.id,
@@ -1435,11 +1582,14 @@ export class GetOpportunityRadarUseCase {
         type: domainTx.type,
         tradeDate: tradeDateStr,
         amount: amountStr,
-        currency: domainTx.currency || 'BRL',
+        currency: domainTx.currency || planSnapshot.currency,
+        linkStatus: linkInfo?.status,
+        linkedPlanId: linkInfo?.planId,
       });
     }
 
-    // 7. Derive actual movements and comparison
+    // 6. Derive actual movements and comparison
+    // 6. Derive actual movements and comparison
     return deriveContributionPlanActuals({
       plan: planSnapshot,
       transactions: trackingTransactions,

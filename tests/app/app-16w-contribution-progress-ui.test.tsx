@@ -73,6 +73,8 @@ function makeProgress(overrides: Partial<ContributionPlanProgressDto> = {}): Con
       plannedAmount: '2000.00',
       currency: 'BRL',
       source: 'SAVED_GOAL',
+      baselineMode: 'LIVE_SIMULATION',
+      baselineStable: false,
       allocations: [
         {
           assetId: 'a1',
@@ -224,5 +226,69 @@ describe('APP-16W UI: Contribution Plan Progress Tracking', () => {
     expect(html).not.toMatch(/\bEnviar ordem\b/i);
     expect(html).not.toMatch(/\bFalhou em investir\b/i);
     expect(html).not.toMatch(/\bDecisão errada\b/i);
+  });
+
+  it('renders Persisted Plan badge and planned date when plan.source is PERSISTED_PLAN', () => {
+    const persistedProgress = makeProgress({
+      plan: {
+        portfolioId,
+        periodStart: '2026-11-01',
+        periodEnd: '2026-11-30',
+        plannedCents: 200000,
+        plannedAmount: '2000.00',
+        currency: 'BRL',
+        source: 'PERSISTED_PLAN',
+        baselineMode: 'PERSISTED_PLAN',
+        baselineStable: true,
+        plannedDate: '2026-11-01',
+        allocations: [],
+      },
+      sourceTransparencyNote: 'Plano salvo em 2026-11-01. Base histórica estável.',
+    });
+
+    queryClient.setQueryData(decisionBriefQueryKey(portfolioId), makeBrief());
+    queryClient.setQueryData(contributionProgressQueryKey(portfolioId), persistedProgress);
+
+    const html = renderToString(
+      <QueryClientProvider client={queryClient}>
+        <DecisionBriefSection portfolioId={portfolioId} />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain('Plano salvo');
+    expect(html).toContain('Base planejada em');
+    expect(html).toContain('2026-11-01');
+    expect(html).toContain('Base histórica estável');
+    expect(html).not.toContain('A distribuição planejada é recalculada');
+  });
+
+  it('renders Live Simulation warning when baselineStable is false', () => {
+    const liveProgress = makeProgress({
+      plan: {
+        portfolioId,
+        periodStart: '2026-11-01',
+        periodEnd: '2026-11-30',
+        plannedCents: 200000,
+        plannedAmount: '2000.00',
+        currency: 'BRL',
+        source: 'SAVED_GOAL',
+        baselineMode: 'LIVE_SIMULATION',
+        baselineStable: false,
+        allocations: [],
+      },
+      sourceTransparencyNote: 'Simulação atual baseada na meta mensal.',
+    });
+
+    queryClient.setQueryData(decisionBriefQueryKey(portfolioId), makeBrief());
+    queryClient.setQueryData(contributionProgressQueryKey(portfolioId), liveProgress);
+
+    const html = renderToString(
+      <QueryClientProvider client={queryClient}>
+        <DecisionBriefSection portfolioId={portfolioId} />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain('Meta salva');
+    expect(html).toContain('A distribuição planejada é recalculada com os dados atuais e pode mudar ao longo do tempo.');
   });
 });

@@ -42,6 +42,7 @@ const SimulateContributionBodySchema = z
 
 const ContributionProgressQuerySchema = z
   .object({
+    planId: z.string().uuid({ message: 'planId must be a valid UUID.' }).optional(),
     period: z
       .string()
       .trim()
@@ -258,6 +259,7 @@ export class PortfolioDecisionBriefController {
     const data = await this.radarUseCase.getContributionProgress({
       portfolioId,
       userId: principal.userId,
+      planId: query.planId,
       period: query.period,
       contributionAmount: query.contributionAmount,
       forceRefresh: query.refresh === 'true',

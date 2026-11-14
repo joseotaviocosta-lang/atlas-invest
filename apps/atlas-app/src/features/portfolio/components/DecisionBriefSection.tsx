@@ -67,12 +67,22 @@ function ContributionProgressCard({
               Acompanhamento do aporte — {progress.periodStart.slice(0, 7)}
             </h3>
             <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]">
-              {plan.source === 'SAVED_GOAL' ? 'Meta salva' : 'Simulação'}
+              {plan.source === 'PERSISTED_PLAN' ? 'Plano salvo' : plan.source === 'SAVED_GOAL' ? 'Meta salva' : 'Simulação'}
             </span>
           </div>
           <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">
             {progress.sourceTransparencyNote}
           </p>
+          {plan.plannedDate && (
+            <p className="mt-0.5 text-[10px] text-[var(--text-secondary)]">
+              Base planejada em {plan.plannedDate}
+            </p>
+          )}
+          {!plan.baselineStable && (
+            <p className="mt-0.5 text-[10px] text-amber-400">
+              A distribuição planejada é recalculada com os dados atuais e pode mudar ao longo do tempo.
+            </p>
+          )}
         </div>
 
         <div className="text-right">

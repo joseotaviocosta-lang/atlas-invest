@@ -14,8 +14,8 @@ export function decisionBriefQueryKey(portfolioId: string, contributionAmount?: 
   return ['portfolios', portfolioId, 'decision-brief', contributionAmount ?? ''] as const;
 }
 
-export function contributionProgressQueryKey(portfolioId: string, period?: string, contributionAmount?: string) {
-  return ['portfolios', portfolioId, 'decision-brief', 'contribution-progress', period ?? '', contributionAmount ?? ''] as const;
+export function contributionProgressQueryKey(portfolioId: string, period?: string, contributionAmount?: string, planId?: string) {
+  return ['portfolios', portfolioId, 'decision-brief', 'contribution-progress', period ?? '', contributionAmount ?? '', planId ?? ''] as const;
 }
 
 export function useDecisionBrief(portfolioId: string | null | undefined, contributionAmount?: string) {
@@ -129,10 +129,10 @@ export function useDecisionBrief(portfolioId: string | null | undefined, contrib
 
 export function useContributionProgress(
   portfolioId: string | null | undefined,
-  options?: { period?: string; contributionAmount?: string },
+  options?: { planId?: string; period?: string; contributionAmount?: string },
 ) {
   return useQuery<ContributionPlanProgressDto>({
-    queryKey: contributionProgressQueryKey(portfolioId ?? '', options?.period, options?.contributionAmount),
+    queryKey: contributionProgressQueryKey(portfolioId ?? '', options?.period, options?.contributionAmount, options?.planId),
     queryFn: async () => {
       if (!portfolioId) throw new Error('Portfolio ID is required');
       const res = await portfolioApi.getContributionProgress(portfolioId, options);
