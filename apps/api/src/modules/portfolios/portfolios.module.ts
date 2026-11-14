@@ -20,6 +20,7 @@ import { PortfolioCostEvidenceController } from './portfolio-cost-evidence.contr
 import { PortfolioTaxIntelligenceController } from './portfolio-tax-intelligence.controller';
 import { PortfolioOpportunityRadarController } from './portfolio-opportunity-radar.controller';
 import { PortfolioDecisionBriefController } from './portfolio-decision-brief.controller';
+import { PortfolioMonthlyProgressController } from './portfolio-monthly-progress.controller';
 
 @Module({
   imports: [ApplicationModule],
@@ -27,6 +28,7 @@ import { PortfolioDecisionBriefController } from './portfolio-decision-brief.con
     PortfoliosController,
     PortfolioOpportunityRadarController,
     PortfolioDecisionBriefController,
+    PortfolioMonthlyProgressController,
     PortfolioCostEvidenceController,
     PortfolioTaxIntelligenceController,
     ValuationController,

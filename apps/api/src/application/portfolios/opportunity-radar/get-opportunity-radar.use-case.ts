@@ -4,8 +4,10 @@ import {
   Logger,
   NotFoundException,
   ConflictException,
+  BadRequestException,
   Optional,
 } from '@nestjs/common';
+import { LocalDate } from '@atlas/domain';
 import {
   OpportunityRadarEngine,
   OpportunityRadarResult,
@@ -22,6 +24,7 @@ import {
   buildContributionScenarioComparison,
   buildProjectedPortfolioAfterContribution,
   buildProjectedPortfolioScenarioComparison,
+  buildPortfolioMonthlyProgressTimeline,
   deriveContributionPlanActuals,
   resolveContributionPlanBaseline,
   deriveNewsProviderQuality,
@@ -31,6 +34,7 @@ import {
   type ProjectedPortfolioAfterContribution,
   type ProjectedPortfolioScenarioComparison,
   type ContributionPlanProgressResult,
+  type PortfolioMonthlyProgressTimelineResult,
   type ContributionPlanSnapshot,
   type ContributionPlanAllocationItem,
   type ContributionPlanSource,
@@ -1602,7 +1606,6 @@ export class GetOpportunityRadarUseCase {
     }
 
     // 6. Derive actual movements and comparison
-    // 6. Derive actual movements and comparison
     return deriveContributionPlanActuals({
       plan: planSnapshot,
       transactions: trackingTransactions,
@@ -1610,6 +1613,239 @@ export class GetOpportunityRadarUseCase {
       radarItems: inputs.evaluatedItems,
       classTargetWeights: inputs.classTargetWeights,
       referenceDate: now,
+    });
+  }
+
+  /**
+   * Phase APP-16Y — Monthly Portfolio Progress & Goal History (Read-only timeline).
+   *
+   * Assembles a multi-month historical timeline comparing active goals, created/completed
+   * contribution plans, and ledger purchase activity.
+   * Strictly separates confirmed contributions from general purchase activity.
+   * Historical valuation and targets are marked UNAVAILABLE (no false backfill).
+   * Zero external provider calls required.
+   */
+  async getMonthlyPortfolioProgress(params: {
+    portfolioId: string;
+    userId: string;
+    from?: string; // YYYY-MM
+    to?: string; // YYYY-MM
+    now?: Date;
+  }): Promise<PortfolioMonthlyProgressTimelineResult> {
+    const now = params.now ?? new Date();
+
+    // 1. Verify portfolio ownership (anti-enumeration 404)
+    const portfolio = await this.portfolioRepo.findById(params.portfolioId);
+    if (!portfolio || portfolio.userId !== params.userId) {
+      throw new NotFoundException({
+        message: `Portfolio with id '${params.portfolioId}' not found`,
+        code: 'PORTFOLIO.NOT_FOUND',
+      });
+    }
+
+    // 2. Resolve default competence range (last 12 months)
+    let toMonth = params.to ? params.to.trim() : '';
+    if (!toMonth) {
+      const spDateStr = formatIsoDateString(now, 'America/Sao_Paulo');
+      toMonth = spDateStr.slice(0, 7);
+    }
+    let fromMonth = params.from ? params.from.trim() : '';
+    if (!fromMonth) {
+      const [tYearStr, tMonthStr] = toMonth.split('-');
+      const tYear = parseInt(tYearStr!, 10);
+      const tMonth = parseInt(tMonthStr!, 10);
+      const date = new Date(Date.UTC(tYear, tMonth - 1, 1));
+      date.setUTCMonth(date.getUTCMonth() - 11);
+      const fYear = date.getUTCFullYear();
+      const fMonth = String(date.getUTCMonth() + 1).padStart(2, '0');
+      fromMonth = `${fYear}-${fMonth}`;
+    }
+
+    // Validate format
+    const monthRegex = /^\d{4}-(0[1-9]|1[0-2])$/;
+    if (!monthRegex.test(fromMonth)) {
+      throw new BadRequestException({
+        message: `fromMonth must be in YYYY-MM format: '${fromMonth}'`,
+        code: 'VALIDATION.INVALID_INPUT',
+      });
+    }
+    if (!monthRegex.test(toMonth)) {
+      throw new BadRequestException({
+        message: `toMonth must be in YYYY-MM format: '${toMonth}'`,
+        code: 'VALIDATION.INVALID_INPUT',
+      });
+    }
+
+    // Validate range
+    const [fromY, fromM] = fromMonth.split('-').map(Number);
+    const [toY, toM] = toMonth.split('-').map(Number);
+    const totalMonths = (toY! - fromY!) * 12 + (toM! - fromM!) + 1;
+    if (totalMonths <= 0) {
+      throw new BadRequestException({
+        message: `fromMonth (${fromMonth}) cannot be after toMonth (${toMonth})`,
+        code: 'VALIDATION.INVALID_INPUT',
+      });
+    }
+    if (totalMonths > 60) {
+      throw new BadRequestException({
+        message: `Requested range (${totalMonths} months) exceeds maximum limit of 60 months`,
+        code: 'VALIDATION.INVALID_INPUT',
+      });
+    }
+
+    // 3. Batch fetch DB data in parallel (zero N+1)
+    const goalsPromise = this.contributionGoalRepo
+      ? this.contributionGoalRepo.listByPortfolio(params.portfolioId)
+      : Promise.resolve([]);
+
+    const plansPromise = this.contributionPlanRepo
+      ? this.contributionPlanRepo.listByPortfolio(params.portfolioId)
+      : Promise.resolve([]);
+
+    const [lastYear, lastMonth] = toMonth.split('-').map(Number);
+    const lastDay = new Date(Date.UTC(lastYear!, lastMonth!, 0)).getUTCDate();
+    const startDate = LocalDate.from(`${fromMonth}-01`);
+    const endDate = LocalDate.from(`${toMonth}-${String(lastDay).padStart(2, '0')}`);
+
+    const transactionsPromise = this.transactionRepo
+      ? this.transactionRepo.findByPortfolioId(params.portfolioId, { startDate, endDate })
+      : Promise.resolve([]);
+
+    const valuationPromise = this.valuationUseCase
+      .execute({ portfolioId: params.portfolioId, userId: params.userId })
+      .catch((err) => {
+        this.logger.debug(
+          `Could not compute current valuation for portfolio ${params.portfolioId}: ${err.message}`,
+        );
+        return null;
+      });
+
+    const [goalsRows, plansRows, transactionsRows, valuationResult] = await Promise.all([
+      goalsPromise,
+      plansPromise,
+      transactionsPromise,
+      valuationPromise,
+    ]);
+
+    // Plan links for all plans in range (single batch query)
+    const planIds = plansRows.map((p) => p.id);
+    let linksMap = new Map<string, any[]>();
+    if (this.contributionPlanLinkRepo && planIds.length > 0) {
+      linksMap = await this.contributionPlanLinkRepo.listByPlanIds(planIds);
+    }
+    const allLinks: any[] = [];
+    for (const linksList of linksMap.values()) {
+      allLinks.push(...linksList);
+    }
+
+    // 4. Format current portfolio state (isolated card, never backfilled into past)
+    let currentPortfolioState: PortfolioMonthlyProgressTimelineResult['currentPortfolioState'];
+    if (valuationResult) {
+      const positions = valuationResult.positions ?? [];
+      const totalPositions = positions.length;
+      const valuedPositions = positions.filter(
+        (p: any) => p.status === 'VALUED' && p.marketValue && parseFloat(p.marketValue.amount) > 0,
+      ).length;
+      const valuationQuality =
+        valuationResult.completeness === 'COMPLETE' && totalPositions === valuedPositions
+          ? 'FULL_PORTFOLIO'
+          : 'VALUED_POSITIONS_ONLY';
+
+      let totalEquityStr: string | undefined;
+      if (valuationResult.translatedSummary?.totalMarketValue?.amount) {
+        totalEquityStr = valuationResult.translatedSummary.totalMarketValue.amount;
+      } else {
+        const totalBrl = valuationResult.totalsByCurrency?.['BRL']?.marketValue?.amount;
+        if (totalBrl) totalEquityStr = totalBrl;
+      }
+
+      const totalValNum = totalEquityStr ? parseFloat(totalEquityStr) : 0;
+      const currentPositions = positions.map((p: any) => {
+        const mv = p.marketValue?.amount ? parseFloat(p.marketValue.amount) : 0;
+        const weightPercent = totalValNum > 0 ? Math.round((mv / totalValNum) * 1000) / 10 : 0;
+        return {
+          assetId: p.assetId,
+          ticker: p.ticker || 'UNKNOWN',
+          weightPercent,
+        };
+      });
+
+      currentPortfolioState = {
+        valuationQuality,
+        totalEquity: totalEquityStr,
+        totalPositions,
+        valuedPositions,
+        currentPositions,
+      };
+    }
+
+    // 5. Format inputs for pure deterministic engine
+    const mappedGoals = goalsRows.map((g) => ({
+      id: g.id,
+      amount: g.amount,
+      currency: g.currency,
+      effectiveFrom: g.effectiveFrom,
+      effectiveTo: g.effectiveTo,
+    }));
+
+    const mappedPlans = plansRows.map((p) => ({
+      id: p.id,
+      portfolioId: p.portfolioId,
+      name: p.name,
+      plannedDate: p.plannedDate,
+      status: p.status,
+      currency: p.currency,
+      completedAt: p.completedAt,
+      createdAt: p.createdAt,
+      items: p.items?.map((it) => ({
+        id: it.id,
+        category: it.category,
+        amount: it.amount,
+      })),
+    }));
+
+    const mappedLinks = allLinks.map((l) => ({
+      id: l.id,
+      planId: l.planId,
+      transactionId: l.transactionId,
+      status: l.status,
+    }));
+
+    const mappedTransactions = transactionsRows.map((tx: any) => {
+      let amountStr = '0.00';
+      if (tx.amount && typeof tx.amount.amount === 'string') {
+        amountStr = tx.amount.amount;
+      } else if (typeof tx.amount === 'string') {
+        amountStr = tx.amount;
+      }
+      return {
+        id: tx.id,
+        portfolioId: tx.portfolioId,
+        accountId: tx.accountId,
+        assetId: tx.assetId,
+        type: tx.type,
+        tradeDate: tx.tradeDate.toString(),
+        amount: amountStr,
+        currency: tx.currency,
+        quantity: tx.quantity ? tx.quantity.toString() : undefined,
+        unitPrice: tx.unitPrice
+          ? tx.unitPrice.amount
+            ? tx.unitPrice.amount.toString()
+            : tx.unitPrice.toString()
+          : undefined,
+      };
+    });
+
+    return buildPortfolioMonthlyProgressTimeline({
+      portfolioId: params.portfolioId,
+      fromMonth,
+      toMonth,
+      asOf: now,
+      goals: mappedGoals,
+      plans: mappedPlans,
+      links: mappedLinks,
+      transactions: mappedTransactions,
+      currentPortfolioState,
     });
   }
 }

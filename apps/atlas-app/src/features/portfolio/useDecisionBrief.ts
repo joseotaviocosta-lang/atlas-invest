@@ -10,6 +10,7 @@ import type {
   ContributionPlanProgressDto,
   ContributionPlanSelectionCandidateDto,
   ContributionPlanMonthlyReviewDto,
+  PortfolioMonthlyProgressTimelineDto,
 } from './types';
 
 export function decisionBriefQueryKey(portfolioId: string, contributionAmount?: string) {
@@ -219,4 +220,25 @@ export function useContributionPlanReview(
     completeError: completeMutation.error,
     resetComplete: completeMutation.reset,
   };
+}
+
+export function monthlyProgressQueryKey(portfolioId: string, from?: string, to?: string) {
+  return ['portfolios', portfolioId, 'monthly-progress', from ?? '', to ?? ''] as const;
+}
+
+export function useMonthlyPortfolioProgress(
+  portfolioId: string | null | undefined,
+  options?: { from?: string; to?: string },
+) {
+  return useQuery<PortfolioMonthlyProgressTimelineDto>({
+    queryKey: monthlyProgressQueryKey(portfolioId ?? '', options?.from, options?.to),
+    queryFn: async () => {
+      if (!portfolioId) throw new Error('Portfolio ID is required');
+      const res = await portfolioApi.getMonthlyPortfolioProgress(portfolioId, options);
+      return res.data;
+    },
+    enabled: Boolean(portfolioId),
+    staleTime: 1000 * 60 * 5,
+    retry: 1,
+  });
 }

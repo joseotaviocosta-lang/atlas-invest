@@ -185,6 +185,23 @@ export const portfolioApi = {
     );
   },
 
+  async getMonthlyPortfolioProgress(
+    portfolioId: string,
+    options?: { from?: string; to?: string },
+  ): Promise<{ data: import('./types').PortfolioMonthlyProgressTimelineDto }> {
+    const params = new URLSearchParams();
+    if (options?.from) {
+      params.set('from', options.from);
+    }
+    if (options?.to) {
+      params.set('to', options.to);
+    }
+    const qs = params.toString();
+    return apiClient.get<{ data: import('./types').PortfolioMonthlyProgressTimelineDto }>(
+      `/api/v1/portfolios/${portfolioId}/monthly-progress${qs ? `?${qs}` : ''}`,
+    );
+  },
+
   async getPortfolioNews(
     portfolioId: string,
     options?: { refresh?: boolean },

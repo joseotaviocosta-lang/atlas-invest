@@ -1136,3 +1136,84 @@ export interface ContributionPlanMonthlyReviewDto {
   };
   modelVersion: string;
 }
+
+export interface PortfolioMonthlyProgressGoalDto {
+  id: string;
+  amountCents: number;
+  amountFormatted: string;
+  source: 'EXPLICIT_COMPETENCE' | 'PORTFOLIO_DEFAULT';
+  effectiveCompetence: string;
+  isDefaultFallback: boolean;
+}
+
+export interface MonthlyPlanEntryDto {
+  planId: string;
+  name: string;
+  status: 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+  plannedTotalCents: number;
+  plannedTotalFormatted: string;
+  confirmedTotalCents: number;
+  confirmedTotalFormatted: string;
+  completedAt: string | null;
+}
+
+export interface PortfolioMonthlyProgressEntryDto {
+  competence: string;
+  status: 'NO_GOAL' | 'PLAN_IN_PROGRESS' | 'PLAN_COMPLETED' | 'GOAL_ACHIEVED' | 'UNPLANNED_ACTIVITY';
+  goal: PortfolioMonthlyProgressGoalDto | null;
+  plans: MonthlyPlanEntryDto[];
+  confirmedPlanContributionsCents: number;
+  confirmedPlanContributionsFormatted: string;
+  purchaseActivityCents: number;
+  purchaseActivityFormatted: string;
+  unlinkedPurchaseActivityCents: number;
+  unlinkedPurchaseActivityFormatted: string;
+  remainingGoalCents: number | null;
+  remainingGoalFormatted: string | null;
+  goalProgressPct: number | null;
+  planExecutionPct: number | null;
+  warnings: string[];
+}
+
+export interface MonthlyProgressSummaryDto {
+  totalGoalCents: number;
+  totalGoalFormatted: string;
+  totalPlannedCents: number;
+  totalPlannedFormatted: string;
+  totalConfirmedCents: number;
+  totalConfirmedFormatted: string;
+  totalPurchaseActivityCents: number;
+  totalPurchaseActivityFormatted: string;
+  activeMonthsCount: number;
+  completedPlansCount: number;
+}
+
+export interface PortfolioMonthlyProgressTimelineDto {
+  portfolioId: string;
+  asOfCompetence: string;
+  range: {
+    from: string;
+    to: string;
+    monthsCount: number;
+  };
+  timeline: PortfolioMonthlyProgressEntryDto[];
+  summary: MonthlyProgressSummaryDto;
+  currentPortfolioState: {
+    totalValuationFormatted: string;
+    topAllocations: Array<{ ticker: string; currentPct: number }>;
+    note: string;
+  };
+  capabilities: {
+    valuationHistory: 'UNAVAILABLE';
+    allocationHistory: 'UNAVAILABLE';
+    targetHistory: 'UNAVAILABLE';
+    contributionPlanHistory: 'AVAILABLE';
+    contributionGoalHistory: 'AVAILABLE';
+  };
+  safeCopy: {
+    historicalValuationNote: string;
+    historicalTargetNote: string;
+    cashSourceNote: string;
+  };
+  modelVersion: string;
+}

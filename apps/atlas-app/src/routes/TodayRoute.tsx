@@ -8,6 +8,7 @@ import { DocumentaryExceptionsBanner } from '../features/portfolio/components/Do
 import { OperationalHealthSummary } from '../features/portfolio/components/OperationalHealthSummary';
 import { OpportunityRadarSection } from '../features/portfolio/components/OpportunityRadarSection';
 import { DecisionBriefSection } from '../features/portfolio/components/DecisionBriefSection';
+import { MonthlyProgressTimelineSection } from '../features/portfolio/components/MonthlyProgressTimelineSection';
 import { DailyNewsDigestSection } from '../features/portfolio/components/DailyNewsDigestSection';
 import { ManualRefreshButton } from '../features/portfolio/components/ManualRefreshButton';
 import { MacroIndicatorsGrid } from '../features/market/components/MacroIndicatorsGrid';
@@ -251,6 +252,9 @@ export const TodayRoute: React.FC = () => {
 
         {/* APP-16S: Daily Portfolio Decision Brief (Top 3 Study Shortlist) */}
         <DecisionBriefSection portfolioId={selectedPortfolioId} />
+
+        {/* APP-16Y: Monthly Portfolio Progress & Goal History */}
+        <MonthlyProgressTimelineSection portfolioId={selectedPortfolioId} />
 
         {/* APP-16F: Daily Opportunity Radar (Top 5 Ações & FIIs) */}
         <div id="opportunity-radar">

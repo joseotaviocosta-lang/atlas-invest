@@ -1306,3 +1306,583 @@ export function deriveContributionPlanMonthlyReview(
     modelVersion: OPPORTUNITY_MODEL_VERSION,
   };
 }
+// ---------------------------------------------------------------------------
+// APP-16Y: Monthly Portfolio Progress & Goal History
+// ---------------------------------------------------------------------------
+
+export interface PortfolioMonthlyProgressGoalDto {
+  amount: string;
+  currency: string;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  sourceId: string;
+}
+
+export interface MonthlyPlanEntryDto {
+  id: string;
+  name: string;
+  plannedDate: string;
+  status: 'PLANNED' | 'COMPLETED' | 'CANCELLED';
+  completedAt?: string | null;
+  plannedCents: number;
+  plannedAmount: string;
+  confirmedCents: number;
+  confirmedAmount: string;
+  candidateCents: number;
+  candidateAmount: string;
+  rejectedCents: number;
+  rejectedAmount: string;
+  completionPercent: number;
+  baselineStable: boolean;
+}
+
+export interface PortfolioMonthlyProgressEntryDto {
+  competence: string; // YYYY-MM
+  goal: PortfolioMonthlyProgressGoalDto | null;
+  plans: MonthlyPlanEntryDto[];
+  totalPlannedCents: number;
+  totalPlannedAmount: string;
+  totalConfirmedCents: number;
+  totalConfirmedAmount: string;
+  totalCandidateCents: number;
+  totalCandidateAmount: string;
+  purchaseActivityCents: number;
+  purchaseActivityAmount: string;
+  purchaseTransactionCount: number;
+  sellActivityCents: number;
+  sellActivityAmount: string;
+  sellTransactionCount: number;
+  completedPlanCount: number;
+  openPlanCount: number;
+  monthStatus: 'NO_GOAL' | 'GOAL_ONLY' | 'PLAN_OPEN' | 'PLAN_COMPLETED' | 'MULTIPLE_PLANS';
+  dataQuality: {
+    ledgerAvailable: boolean;
+    planHistoryAvailable: boolean;
+    goalHistoryAvailable: boolean;
+    valuationHistoryAvailable: boolean;
+  };
+  warnings: string[];
+}
+
+export interface MonthlyProgressSummaryDto {
+  monthsCount: number;
+  goalsConfiguredMonths: number;
+  totalGoalCents: number;
+  totalGoalAmount: string;
+  totalPlannedCents: number;
+  totalPlannedAmount: string;
+  totalConfirmedCents: number;
+  totalConfirmedAmount: string;
+  totalPurchaseActivityCents: number;
+  totalPurchaseActivityAmount: string;
+  plansCreated: number;
+  plansCompleted: number;
+}
+
+export interface PortfolioMonthlyProgressTimelineResult {
+  portfolioId: string;
+  fromMonth: string;
+  toMonth: string;
+  summary: MonthlyProgressSummaryDto;
+  months: PortfolioMonthlyProgressEntryDto[];
+  currentPortfolioState?: {
+    valuationQuality: 'FULL_PORTFOLIO' | 'VALUED_POSITIONS_ONLY';
+    totalEquity?: string;
+    totalPositions: number;
+    valuedPositions: number;
+    currentPositions: Array<{
+      assetId: string;
+      ticker: string;
+      weightPercent: number;
+    }>;
+  };
+  historyCapabilities: {
+    valuationHistory: 'UNAVAILABLE';
+    allocationHistory: 'UNAVAILABLE';
+    targetHistory: 'UNAVAILABLE';
+    contributionPlanHistory: 'AVAILABLE';
+    contributionGoalHistory: 'AVAILABLE';
+  };
+  safeCopy: {
+    historicalValuationNote: string;
+    historicalTargetNote: string;
+    cashSourceNote: string;
+  };
+  modelVersion: string;
+}
+
+export interface MonthlyProgressGoalInput {
+  id: string;
+  amount: string | number;
+  currency: string;
+  effectiveFrom: string | Date;
+  effectiveTo?: string | Date | null;
+}
+
+export interface MonthlyProgressPlanItemInput {
+  id?: string;
+  category?: string;
+  amount: string | number;
+}
+
+export interface MonthlyProgressPlanInput {
+  id: string;
+  portfolioId: string;
+  name: string;
+  plannedDate: string;
+  status: string;
+  currency?: string;
+  completedAt?: Date | string | null;
+  createdAt?: Date | string;
+  items?: MonthlyProgressPlanItemInput[];
+}
+
+export interface MonthlyProgressTransactionLinkInput {
+  id?: string;
+  planId: string;
+  transactionId: string;
+  status: string; // 'CONFIRMED' | 'CANDIDATE' | 'REJECTED'
+}
+
+export interface MonthlyProgressTransactionInput {
+  id: string;
+  portfolioId: string;
+  accountId?: string;
+  assetId?: string;
+  type: string; // BUY, SELL, etc.
+  tradeDate: string; // YYYY-MM-DD
+  amount: string | number;
+  currency?: string;
+  quantity?: string;
+  unitPrice?: string;
+}
+
+export interface BuildPortfolioMonthlyProgressTimelineParams {
+  portfolioId: string;
+  fromMonth?: string; // YYYY-MM
+  toMonth?: string; // YYYY-MM
+  asOf?: string | Date;
+  goals?: MonthlyProgressGoalInput[];
+  plans?: MonthlyProgressPlanInput[];
+  links?: MonthlyProgressTransactionLinkInput[];
+  transactions?: MonthlyProgressTransactionInput[];
+  currentPortfolioState?: {
+    valuationQuality: 'FULL_PORTFOLIO' | 'VALUED_POSITIONS_ONLY';
+    totalEquity?: string;
+    totalPositions: number;
+    valuedPositions: number;
+    currentPositions: Array<{
+      assetId: string;
+      ticker: string;
+      weightPercent: number;
+    }>;
+  };
+}
+
+export function parseDecimalStringToCents(val: string | number): number {
+  if (typeof val === 'number') {
+    return Math.round(val * 100);
+  }
+  const clean = val.trim().replace(',', '.');
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(clean);
+  if (!match) return 0;
+  const whole = BigInt(match[1] ?? '0');
+  const fracStr = (match[2] || '').padEnd(2, '0').slice(0, 2);
+  const cents = whole * 100n + BigInt(fracStr);
+  return Number(cents);
+}
+
+/**
+ * Pure deterministic timeline builder for monthly portfolio progress and goal history (APP-16Y).
+ *
+ * Rules:
+ * - Deterministic output: identical inputs produce identical outputs.
+ * - Exact cents conservation: integer cents used for all monetary sums.
+ * - Temporal continuity: every month in range is present, even with zero activity.
+ * - Oldest to newest chronological order.
+ * - Confirmed contribution vs ledger BUY activity strictly separated.
+ * - Historical valuation and target versioning marked UNAVAILABLE (no false backfill).
+ */
+export function buildPortfolioMonthlyProgressTimeline(
+  params: BuildPortfolioMonthlyProgressTimelineParams,
+): PortfolioMonthlyProgressTimelineResult {
+  const { portfolioId, goals = [], plans = [], links = [], transactions = [], currentPortfolioState } = params;
+
+  // 1. Resolve Reference Date & Default Range
+  let referenceMonthStr: string;
+  if (params.asOf) {
+    if (typeof params.asOf === 'string') {
+      referenceMonthStr = params.asOf.slice(0, 7);
+    } else {
+      const year = params.asOf.getFullYear();
+      const month = String(params.asOf.getMonth() + 1).padStart(2, '0');
+      referenceMonthStr = `${year}-${month}`;
+    }
+  } else {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    referenceMonthStr = `${year}-${month}`;
+  }
+
+  const toMonth = params.toMonth ? params.toMonth.trim() : referenceMonthStr;
+  let fromMonth = params.fromMonth ? params.fromMonth.trim() : '';
+
+  if (!fromMonth) {
+    const [tYearStr, tMonthStr] = toMonth.split('-');
+    const tYear = parseInt(tYearStr!, 10);
+    const tMonth = parseInt(tMonthStr!, 10);
+    const date = new Date(Date.UTC(tYear, tMonth - 1, 1));
+    date.setUTCMonth(date.getUTCMonth() - 11);
+    const fYear = date.getUTCFullYear();
+    const fMonth = String(date.getUTCMonth() + 1).padStart(2, '0');
+    fromMonth = `${fYear}-${fMonth}`;
+  }
+
+  // Validate format
+  const monthRegex = /^\d{4}-(0[1-9]|1[0-2])$/;
+  if (!monthRegex.test(fromMonth)) {
+    throw new Error(`Invalid fromMonth: '${fromMonth}'. Expected YYYY-MM.`);
+  }
+  if (!monthRegex.test(toMonth)) {
+    throw new Error(`Invalid toMonth: '${toMonth}'. Expected YYYY-MM.`);
+  }
+
+  const [fromY, fromM] = fromMonth.split('-').map(Number);
+  const [toY, toM] = toMonth.split('-').map(Number);
+  const totalMonthsCount = (toY! - fromY!) * 12 + (toM! - fromM!) + 1;
+
+  if (totalMonthsCount <= 0) {
+    throw new Error(`Invalid range: fromMonth (${fromMonth}) cannot be after toMonth (${toMonth}).`);
+  }
+  if (totalMonthsCount > 60) {
+    throw new Error(`Requested range (${totalMonthsCount} months) exceeds maximum limit of 60 months.`);
+  }
+
+  // 2. Generate competences array (chronological oldest -> newest)
+  const competences: string[] = [];
+  let currY = fromY!;
+  let currM = fromM!;
+  for (let i = 0; i < totalMonthsCount; i++) {
+    const compStr = `${currY}-${String(currM).padStart(2, '0')}`;
+    competences.push(compStr);
+    currM++;
+    if (currM > 12) {
+      currM = 1;
+      currY++;
+    }
+  }
+
+  // 3. Index Transactions by ID and by Month
+  const txMap = new Map<string, MonthlyProgressTransactionInput>();
+  const txsByMonth = new Map<string, MonthlyProgressTransactionInput[]>();
+  for (const tx of transactions) {
+    txMap.set(tx.id, tx);
+    const txComp = tx.tradeDate.slice(0, 7);
+    const list = txsByMonth.get(txComp) ?? [];
+    list.push(tx);
+    txsByMonth.set(txComp, list);
+  }
+
+  // 4. Index Links by Plan ID
+  const linksByPlan = new Map<string, MonthlyProgressTransactionLinkInput[]>();
+  for (const link of links) {
+    const list = linksByPlan.get(link.planId) ?? [];
+    list.push(link);
+    linksByPlan.set(link.planId, list);
+  }
+
+  // Helper to get transaction amount in cents
+  function getTxAmountCents(tx: MonthlyProgressTransactionInput): number {
+    if (tx.unitPrice && tx.quantity) {
+      const calc = multiplyUnitPriceQuantityToCents(tx.unitPrice, tx.quantity);
+      if (calc !== null) return calc;
+    }
+    return parseDecimalStringToCents(tx.amount);
+  }
+
+  // Global confirmed transactions set for double count prevention in summary
+  const globalConfirmedTxIds = new Set<string>();
+  let summaryGoalsConfiguredMonths = 0;
+  let summaryTotalGoalCents = 0;
+  let summaryTotalPlannedCents = 0;
+  let summaryTotalConfirmedCents = 0;
+  let summaryTotalPurchaseActivityCents = 0;
+  let summaryPlansCreated = 0;
+  let summaryPlansCompleted = 0;
+
+  // 5. Build Each Month Entry
+  const monthEntries: PortfolioMonthlyProgressEntryDto[] = [];
+
+  for (const competence of competences) {
+    // A. Goal Resolution
+    // effectiveFrom <= competence < effectiveTo
+    const matchingGoals = goals.filter((g) => {
+      const gStart = typeof g.effectiveFrom === 'string' ? g.effectiveFrom.slice(0, 7) : g.effectiveFrom.toISOString().slice(0, 7);
+      const gEnd = g.effectiveTo
+        ? (typeof g.effectiveTo === 'string' ? g.effectiveTo.slice(0, 7) : g.effectiveTo.toISOString().slice(0, 7))
+        : null;
+      return gStart <= competence && (!gEnd || gEnd > competence);
+    });
+
+    // Sort matching goals by effectiveFrom DESC, id DESC to pick active goal
+    matchingGoals.sort((a, b) => {
+      const aStart = typeof a.effectiveFrom === 'string' ? a.effectiveFrom : a.effectiveFrom.toISOString();
+      const bStart = typeof b.effectiveFrom === 'string' ? b.effectiveFrom : b.effectiveFrom.toISOString();
+      if (aStart !== bStart) return bStart.localeCompare(aStart);
+      return b.id.localeCompare(a.id);
+    });
+
+    const activeGoal = matchingGoals[0] ?? null;
+    let goalDto: PortfolioMonthlyProgressGoalDto | null = null;
+    let goalCents = 0;
+
+    if (activeGoal) {
+      goalCents = parseDecimalStringToCents(activeGoal.amount);
+      summaryGoalsConfiguredMonths++;
+      summaryTotalGoalCents += goalCents;
+
+      goalDto = {
+        amount: formatCentsToDecimal(goalCents),
+        currency: activeGoal.currency || 'BRL',
+        effectiveFrom: typeof activeGoal.effectiveFrom === 'string'
+          ? activeGoal.effectiveFrom.slice(0, 10)
+          : activeGoal.effectiveFrom.toISOString().slice(0, 10),
+        effectiveTo: activeGoal.effectiveTo
+          ? (typeof activeGoal.effectiveTo === 'string'
+              ? activeGoal.effectiveTo.slice(0, 10)
+              : activeGoal.effectiveTo.toISOString().slice(0, 10))
+          : null,
+        sourceId: activeGoal.id,
+      };
+    }
+
+    // B. Plans Resolution
+    const monthPlans = plans.filter((p) => p.plannedDate && p.plannedDate.slice(0, 7) === competence);
+    monthPlans.sort((a, b) => {
+      if (a.plannedDate !== b.plannedDate) return a.plannedDate.localeCompare(b.plannedDate);
+      const aCreated = a.createdAt ? (typeof a.createdAt === 'string' ? a.createdAt : a.createdAt.toISOString()) : '';
+      const bCreated = b.createdAt ? (typeof b.createdAt === 'string' ? b.createdAt : b.createdAt.toISOString()) : '';
+      if (aCreated !== bCreated) return aCreated.localeCompare(bCreated);
+      return a.id.localeCompare(b.id);
+    });
+
+    const planEntries: MonthlyPlanEntryDto[] = [];
+    let monthTotalPlannedCents = 0;
+    const monthConfirmedTxIds = new Set<string>();
+    const monthCandidateTxIds = new Set<string>();
+
+    for (const plan of monthPlans) {
+      summaryPlansCreated++;
+      const normStatus = (plan.status.toUpperCase() === 'COMPLETED'
+        ? 'COMPLETED'
+        : plan.status.toUpperCase() === 'CANCELLED'
+        ? 'CANCELLED'
+        : 'PLANNED') as 'PLANNED' | 'COMPLETED' | 'CANCELLED';
+
+      if (normStatus === 'COMPLETED') {
+        summaryPlansCompleted++;
+      }
+
+      // Planned amount from items
+      let planPlannedCents = 0;
+      if (plan.items) {
+        for (const item of plan.items) {
+          planPlannedCents += parseDecimalStringToCents(item.amount);
+        }
+      }
+      monthTotalPlannedCents += planPlannedCents;
+
+      // Plan links
+      const planLinks = linksByPlan.get(plan.id) ?? [];
+      let planConfirmedCents = 0;
+      let planCandidateCents = 0;
+      let planRejectedCents = 0;
+
+      for (const link of planLinks) {
+        const tx = txMap.get(link.transactionId);
+        const txCents = tx ? getTxAmountCents(tx) : 0;
+        const linkStatus = link.status.toUpperCase();
+        if (linkStatus === 'CONFIRMED') {
+          planConfirmedCents += txCents;
+          monthConfirmedTxIds.add(link.transactionId);
+          globalConfirmedTxIds.add(link.transactionId);
+        } else if (linkStatus === 'CANDIDATE') {
+          planCandidateCents += txCents;
+          monthCandidateTxIds.add(link.transactionId);
+        } else if (linkStatus === 'REJECTED') {
+          planRejectedCents += txCents;
+        }
+      }
+
+      const completionPercent =
+        planPlannedCents > 0 ? Math.round((planConfirmedCents / planPlannedCents) * 1000) / 10 : 0;
+
+      const completedAtStr = plan.completedAt
+        ? (typeof plan.completedAt === 'string' ? plan.completedAt : plan.completedAt.toISOString())
+        : null;
+
+      planEntries.push({
+        id: plan.id,
+        name: plan.name,
+        plannedDate: plan.plannedDate.slice(0, 10),
+        status: normStatus,
+        completedAt: completedAtStr,
+        plannedCents: planPlannedCents,
+        plannedAmount: formatCentsToDecimal(planPlannedCents),
+        confirmedCents: planConfirmedCents,
+        confirmedAmount: formatCentsToDecimal(planConfirmedCents),
+        candidateCents: planCandidateCents,
+        candidateAmount: formatCentsToDecimal(planCandidateCents),
+        rejectedCents: planRejectedCents,
+        rejectedAmount: formatCentsToDecimal(planRejectedCents),
+        completionPercent,
+        baselineStable: true,
+      });
+    }
+
+    summaryTotalPlannedCents += monthTotalPlannedCents;
+
+    // Month confirmed cents: sum of unique confirmed transactions in this month
+    let monthTotalConfirmedCents = 0;
+    for (const txId of monthConfirmedTxIds) {
+      const tx = txMap.get(txId);
+      if (tx) {
+        monthTotalConfirmedCents += getTxAmountCents(tx);
+      }
+    }
+
+    // Month candidate cents: sum of unique candidate transactions in this month
+    let monthTotalCandidateCents = 0;
+    for (const txId of monthCandidateTxIds) {
+      // If a tx is both confirmed and candidate (should not occur), prefer confirmed
+      if (!monthConfirmedTxIds.has(txId)) {
+        const tx = txMap.get(txId);
+        if (tx) {
+          monthTotalCandidateCents += getTxAmountCents(tx);
+        }
+      }
+    }
+
+    // C. Month Purchase & Sell Activity (Ledger)
+    const monthTxs = txsByMonth.get(competence) ?? [];
+    let purchaseActivityCents = 0;
+    let purchaseTransactionCount = 0;
+    let sellActivityCents = 0;
+    let sellTransactionCount = 0;
+
+    for (const tx of monthTxs) {
+      const txType = tx.type.toUpperCase();
+      const amountCents = getTxAmountCents(tx);
+      if (txType === 'BUY') {
+        purchaseActivityCents += amountCents;
+        purchaseTransactionCount++;
+      } else if (txType === 'SELL') {
+        sellActivityCents += amountCents;
+        sellTransactionCount++;
+      }
+    }
+
+    summaryTotalPurchaseActivityCents += purchaseActivityCents;
+
+    // D. Month Status Derivation
+    const completedPlanCount = planEntries.filter((p) => p.status === 'COMPLETED').length;
+    const openPlanCount = planEntries.filter((p) => p.status === 'PLANNED').length;
+
+    let monthStatus: PortfolioMonthlyProgressEntryDto['monthStatus'];
+    if (planEntries.length > 1) {
+      monthStatus = 'MULTIPLE_PLANS';
+    } else if (planEntries.length === 1) {
+      monthStatus = planEntries[0]!.status === 'COMPLETED' ? 'PLAN_COMPLETED' : 'PLAN_OPEN';
+    } else if (goalDto !== null) {
+      monthStatus = 'GOAL_ONLY';
+    } else {
+      monthStatus = 'NO_GOAL';
+    }
+
+    // E. Data Quality & Warnings
+    const warnings: string[] = [];
+    if (goalDto !== null && goalCents > 0 && purchaseActivityCents < goalCents) {
+      warnings.push('Compras registradas abaixo da meta mensal declarada.');
+    }
+    warnings.push('Valuation histórico não disponível para esta competência.');
+
+    monthEntries.push({
+      competence,
+      goal: goalDto,
+      plans: planEntries,
+      totalPlannedCents: monthTotalPlannedCents,
+      totalPlannedAmount: formatCentsToDecimal(monthTotalPlannedCents),
+      totalConfirmedCents: monthTotalConfirmedCents,
+      totalConfirmedAmount: formatCentsToDecimal(monthTotalConfirmedCents),
+      totalCandidateCents: monthTotalCandidateCents,
+      totalCandidateAmount: formatCentsToDecimal(monthTotalCandidateCents),
+      purchaseActivityCents,
+      purchaseActivityAmount: formatCentsToDecimal(purchaseActivityCents),
+      purchaseTransactionCount,
+      sellActivityCents,
+      sellActivityAmount: formatCentsToDecimal(sellActivityCents),
+      sellTransactionCount,
+      completedPlanCount,
+      openPlanCount,
+      monthStatus,
+      dataQuality: {
+        ledgerAvailable: true,
+        planHistoryAvailable: true,
+        goalHistoryAvailable: true,
+        valuationHistoryAvailable: false,
+      },
+      warnings,
+    });
+  }
+
+  // Global total confirmed cents: sum of all unique confirmed transactions
+  for (const txId of globalConfirmedTxIds) {
+    const tx = txMap.get(txId);
+    if (tx) {
+      summaryTotalConfirmedCents += getTxAmountCents(tx);
+    }
+  }
+
+  const summary: MonthlyProgressSummaryDto = {
+    monthsCount: monthEntries.length,
+    goalsConfiguredMonths: summaryGoalsConfiguredMonths,
+    totalGoalCents: summaryTotalGoalCents,
+    totalGoalAmount: formatCentsToDecimal(summaryTotalGoalCents),
+    totalPlannedCents: summaryTotalPlannedCents,
+    totalPlannedAmount: formatCentsToDecimal(summaryTotalPlannedCents),
+    totalConfirmedCents: summaryTotalConfirmedCents,
+    totalConfirmedAmount: formatCentsToDecimal(summaryTotalConfirmedCents),
+    totalPurchaseActivityCents: summaryTotalPurchaseActivityCents,
+    totalPurchaseActivityAmount: formatCentsToDecimal(summaryTotalPurchaseActivityCents),
+    plansCreated: summaryPlansCreated,
+    plansCompleted: summaryPlansCompleted,
+  };
+
+  const safeCopy = {
+    historicalValuationNote:
+      'O Atlas não possui valuation histórico suficiente para reconstruir com precisão o patrimônio ou peso da carteira neste mês.',
+    historicalTargetNote:
+      'Metas de alocação por categoria não possuem versionamento histórico no banco de dados e não são projetadas retroativamente.',
+    cashSourceNote:
+      'Compras registradas refletem operações executadas no ledger. A origem do caixa (novo aporte vs. saldo pré-existente) não é inferida.',
+  };
+
+  return {
+    portfolioId,
+    fromMonth,
+    toMonth,
+    summary,
+    months: monthEntries,
+    currentPortfolioState,
+    historyCapabilities: {
+      valuationHistory: 'UNAVAILABLE',
+      allocationHistory: 'UNAVAILABLE',
+      targetHistory: 'UNAVAILABLE',
+      contributionPlanHistory: 'AVAILABLE',
+      contributionGoalHistory: 'AVAILABLE',
+    },
+    safeCopy,
+    modelVersion: OPPORTUNITY_MODEL_VERSION,
+  };
+}
