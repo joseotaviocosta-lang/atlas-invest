@@ -1459,10 +1459,12 @@ export class GetOpportunityRadarUseCase {
         try {
           const goals = await this.contributionGoalRepo.listByPortfolio(params.portfolioId);
           const goalInputs: GoalVersionInput[] = goals.map((g) => ({
+            id: g.id,
             amount: g.amount,
             currency: g.currency,
             effectiveFromMonth: g.effectiveFrom.slice(0, 7),
             effectiveToMonth: g.effectiveTo ? g.effectiveTo.slice(0, 7) : null,
+            createdAt: g.createdAt,
           }));
           const version = goalVersionForMonth(goalInputs, periodKey);
           if (version && parseFloat(version.amount) > 0) {
@@ -1786,6 +1788,7 @@ export class GetOpportunityRadarUseCase {
       currency: g.currency,
       effectiveFrom: g.effectiveFrom,
       effectiveTo: g.effectiveTo,
+      createdAt: g.createdAt,
     }));
 
     const mappedPlans = plansRows.map((p) => ({

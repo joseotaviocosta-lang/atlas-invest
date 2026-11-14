@@ -349,6 +349,153 @@ describe('API Integration: APP-16Y Monthly Portfolio Progress & Goal History', (
       .expect(404);
   });
 
+  it('APP-16Y-R1: Parity Invariant between APP-16X Review and APP-16Y Timeline candidateCents', async () => {
+    const prisma = getTestPrismaClient();
+
+    const asset = await prisma.asset.create({
+      data: {
+        id: randomUUID(),
+        ticker: 'ITSA4',
+        name: 'Itausa PN',
+        type: 'STOCK',
+        currency: 'BRL',
+        exchange: 'B3',
+      },
+    });
+
+    const plan = await prisma.portfolioContributionPlan.create({
+      data: {
+        id: randomUUID(),
+        portfolioId,
+        name: 'Plano Paridade 16X-16Y',
+        plannedDate: new Date('2026-11-15T00:00:00.000Z'),
+        status: 'PLANNED',
+        currency: 'BRL',
+        items: {
+          create: [{ id: randomUUID(), category: 'STOCK', amount: '2000.00' }],
+        },
+      },
+    });
+
+    // Confirmed BUY tx: 800.00
+    const txConfirmed = await prisma.transaction.create({
+      data: {
+        id: randomUUID(),
+        portfolioId,
+        accountId,
+        assetId: asset.id,
+        type: 'BUY',
+        tradeDate: new Date('2026-11-05T00:00:00.000Z'),
+        settlementDate: new Date('2026-11-07T00:00:00.000Z'),
+        amount: '800.00',
+        currency: 'BRL',
+        quantity: '80',
+        unitPrice: '10.00',
+      },
+    });
+
+    await prisma.contributionPlanTransactionLink.create({
+      data: {
+        id: randomUUID(),
+        planId: plan.id,
+        transactionId: txConfirmed.id,
+        status: 'CONFIRMED',
+      },
+    });
+
+    // Eligible candidate BUY tx (unlinked): 450.00
+    await prisma.transaction.create({
+      data: {
+        id: randomUUID(),
+        portfolioId,
+        accountId,
+        assetId: asset.id,
+        type: 'BUY',
+        tradeDate: new Date('2026-11-18T00:00:00.000Z'),
+        settlementDate: new Date('2026-11-20T00:00:00.000Z'),
+        amount: '450.00',
+        currency: 'BRL',
+        quantity: '45',
+        unitPrice: '10.00',
+      },
+    });
+
+    // 1. Fetch APP-16X Review
+    const reviewRes = await request(app.getHttpServer())
+      .get(`/api/v1/portfolios/${portfolioId}/contribution-plans/${plan.id}/review`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .expect(200);
+
+    const review = reviewRes.body.data;
+
+    // 2. Fetch APP-16Y Timeline
+    const timelineRes = await request(app.getHttpServer())
+      .get(`/api/v1/portfolios/${portfolioId}/monthly-progress?from=2026-11&to=2026-11`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .expect(200);
+
+    const timeline = timelineRes.body.data;
+    const timelinePlan = timeline.months[0].plans.find((p: any) => p.id === plan.id);
+
+    expect(review.candidateCents).toBe(45000);
+    expect(timelinePlan.candidateCents).toBe(review.candidateCents);
+    expect(timelinePlan.confirmedCents).toBe(review.confirmedCents);
+    expect(timeline.months[0].totalCandidateCents).toBe(45000);
+    expect(timeline.months[0].totalConfirmedCents).toBe(80000);
+  });
+
+  it('APP-16Y-R1: Cross-feature Goal Parity - APP-16W resolved goal == APP-16Y resolved goal', async () => {
+    const prisma = getTestPrismaClient();
+
+    // Create overlapping goals for 2026-11
+    // Goal 1: effectiveFrom 2026-01 to 2026-12 (closed in Dec)
+    await prisma.portfolioContributionGoal.create({
+      data: {
+        id: randomUUID(),
+        portfolioId,
+        amount: '1000.00',
+        currency: 'BRL',
+        effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
+        effectiveTo: new Date('2026-12-01T00:00:00.000Z'),
+        createdAt: new Date('2026-01-01T10:00:00.000Z'),
+      },
+    });
+
+    // Goal 2: effectiveFrom 2026-11 to null (open, more recent effectiveFrom -> should win in Nov)
+    const activeGoal = await prisma.portfolioContributionGoal.create({
+      data: {
+        id: randomUUID(),
+        portfolioId,
+        amount: '3500.00',
+        currency: 'BRL',
+        effectiveFrom: new Date('2026-11-01T00:00:00.000Z'),
+        effectiveTo: null,
+        createdAt: new Date('2026-10-15T10:00:00.000Z'),
+      },
+    });
+
+    // 1. Check APP-16W tracking resolution
+    const trackingRes = await request(app.getHttpServer())
+      .get(`/api/v1/portfolios/${portfolioId}/decision-brief/contribution-progress?period=2026-11`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .expect(200);
+
+    // 2. Check APP-16Y timeline resolution
+    const timelineRes = await request(app.getHttpServer())
+      .get(`/api/v1/portfolios/${portfolioId}/monthly-progress?from=2026-11&to=2026-11`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .expect(200);
+
+    const trackingPlan = trackingRes.body.data.plan;
+    const timelineGoal = timelineRes.body.data.months[0].goal;
+
+    expect(trackingPlan.source).toBe('SAVED_GOAL');
+    expect(parseFloat(trackingPlan.plannedAmount)).toBe(3500);
+    expect(timelineGoal?.amount).toBe('3500.00');
+    expect(parseFloat(timelineGoal!.amount)).toBe(parseFloat(trackingPlan.plannedAmount));
+    expect(timelineGoal?.sourceId).toBe(activeGoal.id);
+  });
+
   it('Critical Test 16: Zero mutations occur (strictly read-only)', async () => {
     const prisma = getTestPrismaClient();
 

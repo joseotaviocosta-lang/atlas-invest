@@ -7,6 +7,7 @@ import {
   ProjectionBaselinePosition,
   ProjectedPortfolioAfterContribution,
 } from './portfolio-projection';
+import { goalVersionForMonth, type GoalVersionInput } from '@atlas/portfolio-strategy';
 
 export type ContributionPlanSource =
   | 'PERSISTED_PLAN'
@@ -1330,6 +1331,7 @@ export interface MonthlyPlanEntryDto {
   confirmedAmount: string;
   candidateCents: number;
   candidateAmount: string;
+  candidateTransactionCount?: number;
   rejectedCents: number;
   rejectedAmount: string;
   completionPercent: number;
@@ -1346,9 +1348,12 @@ export interface PortfolioMonthlyProgressEntryDto {
   totalConfirmedAmount: string;
   totalCandidateCents: number;
   totalCandidateAmount: string;
+  totalCandidateTransactionCount?: number;
   purchaseActivityCents: number;
   purchaseActivityAmount: string;
   purchaseTransactionCount: number;
+  unlinkedPurchaseActivityCents?: number;
+  unlinkedPurchaseActivityAmount?: string;
   sellActivityCents: number;
   sellActivityAmount: string;
   sellTransactionCount: number;
@@ -1417,6 +1422,7 @@ export interface MonthlyProgressGoalInput {
   currency: string;
   effectiveFrom: string | Date;
   effectiveTo?: string | Date | null;
+  createdAt?: string | Date;
 }
 
 export interface MonthlyProgressPlanItemInput {
@@ -1584,12 +1590,16 @@ export function buildPortfolioMonthlyProgressTimeline(
     txsByMonth.set(txComp, list);
   }
 
-  // 4. Index Links by Plan ID
+  // 4. Index Links by Plan ID and track all confirmed transaction IDs
   const linksByPlan = new Map<string, MonthlyProgressTransactionLinkInput[]>();
+  const allConfirmedTxIds = new Set<string>();
   for (const link of links) {
     const list = linksByPlan.get(link.planId) ?? [];
     list.push(link);
     linksByPlan.set(link.planId, list);
+    if (link.status && link.status.toUpperCase() === 'CONFIRMED') {
+      allConfirmedTxIds.add(link.transactionId);
+    }
   }
 
   // Helper to get transaction amount in cents
@@ -1616,42 +1626,47 @@ export function buildPortfolioMonthlyProgressTimeline(
 
   for (const competence of competences) {
     // A. Goal Resolution
-    // effectiveFrom <= competence < effectiveTo
-    const matchingGoals = goals.filter((g) => {
-      const gStart = typeof g.effectiveFrom === 'string' ? g.effectiveFrom.slice(0, 7) : g.effectiveFrom.toISOString().slice(0, 7);
-      const gEnd = g.effectiveTo
-        ? (typeof g.effectiveTo === 'string' ? g.effectiveTo.slice(0, 7) : g.effectiveTo.toISOString().slice(0, 7))
-        : null;
-      return gStart <= competence && (!gEnd || gEnd > competence);
-    });
+    // Canonical goalVersionForMonth from @atlas/portfolio-strategy:
+    // - Half-open interval [effectiveFromMonth, effectiveToMonth)
+    // - Deterministic: latest effectiveFromMonth wins. On exact tie, latest createdAt wins, then id.
+    const goalInputs: GoalVersionInput[] = goals.map((g) => ({
+      id: g.id,
+      amount: typeof g.amount === 'number' ? String(g.amount) : g.amount,
+      currency: g.currency,
+      effectiveFromMonth:
+        typeof g.effectiveFrom === 'string'
+          ? g.effectiveFrom.slice(0, 7)
+          : g.effectiveFrom.toISOString().slice(0, 7),
+      effectiveToMonth: g.effectiveTo
+        ? typeof g.effectiveTo === 'string'
+          ? g.effectiveTo.slice(0, 7)
+          : g.effectiveTo.toISOString().slice(0, 7)
+        : null,
+      createdAt: g.createdAt,
+    }));
 
-    // Sort matching goals by effectiveFrom DESC, id DESC to pick active goal
-    matchingGoals.sort((a, b) => {
-      const aStart = typeof a.effectiveFrom === 'string' ? a.effectiveFrom : a.effectiveFrom.toISOString();
-      const bStart = typeof b.effectiveFrom === 'string' ? b.effectiveFrom : b.effectiveFrom.toISOString();
-      if (aStart !== bStart) return bStart.localeCompare(aStart);
-      return b.id.localeCompare(a.id);
-    });
+    const matchedVersion = goalVersionForMonth(goalInputs, competence);
+    const activeGoal = matchedVersion ? goals.find((g) => g.id === matchedVersion.id) ?? null : null;
 
-    const activeGoal = matchingGoals[0] ?? null;
     let goalDto: PortfolioMonthlyProgressGoalDto | null = null;
     let goalCents = 0;
 
-    if (activeGoal) {
-      goalCents = parseDecimalStringToCents(activeGoal.amount);
+    if (matchedVersion && activeGoal) {
+      goalCents = parseDecimalStringToCents(matchedVersion.amount);
       summaryGoalsConfiguredMonths++;
       summaryTotalGoalCents += goalCents;
 
       goalDto = {
         amount: formatCentsToDecimal(goalCents),
-        currency: activeGoal.currency || 'BRL',
-        effectiveFrom: typeof activeGoal.effectiveFrom === 'string'
-          ? activeGoal.effectiveFrom.slice(0, 10)
-          : activeGoal.effectiveFrom.toISOString().slice(0, 10),
+        currency: matchedVersion.currency || 'BRL',
+        effectiveFrom:
+          typeof activeGoal.effectiveFrom === 'string'
+            ? activeGoal.effectiveFrom.slice(0, 10)
+            : activeGoal.effectiveFrom.toISOString().slice(0, 10),
         effectiveTo: activeGoal.effectiveTo
-          ? (typeof activeGoal.effectiveTo === 'string'
-              ? activeGoal.effectiveTo.slice(0, 10)
-              : activeGoal.effectiveTo.toISOString().slice(0, 10))
+          ? typeof activeGoal.effectiveTo === 'string'
+            ? activeGoal.effectiveTo.slice(0, 10)
+            : activeGoal.effectiveTo.toISOString().slice(0, 10)
           : null,
         sourceId: activeGoal.id,
       };
@@ -1693,26 +1708,75 @@ export function buildPortfolioMonthlyProgressTimeline(
       }
       monthTotalPlannedCents += planPlannedCents;
 
-      // Plan links
+      // Plan links: separate confirmed and rejected
       const planLinks = linksByPlan.get(plan.id) ?? [];
-      let planConfirmedCents = 0;
-      let planCandidateCents = 0;
-      let planRejectedCents = 0;
+      const planConfirmedTxIds = new Set<string>();
+      const planRejectedTxIds = new Set<string>();
 
       for (const link of planLinks) {
-        const tx = txMap.get(link.transactionId);
-        const txCents = tx ? getTxAmountCents(tx) : 0;
-        const linkStatus = link.status.toUpperCase();
+        const linkStatus = link.status ? link.status.toUpperCase() : '';
         if (linkStatus === 'CONFIRMED') {
-          planConfirmedCents += txCents;
+          planConfirmedTxIds.add(link.transactionId);
           monthConfirmedTxIds.add(link.transactionId);
           globalConfirmedTxIds.add(link.transactionId);
-        } else if (linkStatus === 'CANDIDATE') {
-          planCandidateCents += txCents;
-          monthCandidateTxIds.add(link.transactionId);
         } else if (linkStatus === 'REJECTED') {
-          planRejectedCents += txCents;
+          planRejectedTxIds.add(link.transactionId);
         }
+      }
+
+      let planConfirmedCents = 0;
+      for (const txId of planConfirmedTxIds) {
+        const tx = txMap.get(txId);
+        if (tx) {
+          planConfirmedCents += getTxAmountCents(tx);
+        }
+      }
+
+      let planRejectedCents = 0;
+      for (const txId of planRejectedTxIds) {
+        const tx = txMap.get(txId);
+        if (tx) {
+          planRejectedCents += getTxAmountCents(tx);
+        }
+      }
+
+      // Candidate derivation for this plan:
+      // Canonical rules matching APP-16X deriveContributionPlanMonthlyReview:
+      // - BUY transaction within month window [periodStart, periodEnd]
+      // - Positive amount
+      // - Currency matching plan currency
+      // - NOT confirmed to ANY plan (confirmed always wins)
+      // - NOT rejected in this plan
+      const planPeriod = plan.plannedDate.slice(0, 7);
+      const [pYearStr, pMonthStr] = planPeriod.split('-');
+      const pYear = parseInt(pYearStr!, 10);
+      const pMonth = parseInt(pMonthStr!, 10);
+      const lastDayOfMonth = new Date(Date.UTC(pYear, pMonth, 0)).getUTCDate();
+      const periodStart = `${planPeriod}-01`;
+      const periodEnd = `${planPeriod}-${lastDayOfMonth.toString().padStart(2, '0')}`;
+      const planCurrency = plan.currency || 'BRL';
+
+      let planCandidateCents = 0;
+      let planCandidateTransactionCount = 0;
+
+      const potentialCandidateTxs = txsByMonth.get(planPeriod) ?? [];
+      for (const tx of potentialCandidateTxs) {
+        const tradeDate = tx.tradeDate.slice(0, 10);
+        if (tradeDate < periodStart || tradeDate > periodEnd) continue;
+        if (tx.type.toUpperCase() !== 'BUY') continue;
+
+        const txCurrency = tx.currency || planCurrency;
+        if (txCurrency !== planCurrency) continue;
+
+        const txCents = getTxAmountCents(tx);
+        if (txCents <= 0) continue;
+
+        if (allConfirmedTxIds.has(tx.id)) continue;
+        if (planRejectedTxIds.has(tx.id)) continue;
+
+        planCandidateCents += txCents;
+        planCandidateTransactionCount++;
+        monthCandidateTxIds.add(tx.id);
       }
 
       const completionPercent =
@@ -1734,6 +1798,7 @@ export function buildPortfolioMonthlyProgressTimeline(
         confirmedAmount: formatCentsToDecimal(planConfirmedCents),
         candidateCents: planCandidateCents,
         candidateAmount: formatCentsToDecimal(planCandidateCents),
+        candidateTransactionCount: planCandidateTransactionCount,
         rejectedCents: planRejectedCents,
         rejectedAmount: formatCentsToDecimal(planRejectedCents),
         completionPercent,
@@ -1753,10 +1818,10 @@ export function buildPortfolioMonthlyProgressTimeline(
     }
 
     // Month candidate cents: sum of unique candidate transactions in this month
+    // Transaction-unique: each candidate transaction counted only once even if multiple plans matched it
     let monthTotalCandidateCents = 0;
     for (const txId of monthCandidateTxIds) {
-      // If a tx is both confirmed and candidate (should not occur), prefer confirmed
-      if (!monthConfirmedTxIds.has(txId)) {
+      if (!allConfirmedTxIds.has(txId)) {
         const tx = txMap.get(txId);
         if (tx) {
           monthTotalCandidateCents += getTxAmountCents(tx);
@@ -1807,6 +1872,8 @@ export function buildPortfolioMonthlyProgressTimeline(
     }
     warnings.push('Valuation histórico não disponível para esta competência.');
 
+    const unlinkedPurchaseActivityCents = Math.max(purchaseActivityCents - monthTotalConfirmedCents, 0);
+
     monthEntries.push({
       competence,
       goal: goalDto,
@@ -1817,9 +1884,12 @@ export function buildPortfolioMonthlyProgressTimeline(
       totalConfirmedAmount: formatCentsToDecimal(monthTotalConfirmedCents),
       totalCandidateCents: monthTotalCandidateCents,
       totalCandidateAmount: formatCentsToDecimal(monthTotalCandidateCents),
+      totalCandidateTransactionCount: monthCandidateTxIds.size,
       purchaseActivityCents,
       purchaseActivityAmount: formatCentsToDecimal(purchaseActivityCents),
       purchaseTransactionCount,
+      unlinkedPurchaseActivityCents,
+      unlinkedPurchaseActivityAmount: formatCentsToDecimal(unlinkedPurchaseActivityCents),
       sellActivityCents,
       sellActivityAmount: formatCentsToDecimal(sellActivityCents),
       sellTransactionCount,

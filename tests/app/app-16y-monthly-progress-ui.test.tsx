@@ -283,4 +283,17 @@ describe('APP-16Y: Monthly Progress Timeline UI Component', () => {
     expect(html).toContain('VALE3');
     expect(html).toContain('40');
   });
+
+  it('APP-16Y-R1: renders candidate amounts clearly labeled as Possíveis correspondências', () => {
+    client.setQueryData(monthlyProgressQueryKey(portfolioId), makeMockTimeline());
+
+    const html = renderToString(
+      <QueryClientProvider client={client}>
+        <MonthlyProgressTimelineSection portfolioId={portfolioId} />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain('Possíveis correspondências: R$');
+    expect(html).toContain('100.00');
+  });
 });

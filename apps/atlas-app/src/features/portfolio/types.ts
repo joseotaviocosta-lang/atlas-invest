@@ -1138,72 +1138,96 @@ export interface ContributionPlanMonthlyReviewDto {
 }
 
 export interface PortfolioMonthlyProgressGoalDto {
-  id: string;
-  amountCents: number;
-  amountFormatted: string;
-  source: 'EXPLICIT_COMPETENCE' | 'PORTFOLIO_DEFAULT';
-  effectiveCompetence: string;
-  isDefaultFallback: boolean;
+  amount: string;
+  currency: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  sourceId: string;
 }
 
 export interface MonthlyPlanEntryDto {
-  planId: string;
+  id: string;
   name: string;
-  status: 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
-  plannedTotalCents: number;
-  plannedTotalFormatted: string;
-  confirmedTotalCents: number;
-  confirmedTotalFormatted: string;
-  completedAt: string | null;
+  plannedDate: string;
+  status: 'PLANNED' | 'COMPLETED' | 'CANCELLED';
+  completedAt?: string | null;
+  plannedCents: number;
+  plannedAmount: string;
+  confirmedCents: number;
+  confirmedAmount: string;
+  candidateCents: number;
+  candidateAmount: string;
+  candidateTransactionCount?: number;
+  rejectedCents: number;
+  rejectedAmount: string;
+  completionPercent: number;
+  baselineStable: boolean;
 }
 
 export interface PortfolioMonthlyProgressEntryDto {
   competence: string;
-  status: 'NO_GOAL' | 'PLAN_IN_PROGRESS' | 'PLAN_COMPLETED' | 'GOAL_ACHIEVED' | 'UNPLANNED_ACTIVITY';
   goal: PortfolioMonthlyProgressGoalDto | null;
   plans: MonthlyPlanEntryDto[];
-  confirmedPlanContributionsCents: number;
-  confirmedPlanContributionsFormatted: string;
+  totalPlannedCents: number;
+  totalPlannedAmount: string;
+  totalConfirmedCents: number;
+  totalConfirmedAmount: string;
+  totalCandidateCents: number;
+  totalCandidateAmount: string;
+  totalCandidateTransactionCount?: number;
   purchaseActivityCents: number;
-  purchaseActivityFormatted: string;
-  unlinkedPurchaseActivityCents: number;
-  unlinkedPurchaseActivityFormatted: string;
-  remainingGoalCents: number | null;
-  remainingGoalFormatted: string | null;
-  goalProgressPct: number | null;
-  planExecutionPct: number | null;
+  purchaseActivityAmount: string;
+  purchaseTransactionCount: number;
+  unlinkedPurchaseActivityCents?: number;
+  unlinkedPurchaseActivityAmount?: string;
+  sellActivityCents: number;
+  sellActivityAmount: string;
+  sellTransactionCount: number;
+  completedPlanCount: number;
+  openPlanCount: number;
+  monthStatus: 'NO_GOAL' | 'GOAL_ONLY' | 'PLAN_OPEN' | 'PLAN_COMPLETED' | 'MULTIPLE_PLANS';
+  dataQuality: {
+    ledgerAvailable: boolean;
+    planHistoryAvailable: boolean;
+    goalHistoryAvailable: boolean;
+    valuationHistoryAvailable: boolean;
+  };
   warnings: string[];
 }
 
 export interface MonthlyProgressSummaryDto {
+  monthsCount: number;
+  goalsConfiguredMonths: number;
   totalGoalCents: number;
-  totalGoalFormatted: string;
+  totalGoalAmount: string;
   totalPlannedCents: number;
-  totalPlannedFormatted: string;
+  totalPlannedAmount: string;
   totalConfirmedCents: number;
-  totalConfirmedFormatted: string;
+  totalConfirmedAmount: string;
   totalPurchaseActivityCents: number;
-  totalPurchaseActivityFormatted: string;
-  activeMonthsCount: number;
-  completedPlansCount: number;
+  totalPurchaseActivityAmount: string;
+  plansCreated: number;
+  plansCompleted: number;
 }
 
 export interface PortfolioMonthlyProgressTimelineDto {
   portfolioId: string;
-  asOfCompetence: string;
-  range: {
-    from: string;
-    to: string;
-    monthsCount: number;
-  };
-  timeline: PortfolioMonthlyProgressEntryDto[];
+  fromMonth: string;
+  toMonth: string;
   summary: MonthlyProgressSummaryDto;
-  currentPortfolioState: {
-    totalValuationFormatted: string;
-    topAllocations: Array<{ ticker: string; currentPct: number }>;
-    note: string;
+  months: PortfolioMonthlyProgressEntryDto[];
+  currentPortfolioState?: {
+    valuationQuality: 'FULL_PORTFOLIO' | 'VALUED_POSITIONS_ONLY';
+    totalEquity?: string;
+    totalPositions: number;
+    valuedPositions: number;
+    currentPositions: Array<{
+      assetId: string;
+      ticker: string;
+      weightPercent: number;
+    }>;
   };
-  capabilities: {
+  historyCapabilities: {
     valuationHistory: 'UNAVAILABLE';
     allocationHistory: 'UNAVAILABLE';
     targetHistory: 'UNAVAILABLE';

@@ -78,6 +78,90 @@ describe('Phase 5Q-J: versioned goal lookup', () => {
     expect(goalForMonth(first, '2026-01')).toBe(goalForMonth(second, '2026-01'));
     expect(goalForMonth(first, '2026-03')).toBe('100');
   });
+
+  it('APP-16Y-R1: breaks ties on overlapping goals by latest effectiveFrom, then createdAt, then id', () => {
+    // 1. Latest effectiveFromMonth wins over earlier effectiveFromMonth
+    const overlappingDiffFrom = [
+      {
+        id: 'goal-old-from',
+        amount: '1000',
+        currency: 'BRL',
+        effectiveFromMonth: '2026-01',
+        effectiveToMonth: '2026-06',
+        createdAt: '2026-01-01T10:00:00Z',
+      },
+      {
+        id: 'goal-new-from',
+        amount: '2000',
+        currency: 'BRL',
+        effectiveFromMonth: '2026-03',
+        effectiveToMonth: '2026-06',
+        createdAt: '2026-01-01T08:00:00Z', // even if created earlier, later effectiveFrom wins
+      },
+    ];
+    expect(goalForMonth(overlappingDiffFrom, '2026-01')).toBe('1000');
+    expect(goalForMonth(overlappingDiffFrom, '2026-03')).toBe('2000');
+    expect(goalForMonth(overlappingDiffFrom, '2026-04')).toBe('2000');
+
+    // 2. Same effectiveFromMonth: latest createdAt wins
+    const sameFromDiffCreated = [
+      {
+        id: 'goal-a',
+        amount: '1500',
+        currency: 'BRL',
+        effectiveFromMonth: '2026-01',
+        effectiveToMonth: '2026-06',
+        createdAt: '2026-01-01T10:00:00.000Z',
+      },
+      {
+        id: 'goal-b',
+        amount: '2500',
+        currency: 'BRL',
+        effectiveFromMonth: '2026-01',
+        effectiveToMonth: '2026-06',
+        createdAt: '2026-01-02T10:00:00.000Z', // later creation
+      },
+    ];
+    expect(goalForMonth(sameFromDiffCreated, '2026-01')).toBe('2500');
+    expect(goalForMonth([...sameFromDiffCreated].reverse(), '2026-01')).toBe('2500');
+
+    // 3. Same effectiveFromMonth and same createdAt: id tie-breaker
+    const sameFromSameCreated = [
+      {
+        id: 'goal-001',
+        amount: '3000',
+        currency: 'BRL',
+        effectiveFromMonth: '2026-01',
+        effectiveToMonth: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        id: 'goal-002',
+        amount: '4000',
+        currency: 'BRL',
+        effectiveFromMonth: '2026-01',
+        effectiveToMonth: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ];
+    expect(goalForMonth(sameFromSameCreated, '2026-01')).toBe('4000');
+    expect(goalForMonth([...sameFromSameCreated].reverse(), '2026-01')).toBe('4000');
+  });
+
+  it('APP-16Y-R1: strictly respects half-open interval [effectiveFrom, effectiveTo)', () => {
+    const halfOpenGoal = [
+      {
+        id: 'goal-h1',
+        amount: '5000',
+        currency: 'BRL',
+        effectiveFromMonth: '2026-01',
+        effectiveToMonth: '2026-07', // 2026-07 must be EXCLUDED
+      },
+    ];
+    expect(goalForMonth(halfOpenGoal, '2026-01')).toBe('5000');
+    expect(goalForMonth(halfOpenGoal, '2026-06')).toBe('5000');
+    expect(goalForMonth(halfOpenGoal, '2026-07')).toBeNull();
+  });
 });
 
 describe('Phase 5Q-J: monthly goal progress', () => {

@@ -638,6 +638,9 @@ importers:
       '@atlas/domain':
         specifier: workspace:*
         version: link:../domain
+      '@atlas/portfolio-strategy':
+        specifier: workspace:*
+        version: link:../portfolio-strategy
     devDependencies:
       '@atlas/config':
         specifier: workspace:*

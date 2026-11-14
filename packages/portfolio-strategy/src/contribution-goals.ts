@@ -125,6 +125,14 @@ export interface GoalVersionInput {
   effectiveFromMonth: string;
   /** Exclusive end month `YYYY-MM`, or null when open-ended. */
   effectiveToMonth: string | null;
+  id?: string;
+  createdAt?: string | Date;
+}
+
+function toEpochMs(val: string | Date | undefined): number {
+  if (!val) return 0;
+  const t = typeof val === 'string' ? new Date(val).getTime() : val.getTime();
+  return isNaN(t) ? 0 : t;
 }
 
 /**
@@ -157,11 +165,24 @@ export function goalVersionForMonth(
     ) {
       continue;
     }
-    if (
-      best === null ||
-      compareMonthKeys(version.effectiveFromMonth, best.effectiveFromMonth) > 0
-    ) {
+    if (best === null) {
       best = version;
+      continue;
+    }
+    const cmpFrom = compareMonthKeys(version.effectiveFromMonth, best.effectiveFromMonth);
+    if (cmpFrom > 0) {
+      best = version;
+    } else if (cmpFrom === 0) {
+      // Deterministic tie-breaker: latest createdAt, then id
+      const bestCreated = toEpochMs(best.createdAt);
+      const verCreated = toEpochMs(version.createdAt);
+      if (verCreated > bestCreated) {
+        best = version;
+      } else if (verCreated === bestCreated) {
+        if ((version.id ?? '').localeCompare(best.id ?? '') > 0) {
+          best = version;
+        }
+      }
     }
   }
   return best;

@@ -280,8 +280,8 @@ export function MonthlyProgressTimelineSection({ portfolioId }: MonthlyProgressT
                       R$ {m.totalConfirmedAmount}
                     </div>
                     {m.totalCandidateCents > 0 && (
-                      <div className="text-[9px] text-amber-400">
-                        + R$ {m.totalCandidateAmount} pendentes
+                      <div className="text-[9px] text-amber-400" data-testid={`month-candidates-${m.competence}`}>
+                        Possíveis correspondências: R$ {m.totalCandidateAmount}
                       </div>
                     )}
                   </div>
@@ -323,6 +323,11 @@ export function MonthlyProgressTimelineSection({ portfolioId }: MonthlyProgressT
                           </div>
                           <div className="mt-1 text-[10px] text-[var(--text-secondary)]">
                             Planejado: R$ {p.plannedAmount} • Confirmado: R$ {p.confirmedAmount} ({p.completionPercent}%)
+                            {p.candidateCents > 0 && (
+                              <span className="text-amber-400" data-testid={`plan-candidate-${p.id}`}>
+                                {` • Possíveis correspondências: R$ ${p.candidateAmount}`}
+                              </span>
+                            )}
                             {p.completedAt && ` • Encerrado em ${p.completedAt.slice(0, 10)}`}
                           </div>
                         </div>
