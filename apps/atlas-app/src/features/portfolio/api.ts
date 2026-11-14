@@ -142,6 +142,26 @@ export const portfolioApi = {
     );
   },
 
+  async getContributionProgress(
+    portfolioId: string,
+    options?: { period?: string; contributionAmount?: string; refresh?: boolean },
+  ): Promise<{ data: import('./types').ContributionPlanProgressDto }> {
+    const params = new URLSearchParams();
+    if (options?.period) {
+      params.set('period', options.period);
+    }
+    if (options?.contributionAmount) {
+      params.set('contributionAmount', options.contributionAmount);
+    }
+    if (options?.refresh) {
+      params.set('refresh', 'true');
+    }
+    const qs = params.toString();
+    return apiClient.get<{ data: import('./types').ContributionPlanProgressDto }>(
+      `/api/v1/portfolios/${portfolioId}/decision-brief/contribution-progress${qs ? `?${qs}` : ''}`,
+    );
+  },
+
   async getPortfolioNews(
     portfolioId: string,
     options?: { refresh?: boolean },

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { useDecisionBrief } from '../useDecisionBrief';
+import { useDecisionBrief, useContributionProgress } from '../useDecisionBrief';
 import type {
   DecisionTierDto,
   PortfolioDecisionPriorityItemDto,
+  ContributionPlanProgressDto,
 } from '../types';
 
 interface DecisionBriefSectionProps {
@@ -45,6 +46,215 @@ const QUALITY_LABELS: Record<'BOA' | 'PARCIAL' | 'LIMITADA', string> = {
 function isSafeHttpUrl(url?: string): url is string {
   if (!url) return false;
   return url.startsWith('https://') || url.startsWith('http://');
+}
+
+function ContributionProgressCard({
+  progress,
+}: {
+  progress: ContributionPlanProgressDto;
+}) {
+  const { overall, plan, assets, unplannedAssets, dataQuality } = progress;
+
+  return (
+    <div
+      data-testid="contribution-progress-tracking-card"
+      className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-xs"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-bold text-[var(--text-primary)]">
+              Acompanhamento do aporte — {progress.periodStart.slice(0, 7)}
+            </h3>
+            <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]">
+              {plan.source === 'SAVED_GOAL' ? 'Meta salva' : 'Simulação'}
+            </span>
+          </div>
+          <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">
+            {progress.sourceTransparencyNote}
+          </p>
+        </div>
+
+        <div className="text-right">
+          <div className="text-base font-bold tabular-nums text-[var(--text-primary)]">
+            {overall.completionPercent}%
+          </div>
+          <span className="text-[11px] text-[var(--text-secondary)]">
+            R$ {overall.actualAmount} / R$ {overall.plannedAmount}
+          </span>
+        </div>
+      </div>
+
+      {/* Progress Bar */}
+      <div className="mt-3">
+        <div className="flex justify-between text-[11px] text-[var(--text-secondary)] mb-1">
+          <span>Progresso do plano</span>
+          <span>{overall.cappedCompletionPercent}% concluído</span>
+        </div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--surface)]">
+          <div
+            className={`h-full transition-all duration-300 ${
+              overall.completionPercent >= 100
+                ? 'bg-emerald-500'
+                : overall.completionPercent > 0
+                ? 'bg-[var(--accent)]'
+                : 'bg-transparent'
+            }`}
+            style={{ width: `${overall.cappedCompletionPercent}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Summary Metrics */}
+      <div className="mt-3.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5">
+          <span className="text-[10px] text-[var(--text-secondary)]">Planejado</span>
+          <div className="text-sm font-semibold text-[var(--text-primary)]">
+            R$ {overall.plannedAmount}
+          </div>
+        </div>
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5">
+          <span className="text-[10px] text-[var(--text-secondary)]">Compras registradas</span>
+          <div className="text-sm font-semibold text-[var(--text-primary)]">
+            R$ {overall.actualAmount}
+          </div>
+        </div>
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5">
+          <span className="text-[10px] text-[var(--text-secondary)]">Restante do plano</span>
+          <div className="text-sm font-semibold text-[var(--text-primary)]">
+            R$ {overall.remainingAmount}
+          </div>
+        </div>
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5">
+          <span className="text-[10px] text-[var(--text-secondary)]">Acima do plano</span>
+          <div className="text-sm font-semibold text-[var(--text-primary)]">
+            R$ {overall.overPlanAmount}
+          </div>
+        </div>
+      </div>
+
+      {/* Asset Table */}
+      {assets.length > 0 && (
+        <div className="mt-4">
+          <h4 className="font-semibold text-[var(--text-primary)] mb-2">
+            Distribuição planejada vs. movimentos registrados
+          </h4>
+          <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+            <table className="w-full text-left text-[11px]">
+              <thead className="border-b border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)]">
+                <tr>
+                  <th className="p-2">Ativo</th>
+                  <th className="p-2 text-right">Planejado</th>
+                  <th className="p-2 text-right">Realizado</th>
+                  <th className="p-2 text-right">Restante</th>
+                  <th className="p-2 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border)]">
+                {assets.map((asset) => (
+                  <tr key={asset.assetId} data-testid={`tracking-asset-row-${asset.ticker}`}>
+                    <td className="p-2 font-medium text-[var(--text-primary)]">
+                      {asset.ticker}
+                    </td>
+                    <td className="p-2 text-right tabular-nums text-[var(--text-secondary)]">
+                      R$ {(asset.plannedCents / 100).toFixed(2)}
+                    </td>
+                    <td className="p-2 text-right tabular-nums font-semibold text-[var(--text-primary)]">
+                      R$ {(asset.actualCents / 100).toFixed(2)}
+                    </td>
+                    <td className="p-2 text-right tabular-nums text-[var(--text-secondary)]">
+                      R$ {(asset.remainingCents / 100).toFixed(2)}
+                    </td>
+                    <td className="p-2 text-center">
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                          asset.status === 'COMPLETE'
+                            ? 'bg-emerald-500/15 text-emerald-400'
+                            : asset.status === 'PARTIAL'
+                            ? 'bg-sky-500/15 text-sky-400'
+                            : asset.status === 'OVER_PLAN'
+                            ? 'bg-amber-500/15 text-amber-400'
+                            : 'bg-zinc-500/15 text-zinc-400'
+                        }`}
+                      >
+                        {asset.status === 'COMPLETE'
+                          ? 'Concluído'
+                          : asset.status === 'PARTIAL'
+                          ? 'Parcial'
+                          : asset.status === 'OVER_PLAN'
+                          ? 'Acima do plano'
+                          : 'Não iniciado'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Unplanned Purchases */}
+      {unplannedAssets.length > 0 && (
+        <div className="mt-4">
+          <h4 className="font-semibold text-[var(--text-primary)] mb-2">
+            Compras fora do plano original
+          </h4>
+          <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+            <table className="w-full text-left text-[11px]">
+              <thead className="border-b border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)]">
+                <tr>
+                  <th className="p-2">Ativo</th>
+                  <th className="p-2 text-right">Valor comprado</th>
+                  <th className="p-2 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border)]">
+                {unplannedAssets.map((asset) => (
+                  <tr key={asset.assetId} data-testid={`tracking-unplanned-row-${asset.ticker}`}>
+                    <td className="p-2 font-medium text-[var(--text-primary)]">
+                      {asset.ticker}
+                    </td>
+                    <td className="p-2 text-right tabular-nums font-semibold text-[var(--text-primary)]">
+                      R$ {(asset.actualCents / 100).toFixed(2)}
+                    </td>
+                    <td className="p-2 text-center">
+                      <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+                        Fora do plano
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Deviations Insights */}
+      {progress.largestDeviations.length > 0 && (
+        <div className="mt-3.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5 text-[11px] text-[var(--text-secondary)]">
+          <span className="font-semibold text-[var(--text-primary)]">Desvios observados: </span>
+          <ul className="mt-1 list-disc space-y-0.5 pl-3.5">
+            {progress.largestDeviations.map((dev, idx) => (
+              <li key={idx}>{dev}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Partial valuation & cash limitation notes */}
+      <div className="mt-3 space-y-1 text-[10px] text-[var(--text-secondary)]">
+        {dataQuality.isPartialValuation && (
+          <p className="text-amber-400">
+            ⚠️ Progresso estrutural calculado apenas sobre posições avaliadas ({dataQuality.valuedPositions}/{dataQuality.totalPositions}).
+          </p>
+        )}
+        <p className="italic">{progress.cashSourceLimitationNote}</p>
+        <p className="italic">{progress.structuralProgress.attributionDisclaimer}</p>
+      </div>
+    </div>
+  );
 }
 
 function PriorityCard({
@@ -258,6 +468,11 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
     projectedScenariosResult,
     resetProjectedScenarios,
   } = useDecisionBrief(portfolioId, appliedAmount);
+
+  const { data: progressResult } = useContributionProgress(
+    portfolioId,
+    appliedAmount ? { contributionAmount: appliedAmount } : undefined,
+  );
 
   if (!portfolioId) {
     return null;
@@ -1140,6 +1355,11 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
             Projeções matemáticas informativas. Não consideram valorização de cotas nem proventos futuros. Zero ordens emitidas.
           </p>
         </div>
+      )}
+
+      {/* Contribution Plan Progress Tracking (APP-16W) */}
+      {progressResult && (
+        <ContributionProgressCard progress={progressResult} />
       )}
 
       {isEmpty ? (

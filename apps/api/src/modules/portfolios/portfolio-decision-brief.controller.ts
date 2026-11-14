@@ -40,6 +40,29 @@ const SimulateContributionBodySchema = z
   })
   .strict();
 
+const ContributionProgressQuerySchema = z
+  .object({
+    period: z
+      .string()
+      .trim()
+      .regex(/^\d{4}-(0[1-9]|1[0-2])$/, {
+        message: 'period must be in YYYY-MM format.',
+      })
+      .optional(),
+    contributionAmount: z
+      .string()
+      .trim()
+      .regex(/^\d+(\.\d{1,2})?$/, {
+        message: 'contributionAmount must be a positive decimal string with up to 2 decimal places.',
+      })
+      .refine((val) => !/^0+(\.0{1,2})?$/.test(val), {
+        message: 'contributionAmount must be greater than zero.',
+      })
+      .optional(),
+    refresh: z.enum(['true', 'false']).optional(),
+  })
+  .strict();
+
 /**
  * Phase APP-16S — Daily Portfolio Decision Brief (Read-only analysis).
  *
@@ -196,6 +219,48 @@ export class PortfolioDecisionBriefController {
       contributionAmount: body.amount,
       currency: body.currency,
       forceRefresh: body.refresh,
+    });
+    return { data };
+  }
+
+  @Get('contribution-progress')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Track contribution plan progress against actual movements (read-only)',
+    description:
+      'Compares a planned contribution (from saved goal or explicit simulation) against actual purchase movements recorded in the ledger within the period. Zero orders, zero broker calls, exact cents conservation.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiQuery({
+    name: 'period',
+    required: false,
+    description: 'Target month in YYYY-MM format. Defaults to current month.',
+  })
+  @ApiQuery({
+    name: 'contributionAmount',
+    required: false,
+    description: 'Optional simulated contribution amount (decimal string). If omitted, uses active ContributionGoal.',
+  })
+  @ApiQuery({
+    name: 'refresh',
+    required: false,
+    description: 'Optional boolean string ("true" | "false") to force-refresh underlying radar snapshot.',
+  })
+  @ApiResponse({ status: 200, description: 'Contribution plan tracking and progress' })
+  @ApiResponse({ status: 400, description: 'Invalid query parameters' })
+  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  async getContributionProgress(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+    @Query() rawQuery: Record<string, unknown>,
+  ) {
+    const query = ContributionProgressQuerySchema.parse(rawQuery);
+    const data = await this.radarUseCase.getContributionProgress({
+      portfolioId,
+      userId: principal.userId,
+      period: query.period,
+      contributionAmount: query.contributionAmount,
+      forceRefresh: query.refresh === 'true',
     });
     return { data };
   }

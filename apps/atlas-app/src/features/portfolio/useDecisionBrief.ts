@@ -7,10 +7,15 @@ import type {
   ContributionScenarioComparisonDto,
   ProjectedPortfolioAfterContributionDto,
   ProjectedPortfolioScenarioComparisonDto,
+  ContributionPlanProgressDto,
 } from './types';
 
 export function decisionBriefQueryKey(portfolioId: string, contributionAmount?: string) {
   return ['portfolios', portfolioId, 'decision-brief', contributionAmount ?? ''] as const;
+}
+
+export function contributionProgressQueryKey(portfolioId: string, period?: string, contributionAmount?: string) {
+  return ['portfolios', portfolioId, 'decision-brief', 'contribution-progress', period ?? '', contributionAmount ?? ''] as const;
 }
 
 export function useDecisionBrief(portfolioId: string | null | undefined, contributionAmount?: string) {
@@ -120,4 +125,21 @@ export function useDecisionBrief(portfolioId: string | null | undefined, contrib
     projectedScenariosError: projectScenariosMutation.error,
     resetProjectedScenarios: projectScenariosMutation.reset,
   };
+}
+
+export function useContributionProgress(
+  portfolioId: string | null | undefined,
+  options?: { period?: string; contributionAmount?: string },
+) {
+  return useQuery<ContributionPlanProgressDto>({
+    queryKey: contributionProgressQueryKey(portfolioId ?? '', options?.period, options?.contributionAmount),
+    queryFn: async () => {
+      if (!portfolioId) throw new Error('Portfolio ID is required');
+      const res = await portfolioApi.getContributionProgress(portfolioId, options);
+      return res.data;
+    },
+    enabled: Boolean(portfolioId),
+    staleTime: 1000 * 60 * 5,
+    retry: 1,
+  });
 }

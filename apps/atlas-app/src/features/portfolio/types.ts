@@ -885,3 +885,121 @@ export interface ProjectedPortfolioScenarioComparisonDto {
   dataQuality: ProjectionDataQualityDto;
   modelVersion: string;
 }
+
+export type ContributionPlanAssetStatusDto =
+  | 'NOT_STARTED'
+  | 'PARTIAL'
+  | 'COMPLETE'
+  | 'OVER_PLAN'
+  | 'UNPLANNED';
+
+export interface ContributionPlanAssetProgressDto {
+  assetId: string;
+  ticker: string;
+  name: string;
+  assetType: 'STOCK' | 'FII' | string;
+  plannedCents: number;
+  actualCents: number;
+  remainingCents: number;
+  overPlanCents: number;
+  completionPercent: number;
+  cappedCompletionPercent: number;
+  status: ContributionPlanAssetStatusDto;
+  tradeCount: number;
+}
+
+export interface ContributionPlanOverallProgressDto {
+  plannedCents: number;
+  actualCents: number;
+  remainingCents: number;
+  overPlanCents: number;
+  completionPercent: number;
+  cappedCompletionPercent: number;
+  plannedAmount: string;
+  actualAmount: string;
+  remainingAmount: string;
+  overPlanAmount: string;
+  status: 'NOT_STARTED' | 'PARTIAL' | 'COMPLETE' | 'OVER_PLAN';
+}
+
+export interface ContributionPlanDeviationItemDto {
+  assetId: string;
+  ticker: string;
+  name: string;
+  plannedCents: number;
+  actualCents: number;
+  deltaCents: number;
+  deltaAmount: string;
+  deltaPercent: number;
+  isUnplanned: boolean;
+  isOverPlan: boolean;
+}
+
+export interface ContributionPlanTransactionSummaryDto {
+  id: string;
+  accountId: string;
+  assetId: string;
+  ticker?: string;
+  type: string;
+  tradeDate: string;
+  amountCents: number;
+  amount: string;
+  currency: string;
+}
+
+export interface ContributionPlanDataQualityDto {
+  valuationQuality: 'FULL_PORTFOLIO' | 'VALUED_POSITIONS_ONLY';
+  totalPositions: number;
+  valuedPositions: number;
+  incompletePositions: number;
+  isPartialValuation: boolean;
+  trackedPurchaseCount: number;
+  excludedSellCount: number;
+  excludedOutOfPeriodCount: number;
+}
+
+export interface ContributionPlanProgressDto {
+  portfolioId: string;
+  currency: string;
+  periodStart: string;
+  periodEnd: string;
+  asOf: string;
+  plan: {
+    portfolioId: string;
+    periodStart: string;
+    periodEnd: string;
+    plannedCents: number;
+    plannedAmount: string;
+    currency: string;
+    source: string;
+    allocations: Array<{
+      assetId: string;
+      ticker: string;
+      name: string;
+      assetType: 'STOCK' | 'FII' | string;
+      plannedCents: number;
+      plannedAmount: string;
+      plannedPercent: number;
+    }>;
+  };
+  overall: ContributionPlanOverallProgressDto;
+  assets: ContributionPlanAssetProgressDto[];
+  unplannedAssets: ContributionPlanAssetProgressDto[];
+  deviations: ContributionPlanDeviationItemDto[];
+  largestDeviations: string[];
+  observedTransactions: ContributionPlanTransactionSummaryDto[];
+  structuralProgress: {
+    hasTargetContext: boolean;
+    plannedProjectedGaps?: Record<string, { classId: string; gapPercent: number }>;
+    currentActualGaps?: Record<string, { classId: string; gapPercent: number }>;
+    improvedClassesCount?: number;
+    worsenedClassesCount?: number;
+    attributionDisclaimer: string;
+  };
+  dataQuality: ContributionPlanDataQualityDto;
+  warnings: string[];
+  assumptions: string[];
+  sourceTransparencyNote: string;
+  cashSourceLimitationNote: string;
+  modelVersion: string;
+}

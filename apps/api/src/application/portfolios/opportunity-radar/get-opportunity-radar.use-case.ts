@@ -21,12 +21,16 @@ import {
   buildContributionScenarioComparison,
   buildProjectedPortfolioAfterContribution,
   buildProjectedPortfolioScenarioComparison,
+  deriveContributionPlanActuals,
   deriveNewsProviderQuality,
   type PortfolioDailyDecisionBrief,
   type ContributionAllocationSimulation,
   type ContributionScenarioComparison,
   type ProjectedPortfolioAfterContribution,
   type ProjectedPortfolioScenarioComparison,
+  type ContributionPlanProgressResult,
+  type ContributionPlanSnapshot,
+  type TransactionInputForTracking,
   type ProjectionBaselinePosition,
   type PortfolioNewsInboxMetrics,
   type PersistedPortfolioNewsEventState,
@@ -1274,6 +1278,171 @@ export class GetOpportunityRadarUseCase {
       portfolioId: params.portfolioId,
       currency: params.currency || 'BRL',
       scenarioComparison,
+      baselinePositions: inputs.baselinePositions,
+      radarItems: inputs.evaluatedItems,
+      classTargetWeights: inputs.classTargetWeights,
+      referenceDate: now,
+    });
+  }
+
+  /**
+   * Phase APP-16W — Contribution Plan Tracking & Actual-vs-Planned Progress (Read-only analysis).
+   *
+   * Compares a planned contribution (from saved goal or explicit simulation) against actual
+   * purchase movements recorded in the ledger within the period.
+   * Read-only, exact cents conservation, zero orders, no fake cash flows.
+   */
+  async getContributionProgress(params: {
+    portfolioId: string;
+    userId: string;
+    period?: string; // YYYY-MM
+    contributionAmount?: string; // explicit simulated amount
+    forceRefresh?: boolean;
+    now?: Date;
+  }): Promise<ContributionPlanProgressResult> {
+    const now = params.now ?? new Date();
+
+    // 1. Verify portfolio ownership (anti-enumeration 404)
+    const portfolio = await this.portfolioRepo.findById(params.portfolioId);
+    if (!portfolio || portfolio.userId !== params.userId) {
+      throw new NotFoundException({
+        message: `Portfolio with id '${params.portfolioId}' not found`,
+        code: 'PORTFOLIO.NOT_FOUND',
+      });
+    }
+
+    // 2. Resolve target competence month (default to current month in America/Sao_Paulo)
+    let periodKey: string;
+    if (params.period && /^\d{4}-(0[1-9]|1[0-2])$/.test(params.period.trim())) {
+      periodKey = params.period.trim();
+    } else {
+      const spDateStr = formatIsoDateString(now, 'America/Sao_Paulo');
+      periodKey = spDateStr.slice(0, 7);
+    }
+
+    const [yearStr, monthStr] = periodKey.split('-');
+    const year = parseInt(yearStr!, 10);
+    const month = parseInt(monthStr!, 10);
+    const lastDayOfMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+    const periodStart = `${periodKey}-01`;
+    const periodEnd = `${periodKey}-${lastDayOfMonth.toString().padStart(2, '0')}`;
+
+    // 3. Resolve planned contribution amount & source
+    let plannedAmount: string = '0.00';
+    let plannedSource: 'SAVED_GOAL' | 'USER_SIMULATION' = 'USER_SIMULATION';
+
+    if (
+      params.contributionAmount &&
+      /^\d+(\.\d{1,2})?$/.test(params.contributionAmount.trim()) &&
+      parseFloat(params.contributionAmount) > 0
+    ) {
+      plannedAmount = params.contributionAmount.trim();
+      plannedSource = 'USER_SIMULATION';
+    } else if (this.contributionGoalRepo) {
+      try {
+        const activeGoal = await this.contributionGoalRepo.findOpen(params.portfolioId);
+        if (activeGoal && activeGoal.amount && parseFloat(activeGoal.amount) > 0) {
+          plannedAmount = activeGoal.amount;
+          plannedSource = 'SAVED_GOAL';
+        }
+      } catch {
+        // Goal lookup optional
+      }
+    }
+
+    // 4. Resolve baseline projection inputs
+    const inputs = await this.resolveProjectionInputs({
+      portfolioId: params.portfolioId,
+      userId: params.userId,
+      contributionAmount: parseFloat(plannedAmount) > 0 ? plannedAmount : '1000.00',
+      currency: 'BRL',
+      forceRefresh: params.forceRefresh,
+      now,
+    });
+
+    // 5. Build simulation allocations if plannedAmount > 0
+    const allocations: ContributionPlanSnapshot['allocations'] = [];
+    let plannedCents = 0;
+
+    if (parseFloat(plannedAmount) > 0) {
+      const simulation = buildContributionAllocationSimulation({
+        portfolioId: params.portfolioId,
+        contributionAmount: plannedAmount,
+        currency: 'BRL',
+        decisionBrief: inputs.decisionBrief,
+        radarItems: inputs.evaluatedItems,
+        referenceDate: now,
+      });
+
+      plannedCents = simulation.allocatedCents > 0 ? simulation.allocatedCents : simulation.totalCents;
+
+      for (const item of simulation.allocations) {
+        allocations.push({
+          assetId: item.assetId,
+          ticker: item.ticker,
+          name: item.name,
+          assetType: item.assetType,
+          plannedCents: item.targetCents,
+          plannedAmount: item.targetAmount,
+          plannedPercent: item.allocationPercent,
+        });
+      }
+    }
+
+    const planSnapshot: ContributionPlanSnapshot = {
+      portfolioId: params.portfolioId,
+      periodStart,
+      periodEnd,
+      plannedCents,
+      plannedAmount,
+      currency: 'BRL',
+      source: plannedSource,
+      allocations,
+      createdAt: now.toISOString(),
+    };
+
+    // 6. Fetch ledger transactions for the portfolio across accounts in the period
+    const rawTransactions = this.transactionRepo
+      ? await this.transactionRepo.findByPortfolioId(params.portfolioId, {
+          startDate: periodStart as any,
+          endDate: periodEnd as any,
+        })
+      : [];
+
+    const trackingTransactions: TransactionInputForTracking[] = [];
+    for (const tx of rawTransactions) {
+      const domainTx = tx as any;
+      const tradeDateStr = domainTx.tradeDate?.toISOString
+        ? domainTx.tradeDate.toISOString().slice(0, 10)
+        : String(domainTx.tradeDate || '');
+
+      let amountStr = '0.00';
+      if (domainTx.amount) {
+        amountStr = domainTx.amount.amount ? String(domainTx.amount.amount) : String(domainTx.amount);
+      } else if (domainTx.unitPrice && domainTx.quantity) {
+        const u = parseFloat(String(domainTx.unitPrice.amount || domainTx.unitPrice)) || 0;
+        const q = parseFloat(String(domainTx.quantity.value || domainTx.quantity)) || 0;
+        amountStr = (u * q).toFixed(2);
+      }
+
+      trackingTransactions.push({
+        id: domainTx.id,
+        portfolioId: domainTx.portfolioId,
+        accountId: domainTx.accountId,
+        assetId: domainTx.assetId || '',
+        ticker: domainTx.ticker,
+        type: domainTx.type,
+        tradeDate: tradeDateStr,
+        amount: amountStr,
+        currency: domainTx.currency || 'BRL',
+      });
+    }
+
+    // 7. Derive actual movements and comparison
+    return deriveContributionPlanActuals({
+      plan: planSnapshot,
+      transactions: trackingTransactions,
       baselinePositions: inputs.baselinePositions,
       radarItems: inputs.evaluatedItems,
       classTargetWeights: inputs.classTargetWeights,
