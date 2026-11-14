@@ -96,6 +96,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         // ever leave the API in error bodies. Never ids, payloads or secrets.
         if (typeof obj['effectiveTransactionId'] === 'string') {
           details = { effectiveTransactionId: obj['effectiveTransactionId'] };
+        } else if (obj['code'] === 'CONTRIBUTION_PLAN.SELECTION_REQUIRED' && Array.isArray(obj['candidates'])) {
+          details = {
+            period: obj['period'],
+            candidates: obj['candidates'],
+          };
         } else if (obj['code'] === 'PORTFOLIO.REPLAY_FAILED' && typeof obj['details'] === 'object' && obj['details'] !== null) {
           details = obj['details'];
         }

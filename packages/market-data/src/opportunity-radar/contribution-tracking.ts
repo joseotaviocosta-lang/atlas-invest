@@ -19,6 +19,127 @@ export type ContributionPlanBaselineMode =
   | 'LIVE_SIMULATION'
   | 'NO_PLAN';
 
+export interface ContributionPlanSelectionCandidate {
+  id: string;
+  name: string;
+  plannedDate: string; // YYYY-MM-DD
+  status: string; // "PLANNED" | "COMPLETED"
+  currency: string; // "BRL"
+  totalPlannedAmount: string; // e.g. "2000.00"
+  createdAt: string; // ISO timestamp
+}
+
+export type ResolveContributionPlanBaselineResult =
+  | {
+      outcome: 'SELECTED';
+      plan: any; // Raw or mapped candidate plan
+    }
+  | {
+      outcome: 'NONE';
+    }
+  | {
+      outcome: 'AMBIGUOUS';
+      candidates: ContributionPlanSelectionCandidate[];
+    };
+
+/**
+ * Pure deterministic resolver for contribution plan baseline selection (APP-16W-R2).
+ *
+ * Rules:
+ * 1. If explicitPlanId is provided:
+ *    - Finds matching plan by id in candidatePlans belonging to portfolio.
+ *    - Returns SELECTED if found, NONE if not found.
+ * 2. If no explicitPlanId:
+ *    - Filters candidate plans by period (plannedDate within period month YYYY-MM)
+ *      and eligible status ("PLANNED" or "COMPLETED").
+ *    - If 0 matches -> NONE.
+ *    - If 1 match -> SELECTED.
+ *    - If > 1 matches -> AMBIGUOUS with deterministically sorted candidates
+ *      (plannedDate ASC, createdAt ASC, id ASC). Never picks matchingPlans[0] silently.
+ */
+export function resolveContributionPlanBaseline(params: {
+  portfolioId: string;
+  period: string; // YYYY-MM
+  explicitPlanId?: string;
+  candidatePlans: Array<{
+    id: string;
+    portfolioId: string;
+    name: string;
+    plannedDate: string;
+    status: string;
+    currency?: string;
+    createdAt?: Date | string;
+    items?: Array<{ amount: string | number }>;
+  }>;
+}): ResolveContributionPlanBaselineResult {
+  const { period, explicitPlanId, candidatePlans } = params;
+
+  // 1. Explicit planId requested
+  if (explicitPlanId) {
+    const found = candidatePlans.find((p) => p.id === explicitPlanId);
+    if (!found) {
+      return { outcome: 'NONE' };
+    }
+    return { outcome: 'SELECTED', plan: found };
+  }
+
+  // 2. Filter candidates by requested period (YYYY-MM) and eligible status
+  const periodKey = period.trim().slice(0, 7);
+  const eligible = candidatePlans.filter(
+    (p) =>
+      p.plannedDate &&
+      p.plannedDate.slice(0, 7) === periodKey &&
+      (p.status === 'PLANNED' || p.status === 'COMPLETED'),
+  );
+
+  if (eligible.length === 0) {
+    return { outcome: 'NONE' };
+  }
+
+  if (eligible.length === 1) {
+    return { outcome: 'SELECTED', plan: eligible[0] };
+  }
+
+  // 3. Ambiguity: multiple valid plans for the competence
+  // Deterministic candidate order: plannedDate ASC, createdAt ASC, id ASC
+  const sorted = [...eligible].sort((a, b) => {
+    const dateComp = a.plannedDate.localeCompare(b.plannedDate);
+    if (dateComp !== 0) return dateComp;
+
+    const createdA = a.createdAt instanceof Date ? a.createdAt.toISOString() : String(a.createdAt || '');
+    const createdB = b.createdAt instanceof Date ? b.createdAt.toISOString() : String(b.createdAt || '');
+    const createdComp = createdA.localeCompare(createdB);
+    if (createdComp !== 0) return createdComp;
+
+    return a.id.localeCompare(b.id);
+  });
+
+  const candidates: ContributionPlanSelectionCandidate[] = sorted.map((p) => {
+    let totalCents = 0;
+    if (Array.isArray(p.items)) {
+      for (const item of p.items) {
+        totalCents += parseMoneyToCents(item.amount);
+      }
+    }
+    const createdStr = p.createdAt instanceof Date ? p.createdAt.toISOString() : String(p.createdAt || '');
+
+    return {
+      id: p.id,
+      name: p.name,
+      plannedDate: p.plannedDate.slice(0, 10),
+      status: p.status,
+      currency: p.currency || 'BRL',
+      totalPlannedAmount: formatCentsToDecimal(totalCents),
+      createdAt: createdStr,
+    };
+  });
+
+  return {
+    outcome: 'AMBIGUOUS',
+    candidates,
+  };
+}
+
 export interface ContributionPlanCategoryAllocation {
   category: string;
   plannedCents: number;

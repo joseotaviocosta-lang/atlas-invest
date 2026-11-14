@@ -8,6 +8,7 @@ import type {
   ProjectedPortfolioAfterContributionDto,
   ProjectedPortfolioScenarioComparisonDto,
   ContributionPlanProgressDto,
+  ContributionPlanSelectionCandidateDto,
 } from './types';
 
 export function decisionBriefQueryKey(portfolioId: string, contributionAmount?: string) {
@@ -131,7 +132,7 @@ export function useContributionProgress(
   portfolioId: string | null | undefined,
   options?: { planId?: string; period?: string; contributionAmount?: string },
 ) {
-  return useQuery<ContributionPlanProgressDto>({
+  const query = useQuery<ContributionPlanProgressDto>({
     queryKey: contributionProgressQueryKey(portfolioId ?? '', options?.period, options?.contributionAmount, options?.planId),
     queryFn: async () => {
       if (!portfolioId) throw new Error('Portfolio ID is required');
@@ -142,4 +143,31 @@ export function useContributionProgress(
     staleTime: 1000 * 60 * 5,
     retry: 1,
   });
+
+  const err = query.error as (Error & { code?: string; details?: { period?: string; candidates?: any[] } }) | null;
+  const data = query.data as any;
+
+  // Support both 409 API error and mock/preloaded selection state in cache
+  const isSelectionRequired =
+    err?.code === 'CONTRIBUTION_PLAN.SELECTION_REQUIRED' ||
+    (err as any)?.status === 409 ||
+    (err as any)?.statusCode === 409 ||
+    Boolean(data?._selectionRequired);
+
+  const candidatePlans: ContributionPlanSelectionCandidateDto[] =
+    isSelectionRequired && Array.isArray(err?.details?.candidates)
+      ? (err.details.candidates as ContributionPlanSelectionCandidateDto[])
+      : isSelectionRequired && Array.isArray(data?._candidates)
+        ? (data._candidates as ContributionPlanSelectionCandidateDto[])
+        : [];
+
+  const selectionPeriod =
+    err?.details?.period || (isSelectionRequired ? data?._selectionPeriod : undefined);
+
+  return {
+    ...query,
+    requiresPlanSelection: isSelectionRequired && candidatePlans.length > 0,
+    candidatePlans,
+    selectionPeriod,
+  };
 }

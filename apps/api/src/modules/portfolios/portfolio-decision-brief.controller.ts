@@ -249,7 +249,8 @@ export class PortfolioDecisionBriefController {
   })
   @ApiResponse({ status: 200, description: 'Contribution plan tracking and progress' })
   @ApiResponse({ status: 400, description: 'Invalid query parameters' })
-  @ApiResponse({ status: 404, description: 'Portfolio not found' })
+  @ApiResponse({ status: 404, description: 'Portfolio or plan not found' })
+  @ApiResponse({ status: 409, description: 'Multiple contribution plans found for period; selection required' })
   async getContributionProgress(
     @Param('portfolioId', UUIDParamPipe) portfolioId: string,
     @CurrentPrincipal() principal: AuthenticatedPrincipal,

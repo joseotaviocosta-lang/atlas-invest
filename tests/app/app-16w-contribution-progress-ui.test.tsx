@@ -291,4 +291,85 @@ describe('APP-16W UI: Contribution Plan Progress Tracking', () => {
     expect(html).toContain('Meta salva');
     expect(html).toContain('A distribuição planejada é recalculada com os dados atuais e pode mudar ao longo do tempo.');
   });
+
+  it('renders Plan Selection Required selector when 409 ambiguity state occurs', () => {
+    const error = new Error('Mais de um plano de aporte existe para esta competência.') as any;
+    error.code = 'CONTRIBUTION_PLAN.SELECTION_REQUIRED';
+    error.statusCode = 409;
+    error.status = 409;
+    error.details = {
+      period: '2026-11',
+      candidates: [
+        {
+          id: 'plan-1',
+          name: 'Plano A — Novembro',
+          plannedDate: '2026-11-05',
+          status: 'PLANNED',
+          currency: 'BRL',
+          totalPlannedAmount: '1200.00',
+          createdAt: '2026-11-01T10:00:00.000Z',
+        },
+        {
+          id: 'plan-2',
+          name: 'Plano B — Novembro Extra',
+          plannedDate: '2026-11-15',
+          status: 'COMPLETED',
+          currency: 'BRL',
+          totalPlannedAmount: '1500.00',
+          createdAt: '2026-11-02T10:00:00.000Z',
+        },
+      ],
+    };
+
+    const key = contributionProgressQueryKey(portfolioId, undefined, undefined, undefined);
+
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    });
+
+    client.setQueryData(decisionBriefQueryKey(portfolioId), makeBrief());
+    client.setQueryData(key, {
+      _selectionRequired: true,
+      _selectionPeriod: '2026-11',
+      _candidates: [
+        {
+          id: 'plan-1',
+          name: 'Plano A — Novembro',
+          plannedDate: '2026-11-05',
+          status: 'PLANNED',
+          currency: 'BRL',
+          totalPlannedAmount: '1200.00',
+          createdAt: '2026-11-01T10:00:00.000Z',
+        },
+        {
+          id: 'plan-2',
+          name: 'Plano B — Novembro Extra',
+          plannedDate: '2026-11-15',
+          status: 'COMPLETED',
+          currency: 'BRL',
+          totalPlannedAmount: '1500.00',
+          createdAt: '2026-11-02T10:00:00.000Z',
+        },
+      ],
+    });
+
+    const html = renderToString(
+      <QueryClientProvider client={client}>
+        <DecisionBriefSection portfolioId={portfolioId} />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain('Selecione qual plano deseja acompanhar');
+    expect(html).toContain('Há mais de um plano salvo para este mês. Escolha qual deles deseja acompanhar.');
+    expect(html).toContain('Plano A — Novembro');
+    expect(html).toContain('1200.00');
+    expect(html).toContain('Plano B — Novembro Extra');
+    expect(html).toContain('1500.00');
+    expect(html).toContain('Concluído');
+    expect(html).toContain('Planejado');
+  });
 });

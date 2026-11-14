@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ConflictException,
   Optional,
 } from '@nestjs/common';
 import {
@@ -22,6 +23,7 @@ import {
   buildProjectedPortfolioAfterContribution,
   buildProjectedPortfolioScenarioComparison,
   deriveContributionPlanActuals,
+  resolveContributionPlanBaseline,
   deriveNewsProviderQuality,
   type PortfolioDailyDecisionBrief,
   type ContributionAllocationSimulation,
@@ -1345,27 +1347,38 @@ export class GetOpportunityRadarUseCase {
 
     // 3. Priority 1: Check for Persisted Contribution Plan
     let persistedPlan: any = null;
-    if (params.planId && this.contributionPlanRepo) {
-      persistedPlan = await this.contributionPlanRepo.findByIdAndPortfolio(
-        params.planId,
-        params.portfolioId,
-      );
-      if (!persistedPlan) {
-        throw new NotFoundException({
-          message: `Contribution plan with id '${params.planId}' not found in portfolio`,
-          code: 'CONTRIBUTION_PLAN.NOT_FOUND',
+    if (this.contributionPlanRepo) {
+      if (params.planId) {
+        persistedPlan = await this.contributionPlanRepo.findByIdAndPortfolio(
+          params.planId,
+          params.portfolioId,
+        );
+        if (!persistedPlan) {
+          throw new NotFoundException({
+            message: `Contribution plan with id '${params.planId}' not found in portfolio`,
+            code: 'CONTRIBUTION_PLAN.NOT_FOUND',
+          });
+        }
+      } else {
+        const candidatePlans = await this.contributionPlanRepo.listByPortfolio(params.portfolioId);
+        const resolution = resolveContributionPlanBaseline({
+          portfolioId: params.portfolioId,
+          period: periodKey,
+          candidatePlans,
         });
-      }
-    } else if (this.contributionPlanRepo) {
-      const plans = await this.contributionPlanRepo.listByPortfolio(params.portfolioId);
-      const matchingPlans = plans.filter(
-        (p) =>
-          p.plannedDate &&
-          p.plannedDate.slice(0, 7) === periodKey &&
-          (p.status === 'PLANNED' || p.status === 'COMPLETED'),
-      );
-      if (matchingPlans.length > 0) {
-        persistedPlan = matchingPlans[0];
+
+        if (resolution.outcome === 'AMBIGUOUS') {
+          throw new ConflictException({
+            message: 'Mais de um plano de aporte existe para esta competência.',
+            code: 'CONTRIBUTION_PLAN.SELECTION_REQUIRED',
+            period: periodKey,
+            candidates: resolution.candidates,
+          });
+        }
+
+        if (resolution.outcome === 'SELECTED') {
+          persistedPlan = resolution.plan;
+        }
       }
     }
 

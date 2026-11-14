@@ -4,6 +4,7 @@ import type {
   DecisionTierDto,
   PortfolioDecisionPriorityItemDto,
   ContributionPlanProgressDto,
+  ContributionPlanSelectionCandidateDto,
 } from '../types';
 
 interface DecisionBriefSectionProps {
@@ -479,10 +480,17 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
     resetProjectedScenarios,
   } = useDecisionBrief(portfolioId, appliedAmount);
 
-  const { data: progressResult } = useContributionProgress(
-    portfolioId,
-    appliedAmount ? { contributionAmount: appliedAmount } : undefined,
-  );
+  const [selectedPlanId, setSelectedPlanId] = useState<string | undefined>(undefined);
+
+  const {
+    data: progressResult,
+    requiresPlanSelection,
+    candidatePlans,
+    selectionPeriod,
+  } = useContributionProgress(portfolioId, {
+    contributionAmount: appliedAmount,
+    planId: selectedPlanId,
+  });
 
   if (!portfolioId) {
     return null;
@@ -1367,9 +1375,69 @@ export function DecisionBriefSection({ portfolioId }: DecisionBriefSectionProps)
         </div>
       )}
 
+      {/* Contribution Plan Ambiguity / Selection Required (APP-16W-R2) */}
+      {requiresPlanSelection && candidatePlans.length > 0 && !selectedPlanId && (
+        <div
+          data-testid="contribution-plan-selector"
+          className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-xs"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-bold text-[var(--text-primary)]">
+              Selecione qual plano deseja acompanhar
+            </h3>
+            {selectionPeriod && (
+              <span className="rounded bg-[var(--surface-elevated)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-secondary)]">
+                Competência: {selectionPeriod}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-[var(--text-secondary)]">
+            Há mais de um plano salvo para este mês. Escolha qual deles deseja acompanhar.
+          </p>
+
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {candidatePlans.map((cand: ContributionPlanSelectionCandidateDto) => (
+              <button
+                key={cand.id}
+                type="button"
+                onClick={() => setSelectedPlanId(cand.id)}
+                className="flex flex-col items-start justify-between rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-3 text-left transition hover:border-[var(--accent)] hover:bg-[var(--surface)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] min-h-[44px]"
+              >
+                <div className="flex w-full items-center justify-between gap-2">
+                  <span className="font-semibold text-[var(--text-primary)]">{cand.name}</span>
+                  <span className="rounded bg-[var(--surface)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
+                    {cand.status === 'COMPLETED' ? 'Concluído' : 'Planejado'}
+                  </span>
+                </div>
+                <div className="mt-2 flex w-full flex-wrap items-center justify-between gap-1 text-[11px] text-[var(--text-secondary)]">
+                  <span className="font-mono font-medium text-[var(--text-primary)]">
+                    {cand.currency} {cand.totalPlannedAmount}
+                  </span>
+                  <span>Previsto: {cand.plannedDate}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Contribution Plan Progress Tracking (APP-16W) */}
-      {progressResult && (
-        <ContributionProgressCard progress={progressResult} />
+      {progressResult && !requiresPlanSelection && progressResult.periodStart && (
+        <div className="space-y-2">
+          {selectedPlanId && (
+            <div className="mt-4 flex items-center justify-between text-xs text-[var(--text-secondary)]">
+              <span>Acompanhando plano selecionado manualmente.</span>
+              <button
+                type="button"
+                onClick={() => setSelectedPlanId(undefined)}
+                className="font-medium text-[var(--accent)] hover:underline"
+              >
+                Trocar plano
+              </button>
+            </div>
+          )}
+          <ContributionProgressCard progress={progressResult} />
+        </div>
       )}
 
       {isEmpty ? (

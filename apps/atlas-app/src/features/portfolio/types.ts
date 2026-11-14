@@ -1029,3 +1029,18 @@ export interface ContributionPlanProgressDto {
   cashSourceLimitationNote: string;
   modelVersion: string;
 }
+
+export interface ContributionPlanSelectionCandidateDto {
+  id: string;
+  name: string;
+  plannedDate: string;
+  status: string;
+  currency: string;
+  totalPlannedAmount: string;
+  createdAt: string;
+}
+
+export interface ContributionPlanSelectionRequiredErrorDetails {
+  period?: string;
+  candidates?: ContributionPlanSelectionCandidateDto[];
+}
