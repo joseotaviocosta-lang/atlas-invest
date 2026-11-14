@@ -116,3 +116,28 @@ export class PlanTrackingGroupSwaggerDto {
   })
   transactionIds!: string[];
 }
+
+export const CompleteContributionPlanBodySchema = z
+  .object({
+    acknowledgePendingCandidates: z.boolean().optional(),
+    acknowledgeEarlyClose: z.boolean().optional(),
+  })
+  .strict();
+
+export type CompleteContributionPlanBody = z.infer<typeof CompleteContributionPlanBodySchema>;
+
+export class CompleteContributionPlanSwaggerDto {
+  @ApiPropertyOptional({
+    type: Boolean,
+    example: true,
+    description: 'Explicit user acknowledgement when candidates remain unlinked in period',
+  })
+  acknowledgePendingCandidates?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    example: true,
+    description: 'Explicit user acknowledgement when closing plan before period end',
+  })
+  acknowledgeEarlyClose?: boolean;
+}

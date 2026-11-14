@@ -1044,3 +1044,95 @@ export interface ContributionPlanSelectionRequiredErrorDetails {
   period?: string;
   candidates?: ContributionPlanSelectionCandidateDto[];
 }
+
+export interface ContributionPlanMonthlyReviewCategoryProgressDto {
+  category: string;
+  plannedCents: number;
+  plannedAmount: string;
+  confirmedCents: number;
+  confirmedAmount: string;
+  candidateCents: number;
+  candidateAmount: string;
+  remainingCents: number;
+  remainingAmount: string;
+  overPlanCents: number;
+  overPlanAmount: string;
+  confirmedCompletionPercent: number;
+  potentialCompletionPercent: number;
+  status: 'NOT_STARTED' | 'PARTIAL' | 'COMPLETE' | 'OVER_PLAN';
+}
+
+export interface ContributionPlanMonthlyReviewTransactionItemDto {
+  id: string;
+  accountId: string;
+  assetId: string;
+  ticker?: string;
+  type: string;
+  tradeDate: string;
+  amountCents: number;
+  amount: string;
+  currency: string;
+  category: string;
+  linkStatus?: 'CONFIRMED' | 'REJECTED' | 'CANDIDATE';
+}
+
+export interface ContributionPlanMonthlyReviewCloseReadinessDto {
+  canClose: boolean;
+  blockers: string[];
+  warnings: string[];
+  requiresPendingCandidatesAcknowledgement: boolean;
+  requiresEarlyCloseAcknowledgement: boolean;
+}
+
+export interface ContributionPlanMonthlyReviewDto {
+  plan: {
+    id: string;
+    name: string;
+    plannedDate: string;
+    status: 'PLANNED' | 'COMPLETED';
+    currency: string;
+    completedAt?: string | null;
+    createdAt?: string;
+  };
+  period: string;
+  status: 'PLANNED' | 'COMPLETED';
+  completedAt?: string | null;
+  asOf: string;
+
+  plannedCents: number;
+  plannedAmount: string;
+  confirmedCents: number;
+  confirmedAmount: string;
+  candidateCents: number;
+  candidateAmount: string;
+  rejectedCents: number;
+  rejectedAmount: string;
+  remainingCents: number;
+  remainingAmount: string;
+  overPlanCents: number;
+  overPlanAmount: string;
+
+  completionPercent: number;
+  potentialCompletionPercent: number;
+
+  confirmedTransactions: ContributionPlanMonthlyReviewTransactionItemDto[];
+  candidateTransactions: ContributionPlanMonthlyReviewTransactionItemDto[];
+  rejectedTransactions: ContributionPlanMonthlyReviewTransactionItemDto[];
+
+  categoryProgress: ContributionPlanMonthlyReviewCategoryProgressDto[];
+  deviations: ContributionPlanDeviationItemDto[];
+  largestDeviations: string[];
+
+  closeReadiness: ContributionPlanMonthlyReviewCloseReadinessDto;
+  dataQuality: ContributionPlanDataQualityDto & {
+    trackingQuality: 'COMPLETE_LINK_REVIEW' | 'HAS_PENDING_CANDIDATES';
+  };
+  warnings: string[];
+  assumptions: string[];
+  safeCopy: {
+    statusNote: string;
+    completionDistinctionNote: string;
+    immutableHistoryNote: string;
+  };
+  modelVersion: string;
+}

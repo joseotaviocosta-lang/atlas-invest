@@ -43,6 +43,14 @@ import { classifyPlanTransactions, planTransactionAmount } from './contribution-
 import { GetPortfolioAllocationStrategyUseCase } from './get-portfolio-allocation-strategy.use-case';
 import { GetPortfolioAllocationUseCase } from '../valuation/get-portfolio-allocation.use-case';
 import type { ScenarioLiveResultView } from './portfolio-allocation-scenarios.use-case';
+import {
+  deriveContributionPlanMonthlyReview,
+  multiplyUnitPriceQuantityToCents,
+  formatCentsToDecimal,
+  type ContributionPlanMonthlyReviewResult,
+  type TransactionInputForTracking,
+} from '@atlas/market-data';
+import { ConflictException } from '@nestjs/common';
 
 export interface ContributionPlanItemView {
   category: string;
@@ -411,9 +419,186 @@ export class PortfolioContributionPlansUseCase {
     planId: string;
     portfolioId: string;
     userId?: string;
-  }): Promise<ContributionPlanView> {
-    // Status flip only: no transaction, order or ledger write happens here.
-    return this.transitionPlan({ ...command, to: 'COMPLETED' });
+    acknowledgePendingCandidates?: boolean;
+    acknowledgeEarlyClose?: boolean;
+  }): Promise<{ plan: ContributionPlanView; reviewSummary: ContributionPlanMonthlyReviewResult }> {
+    // 1. Load review to verify readiness and check for pending candidates or early close
+    const review = await this.getPlanMonthlyReview({
+      planId: command.planId,
+      portfolioId: command.portfolioId,
+      userId: command.userId,
+    });
+
+    // 2. Check if already completed (idempotent 200 return)
+    if (review.status === 'COMPLETED') {
+      const planRow = await this.loadScoped(command.planId, command.portfolioId, command.userId);
+      return {
+        plan: this.toView(planRow),
+        reviewSummary: review,
+      };
+    }
+
+    // 3. Check for pending candidates acknowledgement
+    if (review.closeReadiness.requiresPendingCandidatesAcknowledgement && !command.acknowledgePendingCandidates) {
+      throw new ConflictException({
+        message: 'Existem compras elegíveis pendentes de revisão para este plano. É necessária confirmação explícita para encerrar.',
+        code: 'CONTRIBUTION_PLAN.PENDING_CANDIDATES_ACK_REQUIRED',
+        requiresPendingCandidatesAcknowledgement: true,
+        pendingCandidateCount: review.candidateTransactions.length,
+      });
+    }
+
+    // 4. Check for early close acknowledgement
+    if (review.closeReadiness.requiresEarlyCloseAcknowledgement && !command.acknowledgeEarlyClose) {
+      throw new ConflictException({
+        message: 'O período deste plano ainda não terminou. É necessária confirmação explícita para encerrar antecipadamente.',
+        code: 'CONTRIBUTION_PLAN.EARLY_CLOSE_ACK_REQUIRED',
+        requiresEarlyCloseAcknowledgement: true,
+        periodEnd: review.period,
+      });
+    }
+
+    // 5. Guarded single write: status PLANNED -> COMPLETED + completedAt = now
+    const plan = await this.transitionPlan({
+      planId: command.planId,
+      portfolioId: command.portfolioId,
+      userId: command.userId,
+      to: 'COMPLETED',
+    });
+
+    // 6. Return updated plan view with final review summary
+    const updatedReview = await this.getPlanMonthlyReview({
+      planId: command.planId,
+      portfolioId: command.portfolioId,
+      userId: command.userId,
+    });
+
+    return {
+      plan,
+      reviewSummary: updatedReview,
+    };
+  }
+
+  /**
+   * APP-16X — Monthly Contribution Plan Review
+   * Pure deterministic read model of planned vs confirmed vs candidates vs rejected.
+   * Does NOT require any external network or market data providers.
+   */
+  async getPlanMonthlyReview(command: {
+    planId: string;
+    portfolioId: string;
+    userId?: string;
+    referenceDate?: Date;
+  }): Promise<ContributionPlanMonthlyReviewResult> {
+    const row = await this.loadScoped(command.planId, command.portfolioId, command.userId);
+    const planDate = row.plannedDate.slice(0, 10);
+    const period = planDate.slice(0, 7);
+
+    const [pYearStr, pMonthStr] = period.split('-');
+    const pYear = parseInt(pYearStr!, 10);
+    const pMonth = parseInt(pMonthStr!, 10);
+    const lastDayOfMonth = new Date(Date.UTC(pYear, pMonth, 0)).getUTCDate();
+    const periodStart = `${period}-01`;
+    const periodEnd = `${period}-${lastDayOfMonth.toString().padStart(2, '0')}`;
+
+    // Load ledger transactions in the period for the portfolio
+    const rawTransactions = await this.transactions.findByPortfolioId(command.portfolioId, {
+      startDate: LocalDate.from(periodStart),
+      endDate: LocalDate.from(periodEnd),
+    });
+
+    // Load links for transactions
+    const txIds = rawTransactions.map((tx) => tx.id);
+    const linkStatusByTxId = new Map<string, { status: 'CONFIRMED' | 'REJECTED'; planId: string }>();
+
+    if (txIds.length > 0) {
+      try {
+        const confirmedLinks = await this.links.findConfirmedByTransactionIds(txIds);
+        for (const [txId, pId] of confirmedLinks.entries()) {
+          linkStatusByTxId.set(txId, { status: 'CONFIRMED', planId: pId });
+        }
+        const planLinks = await this.links.listByPlan(row.id);
+        for (const l of planLinks) {
+          linkStatusByTxId.set(l.transactionId, { status: l.status, planId: l.planId });
+        }
+      } catch {
+        // Link repo optional/graceful fallback
+      }
+    }
+
+    // Resolve asset categories
+    const categoriesMap = await this.classifyTransactions(
+      rawTransactions.map((tx) => ({
+        id: tx.id,
+        assetId: (tx as { assetId?: string | null }).assetId ?? null,
+        type: tx.type,
+      })),
+    );
+
+    const assetCategories = new Map<string, string>();
+    for (const tx of rawTransactions) {
+      const assetId = (tx as { assetId?: string | null }).assetId;
+      if (assetId) {
+        const cat = categoriesMap.get(tx.id);
+        if (cat) assetCategories.set(assetId, cat);
+      }
+    }
+
+    const trackingTransactions: TransactionInputForTracking[] = [];
+    for (const tx of rawTransactions) {
+      const domainTx = tx as any;
+      const tradeDateStr = domainTx.tradeDate?.toISOString
+        ? domainTx.tradeDate.toISOString().slice(0, 10)
+        : String(domainTx.tradeDate || '');
+
+      let amountStr = '0.00';
+      if (domainTx.amount) {
+        amountStr = domainTx.amount.amount ? String(domainTx.amount.amount) : String(domainTx.amount);
+      } else if (domainTx.unitPrice && domainTx.quantity) {
+        const u = String(domainTx.unitPrice.amount || domainTx.unitPrice);
+        const q = String(domainTx.quantity.value || domainTx.quantity);
+        const exactCents = multiplyUnitPriceQuantityToCents(u, q);
+        if (exactCents !== null) {
+          amountStr = formatCentsToDecimal(exactCents);
+        } else {
+          continue;
+        }
+      } else {
+        continue;
+      }
+
+      const linkInfo = linkStatusByTxId.get(domainTx.id);
+
+      trackingTransactions.push({
+        id: domainTx.id,
+        portfolioId: domainTx.portfolioId,
+        accountId: domainTx.accountId,
+        assetId: domainTx.assetId || '',
+        ticker: domainTx.ticker,
+        type: domainTx.type,
+        tradeDate: tradeDateStr,
+        amount: amountStr,
+        currency: domainTx.currency || row.currency,
+        linkStatus: linkInfo?.status,
+        linkedPlanId: linkInfo?.planId,
+      });
+    }
+
+    return deriveContributionPlanMonthlyReview({
+      plan: {
+        id: row.id,
+        name: row.name,
+        plannedDate: planDate,
+        status: row.status as 'PLANNED' | 'COMPLETED',
+        currency: row.currency,
+        completedAt: row.completedAt,
+        createdAt: row.createdAt,
+        items: row.items,
+      },
+      transactions: trackingTransactions,
+      assetCategories,
+      referenceDate: command.referenceDate ?? new Date(),
+    });
   }
 
   async cancelPlan(command: {

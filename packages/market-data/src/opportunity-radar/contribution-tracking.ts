@@ -827,3 +827,482 @@ export function deriveContributionPlanActuals(
     modelVersion: OPPORTUNITY_MODEL_VERSION,
   };
 }
+
+export interface ContributionPlanMonthlyReviewCloseReadiness {
+  canClose: boolean;
+  blockers: string[];
+  warnings: string[];
+  requiresPendingCandidatesAcknowledgement: boolean;
+  requiresEarlyCloseAcknowledgement: boolean;
+}
+
+export interface ContributionPlanMonthlyReviewCategoryProgress {
+  category: string;
+  plannedCents: number;
+  plannedAmount: string;
+  confirmedCents: number;
+  confirmedAmount: string;
+  candidateCents: number;
+  candidateAmount: string;
+  remainingCents: number;
+  remainingAmount: string;
+  overPlanCents: number;
+  overPlanAmount: string;
+  confirmedCompletionPercent: number;
+  potentialCompletionPercent: number;
+  status: 'NOT_STARTED' | 'PARTIAL' | 'COMPLETE' | 'OVER_PLAN';
+}
+
+export interface ContributionPlanMonthlyReviewTransactionItem {
+  id: string;
+  accountId: string;
+  assetId: string;
+  ticker?: string;
+  type: string;
+  tradeDate: string;
+  amountCents: number;
+  amount: string;
+  currency: string;
+  category: string;
+  linkStatus?: 'CONFIRMED' | 'REJECTED' | 'CANDIDATE';
+}
+
+export interface ContributionPlanMonthlyReviewResult {
+  plan: {
+    id: string;
+    name: string;
+    plannedDate: string;
+    status: 'PLANNED' | 'COMPLETED';
+    currency: string;
+    completedAt?: string | null;
+    createdAt?: string;
+  };
+  period: string; // YYYY-MM
+  status: 'PLANNED' | 'COMPLETED';
+  completedAt?: string | null;
+  asOf: string;
+
+  // Financial totals (in cents and formatted decimal strings)
+  plannedCents: number;
+  plannedAmount: string;
+  confirmedCents: number;
+  confirmedAmount: string;
+  candidateCents: number;
+  candidateAmount: string;
+  rejectedCents: number;
+  rejectedAmount: string;
+  remainingCents: number;
+  remainingAmount: string;
+  overPlanCents: number;
+  overPlanAmount: string;
+
+  // Percentage progress
+  completionPercent: number; // based strictly on confirmed / planned
+  potentialCompletionPercent: number; // (confirmed + candidate) / planned
+
+  // Granular groups of transactions
+  confirmedTransactions: ContributionPlanMonthlyReviewTransactionItem[];
+  candidateTransactions: ContributionPlanMonthlyReviewTransactionItem[];
+  rejectedTransactions: ContributionPlanMonthlyReviewTransactionItem[];
+
+  // Category progress
+  categoryProgress: ContributionPlanMonthlyReviewCategoryProgress[];
+
+  // Deviations & Structural summary
+  deviations: ContributionPlanDeviationItem[];
+  largestDeviations: string[];
+  structuralSummary?: ContributionPlanStructuralComparison;
+
+  // Close readiness evaluation
+  closeReadiness: ContributionPlanMonthlyReviewCloseReadiness;
+
+  // Data Quality & Notes
+  dataQuality: ContributionPlanDataQuality & {
+    trackingQuality: 'COMPLETE_LINK_REVIEW' | 'HAS_PENDING_CANDIDATES';
+  };
+  warnings: string[];
+  assumptions: string[];
+  safeCopy: {
+    statusNote: string;
+    completionDistinctionNote: string;
+    immutableHistoryNote: string;
+  };
+  modelVersion: string;
+}
+
+export interface DeriveContributionPlanMonthlyReviewParams {
+  plan: {
+    id: string;
+    name: string;
+    plannedDate: string; // YYYY-MM-DD
+    status: 'PLANNED' | 'COMPLETED';
+    currency: string;
+    completedAt?: Date | string | null;
+    createdAt?: Date | string;
+    items: Array<{ category: string; amount: string | number }>;
+  };
+  transactions: readonly TransactionInputForTracking[];
+  assetCategories?: Map<string, string>; // assetId -> category
+  baselinePositions?: readonly ProjectionBaselinePosition[];
+  radarItems?: readonly OpportunityRadarItem[];
+  classTargetWeights?: Record<string, number>;
+  projectedState?: ProjectedPortfolioAfterContribution;
+  referenceDate?: Date;
+}
+
+/**
+ * Pure deterministic domain function to derive a Contribution Plan Monthly Review (APP-16X).
+ *
+ * Rules:
+ * - Read-only and deterministic.
+ * - Confirmed actuals strictly from CONFIRMED transaction links.
+ * - Eligible BUYs without links in period are CANDIDATES.
+ * - REJECTED links are tracked for audit visibility but never counted as confirmed.
+ * - SELL transactions never count towards contribution actuals.
+ * - Transactions confirmed in another plan are excluded.
+ * - Category progress cleanly maps assets to canonical categories (unknown -> UNMAPPED).
+ * - Exact integer cents arithmetic (no float rounding).
+ * - CloseReadiness flags blockers (foreign plan, already closed) and warnings (pending candidates, early close).
+ */
+export function deriveContributionPlanMonthlyReview(
+  params: DeriveContributionPlanMonthlyReviewParams,
+): ContributionPlanMonthlyReviewResult {
+  const {
+    plan,
+    transactions,
+    assetCategories = new Map(),
+    baselinePositions = [],
+    referenceDate = new Date(),
+  } = params;
+
+  const asOf = referenceDate.toISOString();
+  const todayStr = referenceDate.toISOString().slice(0, 10);
+  const period = plan.plannedDate.slice(0, 7);
+
+  const [pYearStr, pMonthStr] = period.split('-');
+  const pYear = parseInt(pYearStr!, 10);
+  const pMonth = parseInt(pMonthStr!, 10);
+  const lastDayOfMonth = new Date(Date.UTC(pYear, pMonth, 0)).getUTCDate();
+  const periodStart = `${period}-01`;
+  const periodEnd = `${period}-${lastDayOfMonth.toString().padStart(2, '0')}`;
+
+  // 1. Calculate planned amounts by category
+  const plannedCentsByCategory = new Map<string, number>();
+  let totalPlannedCents = 0;
+  for (const item of plan.items) {
+    const c = parseMoneyToCents(item.amount);
+    totalPlannedCents += c;
+    plannedCentsByCategory.set(item.category, (plannedCentsByCategory.get(item.category) ?? 0) + c);
+  }
+
+  // 2. Classify transactions into confirmed, candidate, rejected
+  const confirmedTxs: ContributionPlanMonthlyReviewTransactionItem[] = [];
+  const candidateTxs: ContributionPlanMonthlyReviewTransactionItem[] = [];
+  const rejectedTxs: ContributionPlanMonthlyReviewTransactionItem[] = [];
+
+  const confirmedCentsByCategory = new Map<string, number>();
+  const candidateCentsByCategory = new Map<string, number>();
+
+  let confirmedCents = 0;
+  let candidateCents = 0;
+  let rejectedCents = 0;
+
+  let excludedSellCount = 0;
+  let excludedOutOfPeriodCount = 0;
+  const warnings: string[] = [];
+
+  for (const tx of transactions) {
+    const tradeDate = tx.tradeDate.slice(0, 10);
+
+    // Period boundary check
+    if (tradeDate < periodStart || tradeDate > periodEnd) {
+      excludedOutOfPeriodCount++;
+      if (tx.linkStatus === 'CONFIRMED' && tx.linkedPlanId === plan.id) {
+        warnings.push(`Transação confirmada ${tx.id} possui data fora do período do plano (${periodStart} a ${periodEnd}).`);
+      }
+      continue;
+    }
+
+    // Exclude confirmed in another plan
+    if (tx.linkStatus === 'CONFIRMED' && tx.linkedPlanId && tx.linkedPlanId !== plan.id) {
+      continue;
+    }
+
+    // Exclude rejected links from actuals, but keep for audit
+    if (tx.linkStatus === 'REJECTED' && tx.linkedPlanId === plan.id) {
+      const txCents = parseMoneyToCents(tx.amount);
+      const cat = assetCategories.get(tx.assetId) || 'UNMAPPED';
+      rejectedCents += txCents;
+      rejectedTxs.push({
+        id: tx.id,
+        accountId: tx.accountId,
+        assetId: tx.assetId,
+        ticker: tx.ticker,
+        type: tx.type,
+        tradeDate,
+        amountCents: txCents,
+        amount: formatCentsToDecimal(txCents),
+        currency: tx.currency || plan.currency,
+        category: cat,
+        linkStatus: 'REJECTED',
+      });
+      continue;
+    }
+
+    // Exclude SELL
+    if (tx.type === 'SELL') {
+      excludedSellCount++;
+      continue;
+    }
+
+    // Only BUY transactions can count as purchase actuals or candidates
+    if (tx.type !== 'BUY') {
+      continue;
+    }
+
+    const txCents = parseMoneyToCents(tx.amount);
+    if (txCents <= 0) continue;
+
+    const cat = assetCategories.get(tx.assetId) || 'UNMAPPED';
+    const txItem: ContributionPlanMonthlyReviewTransactionItem = {
+      id: tx.id,
+      accountId: tx.accountId,
+      assetId: tx.assetId,
+      ticker: tx.ticker,
+      type: tx.type,
+      tradeDate,
+      amountCents: txCents,
+      amount: formatCentsToDecimal(txCents),
+      currency: tx.currency || plan.currency,
+      category: cat,
+      linkStatus: tx.linkStatus === 'CONFIRMED' && tx.linkedPlanId === plan.id ? 'CONFIRMED' : 'CANDIDATE',
+    };
+
+    if (tx.linkStatus === 'CONFIRMED' && tx.linkedPlanId === plan.id) {
+      confirmedCents += txCents;
+      confirmedCentsByCategory.set(cat, (confirmedCentsByCategory.get(cat) ?? 0) + txCents);
+      confirmedTxs.push(txItem);
+    } else {
+      // Eligible purchase in period without confirmed link to this plan -> CANDIDATE
+      candidateCents += txCents;
+      candidateCentsByCategory.set(cat, (candidateCentsByCategory.get(cat) ?? 0) + txCents);
+      candidateTxs.push(txItem);
+    }
+  }
+
+  // 3. Category Progress
+  const allCategories = new Set<string>([
+    ...plannedCentsByCategory.keys(),
+    ...confirmedCentsByCategory.keys(),
+    ...candidateCentsByCategory.keys(),
+  ]);
+
+  const categoryProgress: ContributionPlanMonthlyReviewCategoryProgress[] = [];
+  for (const cat of allCategories) {
+    const planned = plannedCentsByCategory.get(cat) ?? 0;
+    const confirmed = confirmedCentsByCategory.get(cat) ?? 0;
+    const candidate = candidateCentsByCategory.get(cat) ?? 0;
+
+    const remaining = Math.max(planned - confirmed, 0);
+    const overPlan = Math.max(confirmed - planned, 0);
+
+    const confirmedPercent = planned > 0 ? Math.round((confirmed / planned) * 1000) / 10 : 0;
+    const potentialPercent = planned > 0 ? Math.round(((confirmed + candidate) / planned) * 1000) / 10 : 0;
+
+    let catStatus: 'NOT_STARTED' | 'PARTIAL' | 'COMPLETE' | 'OVER_PLAN';
+    if (confirmed === 0) catStatus = 'NOT_STARTED';
+    else if (confirmed < planned) catStatus = 'PARTIAL';
+    else if (confirmed === planned) catStatus = 'COMPLETE';
+    else catStatus = 'OVER_PLAN';
+
+    categoryProgress.push({
+      category: cat,
+      plannedCents: planned,
+      plannedAmount: formatCentsToDecimal(planned),
+      confirmedCents: confirmed,
+      confirmedAmount: formatCentsToDecimal(confirmed),
+      candidateCents: candidate,
+      candidateAmount: formatCentsToDecimal(candidate),
+      remainingCents: remaining,
+      remainingAmount: formatCentsToDecimal(remaining),
+      overPlanCents: overPlan,
+      overPlanAmount: formatCentsToDecimal(overPlan),
+      confirmedCompletionPercent: confirmedPercent,
+      potentialCompletionPercent: potentialPercent,
+      status: catStatus,
+    });
+  }
+
+  // 4. Financial Totals & Progress
+  const remainingCents = Math.max(totalPlannedCents - confirmedCents, 0);
+  const overPlanCents = Math.max(confirmedCents - totalPlannedCents, 0);
+
+  const completionPercent =
+    totalPlannedCents > 0 ? Math.round((confirmedCents / totalPlannedCents) * 1000) / 10 : 0;
+  const potentialCompletionPercent =
+    totalPlannedCents > 0
+      ? Math.round(((confirmedCents + candidateCents) / totalPlannedCents) * 1000) / 10
+      : 0;
+
+  // 5. Close Readiness
+  const blockers: string[] = [];
+  const closeWarnings: string[] = [];
+
+  const isAlreadyCompleted = plan.status === 'COMPLETED';
+  if (isAlreadyCompleted) {
+    blockers.push('PLANO_JA_CONCLUIDO');
+  }
+
+  const hasPendingCandidates = candidateTxs.length > 0;
+  const requiresPendingCandidatesAcknowledgement = hasPendingCandidates && !isAlreadyCompleted;
+  if (hasPendingCandidates) {
+    closeWarnings.push(
+      `Existem ${candidateTxs.length} compra(s) candidata(s) no período que ainda não foram confirmadas.`,
+    );
+  }
+
+  const isPeriodOngoing = todayStr < periodEnd;
+  const requiresEarlyCloseAcknowledgement = isPeriodOngoing && !isAlreadyCompleted;
+  if (isPeriodOngoing) {
+    closeWarnings.push(`O período deste plano (${period}) ainda não terminou (encerra em ${periodEnd}).`);
+  }
+
+  const canClose = !isAlreadyCompleted;
+
+  const closeReadiness: ContributionPlanMonthlyReviewCloseReadiness = {
+    canClose,
+    blockers,
+    warnings: closeWarnings,
+    requiresPendingCandidatesAcknowledgement,
+    requiresEarlyCloseAcknowledgement,
+  };
+
+  // 6. Data Quality
+  const trackingQuality = hasPendingCandidates
+    ? ('HAS_PENDING_CANDIDATES' as const)
+    : ('COMPLETE_LINK_REVIEW' as const);
+
+  const totalPositions = baselinePositions.length;
+  const valuedPositions = baselinePositions.filter((p) => p.isValued).length;
+  const incompletePositions = totalPositions - valuedPositions;
+  const isPartialValuation = incompletePositions > 0;
+
+  const dataQuality: ContributionPlanMonthlyReviewResult['dataQuality'] = {
+    valuationQuality: isPartialValuation ? 'VALUED_POSITIONS_ONLY' : 'FULL_PORTFOLIO',
+    totalPositions,
+    valuedPositions,
+    incompletePositions,
+    isPartialValuation,
+    trackedPurchaseCount: confirmedTxs.length + candidateTxs.length,
+    excludedSellCount,
+    excludedOutOfPeriodCount,
+    confirmedLinkCount: confirmedTxs.length,
+    rejectedLinkCount: rejectedTxs.length,
+    candidateLinkCount: candidateTxs.length,
+    trackingQuality,
+  };
+
+  // 7. Deviations calculation (by category and asset)
+  const deviations: ContributionPlanDeviationItem[] = [];
+  for (const cat of categoryProgress) {
+    const deltaCents = cat.confirmedCents - cat.plannedCents;
+    const deltaPercent =
+      cat.plannedCents > 0 ? Math.round((deltaCents / cat.plannedCents) * 1000) / 10 : 0;
+    deviations.push({
+      assetId: cat.category,
+      ticker: cat.category,
+      name: cat.category,
+      plannedCents: cat.plannedCents,
+      actualCents: cat.confirmedCents,
+      deltaCents,
+      deltaAmount: formatCentsToDecimal(deltaCents),
+      deltaPercent,
+      isUnplanned: cat.plannedCents === 0,
+      isOverPlan: deltaCents > 0,
+    });
+  }
+
+  const largestDeviations: string[] = [];
+  for (const dev of deviations) {
+    if (dev.deltaCents === 0) continue;
+    if (dev.isUnplanned) {
+      largestDeviations.push(
+        `Categoria ${dev.ticker} teve aporte confirmado de R$ ${formatCentsToDecimal(dev.actualCents)} fora do planejado.`,
+      );
+    } else if (dev.deltaCents < 0) {
+      largestDeviations.push(
+        `Categoria ${dev.ticker} recebeu R$ ${formatCentsToDecimal(Math.abs(dev.deltaCents))} abaixo do planejado.`,
+      );
+    } else {
+      largestDeviations.push(
+        `Categoria ${dev.ticker} recebeu R$ ${formatCentsToDecimal(dev.deltaCents)} acima do planejado.`,
+      );
+    }
+  }
+
+  // 8. Safe Copy & Notes
+  const safeCopy = {
+    statusNote:
+      plan.status === 'COMPLETED'
+        ? `Acompanhamento do plano encerrado em ${plan.completedAt ? String(plan.completedAt).slice(0, 10) : 'data registrada'}. O valor realizado pode ser menor ou maior que o planejado.`
+        : 'Plano em acompanhamento ativo. O encerramento requer decisão do usuário e não executa compras.',
+    completionDistinctionNote:
+      'O status Concluído indica encerramento formal do acompanhamento humano e não equivale a 100% de execução financeira.',
+    immutableHistoryNote:
+      'Transações do ledger e vínculos históricos são imutáveis. O encerramento não altera itens do plano nem insere ordens.',
+  };
+
+  const assumptions = [
+    'Apenas transações com vínculo CONFIRMED com este plano são contabilizadas como valor confirmado.',
+    'Compras identificadas sem vínculo (CANDIDATE) representam potenciais correspondências pendentes de revisão humana.',
+    'Vendas registradas no período não reduzem o aporte nem integram o total realizado.',
+  ];
+
+  return {
+    plan: {
+      id: plan.id,
+      name: plan.name,
+      plannedDate: plan.plannedDate.slice(0, 10),
+      status: plan.status,
+      currency: plan.currency,
+      completedAt: plan.completedAt ? (plan.completedAt instanceof Date ? plan.completedAt.toISOString() : String(plan.completedAt)) : null,
+      createdAt: plan.createdAt ? (plan.createdAt instanceof Date ? plan.createdAt.toISOString() : String(plan.createdAt)) : undefined,
+    },
+    period,
+    status: plan.status,
+    completedAt: plan.completedAt ? (plan.completedAt instanceof Date ? plan.completedAt.toISOString() : String(plan.completedAt)) : null,
+    asOf,
+
+    plannedCents: totalPlannedCents,
+    plannedAmount: formatCentsToDecimal(totalPlannedCents),
+    confirmedCents,
+    confirmedAmount: formatCentsToDecimal(confirmedCents),
+    candidateCents,
+    candidateAmount: formatCentsToDecimal(candidateCents),
+    rejectedCents,
+    rejectedAmount: formatCentsToDecimal(rejectedCents),
+    remainingCents,
+    remainingAmount: formatCentsToDecimal(remainingCents),
+    overPlanCents,
+    overPlanAmount: formatCentsToDecimal(overPlanCents),
+
+    completionPercent,
+    potentialCompletionPercent,
+
+    confirmedTransactions: confirmedTxs,
+    candidateTransactions: candidateTxs,
+    rejectedTransactions: rejectedTxs,
+
+    categoryProgress,
+    deviations,
+    largestDeviations,
+    structuralSummary: undefined,
+
+    closeReadiness,
+    dataQuality,
+    warnings,
+    assumptions,
+    safeCopy,
+    modelVersion: OPPORTUNITY_MODEL_VERSION,
+  };
+}

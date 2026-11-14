@@ -101,6 +101,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             period: obj['period'],
             candidates: obj['candidates'],
           };
+        } else if (
+          obj['code'] === 'CONTRIBUTION_PLAN.PENDING_CANDIDATES_ACK_REQUIRED' ||
+          obj['code'] === 'CONTRIBUTION_PLAN.EARLY_CLOSE_ACK_REQUIRED'
+        ) {
+          details = {
+            requiresPendingCandidatesAcknowledgement: Boolean(obj['requiresPendingCandidatesAcknowledgement']),
+            requiresEarlyCloseAcknowledgement: Boolean(obj['requiresEarlyCloseAcknowledgement']),
+            pendingCandidateCount: typeof obj['pendingCandidateCount'] === 'number' ? obj['pendingCandidateCount'] : undefined,
+            periodEnd: typeof obj['periodEnd'] === 'string' ? obj['periodEnd'] : undefined,
+          };
         } else if (obj['code'] === 'PORTFOLIO.REPLAY_FAILED' && typeof obj['details'] === 'object' && obj['details'] !== null) {
           details = obj['details'];
         }

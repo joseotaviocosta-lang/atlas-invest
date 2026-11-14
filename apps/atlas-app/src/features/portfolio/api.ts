@@ -165,6 +165,26 @@ export const portfolioApi = {
     );
   },
 
+  async getContributionPlanReview(
+    portfolioId: string,
+    planId: string,
+  ): Promise<{ data: import('./types').ContributionPlanMonthlyReviewDto }> {
+    return apiClient.get<{ data: import('./types').ContributionPlanMonthlyReviewDto }>(
+      `/api/v1/portfolios/${portfolioId}/contribution-plans/${planId}/review`,
+    );
+  },
+
+  async completeContributionPlan(
+    portfolioId: string,
+    planId: string,
+    body?: { acknowledgePendingCandidates?: boolean; acknowledgeEarlyClose?: boolean },
+  ): Promise<{ data: { plan: unknown; reviewSummary: import('./types').ContributionPlanMonthlyReviewDto } }> {
+    return apiClient.post<{ data: { plan: unknown; reviewSummary: import('./types').ContributionPlanMonthlyReviewDto } }>(
+      `/api/v1/portfolios/${portfolioId}/contribution-plans/${planId}/complete`,
+      body ?? {},
+    );
+  },
+
   async getPortfolioNews(
     portfolioId: string,
     options?: { refresh?: boolean },

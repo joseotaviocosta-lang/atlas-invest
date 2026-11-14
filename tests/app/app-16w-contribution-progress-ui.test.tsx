@@ -372,4 +372,40 @@ describe('APP-16W UI: Contribution Plan Progress Tracking', () => {
     expect(html).toContain('Concluído');
     expect(html).toContain('Planejado');
   });
+
+  it('Critical Test APP-16X: renders monthly review button when viewing a persisted plan', () => {
+    const portfolioId = '11111111-1111-4111-8111-111111111111';
+    const planId = 'plan-uuid-123';
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    client.setQueryData(decisionBriefQueryKey(portfolioId), makeBrief());
+
+    const progressWithPersistedPlan = {
+      ...makeProgress(),
+      plan: {
+        ...makeProgress().plan,
+        id: planId,
+        source: 'PERSISTED_PLAN',
+        baselineMode: 'PERSISTED_PLAN' as const,
+        baselineStable: true,
+        plannedDate: '2026-11-05',
+      },
+    };
+
+    client.setQueryData(
+      contributionProgressQueryKey(portfolioId, undefined, undefined, undefined),
+      progressWithPersistedPlan,
+    );
+
+    const html = renderToString(
+      <QueryClientProvider client={client}>
+        <DecisionBriefSection portfolioId={portfolioId} />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain('Revisão mensal do plano ↗');
+  });
 });

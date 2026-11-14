@@ -35,6 +35,9 @@ import {
   UpdateContributionPlanBody,
   UpdateContributionPlanBodySchema,
   UpdateContributionPlanSwaggerDto,
+  CompleteContributionPlanBody,
+  CompleteContributionPlanBodySchema,
+  CompleteContributionPlanSwaggerDto,
 } from './dto/portfolio-contribution-plans.dto';
 import { ZodValidationPipe, UUIDParamPipe } from '../../common/pipes';
 import { AuthenticatedPrincipal, CurrentPrincipal } from '../../auth';
@@ -200,24 +203,58 @@ export class PortfolioContributionPlansController {
     return { data: { plan } };
   }
 
-  @Post(':planId/complete')
+  @Get(':planId/review')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Mark a plan as completed (status only)',
-    description: 'Flips PLANNED to COMPLETED. Creates no transaction, order or ledger write.',
+    summary: 'Get monthly contribution plan review (APP-16X)',
+    description:
+      'Pure deterministic read model: planned vs confirmed vs candidates vs rejected, category progress, close readiness. Read-only, no external network provider dependency.',
   })
   @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
   @ApiParam({ name: 'planId', description: 'UUID of the contribution plan' })
-  @ApiResponse({ status: 200, description: 'Completed plan' })
-  @ApiResponse({ status: 400, description: 'Plan is not PLANNED' })
+  @ApiResponse({ status: 200, description: 'Monthly contribution plan review' })
   @ApiResponse({ status: 404, description: 'Portfolio or plan not found' })
-  async completePlan(
+  async getReview(
     @Param('portfolioId', UUIDParamPipe) portfolioId: string,
     @Param('planId', UUIDParamPipe) planId: string,
     @CurrentPrincipal() principal: AuthenticatedPrincipal,
   ) {
-    const plan = await this.plans.completePlan({ planId, portfolioId, userId: principal.userId });
-    return { data: { plan } };
+    const review = await this.plans.getPlanMonthlyReview({
+      planId,
+      portfolioId,
+      userId: principal.userId,
+    });
+    return { data: review };
+  }
+
+  @Post(':planId/complete')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Close / complete monthly contribution plan (APP-16X)',
+    description:
+      'Human-initiated plan closure. Guarded state transition from PLANNED to COMPLETED. Requires explicit acknowledgements if unlinked candidates or ongoing period exist. Idempotent if already COMPLETED. Modifies zero ledger transactions and zero plan items.',
+  })
+  @ApiParam({ name: 'portfolioId', description: 'UUID of the portfolio' })
+  @ApiParam({ name: 'planId', description: 'UUID of the contribution plan' })
+  @ApiBody({ type: CompleteContributionPlanSwaggerDto, required: false })
+  @ApiResponse({ status: 200, description: 'Plan completed with review summary' })
+  @ApiResponse({ status: 404, description: 'Portfolio or plan not found' })
+  @ApiResponse({ status: 409, description: 'Pending candidates or early close acknowledgement required' })
+  async completePlan(
+    @Param('portfolioId', UUIDParamPipe) portfolioId: string,
+    @Param('planId', UUIDParamPipe) planId: string,
+    @Body(new ZodValidationPipe(CompleteContributionPlanBodySchema))
+    body: CompleteContributionPlanBody,
+    @CurrentPrincipal() principal: AuthenticatedPrincipal,
+  ) {
+    const result = await this.plans.completePlan({
+      planId,
+      portfolioId,
+      userId: principal.userId,
+      acknowledgePendingCandidates: body?.acknowledgePendingCandidates,
+      acknowledgeEarlyClose: body?.acknowledgeEarlyClose,
+    });
+    return { data: result };
   }
 
   @Post(':planId/cancel')

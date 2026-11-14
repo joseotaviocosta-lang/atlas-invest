@@ -9,6 +9,7 @@ import type {
   ProjectedPortfolioScenarioComparisonDto,
   ContributionPlanProgressDto,
   ContributionPlanSelectionCandidateDto,
+  ContributionPlanMonthlyReviewDto,
 } from './types';
 
 export function decisionBriefQueryKey(portfolioId: string, contributionAmount?: string) {
@@ -169,5 +170,53 @@ export function useContributionProgress(
     requiresPlanSelection: isSelectionRequired && candidatePlans.length > 0,
     candidatePlans,
     selectionPeriod,
+  };
+}
+
+export function contributionPlanReviewQueryKey(portfolioId: string, planId: string) {
+  return ['portfolios', portfolioId, 'contribution-plans', planId, 'review'] as const;
+}
+
+export function useContributionPlanReview(
+  portfolioId: string | null | undefined,
+  planId: string | null | undefined,
+) {
+  const queryClient = useQueryClient();
+
+  const query = useQuery<ContributionPlanMonthlyReviewDto>({
+    queryKey: contributionPlanReviewQueryKey(portfolioId ?? '', planId ?? ''),
+    queryFn: async () => {
+      if (!portfolioId || !planId) throw new Error('Portfolio ID and Plan ID are required');
+      const res = await portfolioApi.getContributionPlanReview(portfolioId, planId);
+      return res.data;
+    },
+    enabled: Boolean(portfolioId && planId),
+    staleTime: 1000 * 60 * 5,
+    retry: 1,
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: async (body?: { acknowledgePendingCandidates?: boolean; acknowledgeEarlyClose?: boolean }) => {
+      if (!portfolioId || !planId) throw new Error('Portfolio ID and Plan ID are required');
+      const res = await portfolioApi.completeContributionPlan(portfolioId, planId, body);
+      return res.data;
+    },
+    onSuccess: async () => {
+      if (!portfolioId) return;
+      await queryClient.invalidateQueries({
+        queryKey: ['portfolios', portfolioId, 'contribution-plans'],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['portfolios', portfolioId, 'decision-brief'],
+      });
+    },
+  });
+
+  return {
+    ...query,
+    completePlan: completeMutation.mutateAsync,
+    isCompleting: completeMutation.isPending,
+    completeError: completeMutation.error,
+    resetComplete: completeMutation.reset,
   };
 }
