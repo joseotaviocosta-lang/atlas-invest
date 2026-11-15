@@ -255,6 +255,7 @@ export interface ContributionPlanDataQuality {
   confirmedLinkCount: number;
   rejectedLinkCount: number;
   candidateLinkCount: number;
+  currencyMismatchCount: number;
 }
 
 export interface ContributionPlanStructuralComparison {
@@ -762,6 +763,7 @@ export function deriveContributionPlanActuals(
     confirmedLinkCount,
     rejectedLinkCount,
     candidateLinkCount,
+    currencyMismatchCount: 0,
   };
 
   if (isPartialValuation) {
@@ -1111,6 +1113,8 @@ export function deriveContributionPlanMonthlyReview(
   let confirmedCents = 0;
   let candidateCents = 0;
   let rejectedCents = 0;
+  let currencyMismatchCount = 0;
+  const mismatchedTxIds = new Set<string>();
 
   let excludedSellCount = 0;
   let excludedOutOfPeriodCount = 0;
@@ -1120,7 +1124,8 @@ export function deriveContributionPlanMonthlyReview(
     const tradeDate = tx.tradeDate.slice(0, 10);
     const txCents = parseMoneyToCents(tx.amount);
     const cat = assetCategories.get(tx.assetId) || 'UNMAPPED';
-    const txCurrency = tx.currency || plan.currency;
+    const txCurrency = (tx.currency || plan.currency).toUpperCase();
+    const planCurrency = (plan.currency || 'BRL').toUpperCase();
 
     // Track excluded sell operations
     if (tx.type === 'SELL') {
@@ -1139,7 +1144,17 @@ export function deriveContributionPlanMonthlyReview(
 
     // Exclude rejected links from actuals, but keep for audit
     if (tx.linkStatus === 'REJECTED' && tx.linkedPlanId === plan.id) {
-      rejectedCents += txCents;
+      if (txCurrency !== planCurrency) {
+        if (!mismatchedTxIds.has(tx.id)) {
+          mismatchedTxIds.add(tx.id);
+          currencyMismatchCount++;
+          warnings.push(
+            `A operação vinculada ao plano (${tx.id}) possui moeda diferente (${txCurrency}) da moeda do plano (${planCurrency}) e foi excluída dos totais monetários.`,
+          );
+        }
+      } else {
+        rejectedCents += txCents;
+      }
       rejectedTxs.push({
         id: tx.id,
         accountId: tx.accountId,
@@ -1169,7 +1184,7 @@ export function deriveContributionPlanMonthlyReview(
         currency: txCurrency,
       },
       planId: plan.id,
-      planCurrency: plan.currency,
+      planCurrency: planCurrency,
       periodStart,
       periodEnd,
       confirmedPlanId: tx.linkStatus === 'CONFIRMED' ? tx.linkedPlanId : null,
@@ -1194,10 +1209,14 @@ export function deriveContributionPlanMonthlyReview(
 
     if (isConfirmedCurrent) {
       // Check currency match for confirmed transaction:
-      if (txCurrency !== plan.currency) {
-        warnings.push(
-          `1 operação vinculada ao plano (${tx.id}) possui moeda diferente (${txCurrency}) da moeda do plano (${plan.currency}) e foi excluída dos totais monetários.`,
-        );
+      if (txCurrency !== planCurrency) {
+        if (!mismatchedTxIds.has(tx.id)) {
+          mismatchedTxIds.add(tx.id);
+          currencyMismatchCount++;
+          warnings.push(
+            `A operação vinculada ao plano (${tx.id}) possui moeda diferente (${txCurrency}) da moeda do plano (${planCurrency}) e foi excluída dos totais monetários.`,
+          );
+        }
       } else {
         // Confirmed in current plan counts as confirmed actual
         confirmedCents += txCents;
@@ -1321,6 +1340,7 @@ export function deriveContributionPlanMonthlyReview(
     confirmedLinkCount: confirmedTxs.length,
     rejectedLinkCount: rejectedTxs.length,
     candidateLinkCount: candidateTxs.length,
+    currencyMismatchCount,
     trackingQuality,
   };
 
@@ -1779,6 +1799,9 @@ export function buildPortfolioMonthlyProgressTimeline(
   }
 
   const linksByPlan = new Map<string, MonthlyProgressTransactionLinkInput[]>();
+  const allLinkedTxIds = new Set<string>();
+  const allConfirmedLinkedTxIds = new Set<string>();
+  const allRejectedLinkedTxIds = new Set<string>();
   const allValidConfirmedTxIds = new Set<string>();
 
   for (const link of links) {
@@ -1786,7 +1809,11 @@ export function buildPortfolioMonthlyProgressTimeline(
     list.push(link);
     linksByPlan.set(link.planId, list);
 
-    if (link.status && link.status.toUpperCase() === 'CONFIRMED') {
+    allLinkedTxIds.add(link.transactionId);
+
+    const normStatus = link.status ? link.status.toUpperCase() : '';
+    if (normStatus === 'CONFIRMED') {
+      allConfirmedLinkedTxIds.add(link.transactionId);
       const tx = txMap.get(link.transactionId);
       const plan = planMap.get(link.planId);
       if (tx) {
@@ -1803,6 +1830,8 @@ export function buildPortfolioMonthlyProgressTimeline(
       } else {
         allValidConfirmedTxIds.add(link.transactionId);
       }
+    } else if (normStatus === 'REJECTED') {
+      allRejectedLinkedTxIds.add(link.transactionId);
     }
   }
 
@@ -1834,6 +1863,7 @@ export function buildPortfolioMonthlyProgressTimeline(
 
   for (const competence of competences) {
     let monthCurrencyMismatchCount = 0;
+    const mismatchedTxIdsThisMonth = new Set<string>();
     const warnings: string[] = [];
 
     const monthPlannedByCurrency = new Map<string, { cents: number; txCount: number }>();
@@ -1944,10 +1974,13 @@ export function buildPortfolioMonthlyProgressTimeline(
           if (tx) {
             const txCurrency = (tx.currency || 'BRL').toUpperCase();
             if (txCurrency !== planCurrency) {
-              warnings.push(
-                `1 operação vinculada ao plano (${tx.id}) possui moeda diferente (${txCurrency}) da moeda do plano (${planCurrency}) e foi excluída dos totais monetários.`,
-              );
-              monthCurrencyMismatchCount++;
+              if (!mismatchedTxIdsThisMonth.has(tx.id)) {
+                mismatchedTxIdsThisMonth.add(tx.id);
+                monthCurrencyMismatchCount++;
+                warnings.push(
+                  `A operação vinculada ao plano (${tx.id}) possui moeda diferente (${txCurrency}) da moeda do plano (${planCurrency}) e foi excluída dos totais monetários.`,
+                );
+              }
             } else {
               planConfirmedTxIds.add(tx.id);
               monthConfirmedTxIds.add(tx.id);
@@ -1958,13 +1991,16 @@ export function buildPortfolioMonthlyProgressTimeline(
         } else if (linkStatus === 'REJECTED') {
           if (tx) {
             const txCurrency = (tx.currency || 'BRL').toUpperCase();
+            planRejectedTxIds.add(tx.id);
             if (txCurrency !== planCurrency) {
-              warnings.push(
-                `1 operação rejeitada no plano (${tx.id}) possui moeda diferente (${txCurrency}) da moeda do plano (${planCurrency}) e foi excluída dos totais monetários.`,
-              );
-              monthCurrencyMismatchCount++;
+              if (!mismatchedTxIdsThisMonth.has(tx.id)) {
+                mismatchedTxIdsThisMonth.add(tx.id);
+                monthCurrencyMismatchCount++;
+                warnings.push(
+                  `A operação vinculada ao plano (${tx.id}) possui moeda diferente (${txCurrency}) da moeda do plano (${planCurrency}) e foi excluída dos totais monetários.`,
+                );
+              }
             } else {
-              planRejectedTxIds.add(tx.id);
               planRejectedCents += getTxAmountCents(tx);
             }
           }
@@ -1999,7 +2035,7 @@ export function buildPortfolioMonthlyProgressTimeline(
           periodStart,
           periodEnd,
           isConfirmedToCurrentPlan: planConfirmedTxIds.has(tx.id),
-          isConfirmedToAnyPlan: allValidConfirmedTxIds.has(tx.id),
+          isConfirmedToAnyPlan: allConfirmedLinkedTxIds.has(tx.id),
           isRejectedForCurrentPlan: planRejectedTxIds.has(tx.id),
         });
 
@@ -2049,7 +2085,7 @@ export function buildPortfolioMonthlyProgressTimeline(
 
     // Month candidate cents: sum of unique candidate transactions in this month
     for (const txId of monthCandidateTxIds) {
-      if (!allValidConfirmedTxIds.has(txId)) {
+      if (!allConfirmedLinkedTxIds.has(txId)) {
         const tx = txMap.get(txId);
         if (tx) {
           const txCurrency = (tx.currency || 'BRL').toUpperCase();
@@ -2072,7 +2108,7 @@ export function buildPortfolioMonthlyProgressTimeline(
         purchaseTransactionCount++;
         addMoneyByCurrency(monthPurchaseByCurrency, txCurrency, amountCents, 1);
         addMoneyByCurrency(summaryPurchaseByCurrency, txCurrency, amountCents, 1);
-        if (!allValidConfirmedTxIds.has(tx.id)) {
+        if (!allLinkedTxIds.has(tx.id)) {
           addMoneyByCurrency(monthUnlinkedPurchaseByCurrency, txCurrency, amountCents, 1);
           addMoneyByCurrency(summaryUnlinkedPurchaseByCurrency, txCurrency, amountCents, 1);
         }

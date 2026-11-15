@@ -956,6 +956,10 @@ export interface ContributionPlanDataQualityDto {
   trackedPurchaseCount: number;
   excludedSellCount: number;
   excludedOutOfPeriodCount: number;
+  confirmedLinkCount?: number;
+  rejectedLinkCount?: number;
+  candidateLinkCount?: number;
+  currencyMismatchCount?: number;
 }
 
 export interface ContributionPlanProgressDto {

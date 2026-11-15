@@ -389,8 +389,9 @@ describe('PROJECT ATLAS — APP-16Y-R3: Multi-Currency Monthly Aggregation Integ
     expect(m.warnings.some((w) => w.includes('tx-usd-1') && w.includes('possui moeda diferente'))).toBe(true);
     expect(m.dataQuality.currencyMismatchCount).toBe(1);
 
-    // The transaction remains an unlinked USD purchase
-    expect(m.unlinkedPurchaseActivityByCurrency?.USD?.cents).toBe(50000);
+    // The transaction is linked (with mismatch), so it is excluded from confirmed totals AND NOT counted as unlinked
+    expect(m.unlinkedPurchaseActivityByCurrency?.USD).toBeUndefined();
+    expect(m.unlinkedPurchaseActivityCents).toBe(0);
   });
 
   it('Part BH & BI — Critical Test 12: APP-16X Review protects against currency mismatch in confirmed transactions', () => {
