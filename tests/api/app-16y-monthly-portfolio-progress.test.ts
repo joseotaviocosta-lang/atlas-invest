@@ -621,4 +621,22 @@ describe('API Integration: APP-16Y Monthly Portfolio Progress & Goal History', (
     expect(txCountAfter).toBe(txCountBefore);
     expect(goalCountAfter).toBe(goalCountBefore);
   });
+
+  it('APP-16Y-R3: API exposes ByCurrency objects, multiCurrencyNote, and preserves exact cents', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/portfolios/${portfolioId}/monthly-progress?from=2026-11&to=2026-11`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .expect(200);
+
+    const data = res.body.data;
+    expect(data.safeCopy.multiCurrencyNote).toBe(
+      'Valores em moedas diferentes são apresentados separadamente. O Atlas não aplica conversão cambial histórica nesta visão.',
+    );
+    expect(data.summary.totalGoalByCurrency).toBeDefined();
+    expect(data.summary.totalConfirmedByCurrency).toBeDefined();
+    expect(data.summary.totalPurchaseActivityByCurrency).toBeDefined();
+    expect(data.months[0].purchaseActivityByCurrency).toBeDefined();
+    expect(data.months[0].confirmedByCurrency).toBeDefined();
+    expect(data.months[0].dataQuality).toBeDefined();
+  });
 });

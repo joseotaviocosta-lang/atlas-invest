@@ -296,4 +296,144 @@ describe('APP-16Y: Monthly Progress Timeline UI Component', () => {
     expect(html).toContain('Possíveis correspondências: R$');
     expect(html).toContain('100.00');
   });
+
+  it('APP-16Y-R3: renders multi-currency values segregated without fake combined totals and includes multiCurrencyNote', () => {
+    const multiCurrencyTimeline = makeMockTimeline({
+      summary: {
+        monthsCount: 1,
+        goalsConfiguredMonths: 1,
+        monetaryAggregateMode: 'MULTI_CURRENCY',
+        monetaryCurrency: null,
+        totalGoalCents: null,
+        totalGoalAmount: null,
+        totalPlannedCents: null,
+        totalPlannedAmount: null,
+        totalConfirmedCents: null,
+        totalConfirmedAmount: null,
+        totalPurchaseActivityCents: null,
+        totalPurchaseActivityAmount: null,
+        plansCreated: 2,
+        plansCompleted: 2,
+        totalGoalByCurrency: {
+          BRL: { currency: 'BRL', cents: 100000, amount: '1000.00', transactionCount: 1 },
+          USD: { currency: 'USD', cents: 50000, amount: '500.00', transactionCount: 1 },
+        },
+        totalConfirmedByCurrency: {
+          BRL: { currency: 'BRL', cents: 80000, amount: '800.00', transactionCount: 1 },
+          USD: { currency: 'USD', cents: 40000, amount: '400.00', transactionCount: 1 },
+        },
+        totalPurchaseActivityByCurrency: {
+          BRL: { currency: 'BRL', cents: 90000, amount: '900.00', transactionCount: 1 },
+          USD: { currency: 'USD', cents: 45000, amount: '450.00', transactionCount: 1 },
+        },
+      },
+      months: [
+        {
+          competence: '2026-11',
+          goal: {
+            amount: '1000.00',
+            currency: 'BRL',
+            effectiveFrom: '2026-11-01',
+            effectiveTo: null,
+            sourceId: 'g-1',
+          },
+          plans: [
+            {
+              id: 'p-brl',
+              name: 'Plano Brasil',
+              plannedDate: '2026-11-05',
+              currency: 'BRL',
+              status: 'COMPLETED',
+              plannedCents: 100000,
+              plannedAmount: '1000.00',
+              confirmedCents: 80000,
+              confirmedAmount: '800.00',
+              candidateCents: 0,
+              candidateAmount: '0.00',
+              rejectedCents: 0,
+              rejectedAmount: '0.00',
+              completionPercent: 80,
+              baselineStable: true,
+            },
+            {
+              id: 'p-usd',
+              name: 'Plano Global',
+              plannedDate: '2026-11-15',
+              currency: 'USD',
+              status: 'COMPLETED',
+              plannedCents: 50000,
+              plannedAmount: '500.00',
+              confirmedCents: 40000,
+              confirmedAmount: '400.00',
+              candidateCents: 0,
+              candidateAmount: '0.00',
+              rejectedCents: 0,
+              rejectedAmount: '0.00',
+              completionPercent: 80,
+              baselineStable: true,
+            },
+          ],
+          monetaryAggregateMode: 'MULTI_CURRENCY',
+          monetaryCurrency: null,
+          totalPlannedCents: null,
+          totalPlannedAmount: null,
+          totalConfirmedCents: null,
+          totalConfirmedAmount: null,
+          totalCandidateCents: null,
+          totalCandidateAmount: null,
+          purchaseActivityCents: null,
+          purchaseActivityAmount: null,
+          purchaseTransactionCount: 2,
+          sellActivityCents: 0,
+          sellActivityAmount: '0.00',
+          sellTransactionCount: 0,
+          completedPlanCount: 2,
+          openPlanCount: 0,
+          monthStatus: 'MULTIPLE_PLANS',
+          confirmedByCurrency: {
+            BRL: { currency: 'BRL', cents: 80000, amount: '800.00', transactionCount: 1 },
+            USD: { currency: 'USD', cents: 40000, amount: '400.00', transactionCount: 1 },
+          },
+          purchaseActivityByCurrency: {
+            BRL: { currency: 'BRL', cents: 90000, amount: '900.00', transactionCount: 1 },
+            USD: { currency: 'USD', cents: 45000, amount: '450.00', transactionCount: 1 },
+          },
+          dataQuality: {
+            ledgerAvailable: true,
+            planHistoryAvailable: true,
+            goalHistoryAvailable: true,
+            valuationHistoryAvailable: false,
+          },
+          warnings: [],
+        },
+      ],
+      safeCopy: {
+        historicalValuationNote: 'Valuation note',
+        historicalTargetNote: 'Target note',
+        cashSourceNote: 'Cash source note',
+        multiCurrencyNote: 'Valores em moedas diferentes são apresentados separadamente. O Atlas não aplica conversão cambial histórica nesta visão.',
+      },
+    });
+
+    client.setQueryData(monthlyProgressQueryKey(portfolioId), multiCurrencyTimeline);
+
+    const html = renderToString(
+      <QueryClientProvider client={client}>
+        <MonthlyProgressTimelineSection portfolioId={portfolioId} />
+      </QueryClientProvider>,
+    );
+
+    // Separated currencies in summary banner
+    expect(html).toContain('R$ 800.00');
+    expect(html).toContain('US$ 400.00');
+    expect(html).toContain('R$ 900.00');
+    expect(html).toContain('US$ 450.00');
+
+    // Never renders a fake combined total like 1200 or 1350
+    expect(html).not.toContain('R$ 1200.00');
+    expect(html).not.toContain('R$ 1350.00');
+
+    // Disclaimer includes safe copy
+    expect(html).toContain('Valores em moedas diferentes são apresentados separadamente');
+  });
 });

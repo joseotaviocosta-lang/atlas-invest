@@ -1137,6 +1137,15 @@ export interface ContributionPlanMonthlyReviewDto {
   modelVersion: string;
 }
 
+export interface MoneyByCurrencyItem {
+  currency: string;
+  cents: number;
+  amount: string;
+  transactionCount?: number;
+}
+
+export type MoneyByCurrency = Record<string, MoneyByCurrencyItem>;
+
 export interface PortfolioMonthlyProgressGoalDto {
   amount: string;
   currency: string;
@@ -1149,6 +1158,7 @@ export interface MonthlyPlanEntryDto {
   id: string;
   name: string;
   plannedDate: string;
+  currency: string;
   status: 'PLANNED' | 'COMPLETED' | 'CANCELLED';
   completedAt?: string | null;
   plannedCents: number;
@@ -1168,29 +1178,38 @@ export interface PortfolioMonthlyProgressEntryDto {
   competence: string;
   goal: PortfolioMonthlyProgressGoalDto | null;
   plans: MonthlyPlanEntryDto[];
-  totalPlannedCents: number;
-  totalPlannedAmount: string;
-  totalConfirmedCents: number;
-  totalConfirmedAmount: string;
-  totalCandidateCents: number;
-  totalCandidateAmount: string;
+  monetaryAggregateMode?: 'SINGLE_CURRENCY' | 'MULTI_CURRENCY';
+  monetaryCurrency?: string | null;
+  totalPlannedCents: number | null;
+  totalPlannedAmount: string | null;
+  totalConfirmedCents: number | null;
+  totalConfirmedAmount: string | null;
+  totalCandidateCents: number | null;
+  totalCandidateAmount: string | null;
   totalCandidateTransactionCount?: number;
-  purchaseActivityCents: number;
-  purchaseActivityAmount: string;
+  purchaseActivityCents: number | null;
+  purchaseActivityAmount: string | null;
   purchaseTransactionCount: number;
-  unlinkedPurchaseActivityCents?: number;
-  unlinkedPurchaseActivityAmount?: string;
-  sellActivityCents: number;
-  sellActivityAmount: string;
+  unlinkedPurchaseActivityCents?: number | null;
+  unlinkedPurchaseActivityAmount?: string | null;
+  sellActivityCents: number | null;
+  sellActivityAmount: string | null;
   sellTransactionCount: number;
   completedPlanCount: number;
   openPlanCount: number;
   monthStatus: 'NO_GOAL' | 'GOAL_ONLY' | 'PLAN_OPEN' | 'PLAN_COMPLETED' | 'MULTIPLE_PLANS';
+  plannedByCurrency?: MoneyByCurrency;
+  confirmedByCurrency?: MoneyByCurrency;
+  candidateByCurrency?: MoneyByCurrency;
+  purchaseActivityByCurrency?: MoneyByCurrency;
+  sellActivityByCurrency?: MoneyByCurrency;
+  unlinkedPurchaseActivityByCurrency?: MoneyByCurrency;
   dataQuality: {
     ledgerAvailable: boolean;
     planHistoryAvailable: boolean;
     goalHistoryAvailable: boolean;
     valuationHistoryAvailable: boolean;
+    currencyMismatchCount?: number;
   };
   warnings: string[];
 }
@@ -1198,16 +1217,25 @@ export interface PortfolioMonthlyProgressEntryDto {
 export interface MonthlyProgressSummaryDto {
   monthsCount: number;
   goalsConfiguredMonths: number;
-  totalGoalCents: number;
-  totalGoalAmount: string;
-  totalPlannedCents: number;
-  totalPlannedAmount: string;
-  totalConfirmedCents: number;
-  totalConfirmedAmount: string;
-  totalPurchaseActivityCents: number;
-  totalPurchaseActivityAmount: string;
+  monetaryAggregateMode?: 'SINGLE_CURRENCY' | 'MULTI_CURRENCY';
+  monetaryCurrency?: string | null;
+  totalGoalCents: number | null;
+  totalGoalAmount: string | null;
+  totalPlannedCents: number | null;
+  totalPlannedAmount: string | null;
+  totalConfirmedCents: number | null;
+  totalConfirmedAmount: string | null;
+  totalPurchaseActivityCents: number | null;
+  totalPurchaseActivityAmount: string | null;
   plansCreated: number;
   plansCompleted: number;
+  totalGoalByCurrency?: MoneyByCurrency;
+  totalPlannedByCurrency?: MoneyByCurrency;
+  totalConfirmedByCurrency?: MoneyByCurrency;
+  totalCandidateByCurrency?: MoneyByCurrency;
+  totalPurchaseActivityByCurrency?: MoneyByCurrency;
+  totalSellActivityByCurrency?: MoneyByCurrency;
+  totalUnlinkedPurchaseActivityByCurrency?: MoneyByCurrency;
 }
 
 export interface PortfolioMonthlyProgressTimelineDto {
@@ -1238,6 +1266,7 @@ export interface PortfolioMonthlyProgressTimelineDto {
     historicalValuationNote: string;
     historicalTargetNote: string;
     cashSourceNote: string;
+    multiCurrencyNote: string;
   };
   modelVersion: string;
 }

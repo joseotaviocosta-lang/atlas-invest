@@ -44,6 +44,18 @@ const STATUS_STYLES: Record<PortfolioMonthlyProgressEntryDto['monthStatus'], str
   MULTIPLE_PLANS: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30',
 };
 
+function formatCurrencySymbol(curr: string): string {
+  if (curr === 'BRL') return 'R$';
+  if (curr === 'USD') return 'US$';
+  if (curr === 'EUR') return '€';
+  return curr;
+}
+
+function formatMoney(currency: string, amount: string): string {
+  const sym = formatCurrencySymbol(currency);
+  return `${sym} ${amount}`;
+}
+
 export function MonthlyProgressTimelineSection({ portfolioId }: MonthlyProgressTimelineSectionProps) {
   const { data: timeline, isLoading, error } = useMonthlyPortfolioProgress(portfolioId);
   const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
@@ -120,9 +132,19 @@ export function MonthlyProgressTimelineSection({ portfolioId }: MonthlyProgressT
       >
         <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-3 text-xs">
           <div className="text-[var(--text-secondary)]">Meta configurada</div>
-          <div className="mt-1 text-sm font-bold text-[var(--text-primary)]">
-            R$ {summary.totalGoalAmount}
-          </div>
+          {summary.monetaryAggregateMode === 'MULTI_CURRENCY' && summary.totalGoalByCurrency ? (
+            <div className="mt-1 space-y-0.5">
+              {Object.values(summary.totalGoalByCurrency).map((item) => (
+                <div key={item.currency} className="text-xs font-bold text-[var(--text-primary)]">
+                  {formatMoney(item.currency, item.amount)}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-1 text-sm font-bold text-[var(--text-primary)]">
+              {`${summary.monetaryCurrency ? formatCurrencySymbol(summary.monetaryCurrency) : 'R$'} ${summary.totalGoalAmount ?? '—'}`}
+            </div>
+          )}
           <div className="text-[10px] text-[var(--text-secondary)]">
             em {summary.goalsConfiguredMonths} de {summary.monthsCount} meses
           </div>
@@ -130,9 +152,19 @@ export function MonthlyProgressTimelineSection({ portfolioId }: MonthlyProgressT
 
         <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-3 text-xs">
           <div className="text-[var(--text-secondary)]">Total planejado</div>
-          <div className="mt-1 text-sm font-bold text-[var(--text-primary)]">
-            R$ {summary.totalPlannedAmount}
-          </div>
+          {summary.monetaryAggregateMode === 'MULTI_CURRENCY' && summary.totalPlannedByCurrency ? (
+            <div className="mt-1 space-y-0.5">
+              {Object.values(summary.totalPlannedByCurrency).map((item) => (
+                <div key={item.currency} className="text-xs font-bold text-[var(--text-primary)]">
+                  {formatMoney(item.currency, item.amount)}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-1 text-sm font-bold text-[var(--text-primary)]">
+              {`${summary.monetaryCurrency ? formatCurrencySymbol(summary.monetaryCurrency) : 'R$'} ${summary.totalPlannedAmount ?? '—'}`}
+            </div>
+          )}
           <div className="text-[10px] text-[var(--text-secondary)]">
             em {summary.plansCreated} planos criados
           </div>
@@ -140,9 +172,19 @@ export function MonthlyProgressTimelineSection({ portfolioId }: MonthlyProgressT
 
         <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-3 text-xs">
           <div className="text-[var(--text-secondary)]">Total confirmado</div>
-          <div className="mt-1 text-sm font-bold text-emerald-400">
-            R$ {summary.totalConfirmedAmount}
-          </div>
+          {summary.monetaryAggregateMode === 'MULTI_CURRENCY' && summary.totalConfirmedByCurrency ? (
+            <div className="mt-1 space-y-0.5">
+              {Object.values(summary.totalConfirmedByCurrency).map((item) => (
+                <div key={item.currency} className="text-xs font-bold text-emerald-400">
+                  {formatMoney(item.currency, item.amount)}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-1 text-sm font-bold text-emerald-400">
+              {`${summary.monetaryCurrency ? formatCurrencySymbol(summary.monetaryCurrency) : 'R$'} ${summary.totalConfirmedAmount ?? '—'}`}
+            </div>
+          )}
           <div className="text-[10px] text-[var(--text-secondary)]">
             em {summary.plansCompleted} planos concluídos
           </div>
@@ -150,9 +192,19 @@ export function MonthlyProgressTimelineSection({ portfolioId }: MonthlyProgressT
 
         <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-3 text-xs">
           <div className="text-[var(--text-secondary)]">Compras registradas</div>
-          <div className="mt-1 text-sm font-bold text-[var(--accent)]">
-            R$ {summary.totalPurchaseActivityAmount}
-          </div>
+          {summary.monetaryAggregateMode === 'MULTI_CURRENCY' && summary.totalPurchaseActivityByCurrency ? (
+            <div className="mt-1 space-y-0.5">
+              {Object.values(summary.totalPurchaseActivityByCurrency).map((item) => (
+                <div key={item.currency} className="text-xs font-bold text-[var(--accent)]">
+                  {formatMoney(item.currency, item.amount)}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-1 text-sm font-bold text-[var(--accent)]">
+              {`${summary.monetaryCurrency ? formatCurrencySymbol(summary.monetaryCurrency) : 'R$'} ${summary.totalPurchaseActivityAmount ?? '—'}`}
+            </div>
+          )}
           <div className="text-[10px] text-[var(--text-secondary)]">
             operações BUY no ledger
           </div>
@@ -213,6 +265,7 @@ export function MonthlyProgressTimelineSection({ portfolioId }: MonthlyProgressT
           <li>{safeCopy.historicalValuationNote}</li>
           <li>{safeCopy.historicalTargetNote}</li>
           <li>{safeCopy.cashSourceNote}</li>
+          {safeCopy.multiCurrencyNote && <li>{safeCopy.multiCurrencyNote}</li>}
         </ul>
       </div>
 
@@ -263,34 +316,77 @@ export function MonthlyProgressTimelineSection({ portfolioId }: MonthlyProgressT
                   <div>
                     <div className="text-[10px] text-[var(--text-secondary)]">Meta mensal</div>
                     <div className="mt-0.5 font-semibold text-[var(--text-primary)]">
-                      {m.goal ? `R$ ${m.goal.amount}` : '—'}
+                      {m.goal ? formatMoney(m.goal.currency, m.goal.amount) : '—'}
                     </div>
                   </div>
 
                   <div>
                     <div className="text-[10px] text-[var(--text-secondary)]">Planejado em planos</div>
-                    <div className="mt-0.5 font-semibold text-[var(--text-primary)]">
-                      {m.totalPlannedCents > 0 ? `R$ ${m.totalPlannedAmount}` : '—'}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="text-[10px] text-[var(--text-secondary)]">Confirmado</div>
-                    <div className="mt-0.5 font-semibold text-emerald-400">
-                      R$ {m.totalConfirmedAmount}
-                    </div>
-                    {m.totalCandidateCents > 0 && (
-                      <div className="text-[9px] text-amber-400" data-testid={`month-candidates-${m.competence}`}>
-                        Possíveis correspondências: R$ {m.totalCandidateAmount}
+                    {m.monetaryAggregateMode === 'MULTI_CURRENCY' && m.plannedByCurrency ? (
+                      <div className="mt-0.5 space-y-0.5">
+                        {Object.values(m.plannedByCurrency).map((item) => (
+                          <div key={item.currency} className="font-semibold text-[var(--text-primary)]">
+                            {formatMoney(item.currency, item.amount)}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-0.5 font-semibold text-[var(--text-primary)]">
+                        {m.totalPlannedCents && m.totalPlannedCents > 0
+                          ? `${formatCurrencySymbol(m.monetaryCurrency ?? 'BRL')} ${m.totalPlannedAmount}`
+                          : '—'}
                       </div>
                     )}
                   </div>
 
                   <div>
+                    <div className="text-[10px] text-[var(--text-secondary)]">Confirmado</div>
+                    {m.monetaryAggregateMode === 'MULTI_CURRENCY' && m.confirmedByCurrency ? (
+                      <div className="mt-0.5 space-y-0.5">
+                        {Object.values(m.confirmedByCurrency).map((item) => (
+                          <div key={item.currency} className="font-semibold text-emerald-400">
+                            {formatMoney(item.currency, item.amount)}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-0.5 font-semibold text-emerald-400">
+                        {`${formatCurrencySymbol(m.monetaryCurrency ?? 'BRL')} ${m.totalConfirmedAmount ?? '0.00'}`}
+                      </div>
+                    )}
+                    {m.monetaryAggregateMode === 'MULTI_CURRENCY' && m.candidateByCurrency && Object.keys(m.candidateByCurrency).length > 0 ? (
+                      <div className="text-[9px] text-amber-400" data-testid={`month-candidates-${m.competence}`}>
+                        Possíveis correspondências:
+                        {Object.values(m.candidateByCurrency).map((item) => (
+                          <span key={item.currency} className="ml-1">
+                            {formatMoney(item.currency, item.amount)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      m.totalCandidateCents !== null && m.totalCandidateCents > 0 && (
+                        <div className="text-[9px] text-amber-400" data-testid={`month-candidates-${m.competence}`}>
+                          {`Possíveis correspondências: ${formatCurrencySymbol(m.monetaryCurrency ?? 'BRL')} ${m.totalCandidateAmount}`}
+                        </div>
+                      )
+                    )}
+                  </div>
+
+                  <div>
                     <div className="text-[10px] text-[var(--text-secondary)]">Compras registradas</div>
-                    <div className="mt-0.5 font-semibold text-[var(--accent)]">
-                      R$ {m.purchaseActivityAmount}
-                    </div>
+                    {m.monetaryAggregateMode === 'MULTI_CURRENCY' && m.purchaseActivityByCurrency ? (
+                      <div className="mt-0.5 space-y-0.5">
+                        {Object.values(m.purchaseActivityByCurrency).map((item) => (
+                          <div key={item.currency} className="font-semibold text-[var(--accent)]">
+                            {formatMoney(item.currency, item.amount)}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-0.5 font-semibold text-[var(--accent)]">
+                        {`${formatCurrencySymbol(m.monetaryCurrency ?? 'BRL')} ${m.purchaseActivityAmount ?? '0.00'}`}
+                      </div>
+                    )}
                     <div className="text-[9px] text-[var(--text-secondary)]">
                       {m.purchaseTransactionCount} {m.purchaseTransactionCount === 1 ? 'compra' : 'compras'}
                     </div>
@@ -322,10 +418,10 @@ export function MonthlyProgressTimelineSection({ portfolioId }: MonthlyProgressT
                             </span>
                           </div>
                           <div className="mt-1 text-[10px] text-[var(--text-secondary)]">
-                            Planejado: R$ {p.plannedAmount} • Confirmado: R$ {p.confirmedAmount} ({p.completionPercent}%)
+                            Planejado: {formatMoney(p.currency, p.plannedAmount)} • Confirmado: {formatMoney(p.currency, p.confirmedAmount)} ({p.completionPercent}%)
                             {p.candidateCents > 0 && (
                               <span className="text-amber-400" data-testid={`plan-candidate-${p.id}`}>
-                                {` • Possíveis correspondências: R$ ${p.candidateAmount}`}
+                                {` • Possíveis correspondências: ${formatMoney(p.currency, p.candidateAmount)}`}
                               </span>
                             )}
                             {p.completedAt && ` • Encerrado em ${p.completedAt.slice(0, 10)}`}
@@ -373,16 +469,31 @@ export function MonthlyProgressTimelineSection({ portfolioId }: MonthlyProgressT
                     {formatCompetence(m.competence)}
                   </td>
                   <td className="py-2.5 text-[var(--text-secondary)]">
-                    {m.goal ? `R$ ${m.goal.amount}` : '—'}
+                    {m.goal ? formatMoney(m.goal.currency, m.goal.amount) : '—'}
                   </td>
                   <td className="py-2.5 text-[var(--text-secondary)]">
-                    {m.totalPlannedCents > 0 ? `R$ ${m.totalPlannedAmount}` : '—'}
+                    {m.monetaryAggregateMode === 'MULTI_CURRENCY' && m.plannedByCurrency
+                      ? Object.values(m.plannedByCurrency)
+                          .map((i) => formatMoney(i.currency, i.amount))
+                          .join(' / ')
+                      : m.totalPlannedCents && m.totalPlannedCents > 0
+                      ? `${formatCurrencySymbol(m.monetaryCurrency ?? 'BRL')} ${m.totalPlannedAmount}`
+                      : '—'}
                   </td>
                   <td className="py-2.5 font-semibold text-emerald-400">
-                    R$ {m.totalConfirmedAmount}
+                    {m.monetaryAggregateMode === 'MULTI_CURRENCY' && m.confirmedByCurrency
+                      ? Object.values(m.confirmedByCurrency)
+                          .map((i) => formatMoney(i.currency, i.amount))
+                          .join(' / ')
+                      : `${formatCurrencySymbol(m.monetaryCurrency ?? 'BRL')} ${m.totalConfirmedAmount ?? '0.00'}`}
                   </td>
                   <td className="py-2.5 text-[var(--text-primary)]">
-                    R$ {m.purchaseActivityAmount} ({m.purchaseTransactionCount})
+                    {m.monetaryAggregateMode === 'MULTI_CURRENCY' && m.purchaseActivityByCurrency
+                      ? Object.values(m.purchaseActivityByCurrency)
+                          .map((i) => formatMoney(i.currency, i.amount))
+                          .join(' / ')
+                      : `${formatCurrencySymbol(m.monetaryCurrency ?? 'BRL')} ${m.purchaseActivityAmount ?? '0.00'}`}{' '}
+                    ({m.purchaseTransactionCount})
                   </td>
                   <td className="py-2.5 text-[var(--text-secondary)]">
                     {m.completedPlanCount}/{m.plans.length}

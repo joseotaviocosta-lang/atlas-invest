@@ -525,11 +525,15 @@ describe('APP-16Y: Monthly Portfolio Progress & Goal History (Pure Engine)', () 
     expect(nov.totalConfirmedAmount).toBe('700.00');
     expect(nov.totalCandidateCents).toBe(20000);
     expect(nov.totalCandidateAmount).toBe('200.00');
-    expect(nov.purchaseActivityCents).toBe(120000);
-    expect(nov.purchaseActivityAmount).toBe('1200.00');
+    expect(nov.purchaseActivityCents).toBeNull();
+    expect(nov.purchaseActivityAmount).toBeNull();
+    expect(nov.purchaseActivityByCurrency?.BRL.cents).toBe(90000);
+    expect(nov.purchaseActivityByCurrency?.USD.cents).toBe(30000);
     expect(nov.purchaseTransactionCount).toBe(3);
-    expect(nov.unlinkedPurchaseActivityCents).toBe(50000);
-    expect(nov.unlinkedPurchaseActivityAmount).toBe('500.00');
+    expect(nov.unlinkedPurchaseActivityCents).toBeNull();
+    expect(nov.unlinkedPurchaseActivityAmount).toBeNull();
+    expect(nov.unlinkedPurchaseActivityByCurrency?.BRL.cents).toBe(20000);
+    expect(nov.unlinkedPurchaseActivityByCurrency?.USD.cents).toBe(30000);
   });
 
   it('APP-16Y-R1: Test Critical 2 - Parity Invariant between APP-16X Review and APP-16Y Timeline candidateCents', () => {

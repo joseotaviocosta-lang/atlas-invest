@@ -1193,9 +1193,16 @@ export function deriveContributionPlanMonthlyReview(
     };
 
     if (isConfirmedCurrent) {
-      // Confirmed in current plan counts as confirmed actual
-      confirmedCents += txCents;
-      confirmedCentsByCategory.set(cat, (confirmedCentsByCategory.get(cat) ?? 0) + txCents);
+      // Check currency match for confirmed transaction:
+      if (txCurrency !== plan.currency) {
+        warnings.push(
+          `1 operação vinculada ao plano (${tx.id}) possui moeda diferente (${txCurrency}) da moeda do plano (${plan.currency}) e foi excluída dos totais monetários.`,
+        );
+      } else {
+        // Confirmed in current plan counts as confirmed actual
+        confirmedCents += txCents;
+        confirmedCentsByCategory.set(cat, (confirmedCentsByCategory.get(cat) ?? 0) + txCents);
+      }
       confirmedTxs.push(txItem);
     } else if (eligibility.eligible) {
       // Canonical eligible candidate
@@ -1425,6 +1432,15 @@ export function deriveContributionPlanMonthlyReview(
 // APP-16Y: Monthly Portfolio Progress & Goal History
 // ---------------------------------------------------------------------------
 
+export interface MoneyByCurrencyItem {
+  currency: string;
+  cents: number;
+  amount: string;
+  transactionCount?: number;
+}
+
+export type MoneyByCurrency = Record<string, MoneyByCurrencyItem>;
+
 export interface PortfolioMonthlyProgressGoalDto {
   amount: string;
   currency: string;
@@ -1437,6 +1453,7 @@ export interface MonthlyPlanEntryDto {
   id: string;
   name: string;
   plannedDate: string;
+  currency: string;
   status: 'PLANNED' | 'COMPLETED' | 'CANCELLED';
   completedAt?: string | null;
   plannedCents: number;
@@ -1456,29 +1473,39 @@ export interface PortfolioMonthlyProgressEntryDto {
   competence: string; // YYYY-MM
   goal: PortfolioMonthlyProgressGoalDto | null;
   plans: MonthlyPlanEntryDto[];
-  totalPlannedCents: number;
-  totalPlannedAmount: string;
-  totalConfirmedCents: number;
-  totalConfirmedAmount: string;
-  totalCandidateCents: number;
-  totalCandidateAmount: string;
+  monetaryAggregateMode?: 'SINGLE_CURRENCY' | 'MULTI_CURRENCY';
+  monetaryCurrency?: string | null;
+  totalPlannedCents: number | null;
+  totalPlannedAmount: string | null;
+  totalConfirmedCents: number | null;
+  totalConfirmedAmount: string | null;
+  totalCandidateCents: number | null;
+  totalCandidateAmount: string | null;
   totalCandidateTransactionCount?: number;
-  purchaseActivityCents: number;
-  purchaseActivityAmount: string;
+  purchaseActivityCents: number | null;
+  purchaseActivityAmount: string | null;
   purchaseTransactionCount: number;
-  unlinkedPurchaseActivityCents?: number;
-  unlinkedPurchaseActivityAmount?: string;
-  sellActivityCents: number;
-  sellActivityAmount: string;
+  unlinkedPurchaseActivityCents?: number | null;
+  unlinkedPurchaseActivityAmount?: string | null;
+  sellActivityCents: number | null;
+  sellActivityAmount: string | null;
   sellTransactionCount: number;
   completedPlanCount: number;
   openPlanCount: number;
   monthStatus: 'NO_GOAL' | 'GOAL_ONLY' | 'PLAN_OPEN' | 'PLAN_COMPLETED' | 'MULTIPLE_PLANS';
+  // Multi-currency structured aggregates
+  plannedByCurrency?: MoneyByCurrency;
+  confirmedByCurrency?: MoneyByCurrency;
+  candidateByCurrency?: MoneyByCurrency;
+  purchaseActivityByCurrency?: MoneyByCurrency;
+  sellActivityByCurrency?: MoneyByCurrency;
+  unlinkedPurchaseActivityByCurrency?: MoneyByCurrency;
   dataQuality: {
     ledgerAvailable: boolean;
     planHistoryAvailable: boolean;
     goalHistoryAvailable: boolean;
     valuationHistoryAvailable: boolean;
+    currencyMismatchCount?: number;
   };
   warnings: string[];
 }
@@ -1486,16 +1513,26 @@ export interface PortfolioMonthlyProgressEntryDto {
 export interface MonthlyProgressSummaryDto {
   monthsCount: number;
   goalsConfiguredMonths: number;
-  totalGoalCents: number;
-  totalGoalAmount: string;
-  totalPlannedCents: number;
-  totalPlannedAmount: string;
-  totalConfirmedCents: number;
-  totalConfirmedAmount: string;
-  totalPurchaseActivityCents: number;
-  totalPurchaseActivityAmount: string;
+  monetaryAggregateMode?: 'SINGLE_CURRENCY' | 'MULTI_CURRENCY';
+  monetaryCurrency?: string | null;
+  totalGoalCents: number | null;
+  totalGoalAmount: string | null;
+  totalPlannedCents: number | null;
+  totalPlannedAmount: string | null;
+  totalConfirmedCents: number | null;
+  totalConfirmedAmount: string | null;
+  totalPurchaseActivityCents: number | null;
+  totalPurchaseActivityAmount: string | null;
   plansCreated: number;
   plansCompleted: number;
+  // Multi-currency structured summary totals
+  totalGoalByCurrency?: MoneyByCurrency;
+  totalPlannedByCurrency?: MoneyByCurrency;
+  totalConfirmedByCurrency?: MoneyByCurrency;
+  totalCandidateByCurrency?: MoneyByCurrency;
+  totalPurchaseActivityByCurrency?: MoneyByCurrency;
+  totalSellActivityByCurrency?: MoneyByCurrency;
+  totalUnlinkedPurchaseActivityByCurrency?: MoneyByCurrency;
 }
 
 export interface PortfolioMonthlyProgressTimelineResult {
@@ -1526,6 +1563,7 @@ export interface PortfolioMonthlyProgressTimelineResult {
     historicalValuationNote: string;
     historicalTargetNote: string;
     cashSourceNote: string;
+    multiCurrencyNote: string;
   };
   modelVersion: string;
 }
@@ -1612,6 +1650,35 @@ export function parseDecimalStringToCents(val: string | number): number {
   return Number(cents);
 }
 
+export function addMoneyByCurrency(
+  map: Map<string, { cents: number; txCount: number }>,
+  currency: string,
+  cents: number,
+  txCount: number = 1,
+): void {
+  const normCurrency = (currency || 'BRL').toUpperCase();
+  const existing = map.get(normCurrency) ?? { cents: 0, txCount: 0 };
+  map.set(normCurrency, {
+    cents: existing.cents + cents,
+    txCount: existing.txCount + txCount,
+  });
+}
+
+export function toMoneyByCurrency(map: Map<string, { cents: number; txCount: number }>): MoneyByCurrency {
+  const result: MoneyByCurrency = {};
+  const sortedCurrencies = Array.from(map.keys()).sort();
+  for (const curr of sortedCurrencies) {
+    const item = map.get(curr)!;
+    result[curr] = {
+      currency: curr,
+      cents: item.cents,
+      amount: formatCentsToDecimal(item.cents),
+      transactionCount: item.txCount,
+    };
+  }
+  return result;
+}
+
 /**
  * Pure deterministic timeline builder for monthly portfolio progress and goal history (APP-16Y).
  *
@@ -1621,6 +1688,7 @@ export function parseDecimalStringToCents(val: string | number): number {
  * - Temporal continuity: every month in range is present, even with zero activity.
  * - Oldest to newest chronological order.
  * - Confirmed contribution vs ledger BUY activity strictly separated.
+ * - Multi-currency honesty: never sums different currencies. Groups by currency.
  * - Historical valuation and target versioning marked UNAVAILABLE (no false backfill).
  */
 export function buildPortfolioMonthlyProgressTimeline(
@@ -1704,15 +1772,37 @@ export function buildPortfolioMonthlyProgressTimeline(
     txsByMonth.set(txComp, list);
   }
 
-  // 4. Index Links by Plan ID and track all confirmed transaction IDs
+  // 4. Index Plans and Links by Plan ID, and track valid confirmed transactions
+  const planMap = new Map<string, MonthlyProgressPlanInput>();
+  for (const p of plans) {
+    planMap.set(p.id, p);
+  }
+
   const linksByPlan = new Map<string, MonthlyProgressTransactionLinkInput[]>();
-  const allConfirmedTxIds = new Set<string>();
+  const allValidConfirmedTxIds = new Set<string>();
+
   for (const link of links) {
     const list = linksByPlan.get(link.planId) ?? [];
     list.push(link);
     linksByPlan.set(link.planId, list);
+
     if (link.status && link.status.toUpperCase() === 'CONFIRMED') {
-      allConfirmedTxIds.add(link.transactionId);
+      const tx = txMap.get(link.transactionId);
+      const plan = planMap.get(link.planId);
+      if (tx) {
+        const txCurrency = (tx.currency || 'BRL').toUpperCase();
+        if (plan) {
+          const planCurrency = (plan.currency || 'BRL').toUpperCase();
+          if (txCurrency === planCurrency) {
+            allValidConfirmedTxIds.add(link.transactionId);
+          }
+        } else {
+          // Confirmed to a plan outside the active plans list
+          allValidConfirmedTxIds.add(link.transactionId);
+        }
+      } else {
+        allValidConfirmedTxIds.add(link.transactionId);
+      }
     }
   }
 
@@ -1725,13 +1815,17 @@ export function buildPortfolioMonthlyProgressTimeline(
     return parseDecimalStringToCents(tx.amount);
   }
 
-  // Global confirmed transactions set for double count prevention in summary
-  const globalConfirmedTxIds = new Set<string>();
+  // Global summary tracking
+  const summaryGoalsByCurrency = new Map<string, { cents: number; txCount: number }>();
+  const summaryPlannedByCurrency = new Map<string, { cents: number; txCount: number }>();
+  const summaryConfirmedByCurrency = new Map<string, { cents: number; txCount: number }>();
+  const summaryCandidateByCurrency = new Map<string, { cents: number; txCount: number }>();
+  const summaryPurchaseByCurrency = new Map<string, { cents: number; txCount: number }>();
+  const summarySellByCurrency = new Map<string, { cents: number; txCount: number }>();
+  const summaryUnlinkedPurchaseByCurrency = new Map<string, { cents: number; txCount: number }>();
+
+  const globalValidConfirmedTxIds = new Set<string>();
   let summaryGoalsConfiguredMonths = 0;
-  let summaryTotalGoalCents = 0;
-  let summaryTotalPlannedCents = 0;
-  let summaryTotalConfirmedCents = 0;
-  let summaryTotalPurchaseActivityCents = 0;
   let summaryPlansCreated = 0;
   let summaryPlansCompleted = 0;
 
@@ -1739,6 +1833,16 @@ export function buildPortfolioMonthlyProgressTimeline(
   const monthEntries: PortfolioMonthlyProgressEntryDto[] = [];
 
   for (const competence of competences) {
+    let monthCurrencyMismatchCount = 0;
+    const warnings: string[] = [];
+
+    const monthPlannedByCurrency = new Map<string, { cents: number; txCount: number }>();
+    const monthConfirmedByCurrency = new Map<string, { cents: number; txCount: number }>();
+    const monthCandidateByCurrency = new Map<string, { cents: number; txCount: number }>();
+    const monthPurchaseByCurrency = new Map<string, { cents: number; txCount: number }>();
+    const monthSellByCurrency = new Map<string, { cents: number; txCount: number }>();
+    const monthUnlinkedPurchaseByCurrency = new Map<string, { cents: number; txCount: number }>();
+
     // A. Goal Resolution
     // Canonical goalVersionForMonth from @atlas/portfolio-strategy:
     // - Half-open interval [effectiveFromMonth, effectiveToMonth)
@@ -1767,12 +1871,13 @@ export function buildPortfolioMonthlyProgressTimeline(
 
     if (matchedVersion && activeGoal) {
       goalCents = parseDecimalStringToCents(matchedVersion.amount);
+      const goalCurrency = (matchedVersion.currency || 'BRL').toUpperCase();
       summaryGoalsConfiguredMonths++;
-      summaryTotalGoalCents += goalCents;
+      addMoneyByCurrency(summaryGoalsByCurrency, goalCurrency, goalCents, 1);
 
       goalDto = {
         amount: formatCentsToDecimal(goalCents),
-        currency: matchedVersion.currency || 'BRL',
+        currency: goalCurrency,
         effectiveFrom:
           typeof activeGoal.effectiveFrom === 'string'
             ? activeGoal.effectiveFrom.slice(0, 10)
@@ -1797,7 +1902,6 @@ export function buildPortfolioMonthlyProgressTimeline(
     });
 
     const planEntries: MonthlyPlanEntryDto[] = [];
-    let monthTotalPlannedCents = 0;
     const monthConfirmedTxIds = new Set<string>();
     const monthCandidateTxIds = new Set<string>();
 
@@ -1813,6 +1917,8 @@ export function buildPortfolioMonthlyProgressTimeline(
         summaryPlansCompleted++;
       }
 
+      const planCurrency = (plan.currency || 'BRL').toUpperCase();
+
       // Planned amount from items
       let planPlannedCents = 0;
       if (plan.items) {
@@ -1820,37 +1926,48 @@ export function buildPortfolioMonthlyProgressTimeline(
           planPlannedCents += parseDecimalStringToCents(item.amount);
         }
       }
-      monthTotalPlannedCents += planPlannedCents;
+      addMoneyByCurrency(monthPlannedByCurrency, planCurrency, planPlannedCents, 1);
+      addMoneyByCurrency(summaryPlannedByCurrency, planCurrency, planPlannedCents, 1);
 
       // Plan links: separate confirmed and rejected
       const planLinks = linksByPlan.get(plan.id) ?? [];
       const planConfirmedTxIds = new Set<string>();
       const planRejectedTxIds = new Set<string>();
 
+      let planConfirmedCents = 0;
+      let planRejectedCents = 0;
+
       for (const link of planLinks) {
         const linkStatus = link.status ? link.status.toUpperCase() : '';
+        const tx = txMap.get(link.transactionId);
         if (linkStatus === 'CONFIRMED') {
-          planConfirmedTxIds.add(link.transactionId);
-          monthConfirmedTxIds.add(link.transactionId);
-          globalConfirmedTxIds.add(link.transactionId);
+          if (tx) {
+            const txCurrency = (tx.currency || 'BRL').toUpperCase();
+            if (txCurrency !== planCurrency) {
+              warnings.push(
+                `1 operação vinculada ao plano (${tx.id}) possui moeda diferente (${txCurrency}) da moeda do plano (${planCurrency}) e foi excluída dos totais monetários.`,
+              );
+              monthCurrencyMismatchCount++;
+            } else {
+              planConfirmedTxIds.add(tx.id);
+              monthConfirmedTxIds.add(tx.id);
+              globalValidConfirmedTxIds.add(tx.id);
+              planConfirmedCents += getTxAmountCents(tx);
+            }
+          }
         } else if (linkStatus === 'REJECTED') {
-          planRejectedTxIds.add(link.transactionId);
-        }
-      }
-
-      let planConfirmedCents = 0;
-      for (const txId of planConfirmedTxIds) {
-        const tx = txMap.get(txId);
-        if (tx) {
-          planConfirmedCents += getTxAmountCents(tx);
-        }
-      }
-
-      let planRejectedCents = 0;
-      for (const txId of planRejectedTxIds) {
-        const tx = txMap.get(txId);
-        if (tx) {
-          planRejectedCents += getTxAmountCents(tx);
+          if (tx) {
+            const txCurrency = (tx.currency || 'BRL').toUpperCase();
+            if (txCurrency !== planCurrency) {
+              warnings.push(
+                `1 operação rejeitada no plano (${tx.id}) possui moeda diferente (${txCurrency}) da moeda do plano (${planCurrency}) e foi excluída dos totais monetários.`,
+              );
+              monthCurrencyMismatchCount++;
+            } else {
+              planRejectedTxIds.add(tx.id);
+              planRejectedCents += getTxAmountCents(tx);
+            }
+          }
         }
       }
 
@@ -1862,7 +1979,6 @@ export function buildPortfolioMonthlyProgressTimeline(
       const lastDayOfMonth = new Date(Date.UTC(pYear, pMonth, 0)).getUTCDate();
       const periodStart = `${planPeriod}-01`;
       const periodEnd = `${planPeriod}-${lastDayOfMonth.toString().padStart(2, '0')}`;
-      const planCurrency = plan.currency || 'BRL';
 
       let planCandidateCents = 0;
       let planCandidateTransactionCount = 0;
@@ -1883,7 +1999,7 @@ export function buildPortfolioMonthlyProgressTimeline(
           periodStart,
           periodEnd,
           isConfirmedToCurrentPlan: planConfirmedTxIds.has(tx.id),
-          isConfirmedToAnyPlan: allConfirmedTxIds.has(tx.id),
+          isConfirmedToAnyPlan: allValidConfirmedTxIds.has(tx.id),
           isRejectedForCurrentPlan: planRejectedTxIds.has(tx.id),
         });
 
@@ -1905,6 +2021,7 @@ export function buildPortfolioMonthlyProgressTimeline(
         id: plan.id,
         name: plan.name,
         plannedDate: plan.plannedDate.slice(0, 10),
+        currency: planCurrency,
         status: normStatus,
         completedAt: completedAtStr,
         plannedCents: planPlannedCents,
@@ -1921,51 +2038,132 @@ export function buildPortfolioMonthlyProgressTimeline(
       });
     }
 
-    summaryTotalPlannedCents += monthTotalPlannedCents;
-
     // Month confirmed cents: sum of unique confirmed transactions in this month
-    let monthTotalConfirmedCents = 0;
     for (const txId of monthConfirmedTxIds) {
       const tx = txMap.get(txId);
       if (tx) {
-        monthTotalConfirmedCents += getTxAmountCents(tx);
+        const txCurrency = (tx.currency || 'BRL').toUpperCase();
+        addMoneyByCurrency(monthConfirmedByCurrency, txCurrency, getTxAmountCents(tx), 1);
       }
     }
 
     // Month candidate cents: sum of unique candidate transactions in this month
-    // Transaction-unique: each candidate transaction counted only once even if multiple plans matched it
-    let monthTotalCandidateCents = 0;
     for (const txId of monthCandidateTxIds) {
-      if (!allConfirmedTxIds.has(txId)) {
+      if (!allValidConfirmedTxIds.has(txId)) {
         const tx = txMap.get(txId);
         if (tx) {
-          monthTotalCandidateCents += getTxAmountCents(tx);
+          const txCurrency = (tx.currency || 'BRL').toUpperCase();
+          addMoneyByCurrency(monthCandidateByCurrency, txCurrency, getTxAmountCents(tx), 1);
+          addMoneyByCurrency(summaryCandidateByCurrency, txCurrency, getTxAmountCents(tx), 1);
         }
       }
     }
 
     // C. Month Purchase & Sell Activity (Ledger)
     const monthTxs = txsByMonth.get(competence) ?? [];
-    let purchaseActivityCents = 0;
     let purchaseTransactionCount = 0;
-    let sellActivityCents = 0;
     let sellTransactionCount = 0;
 
     for (const tx of monthTxs) {
       const txType = tx.type.toUpperCase();
       const amountCents = getTxAmountCents(tx);
+      const txCurrency = (tx.currency || 'BRL').toUpperCase();
       if (txType === 'BUY') {
-        purchaseActivityCents += amountCents;
         purchaseTransactionCount++;
+        addMoneyByCurrency(monthPurchaseByCurrency, txCurrency, amountCents, 1);
+        addMoneyByCurrency(summaryPurchaseByCurrency, txCurrency, amountCents, 1);
+        if (!allValidConfirmedTxIds.has(tx.id)) {
+          addMoneyByCurrency(monthUnlinkedPurchaseByCurrency, txCurrency, amountCents, 1);
+          addMoneyByCurrency(summaryUnlinkedPurchaseByCurrency, txCurrency, amountCents, 1);
+        }
       } else if (txType === 'SELL') {
-        sellActivityCents += amountCents;
         sellTransactionCount++;
+        addMoneyByCurrency(monthSellByCurrency, txCurrency, amountCents, 1);
+        addMoneyByCurrency(summarySellByCurrency, txCurrency, amountCents, 1);
       }
     }
 
-    summaryTotalPurchaseActivityCents += purchaseActivityCents;
+    // D. Month Currency Determination and Scalar Compatibility
+    const monthCurrencies = new Set<string>();
+    if (goalDto) monthCurrencies.add(goalDto.currency);
+    for (const [curr] of monthPlannedByCurrency) monthCurrencies.add(curr);
+    for (const [curr] of monthConfirmedByCurrency) monthCurrencies.add(curr);
+    for (const [curr] of monthCandidateByCurrency) monthCurrencies.add(curr);
+    for (const [curr] of monthPurchaseByCurrency) monthCurrencies.add(curr);
+    for (const [curr] of monthSellByCurrency) monthCurrencies.add(curr);
 
-    // D. Month Status Derivation
+    const isSingleCurrency = monthCurrencies.size <= 1;
+    const soleCurrency = isSingleCurrency ? (monthCurrencies.values().next().value ?? 'BRL') : null;
+
+    const monetaryAggregateMode: 'SINGLE_CURRENCY' | 'MULTI_CURRENCY' = isSingleCurrency
+      ? 'SINGLE_CURRENCY'
+      : 'MULTI_CURRENCY';
+    const monetaryCurrency = isSingleCurrency ? soleCurrency : null;
+
+    // Per-dimension backward-compatible scalar resolution:
+    // If a dimension has <= 1 currency, it can be represented as a scalar safely.
+    // If a dimension has > 1 currency, it MUST be null to prevent fake combined sums.
+    let totalPlannedCents: number | null = null;
+    let totalPlannedAmount: string | null = null;
+    if (monthPlannedByCurrency.size === 1) {
+      totalPlannedCents = Array.from(monthPlannedByCurrency.values())[0]!.cents;
+      totalPlannedAmount = formatCentsToDecimal(totalPlannedCents);
+    } else if (monthPlannedByCurrency.size === 0) {
+      totalPlannedCents = 0;
+      totalPlannedAmount = '0.00';
+    }
+
+    let totalConfirmedCents: number | null = null;
+    let totalConfirmedAmount: string | null = null;
+    if (monthConfirmedByCurrency.size === 1) {
+      totalConfirmedCents = Array.from(monthConfirmedByCurrency.values())[0]!.cents;
+      totalConfirmedAmount = formatCentsToDecimal(totalConfirmedCents);
+    } else if (monthConfirmedByCurrency.size === 0) {
+      totalConfirmedCents = 0;
+      totalConfirmedAmount = '0.00';
+    }
+
+    let totalCandidateCents: number | null = null;
+    let totalCandidateAmount: string | null = null;
+    if (monthCandidateByCurrency.size === 1) {
+      totalCandidateCents = Array.from(monthCandidateByCurrency.values())[0]!.cents;
+      totalCandidateAmount = formatCentsToDecimal(totalCandidateCents);
+    } else if (monthCandidateByCurrency.size === 0) {
+      totalCandidateCents = 0;
+      totalCandidateAmount = '0.00';
+    }
+
+    let purchaseActivityCents: number | null = null;
+    let purchaseActivityAmount: string | null = null;
+    if (monthPurchaseByCurrency.size === 1) {
+      purchaseActivityCents = Array.from(monthPurchaseByCurrency.values())[0]!.cents;
+      purchaseActivityAmount = formatCentsToDecimal(purchaseActivityCents);
+    } else if (monthPurchaseByCurrency.size === 0) {
+      purchaseActivityCents = 0;
+      purchaseActivityAmount = '0.00';
+    }
+
+    let unlinkedPurchaseActivityCents: number | null = null;
+    let unlinkedPurchaseActivityAmount: string | null = null;
+    if (monthUnlinkedPurchaseByCurrency.size === 1) {
+      unlinkedPurchaseActivityCents = Array.from(monthUnlinkedPurchaseByCurrency.values())[0]!.cents;
+      unlinkedPurchaseActivityAmount = formatCentsToDecimal(unlinkedPurchaseActivityCents);
+    } else if (monthUnlinkedPurchaseByCurrency.size === 0) {
+      unlinkedPurchaseActivityCents = 0;
+      unlinkedPurchaseActivityAmount = '0.00';
+    }
+
+    let sellActivityCents: number | null = null;
+    let sellActivityAmount: string | null = null;
+    if (monthSellByCurrency.size === 1) {
+      sellActivityCents = Array.from(monthSellByCurrency.values())[0]!.cents;
+      sellActivityAmount = formatCentsToDecimal(sellActivityCents);
+    } else if (monthSellByCurrency.size === 0) {
+      sellActivityCents = 0;
+      sellActivityAmount = '0.00';
+    }
+
+    // E. Month Status Derivation
     const completedPlanCount = planEntries.filter((p) => p.status === 'COMPLETED').length;
     const openPlanCount = planEntries.filter((p) => p.status === 'PLANNED').length;
 
@@ -1980,68 +2178,143 @@ export function buildPortfolioMonthlyProgressTimeline(
       monthStatus = 'NO_GOAL';
     }
 
-    // E. Data Quality & Warnings
-    const warnings: string[] = [];
-    if (goalDto !== null && goalCents > 0 && purchaseActivityCents < goalCents) {
-      warnings.push('Compras registradas abaixo da meta mensal declarada.');
+    // F. Data Quality & Warnings
+    if (goalDto !== null && goalCents > 0) {
+      const purchasesInGoalCurrency = monthPurchaseByCurrency.get(goalDto.currency)?.cents ?? 0;
+      if (purchasesInGoalCurrency < goalCents) {
+        warnings.push('Compras registradas abaixo da meta mensal declarada.');
+      }
     }
     warnings.push('Valuation histórico não disponível para esta competência.');
-
-    const unlinkedPurchaseActivityCents = Math.max(purchaseActivityCents - monthTotalConfirmedCents, 0);
 
     monthEntries.push({
       competence,
       goal: goalDto,
       plans: planEntries,
-      totalPlannedCents: monthTotalPlannedCents,
-      totalPlannedAmount: formatCentsToDecimal(monthTotalPlannedCents),
-      totalConfirmedCents: monthTotalConfirmedCents,
-      totalConfirmedAmount: formatCentsToDecimal(monthTotalConfirmedCents),
-      totalCandidateCents: monthTotalCandidateCents,
-      totalCandidateAmount: formatCentsToDecimal(monthTotalCandidateCents),
+      monetaryAggregateMode,
+      monetaryCurrency,
+      totalPlannedCents,
+      totalPlannedAmount,
+      totalConfirmedCents,
+      totalConfirmedAmount,
+      totalCandidateCents,
+      totalCandidateAmount,
       totalCandidateTransactionCount: monthCandidateTxIds.size,
       purchaseActivityCents,
-      purchaseActivityAmount: formatCentsToDecimal(purchaseActivityCents),
+      purchaseActivityAmount,
       purchaseTransactionCount,
       unlinkedPurchaseActivityCents,
-      unlinkedPurchaseActivityAmount: formatCentsToDecimal(unlinkedPurchaseActivityCents),
+      unlinkedPurchaseActivityAmount,
       sellActivityCents,
-      sellActivityAmount: formatCentsToDecimal(sellActivityCents),
+      sellActivityAmount,
       sellTransactionCount,
       completedPlanCount,
       openPlanCount,
       monthStatus,
+      plannedByCurrency: toMoneyByCurrency(monthPlannedByCurrency),
+      confirmedByCurrency: toMoneyByCurrency(monthConfirmedByCurrency),
+      candidateByCurrency: toMoneyByCurrency(monthCandidateByCurrency),
+      purchaseActivityByCurrency: toMoneyByCurrency(monthPurchaseByCurrency),
+      sellActivityByCurrency: toMoneyByCurrency(monthSellByCurrency),
+      unlinkedPurchaseActivityByCurrency: toMoneyByCurrency(monthUnlinkedPurchaseByCurrency),
       dataQuality: {
         ledgerAvailable: true,
         planHistoryAvailable: true,
         goalHistoryAvailable: true,
         valuationHistoryAvailable: false,
+        currencyMismatchCount: monthCurrencyMismatchCount,
       },
       warnings,
     });
   }
 
   // Global total confirmed cents: sum of all unique confirmed transactions
-  for (const txId of globalConfirmedTxIds) {
+  for (const txId of globalValidConfirmedTxIds) {
     const tx = txMap.get(txId);
     if (tx) {
-      summaryTotalConfirmedCents += getTxAmountCents(tx);
+      const txCurrency = (tx.currency || 'BRL').toUpperCase();
+      addMoneyByCurrency(summaryConfirmedByCurrency, txCurrency, getTxAmountCents(tx), 1);
     }
+  }
+
+  const summaryCurrencies = new Set<string>();
+  for (const [curr] of summaryGoalsByCurrency) summaryCurrencies.add(curr);
+  for (const [curr] of summaryPlannedByCurrency) summaryCurrencies.add(curr);
+  for (const [curr] of summaryConfirmedByCurrency) summaryCurrencies.add(curr);
+  for (const [curr] of summaryCandidateByCurrency) summaryCurrencies.add(curr);
+  for (const [curr] of summaryPurchaseByCurrency) summaryCurrencies.add(curr);
+  for (const [curr] of summarySellByCurrency) summaryCurrencies.add(curr);
+
+  const isSummarySingleCurrency = summaryCurrencies.size <= 1;
+  const soleSummaryCurrency = isSummarySingleCurrency ? (summaryCurrencies.values().next().value ?? 'BRL') : null;
+
+  const summaryMonetaryAggregateMode: 'SINGLE_CURRENCY' | 'MULTI_CURRENCY' = isSummarySingleCurrency
+    ? 'SINGLE_CURRENCY'
+    : 'MULTI_CURRENCY';
+  const summaryMonetaryCurrency = isSummarySingleCurrency ? soleSummaryCurrency : null;
+
+  let summaryTotalGoalCents: number | null = null;
+  let summaryTotalGoalAmount: string | null = null;
+  if (summaryGoalsByCurrency.size === 1) {
+    summaryTotalGoalCents = Array.from(summaryGoalsByCurrency.values())[0]!.cents;
+    summaryTotalGoalAmount = formatCentsToDecimal(summaryTotalGoalCents);
+  } else if (summaryGoalsByCurrency.size === 0) {
+    summaryTotalGoalCents = 0;
+    summaryTotalGoalAmount = '0.00';
+  }
+
+  let summaryTotalPlannedCents: number | null = null;
+  let summaryTotalPlannedAmount: string | null = null;
+  if (summaryPlannedByCurrency.size === 1) {
+    summaryTotalPlannedCents = Array.from(summaryPlannedByCurrency.values())[0]!.cents;
+    summaryTotalPlannedAmount = formatCentsToDecimal(summaryTotalPlannedCents);
+  } else if (summaryPlannedByCurrency.size === 0) {
+    summaryTotalPlannedCents = 0;
+    summaryTotalPlannedAmount = '0.00';
+  }
+
+  let summaryTotalConfirmedCents: number | null = null;
+  let summaryTotalConfirmedAmount: string | null = null;
+  if (summaryConfirmedByCurrency.size === 1) {
+    summaryTotalConfirmedCents = Array.from(summaryConfirmedByCurrency.values())[0]!.cents;
+    summaryTotalConfirmedAmount = formatCentsToDecimal(summaryTotalConfirmedCents);
+  } else if (summaryConfirmedByCurrency.size === 0) {
+    summaryTotalConfirmedCents = 0;
+    summaryTotalConfirmedAmount = '0.00';
+  }
+
+  let summaryTotalPurchaseActivityCents: number | null = null;
+  let summaryTotalPurchaseActivityAmount: string | null = null;
+  if (summaryPurchaseByCurrency.size === 1) {
+    summaryTotalPurchaseActivityCents = Array.from(summaryPurchaseByCurrency.values())[0]!.cents;
+    summaryTotalPurchaseActivityAmount = formatCentsToDecimal(summaryTotalPurchaseActivityCents);
+  } else if (summaryPurchaseByCurrency.size === 0) {
+    summaryTotalPurchaseActivityCents = 0;
+    summaryTotalPurchaseActivityAmount = '0.00';
   }
 
   const summary: MonthlyProgressSummaryDto = {
     monthsCount: monthEntries.length,
     goalsConfiguredMonths: summaryGoalsConfiguredMonths,
+    monetaryAggregateMode: summaryMonetaryAggregateMode,
+    monetaryCurrency: summaryMonetaryCurrency,
     totalGoalCents: summaryTotalGoalCents,
-    totalGoalAmount: formatCentsToDecimal(summaryTotalGoalCents),
+    totalGoalAmount: summaryTotalGoalAmount,
     totalPlannedCents: summaryTotalPlannedCents,
-    totalPlannedAmount: formatCentsToDecimal(summaryTotalPlannedCents),
+    totalPlannedAmount: summaryTotalPlannedAmount,
     totalConfirmedCents: summaryTotalConfirmedCents,
-    totalConfirmedAmount: formatCentsToDecimal(summaryTotalConfirmedCents),
+    totalConfirmedAmount: summaryTotalConfirmedAmount,
     totalPurchaseActivityCents: summaryTotalPurchaseActivityCents,
-    totalPurchaseActivityAmount: formatCentsToDecimal(summaryTotalPurchaseActivityCents),
+    totalPurchaseActivityAmount: summaryTotalPurchaseActivityAmount,
     plansCreated: summaryPlansCreated,
     plansCompleted: summaryPlansCompleted,
+    totalGoalByCurrency: toMoneyByCurrency(summaryGoalsByCurrency),
+    totalPlannedByCurrency: toMoneyByCurrency(summaryPlannedByCurrency),
+    totalConfirmedByCurrency: toMoneyByCurrency(summaryConfirmedByCurrency),
+    totalCandidateByCurrency: toMoneyByCurrency(summaryCandidateByCurrency),
+    totalPurchaseActivityByCurrency: toMoneyByCurrency(summaryPurchaseByCurrency),
+    totalSellActivityByCurrency: toMoneyByCurrency(summarySellByCurrency),
+    totalUnlinkedPurchaseActivityByCurrency: toMoneyByCurrency(summaryUnlinkedPurchaseByCurrency),
   };
 
   const safeCopy = {
@@ -2051,6 +2324,8 @@ export function buildPortfolioMonthlyProgressTimeline(
       'Metas de alocação por categoria não possuem versionamento histórico no banco de dados e não são projetadas retroativamente.',
     cashSourceNote:
       'Compras registradas refletem operações executadas no ledger. A origem do caixa (novo aporte vs. saldo pré-existente) não é inferida.',
+    multiCurrencyNote:
+      'Valores em moedas diferentes são apresentados separadamente. O Atlas não aplica conversão cambial histórica nesta visão.',
   };
 
   return {
