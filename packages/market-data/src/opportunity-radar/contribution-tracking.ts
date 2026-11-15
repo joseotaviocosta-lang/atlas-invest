@@ -837,6 +837,110 @@ export interface ContributionPlanMonthlyReviewCloseReadiness {
   requiresEarlyCloseAcknowledgement: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// APP-16Y-R2: Canonical Candidate Match Policy Unification
+// ---------------------------------------------------------------------------
+
+export type ContributionCandidateEligibilityReason =
+  | 'ELIGIBLE'
+  | 'OUT_OF_PERIOD'
+  | 'NOT_BUY'
+  | 'NON_POSITIVE_AMOUNT'
+  | 'CURRENCY_MISMATCH'
+  | 'CONFIRMED_CURRENT_PLAN'
+  | 'CONFIRMED_OTHER_PLAN'
+  | 'REJECTED_CURRENT_PLAN';
+
+export interface ContributionCandidateEligibilityInput {
+  transaction: {
+    id: string;
+    type: string;
+    tradeDate: string;
+    amountCents: number;
+    currency?: string;
+  };
+  planId: string;
+  planCurrency: string;
+  periodStart: string; // YYYY-MM-DD
+  periodEnd: string;   // YYYY-MM-DD
+  confirmedPlanId?: string | null;
+  isConfirmedToCurrentPlan?: boolean;
+  isConfirmedToAnyPlan?: boolean;
+  isRejectedForCurrentPlan?: boolean;
+}
+
+export interface ContributionCandidateEligibilityResult {
+  eligible: boolean;
+  reason: ContributionCandidateEligibilityReason;
+}
+
+/**
+ * Pure canonical function to determine if a transaction is an eligible candidate for a contribution plan (APP-16Y-R2).
+ * Shared across APP-16X (Monthly Review) and APP-16Y (Monthly Timeline).
+ *
+ * Rules:
+ * - Period: periodStart <= tradeDate <= periodEnd
+ * - Type: BUY only (SELL and other types excluded)
+ * - Amount: amountCents > 0
+ * - Currency: tx.currency === planCurrency (no silent FX guessing)
+ * - Confirmed Always Wins: If confirmed to current plan -> CONFIRMED_CURRENT_PLAN (not candidate)
+ * - Confirmed Other Plan: If confirmed to another plan -> CONFIRMED_OTHER_PLAN (not candidate)
+ * - Rejected Current Plan: If rejected in this plan -> REJECTED_CURRENT_PLAN (not candidate)
+ */
+export function isContributionPlanCandidateEligible(
+  input: ContributionCandidateEligibilityInput,
+): ContributionCandidateEligibilityResult {
+  const {
+    transaction,
+    planId,
+    planCurrency,
+    periodStart,
+    periodEnd,
+    confirmedPlanId,
+    isConfirmedToCurrentPlan,
+    isConfirmedToAnyPlan,
+    isRejectedForCurrentPlan,
+  } = input;
+
+  const tradeDate = transaction.tradeDate.slice(0, 10);
+  if (tradeDate < periodStart || tradeDate > periodEnd) {
+    return { eligible: false, reason: 'OUT_OF_PERIOD' };
+  }
+
+  if (transaction.type.toUpperCase() !== 'BUY') {
+    return { eligible: false, reason: 'NOT_BUY' };
+  }
+
+  if (transaction.amountCents <= 0) {
+    return { eligible: false, reason: 'NON_POSITIVE_AMOUNT' };
+  }
+
+  const txCurrency = transaction.currency || planCurrency;
+  if (txCurrency !== planCurrency) {
+    return { eligible: false, reason: 'CURRENCY_MISMATCH' };
+  }
+
+  // Confirmed current plan takes precedence
+  if (isConfirmedToCurrentPlan || (confirmedPlanId && confirmedPlanId === planId)) {
+    return { eligible: false, reason: 'CONFIRMED_CURRENT_PLAN' };
+  }
+
+  // Confirmed other plan is excluded
+  if (
+    (confirmedPlanId && confirmedPlanId !== planId) ||
+    (!isConfirmedToCurrentPlan && isConfirmedToAnyPlan)
+  ) {
+    return { eligible: false, reason: 'CONFIRMED_OTHER_PLAN' };
+  }
+
+  // Rejected for current plan
+  if (isRejectedForCurrentPlan) {
+    return { eligible: false, reason: 'REJECTED_CURRENT_PLAN' };
+  }
+
+  return { eligible: true, reason: 'ELIGIBLE' };
+}
+
 export interface ContributionPlanMonthlyReviewCategoryProgress {
   category: string;
   plannedCents: number;
@@ -1014,6 +1118,15 @@ export function deriveContributionPlanMonthlyReview(
 
   for (const tx of transactions) {
     const tradeDate = tx.tradeDate.slice(0, 10);
+    const txCents = parseMoneyToCents(tx.amount);
+    const cat = assetCategories.get(tx.assetId) || 'UNMAPPED';
+    const txCurrency = tx.currency || plan.currency;
+
+    // Track excluded sell operations
+    if (tx.type === 'SELL') {
+      excludedSellCount++;
+      continue;
+    }
 
     // Period boundary check
     if (tradeDate < periodStart || tradeDate > periodEnd) {
@@ -1024,15 +1137,8 @@ export function deriveContributionPlanMonthlyReview(
       continue;
     }
 
-    // Exclude confirmed in another plan
-    if (tx.linkStatus === 'CONFIRMED' && tx.linkedPlanId && tx.linkedPlanId !== plan.id) {
-      continue;
-    }
-
     // Exclude rejected links from actuals, but keep for audit
     if (tx.linkStatus === 'REJECTED' && tx.linkedPlanId === plan.id) {
-      const txCents = parseMoneyToCents(tx.amount);
-      const cat = assetCategories.get(tx.assetId) || 'UNMAPPED';
       rejectedCents += txCents;
       rejectedTxs.push({
         id: tx.id,
@@ -1043,28 +1149,35 @@ export function deriveContributionPlanMonthlyReview(
         tradeDate,
         amountCents: txCents,
         amount: formatCentsToDecimal(txCents),
-        currency: tx.currency || plan.currency,
+        currency: txCurrency,
         category: cat,
         linkStatus: 'REJECTED',
       });
       continue;
     }
 
-    // Exclude SELL
-    if (tx.type === 'SELL') {
-      excludedSellCount++;
-      continue;
-    }
+    // Evaluate canonical candidate eligibility
+    const isConfirmedCurrent = tx.linkStatus === 'CONFIRMED' && tx.linkedPlanId === plan.id;
+    const isRejectedCurrent = tx.linkStatus === 'REJECTED' && tx.linkedPlanId === plan.id;
 
-    // Only BUY transactions can count as purchase actuals or candidates
-    if (tx.type !== 'BUY') {
-      continue;
-    }
+    const eligibility = isContributionPlanCandidateEligible({
+      transaction: {
+        id: tx.id,
+        type: tx.type,
+        tradeDate,
+        amountCents: txCents,
+        currency: txCurrency,
+      },
+      planId: plan.id,
+      planCurrency: plan.currency,
+      periodStart,
+      periodEnd,
+      confirmedPlanId: tx.linkStatus === 'CONFIRMED' ? tx.linkedPlanId : null,
+      isConfirmedToCurrentPlan: isConfirmedCurrent,
+      isConfirmedToAnyPlan: tx.linkStatus === 'CONFIRMED',
+      isRejectedForCurrentPlan: isRejectedCurrent,
+    });
 
-    const txCents = parseMoneyToCents(tx.amount);
-    if (txCents <= 0) continue;
-
-    const cat = assetCategories.get(tx.assetId) || 'UNMAPPED';
     const txItem: ContributionPlanMonthlyReviewTransactionItem = {
       id: tx.id,
       accountId: tx.accountId,
@@ -1074,17 +1187,18 @@ export function deriveContributionPlanMonthlyReview(
       tradeDate,
       amountCents: txCents,
       amount: formatCentsToDecimal(txCents),
-      currency: tx.currency || plan.currency,
+      currency: txCurrency,
       category: cat,
-      linkStatus: tx.linkStatus === 'CONFIRMED' && tx.linkedPlanId === plan.id ? 'CONFIRMED' : 'CANDIDATE',
+      linkStatus: isConfirmedCurrent ? 'CONFIRMED' : 'CANDIDATE',
     };
 
-    if (tx.linkStatus === 'CONFIRMED' && tx.linkedPlanId === plan.id) {
+    if (isConfirmedCurrent) {
+      // Confirmed in current plan counts as confirmed actual
       confirmedCents += txCents;
       confirmedCentsByCategory.set(cat, (confirmedCentsByCategory.get(cat) ?? 0) + txCents);
       confirmedTxs.push(txItem);
-    } else {
-      // Eligible purchase in period without confirmed link to this plan -> CANDIDATE
+    } else if (eligibility.eligible) {
+      // Canonical eligible candidate
       candidateCents += txCents;
       candidateCentsByCategory.set(cat, (candidateCentsByCategory.get(cat) ?? 0) + txCents);
       candidateTxs.push(txItem);
@@ -1740,13 +1854,7 @@ export function buildPortfolioMonthlyProgressTimeline(
         }
       }
 
-      // Candidate derivation for this plan:
-      // Canonical rules matching APP-16X deriveContributionPlanMonthlyReview:
-      // - BUY transaction within month window [periodStart, periodEnd]
-      // - Positive amount
-      // - Currency matching plan currency
-      // - NOT confirmed to ANY plan (confirmed always wins)
-      // - NOT rejected in this plan
+      // Candidate derivation for this plan using canonical matcher:
       const planPeriod = plan.plannedDate.slice(0, 7);
       const [pYearStr, pMonthStr] = planPeriod.split('-');
       const pYear = parseInt(pYearStr!, 10);
@@ -1761,22 +1869,29 @@ export function buildPortfolioMonthlyProgressTimeline(
 
       const potentialCandidateTxs = txsByMonth.get(planPeriod) ?? [];
       for (const tx of potentialCandidateTxs) {
-        const tradeDate = tx.tradeDate.slice(0, 10);
-        if (tradeDate < periodStart || tradeDate > periodEnd) continue;
-        if (tx.type.toUpperCase() !== 'BUY') continue;
-
-        const txCurrency = tx.currency || planCurrency;
-        if (txCurrency !== planCurrency) continue;
-
         const txCents = getTxAmountCents(tx);
-        if (txCents <= 0) continue;
+        const eligibility = isContributionPlanCandidateEligible({
+          transaction: {
+            id: tx.id,
+            type: tx.type,
+            tradeDate: tx.tradeDate,
+            amountCents: txCents,
+            currency: tx.currency,
+          },
+          planId: plan.id,
+          planCurrency,
+          periodStart,
+          periodEnd,
+          isConfirmedToCurrentPlan: planConfirmedTxIds.has(tx.id),
+          isConfirmedToAnyPlan: allConfirmedTxIds.has(tx.id),
+          isRejectedForCurrentPlan: planRejectedTxIds.has(tx.id),
+        });
 
-        if (allConfirmedTxIds.has(tx.id)) continue;
-        if (planRejectedTxIds.has(tx.id)) continue;
-
-        planCandidateCents += txCents;
-        planCandidateTransactionCount++;
-        monthCandidateTxIds.add(tx.id);
+        if (eligibility.eligible) {
+          planCandidateCents += txCents;
+          planCandidateTransactionCount++;
+          monthCandidateTxIds.add(tx.id);
+        }
       }
 
       const completionPercent =

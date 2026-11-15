@@ -444,6 +444,108 @@ describe('API Integration: APP-16Y Monthly Portfolio Progress & Goal History', (
     expect(timeline.months[0].totalConfirmedCents).toBe(80000);
   });
 
+  it('APP-16Y-R2: Cross-feature Currency Mismatch Parity - USD BUY excluded from candidateCents in both Review and Timeline', async () => {
+    const prisma = getTestPrismaClient();
+
+    // Create BRL asset
+    const assetBrl = await prisma.asset.create({
+      data: {
+        id: randomUUID(),
+        ticker: 'VALE3',
+        name: 'Vale ON',
+        type: 'STOCK',
+        currency: 'BRL',
+        exchange: 'B3',
+      },
+    });
+
+    // Create USD asset
+    const assetUsd = await prisma.asset.create({
+      data: {
+        id: randomUUID(),
+        ticker: 'AAPL',
+        name: 'Apple Inc',
+        type: 'STOCK',
+        currency: 'USD',
+        exchange: 'NASDAQ',
+      },
+    });
+
+    // Create BRL contribution plan
+    const plan = await prisma.portfolioContributionPlan.create({
+      data: {
+        id: randomUUID(),
+        portfolioId,
+        name: 'Plano BRL com Operações Multimoeda',
+        plannedDate: new Date('2026-11-10T00:00:00.000Z'),
+        status: 'PLANNED',
+        currency: 'BRL',
+        items: {
+          create: [{ id: randomUUID(), category: 'STOCK', amount: '1000.00' }],
+        },
+      },
+    });
+
+    // 1. Eligible BRL BUY tx: 500.00 -> should be candidate (50000 cents)
+    await prisma.transaction.create({
+      data: {
+        id: randomUUID(),
+        portfolioId,
+        accountId,
+        assetId: assetBrl.id,
+        type: 'BUY',
+        tradeDate: new Date('2026-11-12T00:00:00.000Z'),
+        settlementDate: new Date('2026-11-14T00:00:00.000Z'),
+        amount: '500.00',
+        currency: 'BRL',
+        quantity: '10',
+        unitPrice: '50.00',
+      },
+    });
+
+    // 2. USD BUY tx: 300.00 -> currency mismatch against BRL plan -> must be EXCLUDED from candidateCents
+    await prisma.transaction.create({
+      data: {
+        id: randomUUID(),
+        portfolioId,
+        accountId,
+        assetId: assetUsd.id,
+        type: 'BUY',
+        tradeDate: new Date('2026-11-15T00:00:00.000Z'),
+        settlementDate: new Date('2026-11-17T00:00:00.000Z'),
+        amount: '300.00',
+        currency: 'USD',
+        quantity: '2',
+        unitPrice: '150.00',
+      },
+    });
+
+    // Fetch APP-16X Review
+    const reviewRes = await request(app.getHttpServer())
+      .get(`/api/v1/portfolios/${portfolioId}/contribution-plans/${plan.id}/review`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .expect(200);
+
+    const review = reviewRes.body.data;
+
+    // Fetch APP-16Y Timeline
+    const timelineRes = await request(app.getHttpServer())
+      .get(`/api/v1/portfolios/${portfolioId}/monthly-progress?from=2026-11&to=2026-11`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .expect(200);
+
+    const timeline = timelineRes.body.data;
+    const timelinePlan = timeline.months[0].plans.find((p: any) => p.id === plan.id);
+
+    // Parity: Both review and timeline report candidateCents = 50000 (excluding USD 300.00)
+    expect(review.candidateCents).toBe(50000);
+    expect(review.candidateAmount).toBe('500.00');
+    expect(timelinePlan.candidateCents).toBe(review.candidateCents);
+    expect(timelinePlan.candidateAmount).toBe(review.candidateAmount);
+    expect(timeline.months[0].totalCandidateCents).toBe(50000);
+    expect(timeline.months[0].totalCandidateAmount).toBe('500.00');
+  });
+
   it('APP-16Y-R1: Cross-feature Goal Parity - APP-16W resolved goal == APP-16Y resolved goal', async () => {
     const prisma = getTestPrismaClient();
 
